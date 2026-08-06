@@ -324,7 +324,7 @@ jobs:
     timeout-minutes: 3
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/labeler@v5
+      - uses: actions/labeler@v7
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           configuration-path: .github/labeler.yml

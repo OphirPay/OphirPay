@@ -76,7 +76,7 @@ jobs:
       - run: npx vitest run --coverage --reporter=verbose
       - name: Upload coverage to artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
@@ -121,7 +121,7 @@ jobs:
       - name: Run Emitter contract unit tests
         run: cd contracts/emitter && cargo test
       - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contract-wasm
           path: |
@@ -195,7 +195,7 @@ jobs:
           test -d .next && echo "✅ .next directory exists"
           test -f .next/BUILD_ID && echo "✅ BUILD_ID exists"
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: next-build
           path: .next/
@@ -293,7 +293,7 @@ jobs:
         run: npx playwright test --project=chromium
       - name: Upload E2E report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/
@@ -691,7 +691,7 @@ jobs:
           fi
       - name: Upload gas report artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contract-gas-report
           path: |

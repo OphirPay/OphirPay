@@ -81,7 +81,7 @@
     "eslint": "^9.26.0",
     "eslint-config-next": "^16.3.0",
     "jsdom": "^29.1.1",
-    "prisma": "^6.5.0",
+    "prisma": "^7.9.1",
     "puppeteer": "^25.4.0",
     "tailwindcss": "^4.1.6",
     "typescript": "^5.8.0",

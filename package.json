@@ -83,7 +83,7 @@
     "prisma": "^6.5.0",
     "puppeteer": "^25.4.0",
     "tailwindcss": "^4.1.6",
-    "typescript": "^5.8.0",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }
 }

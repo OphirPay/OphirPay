@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - run: npx eslint . --max-warnings 20
@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - run: npx tsc --noEmit
@@ -54,7 +54,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - run: npx prisma generate
@@ -69,7 +69,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - run: npx prisma generate
@@ -185,7 +185,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - run: npx prisma generate
@@ -268,7 +268,7 @@ jobs:
       NEXT_PUBLIC_EMITTER_CONTRACT_ID: CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - name: Generate Prisma client
@@ -325,7 +325,7 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - name: Validate Prisma schema
@@ -412,7 +412,7 @@ jobs:
     needs: next-build
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - name: Download build artifact
@@ -457,7 +457,7 @@ jobs:
       NEXT_PUBLIC_EMITTER_CONTRACT_ID: CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - name: Download build artifact
@@ -517,7 +517,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - name: Install OpenAPI lint tools
         run: npm install -g @redocly/cli@1.25.11
@@ -615,7 +615,7 @@ jobs:
     continue-on-error: true  # Don't block PRs, just surface warnings
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - name: npm audit (production deps only, no fix)
         run: npm audit --omit=dev --audit-level=high 2>&1 || true

@@ -64,7 +64,7 @@
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
-    "ioredis": "^5.11.1"
+    "ioredis": "^6.0.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

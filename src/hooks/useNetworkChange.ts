@@ -42,7 +42,7 @@ export function useNetworkPoller(
         const freighter = getFreighter();
         if (!freighter) return;
         const network = await freighter.getNetwork();
-        if (network !== expectedNetwork) {
+        if (network.toUpperCase() !== expectedNetwork.toUpperCase()) {
           // Network mismatch — could trigger a notification
           console.warn(
             `[OphirPay] Freighter network changed: ${expectedNetwork} → ${network}`

@@ -9,7 +9,8 @@ import { useState, useEffect, useCallback } from "react";
  * Useful for payment request expiration, session timeouts, etc.
  */
 export function useCountdown(initialSeconds: number, onExpire?: () => void) {
-  const [remaining, setRemaining] = useState(initialSeconds);
+  const safeInitialSeconds = Math.max(0, Math.floor(initialSeconds));
+  const [remaining, setRemaining] = useState(safeInitialSeconds);
   const [isRunning, setIsRunning] = useState(false);
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export function useCountdown(initialSeconds: number, onExpire?: () => void) {
   const start = useCallback(() => setIsRunning(true), []);
   const reset = useCallback((seconds?: number) => {
     setIsRunning(false);
-    setRemaining(seconds ?? initialSeconds);
+    setRemaining(Math.max(0, Math.floor(seconds ?? initialSeconds)));
   }, [initialSeconds]);
 
   const minutes = Math.floor(remaining / 60);

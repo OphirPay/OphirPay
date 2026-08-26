@@ -2,6 +2,7 @@
 // Targeted branch-coverage tests for api-response.ts
 
 import { describe, it, expect } from 'vitest';
+import { Prisma } from "@prisma/client";
 import { jsonSafe, errorResponse, successResponse, handleApiError, notFoundError, serverError, unauthorizedError, rateLimitError, conflictError, badRequestError, validationError } from '@/lib/api-response';
 import { z } from 'zod';
 
@@ -190,5 +191,34 @@ describe('helper response functions', () => {
     const json = await res.json();
     expect(json.error.code).toBe('VALIDATION_ERROR');
     expect(json.error.details).toBeDefined();
+  });
+});
+
+describe("jsonSafe — Prisma Decimal", () => {
+  it("serialises a Decimal as a string, not decimal.js internals", () => {
+    // Decimal is an object, so without an explicit branch the generic object
+    // path decomposes it into { s, e, d } and every consumer reads NaN where an
+    // amount should be — the same failure Date already guards against.
+    const out = jsonSafe({ amount: new Prisma.Decimal("123.4567890") }) as {
+      amount: unknown;
+    };
+    expect(typeof out.amount).toBe("string");
+    expect(Number(out.amount)).toBeCloseTo(123.456789, 6);
+  });
+
+  it("preserves precision beyond what a JS float can hold", () => {
+    // Decimal(18, 7) carries more significant digits than a double, so
+    // serialising to a number would silently round money.
+    const out = jsonSafe({
+      amount: new Prisma.Decimal("12345678901.1234567"),
+    }) as { amount: string };
+    expect(out.amount).toBe("12345678901.1234567");
+  });
+
+  it("handles Decimals nested in arrays", () => {
+    const out = jsonSafe({
+      payments: [{ amount: new Prisma.Decimal("1.5") }],
+    }) as { payments: { amount: unknown }[] };
+    expect(out.payments[0].amount).toBe("1.5");
   });
 });

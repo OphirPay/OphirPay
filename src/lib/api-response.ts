@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { handlePrismaError } from "@/lib/prisma-errors";
 import { logger } from "@/lib/logger";
@@ -51,6 +52,16 @@ export function jsonSafe<T>(value: T): unknown {
   // Date is empty, which would otherwise silently turn it into {}.
   if (value instanceof Date) {
     return value.toISOString();
+  }
+  // Prisma Decimal has the same problem as Date and for the same reason: it is
+  // an object, so the branch below would decompose it into decimal.js internals
+  // ({ s, e, d }) and every consumer would read NaN where an amount should be.
+  // Serialized as a string, not a number: Decimal(18, 7) carries more
+  // significant digits than a JS float can hold, and silently rounding money is
+  // worse than handing the caller a string. The frontend already parses amounts
+  // this way (parseFloat(r.amount) in batches/new, recurring, send).
+  if (Prisma.Decimal.isDecimal(value)) {
+    return value.toString();
   }
   if (Array.isArray(value)) {
     return value.map((item) => jsonSafe(item));

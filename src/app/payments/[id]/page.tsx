@@ -3,12 +3,12 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { formatAmount, formatDate, getStatusColor, cn } from "@/lib/utils";
+import { formatDate, getStatusColor, cn } from "@/lib/utils";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PaymentTimeline } from "@/components/PaymentTimeline";
-import { CopyButton, ExplorerLink } from "@/components/ui";
+import { Amount, CopyButton, ExplorerLink } from "@/components/ui";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { buildPaymentTimeline } from "@/lib/payment-timeline";
 import type { Payment } from "@/types";
@@ -119,8 +119,11 @@ export default function PaymentDetailPage() {
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
+          {/* `Amount` accepts number | string. The API serialises Decimal as a
+              string to preserve precision, and Number() on the previous
+              decimal.js object form produced NaN. */}
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            {formatAmount(Number(payment.amount), payment.assetCode)}
+            <Amount value={payment.amount} asset={payment.assetCode} />
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1 font-mono text-xs break-all">
             {payment.id}

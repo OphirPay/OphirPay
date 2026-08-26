@@ -16,22 +16,24 @@ import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────
 
-type ToastVariant = "success" | "error" | "info" | "warning";
+export type ToastVariant = "success" | "error" | "info" | "warning";
 
-interface ToastItem {
+export interface ToastItem {
   id: number;
   title: string;
   description?: string;
   variant: ToastVariant;
+  createdAt: number;
 }
 
-interface ToastContextValue {
-  toast: (t: Omit<ToastItem, "id">) => void;
+export interface ToastContextValue {
+  toast: (t: Omit<ToastItem, "id" | "createdAt">) => void;
   success: (title: string, description?: string) => void;
   error: (title: string, description?: string) => void;
   info: (title: string, description?: string) => void;
   warning: (title: string, description?: string) => void;
   dismiss: (id: number) => void;
+  toasts: ToastItem[];
 }
 
 // ── Context ────────────────────────────────────────────────────
@@ -64,16 +66,36 @@ const MAX_VISIBLE = 4;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [politeAnnouncement, setPoliteAnnouncement] = useState<string>("");
+  const [assertiveAnnouncement, setAssertiveAnnouncement] = useState<string>("");
   const idRef = useRef(0);
+  const announcedIds = useRef<Set<number>>(new Set());
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   const toast = useCallback(
-    (t: Omit<ToastItem, "id">) => {
+    (t: Omit<ToastItem, "id" | "createdAt">) => {
       const id = ++idRef.current;
-      setToasts((prev) => [...prev.slice(-(MAX_VISIBLE - 1)), { ...t, id }]);
+      const newToast: ToastItem = { ...t, id, createdAt: Date.now() };
+
+      setToasts((prev) => [...prev.slice(-(MAX_VISIBLE - 1)), newToast]);
+
+      // Deduplicated aria-live announcement for screen readers
+      if (!announcedIds.current.has(id)) {
+        announcedIds.current.add(id);
+        const text = newToast.description
+          ? `${newToast.title}: ${newToast.description}`
+          : newToast.title;
+
+        if (newToast.variant === "error") {
+          setAssertiveAnnouncement(text);
+        } else {
+          setPoliteAnnouncement(text);
+        }
+      }
+
       window.setTimeout(() => dismiss(id), AUTO_DISMISS_MS);
     },
     [dismiss]
@@ -83,17 +105,37 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     () => ({
       toast,
       dismiss,
+      toasts,
       success: (title, description) => toast({ title, description, variant: "success" }),
       error: (title, description) => toast({ title, description, variant: "error" }),
       info: (title, description) => toast({ title, description, variant: "info" }),
       warning: (title, description) => toast({ title, description, variant: "warning" }),
     }),
-    [toast, dismiss]
+    [toast, dismiss, toasts]
   );
 
   return (
     <ToastContext.Provider value={value}>
       {children}
+      {/* Screen reader persistent live regions for aria-live announcements */}
+      <div className="sr-only" data-testid="toast-announcer">
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="toast-live-polite"
+        >
+          {politeAnnouncement}
+        </div>
+        <div
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
+          data-testid="toast-live-assertive"
+        >
+          {assertiveAnnouncement}
+        </div>
+      </div>
       <ToastViewport toasts={toasts} onDismiss={dismiss} />
     </ToastContext.Provider>
   );
@@ -101,7 +143,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 // ── Viewport ───────────────────────────────────────────────────
 
-function ToastViewport({
+export function ToastViewport({
   toasts,
   onDismiss,
 }: {
@@ -112,16 +154,19 @@ function ToastViewport({
 
   return createPortal(
     <div
-      aria-live="polite"
-      aria-atomic="false"
+      aria-label="Notifications"
       className="fixed bottom-4 right-4 z-[60] flex flex-col gap-2 w-full max-w-sm pointer-events-none"
     >
       {toasts.map((t) => {
         const styles = variantStyles[t.variant];
+        const isError = t.variant === "error";
         return (
           <div
             key={t.id}
-            role="status"
+            role={isError ? "alert" : "status"}
+            aria-live={isError ? "assertive" : "polite"}
+            aria-atomic="true"
+            data-testid={`toast-${t.variant}`}
             className="pointer-events-auto bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl p-4 flex items-start gap-3 animate-fade-in-up"
           >
             <svg
@@ -181,3 +226,4 @@ export function useToast(): ToastContextValue {
   }
   return context;
 }
+

@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { shortenAddress, timeAgo } from "@/lib/utils";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { EmptyState } from "@/components/EmptyState";
 
 import {
@@ -63,6 +64,9 @@ export default function EventsPage() {
   // Load on-chain data (only when the On-Chain tab is active)
   const {
     data: onChainData,
+    isLoading: onChainLoading,
+    error: onChainError,
+    refetch: refetchOnChain,
   } = useApiQuery<{ payments: OnChainPayment[] }>(
     ["events", "onchain"],
     undefined, // REST not used — reads via Soroban simulation below
@@ -199,7 +203,23 @@ export default function EventsPage() {
         </div>
       ) : (
         /* On-Chain Records */
-        onChainPayments.length === 0 ? (
+        onChainLoading ? (
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+            <LoadingSkeleton variant="table" lines={5} />
+          </div>
+        ) : onChainError ? (
+          <div className="p-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30">
+            <p className="text-sm text-red-700 dark:text-red-400">
+              Failed to load on-chain events: {onChainError.message || "Failed to query RPC"}
+            </p>
+            <button
+              onClick={() => refetchOnChain()}
+              className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
+            >
+              Try again
+            </button>
+          </div>
+        ) : onChainPayments.length === 0 ? (
           <EmptyState
             icon={
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-400">

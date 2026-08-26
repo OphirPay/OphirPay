@@ -27,6 +27,26 @@ const sizeClasses = {
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+function getFocusableElements(container: HTMLElement | null): HTMLElement[] {
+  if (!container) return [];
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+  ).filter((el) => {
+    if (
+      el.hasAttribute("disabled") ||
+      el.getAttribute("aria-disabled") === "true" ||
+      el.getAttribute("aria-hidden") === "true" ||
+      el.hidden ||
+      el.style.display === "none" ||
+      el.style.visibility === "hidden" ||
+      el.tabIndex < 0
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
 /**
  * Accessible modal dialog — ESC to close, backdrop click to close,
  * body scroll lock, focus trap, initial focus landing, and focus restore on close.
@@ -98,10 +118,8 @@ export function Modal({
       }
       if (e.key !== "Tab" || !dialogRef.current) return;
 
-      // Cycle Tab within the dialog
-      const focusables = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null || el.tabIndex >= 0);
+      // Cycle Tab within the dialog among valid, available focusable elements
+      const focusables = getFocusableElements(dialogRef.current);
 
       if (focusables.length === 0) {
         e.preventDefault();
@@ -148,7 +166,7 @@ export function Modal({
         return;
       }
       if (dialogRef.current) {
-        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+        const focusables = getFocusableElements(dialogRef.current);
         if (focusables.length > 0) {
           focusables[0].focus();
         } else {

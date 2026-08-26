@@ -148,11 +148,52 @@ describe("Modal Focus Management", () => {
       vi.runAllTimers();
     });
 
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const closeBtn = screen.getByRole("button", { name: "Close dialog" });
+    expect(document.activeElement).toBe(closeBtn);
 
     // Close via Escape
     fireEvent.keyDown(document, { key: "Escape" });
 
+    act(() => {
+      vi.runAllTimers();
+    });
+
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("skips disabled, aria-hidden, and negative tabindex elements in focus trap", async () => {
+    render(
+      <Modal open onClose={() => {}} title="Disabled Elements Dialog">
+        <div>
+          <button disabled data-testid="disabled-btn">
+            Disabled Action
+          </button>
+          <button aria-hidden="true" data-testid="hidden-btn">
+            Hidden Action
+          </button>
+          <button tabIndex={-1} data-testid="tabindex-minus1-btn">
+            Non-tabbable Action
+          </button>
+          <button data-testid="enabled-btn">Available Action</button>
+        </div>
+      </Modal>
+    );
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    const closeBtn = screen.getByRole("button", { name: "Close dialog" });
+    const enabledBtn = screen.getByTestId("enabled-btn");
+
+    // Close button should be initial focus, not the disabled or hidden buttons
+    expect(document.activeElement).toBe(closeBtn);
+
+    // Tab from close button should go directly to enabledBtn, skipping disabled/hidden/tabindex=-1
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: false });
+    // If on enabledBtn, pressing Tab should wrap back to closeBtn
+    enabledBtn.focus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: false });
+    expect(document.activeElement).toBe(closeBtn);
   });
 });

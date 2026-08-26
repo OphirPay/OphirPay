@@ -116,6 +116,26 @@ describe('processDueRecurrences — due selection and execution', () => {
     expect(prismaMock.payment.create).not.toHaveBeenCalled();
   });
 
+  it('rolls back the claim when payment creation fails so the run is retried', async () => {
+    const now = new Date('2026-08-26T12:00:00Z');
+    prismaMock.recurrence.findMany.mockResolvedValue([baseRecurrence]);
+    prismaMock.recurrence.updateMany
+      .mockResolvedValueOnce({ count: 1 }) // claim wins
+      .mockResolvedValueOnce({ count: 1 }); // rollback restore
+    prismaMock.payment.create.mockRejectedValue(new Error('db down'));
+
+    const results = await processDueRecurrences(prismaMock as never, now);
+
+    expect(results).toEqual([
+      { recurrenceId: 'rec-1', executed: false, reason: 'payment-creation-failed' },
+    ]);
+    // nextRunAt restored to the original due time so the next run retries it
+    expect(prismaMock.recurrence.updateMany).toHaveBeenLastCalledWith({
+      where: { id: 'rec-1', isActive: true },
+      data: { lastRunAt: null, nextRunAt: baseRecurrence.nextRunAt },
+    });
+  });
+
   it('second overlapping run sees nothing due after the first run advanced schedules', async () => {
     let nextRunAt = new Date('2026-08-26T00:00:00Z');
     const now = () => new Date('2026-08-26T12:00:00Z');

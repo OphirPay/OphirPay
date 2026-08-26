@@ -131,31 +131,49 @@ export async function processDueRecurrences(
       continue;
     }
 
-    const payment = await prisma.payment.create({
+    try {
+      const payment = await prisma.payment.create({
       data: {
         userId: recurrence.userId,
         amount: recurrence.amount,
         assetCode: recurrence.assetCode,
         description: recurrence.description ?? recurrence.name,
         memo: `scheduled:${recurrence.id}`,
-        // Funds move when the linked wallet signs; until then the payment
-        // sits in PENDING with provenance recorded in metadata.
+        // Execution model: a server-side cron holds no wallet keys, so it
+        // cannot sign a Stellar transaction itself. The scheduler's job is
+        // to (1) fire exactly once per schedule and (2) materialize the
+        // payment in PENDING with full provenance; the linked wallet then
+        // signs and submits it, which records the tx hash and moves the
+        // status to COMPLETED/FAILED via the normal payment flow.
         status: "PENDING",
-        destAccountId: recurrence.destAddress,
-        recurrenceId: recurrence.id,
-        metadata: JSON.stringify({
-          scheduledExecution: true,
-          triggeredAt: now.toISOString(),
-          frequency: recurrence.frequency,
-        }),
-      },
-    });
+          destAccountId: recurrence.destAddress,
+          recurrenceId: recurrence.id,
+          metadata: JSON.stringify({
+            scheduledExecution: true,
+            triggeredAt: now.toISOString(),
+            frequency: recurrence.frequency,
+          }),
+        },
+      });
 
-    results.push({
-      recurrenceId: recurrence.id,
-      executed: true,
-      paymentId: payment.id,
-    });
+      results.push({
+        recurrenceId: recurrence.id,
+        executed: true,
+        paymentId: payment.id,
+      });
+    } catch (err) {
+      // Roll the claim back so the occurrence is retried on the next run -
+      // otherwise an advanced nextRunAt with no payment would skip it forever.
+      await prisma.recurrence.updateMany({
+        where: { id: recurrence.id, isActive: true },
+        data: { lastRunAt: null, nextRunAt: recurrence.nextRunAt },
+      });
+      results.push({
+        recurrenceId: recurrence.id,
+        executed: false,
+        reason: "payment-creation-failed",
+      });
+    }
   }
 
   return results;

@@ -19,7 +19,7 @@ export function shortenAddress(address: string, chars = 4): string {
  * Format a number as XLM/USDC amount
  */
 export function formatAmount(amount: number, assetCode = "XLM"): string {
-  return `${amount.toLocaleString(undefined, {
+  return `${amount.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 7,
   })} ${assetCode}`;

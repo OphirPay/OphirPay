@@ -221,6 +221,8 @@ npx playwright test
 
 ## Need Help?
 
+- [API Cookbook (Runnable curl examples for every endpoint)](./API_COOKBOOK.md)
+- [OpenAPI 3.1.0 Specification](./openapi.yaml)
 - [Open an issue](https://github.com/OphirPay/OphirPay/issues/new?template=bug_report.yml)
 - [Read the architecture guide](./architecture.md)
 - [View the mainnet deployment guide](./deployment-mainnet.md)

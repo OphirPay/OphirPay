@@ -23,7 +23,16 @@ const sizeClasses = {
 };
 
 const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Focusable elements inside `root`, in DOM order, skipping anything not rendered. */
+function focusableWithin(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) =>
+      !element.hasAttribute("hidden") &&
+      element.getAttribute("aria-hidden") !== "true"
+  );
+}
 
 /**
  * Accessible modal dialog — ESC to close, backdrop click to close,
@@ -73,7 +82,14 @@ export function Modal({
     };
   }, [open]);
 
-  // ESC to close + focus trap + body scroll lock + focus restore
+  // ESC to close + focus trap + body scroll lock + focus restore.
+  //
+  // This effect deliberately depends on `open` alone. Including `onClose` re-ran it
+  // on every parent render that passed a new inline handler, and each re-run
+  // recaptured `previouslyFocused` from `document.activeElement` - which by then was
+  // the dialog itself. Focus was then "restored" into the dialog being unmounted
+  // rather than to the control that opened it. `onCloseRef` keeps Escape calling the
+  // current handler without that cost.
   useEffect(() => {
     if (!open) return;
 
@@ -81,23 +97,38 @@ export function Modal({
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !dialogRef.current) return;
 
-      // Cycle Tab within the dialog
-      const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
-        FOCUSABLE_SELECTOR
-      );
-      if (focusables.length === 0) return;
+      const dialog = dialogRef.current;
+      const focusables = focusableWithin(dialog);
+      if (focusables.length === 0) {
+        // Nothing to tab to, so keep focus on the dialog rather than letting it
+        // escape to the page behind the backdrop.
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
 
-      if (e.shiftKey && document.activeElement === first) {
+      // Focus can end up outside the dialog - a click on the backdrop, a
+      // programmatic focus elsewhere - and a trap that only wraps at the edges
+      // would never bring it back.
+      if (!(active instanceof Node) || !dialog.contains(active)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+        return;
+      }
+
+      if (e.shiftKey && active === first) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
+      } else if (!e.shiftKey && active === last) {
         e.preventDefault();
         first.focus();
       }
@@ -107,16 +138,23 @@ export function Modal({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Move focus into the dialog
-    requestAnimationFrame(() => dialogRef.current?.focus());
+    // Initial focus lands on the first interactive element, falling back to the
+    // dialog when it has none.
+    const frame = requestAnimationFrame(() => {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const [firstFocusable] = focusableWithin(dialog);
+      (firstFocusable ?? dialog).focus();
+    });
 
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = prevOverflow;
-      // Restore focus to the element that opened the dialog
+      // Restore focus to the element that opened the dialog.
       previouslyFocused?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   // Guard against SSR — createPortal needs the client-side `document`
   if (!open || typeof document === "undefined") return null;

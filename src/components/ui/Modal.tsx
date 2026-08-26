@@ -14,6 +14,8 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: "sm" | "md" | "lg";
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
+  returnFocus?: boolean;
 }
 
 const sizeClasses = {
@@ -23,11 +25,11 @@ const sizeClasses = {
 };
 
 const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * Accessible modal dialog — ESC to close, backdrop click to close,
- * body scroll lock, focus trap, and focus restore on close.
+ * body scroll lock, focus trap, initial focus landing, and focus restore on close.
  */
 export function Modal({
   open,
@@ -37,8 +39,11 @@ export function Modal({
   children,
   footer,
   size = "md",
+  initialFocusRef,
+  returnFocus = true,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   // Keep the latest `onClose` in a ref so the popstate listener below always
   // invokes the current handler without re-subscribing on every render.
@@ -46,6 +51,13 @@ export function Modal({
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  // Capture the trigger element that had focus before opening the modal
+  useEffect(() => {
+    if (open) {
+      triggerRef.current = document.activeElement as HTMLElement | null;
+    }
+  }, [open]);
 
   // Close the modal when the user presses the browser back button instead of
   // navigating away from the page. Opening the modal pushes a history entry;
@@ -77,29 +89,51 @@ export function Modal({
   useEffect(() => {
     if (!open) return;
 
-    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const triggerElement = triggerRef.current;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !dialogRef.current) return;
 
       // Cycle Tab within the dialog
-      const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
-        FOCUSABLE_SELECTOR
-      );
-      if (focusables.length === 0) return;
+      const focusables = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null || el.tabIndex >= 0);
+
+      if (focusables.length === 0) {
+        e.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
+      const activeEl = document.activeElement as HTMLElement | null;
 
-      if (e.shiftKey && document.activeElement === first) {
+      // If focus escaped the dialog container, pull it back in
+      if (!dialogRef.current.contains(activeEl)) {
         e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
+        if (e.shiftKey) {
+          last.focus();
+        } else {
+          first.focus();
+        }
+        return;
+      }
+
+      if (e.shiftKey) {
+        if (activeEl === first || activeEl === dialogRef.current) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (activeEl === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -107,16 +141,32 @@ export function Modal({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Move focus into the dialog
-    requestAnimationFrame(() => dialogRef.current?.focus());
+    // Set initial focus: custom ref -> first interactive element -> dialog container
+    const focusFrame = requestAnimationFrame(() => {
+      if (initialFocusRef?.current) {
+        initialFocusRef.current.focus();
+        return;
+      }
+      if (dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+        if (focusables.length > 0) {
+          focusables[0].focus();
+        } else {
+          dialogRef.current.focus();
+        }
+      }
+    });
 
     return () => {
+      cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = prevOverflow;
-      // Restore focus to the element that opened the dialog
-      previouslyFocused?.focus();
+      // Restore focus to the element that triggered/opened the dialog
+      if (returnFocus && triggerElement && typeof triggerElement.focus === "function") {
+        triggerElement.focus();
+      }
     };
-  }, [open, onClose]);
+  }, [open, initialFocusRef, returnFocus]);
 
   // Guard against SSR — createPortal needs the client-side `document`
   if (!open || typeof document === "undefined") return null;

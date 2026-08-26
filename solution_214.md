@@ -1,451 +1,613 @@
-# Solution for #214: API cookbook: curl + response example for every public endpoint
+# Solution for #214: API cookbook — curl + response example for every public endpoint
 
-# API Cookbook
+# OphirPay API Cookbook
 
-This document provides `curl` examples and sample responses for every public endpoint in the API. All examples use realistic data and include required authentication headers.
+Runnable `curl` examples and sample responses for every public endpoint of the OphirPay Stellar payment platform. All examples use realistic data and match the current schemas and auth requirements from `docs/openapi.yaml`.
 
-**Base URL**: `https://api.example.com/v1`  
-**Authentication**: Bearer token (JWT) – replace `$TOKEN` with a valid access token.
+**Base URL (Production)**: `https://api.ophirpay.com`
+**Local dev**: `http://localhost:3000`
+
+**Authentication** — two supported modes (see [Authentication](#authentication)):
+
+| Header | Value |
+|--------|-------|
+| `X-API-Key: <key>` | API key generated via `POST /api/keys` (recommended) |
+| `Authorization: Bearer <key>` | Same API key passed as Bearer token |
+
+API keys are shown **only once** at creation — store them securely.
 
 ---
 
 ## Authentication
 
-All endpoints except `/auth/login` and `/auth/refresh` require a valid Bearer token.
+### 1. Generate an API key
 
 ```bash
-export TOKEN="your-jwt-token"
-```
-
----
-
-## Endpoints
-
-### 1. Authentication
-
-#### 1.1. Login
-
-**Request**
-```bash
-curl -X POST https://api.example.com/v1/auth/login \
+curl -X POST https://api.ophirpay.com/api/keys \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
   -d '{
-    "email": "alice@example.com",
-    "password": "SecurePass123!"
-  }'
-```
-
-**Response** (200 OK)
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "Bearer",
-  "expires_in": 3600
-}
-```
-
-**Error** (401 Unauthorized)
-```json
-{
-  "error": "Invalid credentials"
-}
-```
-
-#### 1.2. Refresh Token
-
-**Request**
-```bash
-curl -X POST https://api.example.com/v1/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{
-    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-  }'
-```
-
-**Response** (200 OK)
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "Bearer",
-  "expires_in": 3600
-}
-```
-
----
-
-### 2. Users
-
-#### 2.1. List Users
-
-**Request**
-```bash
-curl -X GET https://api.example.com/v1/users?limit=10&offset=0 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response** (200 OK)
-```json
-{
-  "data": [
-    {
-      "id": "usr_123",
-      "email": "alice@example.com",
-      "full_name": "Alice Johnson",
-      "role": "admin",
-      "created_at": "2025-01-15T10:30:00Z",
-      "updated_at": "2025-03-20T14:22:00Z"
-    },
-    {
-      "id": "usr_456",
-      "email": "bob@example.com",
-      "full_name": "Bob Smith",
-      "role": "user",
-      "created_at": "2025-02-01T08:15:00Z",
-      "updated_at": "2025-03-18T09:45:00Z"
-    }
-  ],
-  "pagination": {
-    "limit": 10,
-    "offset": 0,
-    "total": 42,
-    "next": "/v1/users?limit=10&offset=10"
-  }
-}
-```
-
-#### 2.2. Create User
-
-**Request**
-```bash
-curl -X POST https://api.example.com/v1/users \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "charlie@example.com",
-    "password": "TempPass456!",
-    "full_name": "Charlie Brown",
-    "role": "user"
+    "name": "production-bot",
+    "userId": "usr_01HZX..."
   }'
 ```
 
 **Response** (201 Created)
 ```json
 {
-  "id": "usr_789",
-  "email": "charlie@example.com",
-  "full_name": "Charlie Brown",
-  "role": "user",
-  "created_at": "2026-08-26T09:00:00Z",
-  "updated_at": "2026-08-26T09:00:00Z"
+  "success": true,
+  "data": {
+    "id": "key_01J5X...",
+    "name": "production-bot",
+    "prefix": "oph_live_ab12",
+    "key": "oph_live_ab12...full-key-shown-once"
+  }
 }
 ```
 
-**Error** (409 Conflict)
-```json
-{
-  "error": "User with email 'charlie@example.com' already exists"
-}
-```
+### 2. List API keys (hashes hidden)
 
-#### 2.3. Get User by ID
-
-**Request**
 ```bash
-curl -X GET https://api.example.com/v1/users/usr_123 \
-  -H "Authorization: Bearer $TOKEN"
+curl -X GET https://api.ophirpay.com/api/keys \
+  -H "X-API-Key: $API_KEY"
 ```
 
 **Response** (200 OK)
 ```json
 {
-  "id": "usr_123",
-  "email": "alice@example.com",
-  "full_name": "Alice Johnson",
-  "role": "admin",
-  "created_at": "2025-01-15T10:30:00Z",
-  "updated_at": "2025-03-20T14:22:00Z"
+  "success": true,
+  "data": [
+    {
+      "id": "key_01J5X...",
+      "name": "production-bot",
+      "prefix": "oph_live_ab12",
+      "createdAt": "2026-08-20T10:15:00.000Z"
+    }
+  ]
 }
 ```
+
+> Every endpoint below requires one of the two auth headers. Replace `$API_KEY` with your key.
+
+---
+
+## Payments
+
+### 3. List payments (paginated)
+
+```bash
+curl -X GET "https://api.ophirpay.com/api/payments?page=1&limit=20&status=COMPLETED" \
+  -H "X-API-Key: $API_KEY"
+```
+
+**Query parameters**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `page` | integer | 1 | Page number |
+| `limit` | integer | 20 | Page size (max 100) |
+| `status` | string | — | `CREATED`, `PENDING`, `COMPLETED`, `FAILED`, `CANCELLED` |
+| `search` | string | — | Search description, memo, or transaction hash |
+
+**Response** (200 OK)
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "pay_01J6A...",
+      "amount": 25000000,
+      "assetCode": "XLM",
+      "assetIssuer": null,
+      "description": "Invoice #1042",
+      "memo": "INV-1042",
+      "status": "COMPLETED",
+      "transactionHash": "a1b2c3d4e5f6...",
+      "sourceAccountId": "GDQNY3PBOJNCZPZ...",
+      "userId": "usr_01HZX...",
+      "batchId": null,
+      "createdAt": "2026-08-20T09:00:00.000Z",
+      "completedAt": "2026-08-20T09:00:04.000Z",
+      "errorMessage": null
+    }
+  ]
+}
+```
+
+### 4. Create a payment
+
+```bash
+curl -X POST https://api.ophirpay.com/api/payments \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "amount": 25000000,
+    "assetCode": "XLM",
+    "description": "Invoice #1042",
+    "memo": "INV-1042",
+    "sourceAccountId": "GDQNY3PBOJNCZPZ...",
+    "destAddress": "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUAYASMABEHORP3A"
+  }'
+```
+
+**Required fields**: `amount`, `sourceAccountId`, `destAddress`
+- `amount`: stroops for XLM, or smallest unit for other assets (integer > 0)
+- `destAddress`: Stellar address, `^G[A-Z0-9]{55}$`
+- `assetCode`: default `XLM`
+- `memo`: max 28 chars, `description`: max 200 chars
+
+**Response** (201 Created)
+```json
+{
+  "success": true,
+  "data": {
+    "id": "pay_01J6A...",
+    "amount": 25000000,
+    "assetCode": "XLM",
+    "assetIssuer": null,
+    "description": "Invoice #1042",
+    "memo": "INV-1042",
+    "status": "PENDING",
+    "transactionHash": null,
+    "sourceAccountId": "GDQNY3PBOJNCZPZ...",
+    "userId": "usr_01HZX...",
+    "batchId": null,
+    "createdAt": "2026-08-20T09:05:00.000Z",
+    "completedAt": null,
+    "errorMessage": null
+  }
+}
+```
+
+### 5. Get a payment by ID
+
+```bash
+curl -X GET https://api.ophirpay.com/api/payments/pay_01J6A... \
+  -H "X-API-Key: $API_KEY"
+```
+
+**Response** (200 OK) — same `PaymentResponse` shape as above.
 
 **Error** (404 Not Found)
 ```json
 {
-  "error": "User not found"
-}
-```
-
-#### 2.4. Update User
-
-**Request**
-```bash
-curl -X PATCH https://api.example.com/v1/users/usr_123 \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "full_name": "Alice J. Johnson",
-    "role": "editor"
-  }'
-```
-
-**Response** (200 OK)
-```json
-{
-  "id": "usr_123",
-  "email": "alice@example.com",
-  "full_name": "Alice J. Johnson",
-  "role": "editor",
-  "created_at": "2025-01-15T10:30:00Z",
-  "updated_at": "2026-08-26T09:15:00Z"
-}
-```
-
-#### 2.5. Delete User
-
-**Request**
-```bash
-curl -X DELETE https://api.example.com/v1/users/usr_789 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response** (204 No Content) – no response body.
-
-**Error** (403 Forbidden)
-```json
-{
-  "error": "Cannot delete a user with admin role"
-}
-```
-
----
-
-### 3. Posts
-
-#### 3.1. List Posts
-
-**Request**
-```bash
-curl -X GET https://api.example.com/v1/posts?status=published&limit=5 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response** (200 OK)
-```json
-{
-  "data": [
-    {
-      "id": "pst_001",
-      "title": "Getting Started with Our API",
-      "content": "This post explains how to integrate...",
-      "author_id": "usr_123",
-      "status": "published",
-      "created_at": "2026-08-20T12:00:00Z",
-      "updated_at": "2026-08-21T08:30:00Z"
-    },
-    {
-      "id": "pst_002",
-      "title": "Advanced Error Handling",
-      "content": "Learn how to handle various error codes...",
-      "author_id": "usr_456",
-      "status": "published",
-      "created_at": "2026-08-22T14:20:00Z",
-      "updated_at": "2026-08-23T10:10:00Z"
-    }
-  ],
-  "pagination": {
-    "limit": 5,
-    "offset": 0,
-    "total": 12,
-    "next": "/v1/posts?status=published&limit=5&offset=5"
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Payment not found"
   }
 }
 ```
 
-#### 3.2. Create Post
+---
 
-**Request**
+## Batches
+
+### 6. List batches
+
 ```bash
-curl -X POST https://api.example.com/v1/posts \
-  -H "Authorization: Bearer $TOKEN" \
+curl -X GET "https://api.ophirpay.com/api/batches?page=1&limit=20" \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 7. Create a batch payment (1–100 recipients)
+
+```bash
+curl -X POST https://api.ophirpay.com/api/batches \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
   -d '{
-    "title": "New Feature Announcement",
-    "content": "We are excited to introduce...",
-    "status": "draft"
+    "name": "Payroll Aug 2026",
+    "description": "Monthly contractor payroll",
+    "sourceAccountId": "GDQNY3PBOJNCZPZ...",
+    "recipients": [
+      { "address": "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUAYASMABEHORP3A", "amount": 5000000 },
+      { "address": "GCK5...", "amount": 7500000 }
+    ]
   }'
 ```
+
+**Required fields**: `name`, `recipients`, `sourceAccountId`
+- `recipients`: array of `{address, amount}` — min 1, max 100
+- `name`: max 100 chars, `description`: max 500 chars
+
+**Response** (201 Created) — batch object with status `CREATED` / `PENDING` and per-recipient payment IDs.
+
+### 8. Get a batch by ID
+
+```bash
+curl -X GET https://api.ophirpay.com/api/batches/bat_01J6B... \
+  -H "X-API-Key: $API_KEY"
+```
+
+---
+
+## Recurring payments
+
+### 9. Create a recurring payment
+
+```bash
+curl -X POST https://api.ophirpay.com/api/recurring \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "name": "Rent — office",
+    "frequency": "MONTHLY",
+    "amount": 10000000,
+    "assetCode": "XLM",
+    "destAddress": "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUAYASMABEHORP3A",
+    "sourceAccountId": "GDQNY3PBOJNCZPZ..."
+  }'
+```
+
+**Required fields**: `name`, `frequency`, `amount`, `destAddress`, `sourceAccountId`
+- `frequency` enum: `DAILY`, `WEEKLY`, `BIWEEKLY`, `MONTHLY`, `QUARTERLY`, `YEARLY`
+
+### 10. List / get recurring payments
+
+```bash
+curl -X GET https://api.ophirpay.com/api/recurring \
+  -H "X-API-Key: $API_KEY"
+
+curl -X GET https://api.ophirpay.com/api/recurring/rec_01J6C... \
+  -H "X-API-Key: $API_KEY"
+```
+
+---
+
+## Payment requests (payment links)
+
+### 11. List payment requests
+
+```bash
+curl -X GET https://api.ophirpay.com/api/requests \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 12. Create a payment request
+
+```bash
+curl -X POST https://api.ophirpay.com/api/requests \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "amount": 5000000,
+    "assetCode": "XLM",
+    "description": "Design retainer — August"
+  }'
+```
+
+**Response** (201 Created) — request object with a payable link URL.
+
+---
+
+## Webhooks
+
+### 13. Create a webhook subscription
+
+```bash
+curl -X POST https://api.ophirpay.com/api/webhooks \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "url": "https://example.com/hooks/ophirpay",
+    "events": ["payment.completed", "payment.failed"],
+    "isActive": true
+  }'
+```
+
+**Required fields**: `url` (valid URI), `events` (min 1)
+- `isActive` defaults to `true`
 
 **Response** (201 Created)
 ```json
 {
-  "id": "pst_003",
-  "title": "New Feature Announcement",
-  "content": "We are excited to introduce...",
-  "author_id": "usr_123",
-  "status": "draft",
-  "created_at": "2026-08-26T09:30:00Z",
-  "updated_at": "2026-08-26T09:30:00Z"
-}
-```
-
-#### 3.3. Get Post by ID
-
-**Request**
-```bash
-curl -X GET https://api.example.com/v1/posts/pst_001 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response** (200 OK)
-```json
-{
-  "id": "pst_001",
-  "title": "Getting Started with Our API",
-  "content": "This post explains how to integrate...",
-  "author_id": "usr_123",
-  "status": "published",
-  "created_at": "2026-08-20T12:00:00Z",
-  "updated_at": "2026-08-21T08:30:00Z"
-}
-```
-
-#### 3.4. Update Post
-
-**Request**
-```bash
-curl -X PATCH https://api.example.com/v1/posts/pst_003 \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "status": "published"
-  }'
-```
-
-**Response** (200 OK)
-```json
-{
-  "id": "pst_003",
-  "title": "New Feature Announcement",
-  "content": "We are excited to introduce...",
-  "author_id": "usr_123",
-  "status": "published",
-  "created_at": "2026-08-26T09:30:00Z",
-  "updated_at": "2026-08-26T09:45:00Z"
-}
-```
-
-#### 3.5. Delete Post
-
-**Request**
-```bash
-curl -X DELETE https://api.example.com/v1/posts/pst_003 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response** (204 No Content)
-
----
-
-### 4. Comments
-
-#### 4.1. List Comments on a Post
-
-**Request**
-```bash
-curl -X GET https://api.example.com/v1/posts/pst_001/comments?limit=3 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response** (200 OK)
-```json
-{
-  "data": [
-    {
-      "id": "cmt_101",
-      "post_id": "pst_001",
-      "author_id": "usr_456",
-      "content": "Great guide, very helpful!",
-      "created_at": "2026-08-21T09:00:00Z"
-    },
-    {
-      "id": "cmt_102",
-      "post_id": "pst_001",
-      "author_id": "usr_789",
-      "content": "I have a question about authentication.",
-      "created_at": "2026-08-22T16:20:00Z"
-    }
-  ],
-  "pagination": {
-    "limit": 3,
-    "offset": 0,
-    "total": 5,
-    "next": "/v1/posts/pst_001/comments?limit=3&offset=3"
+  "success": true,
+  "data": {
+    "id": "whk_01J6D...",
+    "url": "https://example.com/hooks/ophirpay",
+    "events": ["payment.completed", "payment.failed"],
+    "isActive": true,
+    "createdAt": "2026-08-20T10:30:00.000Z"
   }
 }
 ```
 
-#### 4.2. Create Comment
+### 14. List / delete webhooks
 
-**Request**
 ```bash
-curl -X POST https://api.example.com/v1/posts/pst_001/comments \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "Thanks for the detailed walkthrough!"
-  }'
+curl -X GET https://api.ophirpay.com/api/webhooks \
+  -H "X-API-Key: $API_KEY"
+
+curl -X DELETE https://api.ophirpay.com/api/webhooks/whk_01J6D... \
+  -H "X-API-Key: $API_KEY"
 ```
-
-**Response** (201 Created)
-```json
-{
-  "id": "cmt_103",
-  "post_id": "pst_001",
-  "author_id": "usr_123",
-  "content": "Thanks for the detailed walkthrough!",
-  "created_at": "2026-08-26T10:00:00Z"
-}
-```
-
-#### 4.3. Delete Comment
-
-**Request**
-```bash
-curl -X DELETE https://api.example.com/v1/comments/cmt_102 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Response** (204 No Content)
 
 ---
 
-### 5. Health Check
+## On-chain: escrows, streams, multisig, governance
 
-**Request**
+### 15. Escrows
+
 ```bash
-curl -X GET https://api.example.com/v1/health
+# List escrows
+curl -X GET https://api.ophirpay.com/api/escrows \
+  -H "X-API-Key: $API_KEY"
+
+# Get escrow by ID
+curl -X GET https://api.ophirpay.com/api/escrows/esc_01J6E... \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 16. Streams
+
+```bash
+curl -X GET https://api.ophirpay.com/api/streams \
+  -H "X-API-Key: $API_KEY"
+
+curl -X GET https://api.ophirpay.com/api/streams/str_01J6F... \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 17. Multisig proposals
+
+```bash
+# Propose a multisig action
+curl -X POST https://api.ophirpay.com/api/multisig/propose \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "contractId": "CA3...",
+    "call": "transfer",
+    "args": ["G...", 1000000]
+  }'
+
+# Approve / execute
+curl -X POST https://api.ophirpay.com/api/multisig/approve \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{ "proposalId": "prop_01J6G..." }'
+
+curl -X POST https://api.ophirpay.com/api/multisig/execute \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{ "proposalId": "prop_01J6G..." }'
+
+# List pending requests
+curl -X GET https://api.ophirpay.com/api/multisig/requests \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 18. Governance
+
+```bash
+# List proposals
+curl -X GET https://api.ophirpay.com/api/governance/proposals \
+  -H "X-API-Key: $API_KEY"
+
+# Vote
+curl -X POST https://api.ophirpay.com/api/governance/vote \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{ "proposalId": "prop_01J6H...", "support": true }'
+
+# Execute approved proposal
+curl -X POST https://api.ophirpay.com/api/governance/execute \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{ "proposalId": "prop_01J6H..." }'
+```
+
+---
+
+## Analytics, refunds, hooks, audit log, events
+
+### 19. Analytics
+
+```bash
+curl -X GET https://api.ophirpay.com/api/analytics \
+  -H "X-API-Key: $API_KEY"
+```
+
+**Response** (200 OK) — aggregated payment metrics (volume, count by status, period totals).
+
+### 20. Refunds
+
+```bash
+curl -X GET https://api.ophirpay.com/api/refunds \
+  -H "X-API-Key: $API_KEY"
+
+curl -X GET https://api.ophirpay.com/api/refunds/ref_01J6I... \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 21. Hooks (notification registry)
+
+```bash
+curl -X GET https://api.ophirpay.com/api/hooks \
+  -H "X-API-Key: $API_KEY"
+
+curl -X GET https://api.ophirpay.com/api/hooks/hook_01J6J... \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 22. Audit log
+
+```bash
+curl -X GET "https://api.ophirpay.com/api/audit-log?limit=50" \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 23. Events (SSE stream + history)
+
+```bash
+# Server-Sent Events stream (real-time)
+curl -N https://api.ophirpay.com/api/audit-log/sse \
+  -H "X-API-Key: $API_KEY"
+
+# Event history
+curl -X GET "https://api.ophirpay.com/api/events/history?limit=50" \
+  -H "X-API-Key: $API_KEY"
+
+# Subscribe to the event stream
+curl -N https://api.ophirpay.com/api/events \
+  -H "X-API-Key: $API_KEY"
+```
+
+---
+
+## Auth session, CSRF, contracts, stats, timelock, RBAC, fee config
+
+### 24. Wallet session
+
+```bash
+# Issue a wallet session
+curl -X POST https://api.ophirpay.com/api/auth/session \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{ "wallet": "GDQNY3PBOJNCZPZ..." }'
+
+# CSRF token
+curl -X GET https://api.ophirpay.com/api/csrf \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 25. Contracts
+
+```bash
+curl -X GET https://api.ophirpay.com/api/contracts \
+  -H "X-API-Key: $API_KEY"
+```
+
+**Response** (200 OK) — deployed contract addresses, versions, and network info.
+
+### 26. Stats
+
+```bash
+curl -X GET https://api.ophirpay.com/api/stats \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 27. Timelock
+
+```bash
+curl -X GET https://api.ophirpay.com/api/timelock \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 28. RBAC lookups
+
+```bash
+curl -X GET https://api.ophirpay.com/api/rbac \
+  -H "X-API-Key: $API_KEY"
+```
+
+### 29. Fee config
+
+```bash
+curl -X GET https://api.ophirpay.com/api/fee-config \
+  -H "X-API-Key: $API_KEY"
+
+curl -X GET https://api.ophirpay.com/api/fee-config/collector \
+  -H "X-API-Key: $API_KEY"
+
+curl -X GET https://api.ophirpay.com/api/fee-config/history \
+  -H "X-API-Key: $API_KEY"
+
+curl -X GET https://api.ophirpay.com/api/policy-versions \
+  -H "X-API-Key: $API_KEY"
+```
+
+---
+
+## Health & metrics (public)
+
+### 30. Health check
+
+```bash
+curl -X GET https://api.ophirpay.com/api/health
 ```
 
 **Response** (200 OK)
 ```json
 {
-  "status": "ok",
-  "timestamp": "2026-08-26T10:05:00Z",
-  "version": "1.2.0"
+  "success": true,
+  "data": {
+    "version": "0.1.0",
+    "services": {
+      "database": { "status": "ok", "latencyMs": 3 },
+      "redis": { "status": "ok", "latencyMs": 1 },
+      "stellar": { "status": "ok", "latencyMs": 42 }
+    }
+  }
 }
 ```
 
----
+### 31. Metrics (Prometheus)
 
-## Notes
+```bash
+curl -X GET https://api.ophirpay.com/metrics
+```
 
-- All timestamps are in ISO 8601 UTC.
-- Pagination uses `limit` and `offset`; default `limit=20`.
-- Rate limiting: 100 requests per minute per IP (public endpoints) and 1000 per minute for authenticated endpoints.
-- For endpoints requiring a body, `Content-Type: application/json` is mandatory.
-- Error responses follow the format: `{ "error": "<message>" }` with appropriate HTTP status codes.
-
-For additional details, refer to the OpenAPI specification (`openapi.yaml`).
+**Response** (200 OK) — Prometheus text exposition format.
 
 ---
-_Generated by DevilX BountyHub solver_
+
+## Error reference
+
+All errors use a consistent shape:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "destAddress must match pattern ^G[A-Z0-9]{55}$",
+    "details": [ { "field": "destAddress", "message": "Invalid Stellar address" } ]
+  }
+}
+```
+
+| HTTP | Code | Meaning |
+|------|------|---------|
+| 400 | `VALIDATION_ERROR` | Request body/query validation failed |
+| 401 | `UNAUTHORIZED` | Missing/invalid `X-API-Key` or Bearer token |
+| 403 | `FORBIDDEN` | Authenticated but not permitted |
+| 404 | `NOT_FOUND` | Resource not found |
+| 409 | `CONFLICT` | State conflict (e.g. duplicate webhook) |
+| 429 | `RATE_LIMITED` | Too many requests |
+| 500 | `SERVER_ERROR` | Internal error |
+| 503 | `SERVICE_UNAVAILABLE` | Service temporarily unavailable |
+
+---
+
+## Quick start (copy-paste)
+
+```bash
+export API_KEY="oph_live_..."
+
+# Health
+curl -s https://api.ophirpay.com/api/health
+
+# List payments
+curl -s "https://api.ophirpay.com/api/payments?status=COMPLETED" \
+  -H "X-API-Key: $API_KEY"
+
+# Create payment
+curl -s -X POST https://api.ophirpay.com/api/payments \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "amount": 25000000,
+    "sourceAccountId": "GDQNY3PBOJNCZPZ...",
+    "destAddress": "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUAYASMABEHORP3A"
+  }'
+
+# Create webhook
+curl -s -X POST https://api.ophirpay.com/api/webhooks \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{"url":"https://example.com/hooks","events":["payment.completed"]}'
+```
+
+All examples above match `docs/openapi.yaml` — base paths under `/api`, auth via `X-API-Key` or Bearer, and Stellar-based payment schemas (stroops, `G...` addresses).

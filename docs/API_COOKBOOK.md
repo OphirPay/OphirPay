@@ -102,7 +102,13 @@ curl -X GET "http://localhost:3000/api/payments" \
 curl -X POST "http://localhost:3000/api/payments" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "amount": 50.0,\n    "assetCode": "XLM",\n    "sourceAddress": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",\n    "destinationAddress": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",\n    "memo": "Payment for software design"\n  }'
+  -d '{
+  "amount": 50.0,
+  "assetCode": "XLM",
+  "sourceAccountId": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",
+  "destinationAddress": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "memo": "Payment for software design"
+}'
 ```
 
 #### Response
@@ -164,7 +170,10 @@ curl -X GET "http://localhost:3000/api/payments/pay_9a8b7c6d" \
 curl -X PATCH "http://localhost:3000/api/payments/pay_9a8b7c6d" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "status": "COMPLETED"\n  }'
+  -d '{
+  "status": "COMPLETED",
+  "description": "Updated resource details"
+}'
 ```
 
 #### Response
@@ -234,7 +243,23 @@ curl -X GET "http://localhost:3000/api/batches" \
 curl -X POST "http://localhost:3000/api/batches" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "name": "August Wave 1",\n    "assetCode": "USDC",\n    "payments": [\n      {\n        "destination": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",\n        "amount": 2500.0,\n        "memo": "Milestone #1"\n      },\n      {\n        "destination": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",\n        "amount": 1500.0,\n        "memo": "Milestone #2"\n      }\n    ]\n  }'
+  -d '{
+  "name": "August Wave 1",
+  "sourceAccountId": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",
+  "assetCode": "USDC",
+  "payments": [
+    {
+      "destination": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "amount": 2500.0,
+      "memo": "Milestone #1"
+    },
+    {
+      "destination": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "amount": 1500.0,
+      "memo": "Milestone #2"
+    }
+  ]
+}'
 ```
 
 #### Response
@@ -321,7 +346,13 @@ curl -X GET "http://localhost:3000/api/escrows" \
 curl -X POST "http://localhost:3000/api/escrows" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "depositor": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",\n    "beneficiary": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",\n    "arbiter": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",\n    "amount": "100000000",\n    "asset": "native",\n    "deadline": 1787900000,\n    "metadata": "Security deposit"\n  }'
+  -d '{
+  "payee": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "amount": "100000000",
+  "assetCode": "XLM",
+  "releaseAfter": 1787900000,
+  "memo": "Security deposit"
+}'
 ```
 
 #### Response
@@ -404,7 +435,14 @@ curl -X GET "http://localhost:3000/api/streams" \
 curl -X POST "http://localhost:3000/api/streams" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "sender": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",\n    "recipient": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",\n    "totalDeposit": "300000000",\n    "asset": "native",\n    "durationSeconds": 2592000\n  }'
+  -d '{
+  "payee": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "amount": "300000000",
+  "assetCode": "XLM",
+  "startTime": 1787740000,
+  "endTime": 1790332000,
+  "memo": "Contributor Stream"
+}'
 ```
 
 #### Response
@@ -485,7 +523,13 @@ curl -X GET "http://localhost:3000/api/recurring" \
 curl -X POST "http://localhost:3000/api/recurring" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "destinationAddress": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",\n    "amount": 49.00,\n    "assetCode": "USDC",\n    "frequency": "MONTHLY",\n    "startDate": "2026-09-01T00:00:00Z"\n  }'
+  -d '{
+  "payee": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "amount": 49.0,
+  "assetCode": "USDC",
+  "frequency": "MONTHLY",
+  "startDate": "2026-09-01T00:00:00Z"
+}'
 ```
 
 #### Response
@@ -565,7 +609,12 @@ curl -X GET "http://localhost:3000/api/requests" \
 curl -X POST "http://localhost:3000/api/requests" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "amount": 120.00,\n    "assetCode": "USDC",\n    "description": "Invoice #884",\n    "recipientAddress": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"\n  }'
+  -d '{
+  "amount": 120.0,
+  "assetCode": "USDC",
+  "description": "Invoice #884",
+  "recipientAddress": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+}'
 ```
 
 #### Response
@@ -616,7 +665,13 @@ curl -X GET "http://localhost:3000/api/webhooks" \
 curl -X POST "http://localhost:3000/api/webhooks" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "url": "https://api.merchant.com/webhooks/ophirpay",\n    "events": ["payment.completed", "refund.created"]\n  }'
+  -d '{
+  "url": "https://api.merchant.com/webhooks/ophirpay",
+  "events": [
+    "payment.completed",
+    "refund.created"
+  ]
+}'
 ```
 
 #### Response
@@ -685,7 +740,10 @@ curl -X GET "http://localhost:3000/api/keys" \
 curl -X POST "http://localhost:3000/api/keys" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "name": "Production Server Key"\n  }'
+  -d '{
+  "name": "Production Server Key",
+  "userId": "usr_01a2b3c4d5"
+}'
 ```
 
 #### Response
@@ -731,7 +789,10 @@ HMAC-signed session cookie carrying the wallet public key.
 curl -X POST "http://localhost:3000/api/auth/session" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "publicKey": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",\n    "signature": "3045022100...abcd...",\n    "challenge": "OphirPay Sign-In: 1787740000"\n  }'
+  -d '{
+  "publicKey": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",
+  "signature": "3045022100...abcd..."
+}'
 ```
 
 #### Response
@@ -816,7 +877,15 @@ curl -X GET "http://localhost:3000/api/multisig" \
 curl -X POST "http://localhost:3000/api/multisig" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "threshold": 2,\n    "signers": ["GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37", "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"]\n  }'
+  -d '{
+  "threshold": 2,
+  "signers": [
+    "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",
+    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+  ],
+  "enabled": true
+}'
 ```
 
 #### Response
@@ -835,7 +904,12 @@ curl -X POST "http://localhost:3000/api/multisig" \
 curl -X POST "http://localhost:3000/api/multisig/propose" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "recipient": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",\n    "amount": "5000000000",\n    "asset": "native",\n    "description": "Grant Disbursement"\n  }'
+  -d '{
+  "payee": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "amount": "5000000000",
+  "assetCode": "XLM",
+  "memo": "Grant Disbursement"
+}'
 ```
 
 #### Response
@@ -857,7 +931,9 @@ curl -X POST "http://localhost:3000/api/multisig/propose" \
 curl -X POST "http://localhost:3000/api/multisig/approve" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "proposalId": 12,\n    "signer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"\n  }'
+  -d '{
+  "requestId": "req_multisig_01"
+}'
 ```
 
 #### Response
@@ -878,7 +954,9 @@ curl -X POST "http://localhost:3000/api/multisig/approve" \
 curl -X POST "http://localhost:3000/api/multisig/execute" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "proposalId": 12\n  }'
+  -d '{
+  "requestId": "req_multisig_01"
+}'
 ```
 
 #### Response
@@ -958,7 +1036,14 @@ curl -X GET "http://localhost:3000/api/governance/proposals" \
 curl -X POST "http://localhost:3000/api/governance/proposals" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "title": "Add EURC Token Support",\n    "description": "Integrate Circle EURC stablecoin",\n    "actionContract": "CABC123...",\n    "actionFunction": "add_asset"\n  }'
+  -d '{
+  "proposer": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",
+  "title": "Add EURC Token Support",
+  "description": "Integrate Circle EURC stablecoin",
+  "actionType": "add_asset",
+  "depositAsset": "XLM",
+  "depositAmount": "100"
+}'
 ```
 
 #### Response
@@ -980,7 +1065,11 @@ curl -X POST "http://localhost:3000/api/governance/proposals" \
 curl -X POST "http://localhost:3000/api/governance/vote" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "proposalId": 1,\n    "support": true\n  }'
+  -d '{
+  "proposalId": "prop_01",
+  "voter": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37",
+  "support": true
+}'
 ```
 
 #### Response
@@ -1002,7 +1091,9 @@ curl -X POST "http://localhost:3000/api/governance/vote" \
 curl -X POST "http://localhost:3000/api/governance/execute" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "proposalId": 1\n  }'
+  -d '{
+  "proposalId": "prop_01"
+}'
 ```
 
 #### Response
@@ -1057,7 +1148,12 @@ return value) so approve/process can later target the right record.
 curl -X POST "http://localhost:3000/api/refunds" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "paymentId": "pay_9a8b7c6d",\n    "reasonCode": "SERVICE_NOT_DELIVERED",\n    "reasonDetails": "Order cancelled"\n  }'
+  -d '{
+  "paymentId": "pay_9a8b7c6d",
+  "amount": "50000000",
+  "reason": "Order cancelled",
+  "reasonCode": "SERVICE_NOT_DELIVERED"
+}'
 ```
 
 #### Response
@@ -1083,7 +1179,9 @@ Owner-scoped — only the row's user can update it.
 curl -X PATCH "http://localhost:3000/api/refunds/pay_9a8b7c6d" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "status": "COMPLETED"\n  }'
+  -d '{
+  "status": "APPROVED"
+}'
 ```
 
 #### Response
@@ -1133,7 +1231,10 @@ value) so Deactivate can later target the right record.
 curl -X POST "http://localhost:3000/api/hooks" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "eventType": "payment_recorded",\n    "endpointUrl": "https://api.partner.com/events",\n    "subscriberAddress": "GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37"\n  }'
+  -d '{
+  "eventType": "payment:created",
+  "webhookUrl": "https://api.partner.com/events"
+}'
 ```
 
 #### Response
@@ -1156,7 +1257,9 @@ Owner-scoped — only the row's user can update it.
 curl -X PATCH "http://localhost:3000/api/hooks/pay_9a8b7c6d" \
   -H "Authorization: Bearer ophir_live_sk_test" \
   -H "Content-Type: application/json" \
-  -d '{\n    "status": "COMPLETED"\n  }'
+  -d '{
+  "active": true
+}'
 ```
 
 #### Response

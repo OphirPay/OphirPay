@@ -1,4 +1,5 @@
 import yaml
+import json
 from pathlib import Path
 
 def generate():
@@ -123,47 +124,142 @@ def generate():
             data_str = None
             if req_body and method in ["POST", "PUT", "PATCH"]:
                 headers.append('-H "Content-Type: application/json"')
-                # generate sample payload based on path
+                # generate sample payload based on path adhering to schema
                 if "payment" in path and method == "POST":
-                    data_str = f'{{\\n    "amount": 50.0,\\n    "assetCode": "XLM",\\n    "sourceAddress": "{sample_address_1}",\\n    "destinationAddress": "{sample_address_2}",\\n    "memo": "Payment for software design"\\n  }}'
+                    payload = {
+                        "amount": 50.0,
+                        "assetCode": "XLM",
+                        "sourceAccountId": sample_address_1,
+                        "destinationAddress": sample_address_2,
+                        "memo": "Payment for software design"
+                    }
                 elif "batch" in path and method == "POST":
-                    data_str = f'{{\\n    "name": "August Wave 1",\\n    "assetCode": "USDC",\\n    "payments": [\\n      {{\\n        "destination": "{sample_address_2}",\\n        "amount": 2500.0,\\n        "memo": "Milestone #1"\\n      }},\\n      {{\\n        "destination": "{sample_address_3}",\\n        "amount": 1500.0,\\n        "memo": "Milestone #2"\\n      }}\\n    ]\\n  }}'
+                    payload = {
+                        "name": "August Wave 1",
+                        "sourceAccountId": sample_address_1,
+                        "assetCode": "USDC",
+                        "payments": [
+                            {"destination": sample_address_2, "amount": 2500.0, "memo": "Milestone #1"},
+                            {"destination": sample_address_3, "amount": 1500.0, "memo": "Milestone #2"}
+                        ]
+                    }
                 elif "escrow" in path and method == "POST":
-                    data_str = f'{{\\n    "depositor": "{sample_address_1}",\\n    "beneficiary": "{sample_address_2}",\\n    "arbiter": "{sample_address_3}",\\n    "amount": "100000000",\\n    "asset": "native",\\n    "deadline": 1787900000,\\n    "metadata": "Security deposit"\\n  }}'
+                    payload = {
+                        "payee": sample_address_2,
+                        "amount": "100000000",
+                        "assetCode": "XLM",
+                        "releaseAfter": 1787900000,
+                        "memo": "Security deposit"
+                    }
                 elif "stream" in path and method == "POST":
-                    data_str = f'{{\\n    "sender": "{sample_address_1}",\\n    "recipient": "{sample_address_2}",\\n    "totalDeposit": "300000000",\\n    "asset": "native",\\n    "durationSeconds": 2592000\\n  }}'
+                    payload = {
+                        "payee": sample_address_2,
+                        "amount": "300000000",
+                        "assetCode": "XLM",
+                        "startTime": 1787740000,
+                        "endTime": 1790332000,
+                        "memo": "Contributor Stream"
+                    }
                 elif "recurring" in path and method == "POST":
-                    data_str = f'{{\\n    "destinationAddress": "{sample_address_2}",\\n    "amount": 49.00,\\n    "assetCode": "USDC",\\n    "frequency": "MONTHLY",\\n    "startDate": "2026-09-01T00:00:00Z"\\n  }}'
+                    payload = {
+                        "payee": sample_address_2,
+                        "amount": 49.00,
+                        "assetCode": "USDC",
+                        "frequency": "MONTHLY",
+                        "startDate": "2026-09-01T00:00:00Z"
+                    }
                 elif "request" in path and method == "POST":
-                    data_str = f'{{\\n    "amount": 120.00,\\n    "assetCode": "USDC",\\n    "description": "Invoice #884",\\n    "recipientAddress": "{sample_address_2}"\\n  }}'
+                    payload = {
+                        "amount": 120.00,
+                        "assetCode": "USDC",
+                        "description": "Invoice #884",
+                        "recipientAddress": sample_address_2
+                    }
                 elif "webhook" in path and method == "POST":
-                    data_str = '{\\n    "url": "https://api.merchant.com/webhooks/ophirpay",\\n    "events": ["payment.completed", "refund.created"]\\n  }'
+                    payload = {
+                        "url": "https://api.merchant.com/webhooks/ophirpay",
+                        "events": ["payment.completed", "refund.created"]
+                    }
                 elif "key" in path and method == "POST":
-                    data_str = '{\\n    "name": "Production Server Key"\\n  }'
+                    payload = {
+                        "name": "Production Server Key",
+                        "userId": "usr_01a2b3c4d5"
+                    }
                 elif "session" in path and method == "POST":
-                    data_str = f'{{\\n    "publicKey": "{sample_address_1}",\\n    "signature": "3045022100...abcd...",\\n    "challenge": "OphirPay Sign-In: 1787740000"\\n  }}'
-                elif "propose" in path and method == "POST":
-                    data_str = f'{{\\n    "recipient": "{sample_address_2}",\\n    "amount": "5000000000",\\n    "asset": "native",\\n    "description": "Grant Disbursement"\\n  }}'
-                elif "approve" in path and method == "POST":
-                    data_str = f'{{\\n    "proposalId": 12,\\n    "signer": "{sample_address_2}"\\n  }}'
-                elif "multisig" in path and "execute" in path and method == "POST":
-                    data_str = '{\\n    "proposalId": 12\\n  }'
+                    payload = {
+                        "publicKey": sample_address_1,
+                        "signature": "3045022100...abcd..."
+                    }
+                elif "multisig/propose" in path and method == "POST":
+                    payload = {
+                        "payee": sample_address_2,
+                        "amount": "5000000000",
+                        "assetCode": "XLM",
+                        "memo": "Grant Disbursement"
+                    }
+                elif "multisig/approve" in path and method == "POST":
+                    payload = {
+                        "requestId": "req_multisig_01"
+                    }
+                elif "multisig/execute" in path and method == "POST":
+                    payload = {
+                        "requestId": "req_multisig_01"
+                    }
                 elif "multisig" in path and method == "POST":
-                    data_str = f'{{\\n    "threshold": 2,\\n    "signers": ["{sample_address_1}", "{sample_address_2}", "{sample_address_3}"]\\n  }}'
+                    payload = {
+                        "threshold": 2,
+                        "signers": [sample_address_1, sample_address_2, sample_address_3],
+                        "enabled": True
+                    }
                 elif "governance/proposals" in path and method == "POST":
-                    data_str = '{\\n    "title": "Add EURC Token Support",\\n    "description": "Integrate Circle EURC stablecoin",\\n    "actionContract": "CABC123...",\\n    "actionFunction": "add_asset"\\n  }'
+                    payload = {
+                        "proposer": sample_address_1,
+                        "title": "Add EURC Token Support",
+                        "description": "Integrate Circle EURC stablecoin",
+                        "actionType": "add_asset",
+                        "depositAsset": "XLM",
+                        "depositAmount": "100"
+                    }
                 elif "governance/vote" in path and method == "POST":
-                    data_str = '{\\n    "proposalId": 1,\\n    "support": true\\n  }'
+                    payload = {
+                        "proposalId": "prop_01",
+                        "voter": sample_address_1,
+                        "support": True
+                    }
                 elif "governance/execute" in path and method == "POST":
-                    data_str = '{\\n    "proposalId": 1\\n  }'
+                    payload = {
+                        "proposalId": "prop_01"
+                    }
                 elif "refunds" in path and method == "POST":
-                    data_str = '{\\n    "paymentId": "pay_9a8b7c6d",\\n    "reasonCode": "SERVICE_NOT_DELIVERED",\\n    "reasonDetails": "Order cancelled"\\n  }'
+                    payload = {
+                        "paymentId": "pay_9a8b7c6d",
+                        "amount": "50000000",
+                        "reason": "Order cancelled",
+                        "reasonCode": "SERVICE_NOT_DELIVERED"
+                    }
+                elif "refunds" in path and method == "PATCH":
+                    payload = {
+                        "status": "APPROVED"
+                    }
                 elif "hooks" in path and method == "POST":
-                    data_str = f'{{\\n    "eventType": "payment_recorded",\\n    "endpointUrl": "https://api.partner.com/events",\\n    "subscriberAddress": "{sample_address_1}"\\n  }}'
+                    payload = {
+                        "eventType": "payment:created",
+                        "webhookUrl": "https://api.partner.com/events"
+                    }
+                elif "hooks" in path and method == "PATCH":
+                    payload = {
+                        "active": True
+                    }
                 elif method == "PATCH":
-                    data_str = '{\\n    "status": "COMPLETED"\\n  }'
+                    payload = {
+                        "status": "COMPLETED",
+                        "description": "Updated resource details"
+                    }
                 else:
-                    data_str = '{\\n    "enabled": true\\n  }'
+                    payload = {
+                        "enabled": True
+                    }
+                data_str = json.dumps(payload, indent=2)
 
             curl_lines = [f'curl -X {method} "http://localhost:3000{clean_path}"']
             for h in headers:

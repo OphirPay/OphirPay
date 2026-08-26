@@ -32,20 +32,28 @@ describe("API Cookbook Documentation Conformance", () => {
     expect(content).toContain("500 Internal Error");
   });
 
-  it("verifies every endpoint in openapi.yaml is present in the cookbook", () => {
+  it("verifies every endpoint and HTTP method in openapi.yaml is present in the cookbook", () => {
     const openapiContent = fs.readFileSync(openapiPath, "utf-8");
     const cookbookContent = fs.readFileSync(cookbookPath, "utf-8");
 
-    // Extract paths from openapi.yaml
-    const pathRegex = /^ {2}(\/api\/[a-zA-Z0-9_\-\/{}:]+):/gm;
-    const matches = Array.from(openapiContent.matchAll(pathRegex));
-    const documentedPaths = matches.map((m) => m[1]);
+    // Match each endpoint and its HTTP methods
+    const endpointRegex =
+      /^ {2}(\/api\/[a-zA-Z0-9_\-\/{}:]+):\s*\n((?: {4}[a-z]+:[\s\S]*?(?=\n {2}\/|\n {0,2}[a-zA-Z]|$))+)/gm;
+    const methodRegex = /^ {4}(get|post|put|patch|delete):/gm;
 
-    expect(documentedPaths.length).toBeGreaterThan(30);
-
-    for (const apiPath of documentedPaths) {
-      expect(cookbookContent).toContain(apiPath);
+    let operationCount = 0;
+    for (const match of openapiContent.matchAll(endpointRegex)) {
+      const apiPath = match[1];
+      const operationsBlock = match[2];
+      for (const methodMatch of operationsBlock.matchAll(methodRegex)) {
+        const method = methodMatch[1].toUpperCase();
+        operationCount++;
+        // Check that cookbook documents this specific method and endpoint path pair
+        expect(cookbookContent).toContain(`\`${method} ${apiPath}\``);
+      }
     }
+
+    expect(operationCount).toBeGreaterThanOrEqual(40);
   });
 
   it("verifies runnable curl blocks and JSON response snippets are included", () => {

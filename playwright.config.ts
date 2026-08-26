@@ -25,12 +25,12 @@ export default defineConfig({
     {
       name: "firefox",
       use: { ...devices["Desktop Firefox"] },
-      testIgnore: ["e2e/visual/**"],
+      testIgnore: ["visual/**"],
     },
     {
       name: "mobile-chrome",
       use: { ...devices["Pixel 5"] },
-      testIgnore: ["e2e/visual/**"],
+      testIgnore: ["visual/**"],
     },
   ],
   // No webServer — E2E runs against live Vercel deployment.

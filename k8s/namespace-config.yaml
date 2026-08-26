@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ophirpay
+  labels:
+    app.kubernetes.io/name: ophirpay
+    app.kubernetes.io/part-of: ophirpay
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ophirpay-config
+  namespace: ophirpay
+data:
+  NEXT_PUBLIC_STELLAR_NETWORK: "TESTNET"
+  NEXT_PUBLIC_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  NEXT_PUBLIC_SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  DATABASE_PROVIDER: "postgresql"
+  NODE_ENV: "production"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ophirpay-secrets
+  namespace: ophirpay
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://ophirpay:CHANGE_ME@postgres:5432/ophirpay"
+  REDIS_URL: "redis://ophirpay:CHANGE_ME@redis:6379"
+  NEXT_PUBLIC_CONTRACT_ID: "CHANGE_ME"
+  NEXT_PUBLIC_EMITTER_CONTRACT_ID: "CHANGE_ME"

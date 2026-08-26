@@ -1,0 +1,310 @@
+// This is a Prisma schema for OphirPay
+// Documentation: https://pris.ly/d/prisma-schema
+//
+// ── Database Provider ──────────────────────────────────────
+// The provider is selected via the DATABASE_PROVIDER env var.
+// Supported values: "sqlite" | "postgresql"
+//
+//   SQLite (dev):       DATABASE_PROVIDER=sqlite       npx prisma db push
+//   PostgreSQL (prod):  DATABASE_PROVIDER=postgresql   npx prisma migrate deploy
+//
+// For PostgreSQL with connection pooling (e.g. Supabase, Neon),
+// set DIRECT_DATABASE_URL for migrations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ── SQLite (development) ──────────────────────────────────
+// datasource db {
+//   provider = "sqlite"
+//   url      = env("DATABASE_URL")
+// }
+
+// ── PostgreSQL (production) ────────────────────────────────
+// For connection pooling (Supabase, Neon, PgBouncer), add:
+//   directUrl = env("DIRECT_DATABASE_URL")
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+// ── User / Organization ──────────────────────────────────────
+
+model User {
+  id              String   @id @default(cuid())
+  stellarAddress  String?  @unique
+  name            String?
+  email           String?  @unique
+  avatarUrl       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  accounts        Account[]
+  payments        Payment[]
+  batches         Batch[]
+  recurrences     Recurrence[]
+  paymentRequests PaymentRequest[]
+  webhooks        Webhook[]
+  apiKeys         ApiKey[]
+  refunds         Refund[]
+  notificationHooks NotificationHook[]
+}
+
+// ── Stellar Accounts ──────────────────────────────────────────
+
+model Account {
+  id            String   @id @default(cuid())
+  userId        String
+  publicKey     String   @unique
+  name          String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User       @relation(fields: [userId], references: [id])
+  paymentsFrom  Payment[]  @relation("PaymentSourceAccount")
+  paymentsTo    Payment[]  @relation("PaymentDestinationAccount")
+
+  @@index([userId])
+}
+
+// ── Payments ───────────────────────────────────────────────────
+
+model Payment {
+  id                String    @id @default(cuid())
+  userId            String
+
+  // Payment details
+  amount            Decimal   @db.Decimal(18, 7)
+  assetCode         String    @default("XLM")
+  assetIssuer       String?
+  description       String?
+  memo              String?
+
+  // Status
+  status            PaymentStatus @default(CREATED)
+
+  // Stellar
+  transactionHash   String?
+  stellarOpId       String?
+
+  // Relations
+  sourceAccountId   String?
+  destAccountId     String?
+
+  // Batch & recurring
+  batchId           String?
+  recurrenceId      String?
+
+  // Metadata
+  metadata          String?   // JSON string for flexible metadata
+  errorMessage      String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  completedAt       DateTime?
+  deletedAt         DateTime?
+
+  user              User      @relation(fields: [userId], references: [id])
+  sourceAccount     Account?  @relation("PaymentSourceAccount", fields: [sourceAccountId], references: [id])
+  destAccount       Account?  @relation("PaymentDestinationAccount", fields: [destAccountId], references: [id])
+  batch             Batch?    @relation(fields: [batchId], references: [id])
+  recurrence        Recurrence? @relation(fields: [recurrenceId], references: [id])
+  refunds           Refund[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([batchId])
+  @@index([recurrenceId])
+  @@index([sourceAccountId])
+  @@index([destAccountId])
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// ── Batch Payments ────────────────────────────────────────────
+
+model Batch {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  status      BatchStatus @default(CREATED)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id])
+  payments    Payment[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+enum BatchStatus {
+  CREATED
+  PROCESSING
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+}
+
+// ── Recurring Payments ────────────────────────────────────────
+
+model Recurrence {
+  id          String        @id @default(cuid())
+  userId      String
+  name        String
+  frequency   Frequency
+  amount      Decimal       @db.Decimal(18, 7)
+  assetCode   String        @default("XLM")
+  assetIssuer String?
+  destAddress String
+  description String?
+  isActive    Boolean       @default(true)
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id])
+  payments    Payment[]
+
+  @@index([userId])
+  @@index([nextRunAt])
+}
+
+enum Frequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+// ── Payment Requests ──────────────────────────────────────────
+
+model PaymentRequest {
+  id            String   @id @default(cuid())
+  userId        String
+  amount        Decimal  @db.Decimal(18, 7)
+  assetCode     String   @default("XLM")
+  assetIssuer   String?
+  description   String?
+  recipientAddress String?
+  status        RequestStatus @default(PENDING)
+  transactionHash String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+enum RequestStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+// ── Webhooks ───────────────────────────────────────────────────
+
+model Webhook {
+  id        String   @id @default(cuid())
+  userId    String
+  url       String
+  events    String   // JSON array of event types
+  isActive  Boolean  @default(true)
+  secret    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// ── Refunds ───────────────────────────────────────────────────
+
+model Refund {
+  id          String       @id @default(cuid())
+  userId      String
+  paymentId   String
+  amount      Decimal      @db.Decimal(18, 7)
+  asset       String       @default("native")
+  reason      String
+  reasonCode  Int          @default(0)
+  status      RefundStatus @default(REQUESTED)
+  // On-chain refund id returned by the Soroban contract's request_refund.
+  // Lets the UI map a DB ledger row to the contract record for
+  // approve/process, and uniquely identifies the synced on-chain refund.
+  onChainId   Int?         @unique
+  requestedAt DateTime     @default(now())
+  resolvedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id])
+  payment     Payment?     @relation(fields: [paymentId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([paymentId])
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PROCESSED
+}
+
+// ── Notification Hooks ────────────────────────────────────────
+
+model NotificationHook {
+  id          String   @id @default(cuid())
+  userId      String
+  eventType   String
+  webhookUrl  String
+  active      Boolean  @default(true)
+  // On-chain hook id returned by the Soroban contract's register_hook.
+  // Maps this row to the contract record so Deactivate targets the right
+  // contract hook, and uniquely identifies the synced on-chain hook.
+  onChainId   Int?     @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([eventType])
+}
+
+// ── API Keys ──────────────────────────────────────────────────
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  keyHash   String   @unique
+  prefix    String   // First 8 chars for display
+  lastUsed  DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([prefix])
+}

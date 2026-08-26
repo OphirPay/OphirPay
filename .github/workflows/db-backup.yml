@@ -1,0 +1,66 @@
+name: Database Backup
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # Daily at 3 AM UTC
+  workflow_dispatch:      # Manual trigger
+
+env:
+  BACKUP_BUCKET: ophirpay-backups
+  BACKUP_RETENTION_DAYS: 30
+
+jobs:
+  backup:
+    name: Backup Postgres
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Create backup
+        run: |
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
+          BACKUP_FILE="ophirpay-${TIMESTAMP}.sql.gz"
+          echo "Backup file: ${BACKUP_FILE}"
+          echo "BACKUP_FILE=${BACKUP_FILE}" >> $GITHUB_ENV
+
+          PGPASSWORD="${{ secrets.DB_PASSWORD }}" pg_dump \
+            -h "${{ secrets.DB_HOST }}" \
+            -U "${{ secrets.DB_USER }}" \
+            -d "${{ secrets.DB_NAME }}" \
+            --no-owner --no-acl \
+            | gzip > "${BACKUP_FILE}"
+
+          echo "Backup created: $(du -h ${BACKUP_FILE} | cut -f1)"
+
+      - name: Upload to S3
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Push to S3
+        run: |
+          aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_FILE}" \
+            --storage-class STANDARD_IA
+
+      - name: Cleanup old backups
+        run: |
+          CUTOFF=$(date -d "-${BACKUP_RETENTION_DAYS} days" -u +"%Y-%m-%d")
+          aws s3 ls "s3://${BACKUP_BUCKET}/" | while read -r line; do
+            FILE_DATE=$(echo "$line" | awk '{print $1}')
+            FILE_NAME=$(echo "$line" | awk '{print $4}')
+            if [[ "$FILE_DATE" < "$CUTOFF" ]] && [[ -n "$FILE_NAME" ]]; then
+              echo "Removing expired backup: $FILE_NAME"
+              aws s3 rm "s3://${BACKUP_BUCKET}/${FILE_NAME}"
+            fi
+          done
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Database backup failed! Check the logs."

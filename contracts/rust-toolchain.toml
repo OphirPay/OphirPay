@@ -1,0 +1,9 @@
+[toolchain]
+# Locked for reproducible Soroban contract builds.
+# 1.91.0 is the MSRV for soroban-sdk 27.x and fixes the upstream
+# ed25519-dalek 3.0 / rand_chacha 0.3 conflict that broke cargo test on 22.x.
+# wasm32v1-none is the Soroban target introduced in protocol 25+; the legacy
+# wasm32-unknown-unknown target is no longer accepted by soroban-sdk 27.
+channel = "1.91.0"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown", "wasm32v1-none"]

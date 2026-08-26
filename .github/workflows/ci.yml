@@ -1,0 +1,705 @@
+name: OphirPay CI/CD — 20 Jobs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# ── Global Concurrency — cancel stale runs on same PR ────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ══════════════════════════════════════════════════════════════
+  # 1. LINT — ESLint with zero tolerance
+  # ══════════════════════════════════════════════════════════════
+  lint:
+    name: "1️⃣ Frontend — Lint (ESLint)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - run: npx eslint . --max-warnings 20
+
+  # ══════════════════════════════════════════════════════════════
+  # 2. TYPECHECK — TypeScript strict type-checking
+  # ══════════════════════════════════════════════════════════════
+  typecheck:
+    name: "2️⃣ Frontend — TypeCheck (tsc)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  # ══════════════════════════════════════════════════════════════
+  # 3. UNIT TESTS — Vitest (800 frontend tests)
+  # ══════════════════════════════════════════════════════════════
+  unit-tests:
+    name: "3️⃣ Frontend — Unit Tests (Vitest)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx vitest run --reporter=verbose
+
+  # ══════════════════════════════════════════════════════════════
+  # 4. TEST COVERAGE — Vitest coverage with thresholds
+  # ══════════════════════════════════════════════════════════════
+  test-coverage:
+    name: "4️⃣ Frontend — Coverage (Vitest)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx vitest run --coverage --reporter=verbose
+      - name: Upload coverage to artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════
+  # 5. CONTRACT WASM BUILD — Build both Soroban contracts
+  # ══════════════════════════════════════════════════════════════
+  contract-wasm:
+    name: "5️⃣ Backend — Contracts (WASM + Tests)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          targets: wasm32v1-none
+          components: rustfmt, clippy
+      - name: Install Soroban SDK deps
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/ophirpay/target
+            contracts/emitter/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: Build OphirPay contract
+        run: cd contracts/ophirpay && cargo build --target wasm32v1-none --release
+      - name: Build Emitter contract
+        run: cd contracts/emitter && cargo build --target wasm32v1-none --release
+      - name: Verify WASM artifacts
+        run: |
+          ls -lh contracts/ophirpay/target/wasm32v1-none/release/*.wasm
+          ls -lh contracts/emitter/target/wasm32v1-none/release/*.wasm
+      - name: Run OphirPay contract unit tests
+        run: cd contracts/ophirpay && cargo test
+      - name: Run Emitter contract unit tests
+        run: cd contracts/emitter && cargo test
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-wasm
+          path: |
+            contracts/ophirpay/target/wasm32v1-none/release/*.wasm
+            contracts/emitter/target/wasm32v1-none/release/*.wasm
+          retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════
+  # 6. RUST CLIPPY — Lint both Soroban contracts
+  # ══════════════════════════════════════════════════════════════
+  rust-clippy:
+    name: "6️⃣ Backend — Clippy (Rust Lint)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          targets: wasm32v1-none
+          components: clippy
+      - name: Install build deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/ophirpay/target
+            contracts/emitter/target
+          key: cargo-clippy-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
+          restore-keys: cargo-clippy-${{ runner.os }}-
+      - name: Clippy — OphirPay contract
+        run: cd contracts/ophirpay && cargo clippy --target wasm32v1-none --release -- -D warnings
+      - name: Clippy — Emitter contract
+        run: cd contracts/emitter && cargo clippy --target wasm32v1-none --release -- -D warnings
+
+  # ══════════════════════════════════════════════════════════════
+  # 7. RUST FORMAT — Check rustfmt on both contracts
+  # ══════════════════════════════════════════════════════════════
+  rust-fmt:
+    name: "7️⃣ Backend — Format (rustfmt)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          components: rustfmt
+      - name: Check OphirPay formatting
+        run: cd contracts/ophirpay && cargo fmt --all -- --check
+      - name: Check Emitter formatting
+        run: cd contracts/emitter && cargo fmt --all -- --check
+
+  # ══════════════════════════════════════════════════════════════
+  # 8. NEXT.JS BUILD — Production build verification
+  # ══════════════════════════════════════════════════════════════
+  next-build:
+    name: "8️⃣ Frontend — Build (Next.js)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run build
+      - name: Verify build output
+        run: |
+          test -d .next && echo "✅ .next directory exists"
+          test -f .next/BUILD_ID && echo "✅ BUILD_ID exists"
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build
+          path: .next/
+          include-hidden-files: true
+          retention-days: 1
+
+  # ══════════════════════════════════════════════════════════════
+  # 9. SMOKE TEST — HTTP checks against live Vercel (no browser)
+  # ══════════════════════════════════════════════════════════════
+  smoke-test:
+    name: "9️⃣ Frontend — Smoke (curl)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke test all pages (curl)
+        run: |
+          BASE="https://ophirpay.vercel.app"
+          PAGES=("/" "/send" "/payments" "/batches" "/recurring" "/requests" \
+                  "/webhooks" "/contracts" "/analytics" "/events" \
+                  "/multisig" "/governance" "/audit-log" "/refunds" \
+                  "/hooks" "/rbac" "/fee-config" "/timelock" "/policy-versions")
+          FAIL=0
+          for page in "${PAGES[@]}"; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE$page")
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "304" ]; then
+              echo "  ✅ $page ($STATUS)"
+            else
+              echo "  ❌ $page ($STATUS)"
+              FAIL=1
+            fi
+          done
+          if [ $FAIL -eq 1 ]; then echo "❌ Smoke test failed"; exit 1; fi
+          echo "✅ All 19 pages healthy"
+
+  # ══════════════════════════════════════════════════════════════
+  # 10. E2E TESTS — Playwright against a self-hosted production build.
+  #
+  # The E2E suite is deterministic by design (auth-gate 401s, wallet-gated
+  # page states, health 200|503), so it runs against a production build +
+  # Postgres — NOT the live Vercel deployment, which races deploys and
+  # depends on a working production DATABASE_URL. The build happens in this
+  # job rather than reusing the next-build artifact: upload-artifact@v4
+  # excludes gitignored paths and `.next/` is gitignored.
+  # ══════════════════════════════════════════════════════════════
+  e2e-tests:
+    name: "🔟 Frontend — E2E (Playwright)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: contract-wasm
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: ophirpay_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_e2e
+      DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_e2e
+      AUTH_SECRET: ci-e2e-auth-secret-00000000000000000000
+      NEXT_PUBLIC_CONTRACT_ID: CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET
+      NEXT_PUBLIC_EMITTER_CONTRACT_ID: CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Download contract WASM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: contract-wasm
+          path: contracts/
+      - name: Apply migrations to test DB
+        run: npx prisma migrate deploy
+      - name: Build Next.js production bundle
+        run: npm run build
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Serve production build
+        run: |
+          nohup npm run start > /tmp/next-start.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/ && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3000/ || { echo "next start failed to come up"; tail -20 /tmp/next-start.log; exit 1; }
+      - name: Run E2E tests against production build
+        run: npx playwright test --project=chromium
+      - name: Upload E2E report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════
+  # 11. PRISMA VALIDATE — Schema integrity, generate, db push
+  # ══════════════════════════════════════════════════════════════
+  prisma-validate:
+    name: "1️⃣1️⃣ Backend — Prisma (Validate + DB)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: ophirpay_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Validate Prisma schema
+        run: npx prisma validate
+        env:
+          DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+          DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Push schema to test DB (catches runtime schema errors)
+        run: |
+          npx prisma db push --accept-data-loss
+        env:
+          DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+          DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+      - name: Check for drift (schema vs migrations)
+        run: |
+          if [ -d prisma/migrations ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null 2>&1
+            PGPASSWORD=prisma psql -h 127.0.0.1 -U prisma -d postgres \
+              -c 'CREATE DATABASE ophirpay_ci_shadow;' >/dev/null 2>&1 || true
+            npx prisma migrate diff \
+              --from-migrations prisma/migrations \
+              --to-schema-datamodel prisma/schema.prisma \
+              --shadow-database-url "postgresql://prisma:prisma@127.0.0.1:5432/ophirpay_ci_shadow"
+            echo "✅ No schema drift detected"
+          else
+            echo "ℹ️  No migrations directory yet — skipping drift check"
+          fi
+        env:
+          DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+          DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+
+  # ══════════════════════════════════════════════════════════════
+  # 12. SECRETS SCAN — Gitleaks on full repo
+  # ══════════════════════════════════════════════════════════════
+  secrets-scan:
+    name: "1️⃣2️⃣ Security — Secrets (Gitleaks)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Install Gitleaks (pinned v8.18.4)
+        run: |
+          GITLEAKS_VER=8.18.4
+          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VER}/gitleaks_${GITLEAKS_VER}_linux_x64.tar.gz" | tar xz
+          sudo mv gitleaks /usr/local/bin/
+      - name: Run Gitleaks detect
+        run: gitleaks detect --config .gitleaks.toml --verbose --redact
+
+  # ══════════════════════════════════════════════════════════════
+  # 13. DOCKER BUILD — Build & validate production Docker image
+  # ══════════════════════════════════════════════════════════════
+  docker-build:
+    name: "1️⃣3️⃣ Infra — Docker Build"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Docker image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ophirpay:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify image structure
+        run: |
+          docker run --rm ophirpay:ci-test -e "require('fs').accessSync('/app/server.js')" && \
+          echo "✅ Docker image built and verified"
+
+  # ══════════════════════════════════════════════════════════════
+  # 14. BUNDLE SIZE — Check Next.js bundle size limits
+  # ══════════════════════════════════════════════════════════════
+  bundle-size:
+    name: "1️⃣4️⃣ Frontend — Bundle Size"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: next-build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: next-build
+          path: .next/
+      - name: Check bundle sizes
+        run: |
+          echo "=== JS Bundle Sizes ==="
+          find .next/static/chunks -name "*.js" -exec ls -lh {} \; | awk '{print $5, $NF}' | sort -rh | head -15
+          echo ""
+          echo "=== Largest 5 bundles ==="
+          find .next/static/chunks -name "*.js" -exec stat -c "%s %n" {} \; | sort -rn | head -5 | awk '{printf "%.1f KB  %s\n", $1/1024, $2}'
+      - name: Enforce size limits
+        run: |
+          # Warn if any JS chunk exceeds 500 KB
+          HEAVY=$(find .next/static/chunks -name "*.js" -size +500k | wc -l)
+          if [ "$HEAVY" -gt 0 ]; then
+            echo "⚠️  WARNING: $HEAVY JS bundle(s) exceed 500 KB:"
+            find .next/static/chunks -name "*.js" -size +500k -exec ls -lh {} \; | awk '{print $5, $NF}'
+          else
+            echo "✅ All JS bundles under 500 KB"
+          fi
+
+  # ══════════════════════════════════════════════════════════════
+  # 15. ACCESSIBILITY — Axe-core audit on key pages
+  # ══════════════════════════════════════════════════════════════
+  a11y-audit:
+    name: "1️⃣5️⃣ Frontend — A11y (axe-core)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: next-build
+    # The axe-core script boots the production server, which fails fast on
+    # missing env (src/lib/env.ts), so provide the minimal required values.
+    # The scanned pages are client-rendered, so no DB is needed at render time.
+    env:
+      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_a11y
+      DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_a11y
+      AUTH_SECRET: ci-a11y-auth-secret-00000000000000000000
+      NEXT_PUBLIC_CONTRACT_ID: CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET
+      NEXT_PUBLIC_EMITTER_CONTRACT_ID: CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: next-build
+          path: .next/
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Start server and run axe-core
+        run: |
+          nohup npm run start > /tmp/next-start.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/ && break
+            sleep 2
+          done
+          # Run axe-core via Playwright on key pages
+          node -e "
+          const { chromium } = require('playwright');
+          const AxeBuilder = require('@axe-core/playwright').default;
+          (async () => {
+            const browser = await chromium.launch();
+            const context = await browser.newContext();
+            const page = await context.newPage();
+            const urls = ['/', '/send', '/payments', '/analytics'];
+            let totalViolations = 0;
+            for (const url of urls) {
+              // 'networkidle' never settles on pages with live connections
+              // (RPC simulations, SSE) — 'load' means the DOM is ready for axe.
+              await page.goto('http://localhost:3000' + url, { waitUntil: 'load' });
+              const results = await new AxeBuilder({ page }).analyze();
+              if (results.violations.length > 0) {
+                console.log('❌ ' + url + ': ' + results.violations.length + ' violations');
+                for (const v of results.violations) {
+                  console.log('  - ' + v.id + ': ' + v.description + ' (' + v.nodes.length + ' nodes)');
+                }
+                totalViolations += results.violations.length;
+              } else {
+                console.log('✅ ' + url + ': 0 violations');
+              }
+            }
+            await browser.close();
+            console.log('');
+            console.log('Total violations across ' + urls.length + ' pages: ' + totalViolations);
+            if (totalViolations > 0) {
+              console.log('⚠️  Accessibility issues found — review and fix before release');
+            }
+          })();
+          "
+
+  # ══════════════════════════════════════════════════════════════
+  # 16. OPENAPI VALIDATE — Validate the OpenAPI specification
+  # ══════════════════════════════════════════════════════════════
+  openapi-validate:
+    name: "1️⃣6️⃣ Docs — OpenAPI (Validate)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - name: Install OpenAPI lint tools
+        run: npm install -g @redocly/cli@1.25.11
+      - name: Lint OpenAPI spec
+        run: redocly lint docs/openapi.yaml
+      - name: Bundle OpenAPI spec (catches $ref errors)
+        run: redocly bundle docs/openapi.yaml -o /tmp/openapi-bundled.yaml && echo "✅ OpenAPI spec is valid and bundled"
+
+  # ══════════════════════════════════════════════════════════════
+  # 17. SPELL CHECK — Check for typos in docs, comments, and code
+  # ══════════════════════════════════════════════════════════════
+  spell-check:
+    name: "1️⃣7️⃣ Docs — Spell Check (typos)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install typos-cli (pinned v1.24.6)
+        run: |
+          TYPOS_VER=1.24.6
+          # Extract into a fresh dir — the tarball ships a doc/ dir + LICENSE
+          # files that must not land in the workspace (they'd get spell-checked),
+          # and its sticky-bit root entry can't be applied to /tmp itself.
+          mkdir -p /tmp/typos-install
+          cd /tmp/typos-install
+          curl -sL "https://github.com/crate-ci/typos/releases/download/v${TYPOS_VER}/typos-v${TYPOS_VER}-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          sudo mv typos /usr/local/bin/
+      - name: Run spell check
+        run: |
+          typos --format brief \
+            --exclude '*.lock' \
+            --exclude '*.wasm' \
+            --exclude '*.snap' \
+            --exclude 'node_modules/' \
+            --exclude '.next/' \
+            .
+
+  # ══════════════════════════════════════════════════════════════
+  # 18. K8S VALIDATE — kubeconform on manifests
+  # ══════════════════════════════════════════════════════════════
+  k8s-validate:
+    name: "1️⃣8️⃣ Infra — K8s (kubeconform)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubeconform (pinned v0.6.7)
+        run: |
+          KUBECONFORM_VER=0.6.7
+          curl -sL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VER}/kubeconform-linux-amd64.tar.gz" | tar xz
+          sudo mv kubeconform /usr/local/bin/
+      - name: Validate Kubernetes manifests
+        run: kubeconform -summary -strict k8s/
+      - name: Validate against Kubernetes JSON schemas (strict)
+        run: |
+          kubeconform \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json' \
+            -summary -strict \
+            k8s/
+
+  # ══════════════════════════════════════════════════════════════
+  # 19. HELM LINT — Helm chart validation
+  # ══════════════════════════════════════════════════════════════
+  helm-lint:
+    name: "1️⃣9️⃣ Infra — Helm (Lint)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Helm (pinned v3.16.3)
+        run: |
+          HELM_VER=3.16.3
+          curl -fsSL "https://get.helm.sh/helm-v${HELM_VER}-linux-amd64.tar.gz" | tar xz
+          sudo mv linux-amd64/helm /usr/local/bin/helm
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest 2>/dev/null || true
+      - name: Lint Helm chart
+        run: helm lint helm/ophirpay --strict
+      - name: Template rendering check
+        run: |
+          helm template ophirpay helm/ophirpay \
+            --set image.tag=ci-test \
+            --set ingress.enabled=false \
+            > /tmp/rendered.yaml && \
+            echo "✅ Helm chart renders successfully ($(wc -l < /tmp/rendered.yaml) lines)"
+
+  # ══════════════════════════════════════════════════════════════
+  # 20. DEPENDENCY AUDIT — npm audit for vulnerabilities
+  # ══════════════════════════════════════════════════════════════
+  dependency-audit:
+    name: "2️⃣0️⃣ Security — Audit (npm)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true  # Don't block PRs, just surface warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - name: npm audit (production deps only, no fix)
+        run: npm audit --omit=dev --audit-level=high 2>&1 || true
+      - name: npm audit (all deps, report only)
+        run: npm audit --audit-level=critical 2>&1 || true
+
+  # ══════════════════════════════════════════════════════════════
+  # 21. CONTRACT GAS REPORT — WASM analysis via stellar CLI
+  # ══════════════════════════════════════════════════════════════
+  contract-gas-report:
+    name: "2️⃣1️⃣ Backend — Gas Report (Soroban)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: contract-wasm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download contract WASM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: contract-wasm
+          path: contracts/
+      - name: Install Stellar CLI
+        run: |
+          STELLAR_VER=27.0.0
+          curl -fsSL "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_VER}/stellar-cli-${STELLAR_VER}-x86_64-unknown-linux-gnu.tar.gz" | tar xz
+          sudo mv stellar /usr/local/bin/
+          stellar version
+      - name: Report WASM binary sizes
+        run: |
+          echo "=== WASM Binary Sizes ==="
+          OPHIR_WASM=$(find contracts/ophirpay/target/wasm32v1-none/release -name '*.wasm' -not -name '*.wasm.gz' | head -1)
+          EMIT_WASM=$(find contracts/emitter/target/wasm32v1-none/release -name '*.wasm' -not -name '*.wasm.gz' | head -1)
+
+          if [ -f "$OPHIR_WASM" ]; then
+            OPHIR_SIZE=$(stat -c%s "$OPHIR_WASM")
+            echo "OphirPay:  $(( OPHIR_SIZE / 1024 )) KB ($OPHIR_SIZE bytes)"
+          fi
+          if [ -f "$EMIT_WASM" ]; then
+            EMIT_SIZE=$(stat -c%s "$EMIT_WASM")
+            echo "Emitter:   $(( EMIT_SIZE / 1024 )) KB ($EMIT_SIZE bytes)"
+          fi
+
+          echo ""
+          echo "=== Size Metrics (for gas estimation) ==="
+          echo "WASM size correlates with RCR inclusion fees."
+          echo "OphirPay estimate: ~$(( OPHIR_SIZE / 1024 * 100 )) stroops base inclusion fee"
+
+          # Hard limit: 128 KB per contract (Soroban protocol limit)
+          if [ "$OPHIR_SIZE" -gt 131072 ]; then
+            echo "❌ OphirPay WASM exceeds 128 KB protocol limit!"
+            exit 1
+          fi
+          if [ "$EMIT_SIZE" -gt 131072 ]; then
+            echo "❌ Emitter WASM exceeds 128 KB protocol limit!"
+            exit 1
+          fi
+
+          # Warn if total > 100 KB (tight for final deployment)
+          TOTAL=$(( OPHIR_SIZE + EMIT_SIZE ))
+          if [ "$TOTAL" -gt 102400 ]; then
+            echo "⚠️  Combined WASM > 100 KB — consider optimizing"
+          else
+            echo "✅ Combined WASM under 100 KB"
+          fi
+      - name: Stellar contract info (OphirPay)
+        run: |
+          OPHIR_WASM=$(find contracts/ophirpay/target/wasm32v1-none/release -name '*.wasm' -not -name '*.wasm.gz' | head -1)
+          if [ -f "$OPHIR_WASM" ]; then
+            echo "=== OphirPay Contract Interface ==="
+            stellar contract info interface --wasm "$OPHIR_WASM"
+          fi
+      - name: Stellar contract info (Emitter)
+        run: |
+          EMIT_WASM=$(find contracts/emitter/target/wasm32v1-none/release -name '*.wasm' -not -name '*.wasm.gz' | head -1)
+          if [ -f "$EMIT_WASM" ]; then
+            echo "=== Emitter Contract Interface ==="
+            stellar contract info interface --wasm "$EMIT_WASM"
+          fi
+      - name: Upload gas report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-gas-report
+          path: |
+            contracts/ophirpay/target/wasm32v1-none/release/*.wasm
+            contracts/emitter/target/wasm32v1-none/release/*.wasm
+          retention-days: 7

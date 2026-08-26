@@ -1,0 +1,176 @@
+# OphirPay — Prometheus Alert Rules
+# These rules monitor the OphirPay API server for conditions that require
+# immediate operator attention. Designed for Alertmanager → PagerDuty/Slack.
+
+groups:
+  - name: ophirpay_critical
+    interval: 30s
+    rules:
+      # ── Contract Balance Alerts ──────────────────────────────
+
+      - alert: ContractBalanceBelowLocked
+        expr: |
+          ophirpay_contract_balance - ophirpay_locked_balance < 0
+        for: 1m
+        labels:
+          severity: critical
+          component: contract
+        annotations:
+          summary: "Contract balance dropped below locked funds"
+          description: |
+            OphirPay contract {{ $labels.contract_id }} on {{ $labels.network }}
+            has balance {{ $value | humanize }} below total locked escrow+stream
+            funds. This indicates a potential fund deficiency or accounting bug.
+            IMMEDIATE ACTION: pause the contract and investigate.
+
+      - alert: ContractBalanceDroppingFast
+        expr: |
+          rate(ophirpay_contract_balance[5m]) < -10000000000
+        for: 5m
+        labels:
+          severity: warning
+          component: contract
+        annotations:
+          summary: "Contract balance decreasing rapidly"
+          description: |
+            OphirPay contract balance is dropping at {{ $value | humanize }}/s.
+            Check for unusual withdrawal activity.
+
+      - alert: LockedBalanceDivergence
+        expr: |
+          abs(ophirpay_contract_balance - ophirpay_locked_balance - ophirpay_unlocked_balance) > 10000000
+        for: 5m
+        labels:
+          severity: warning
+          component: contract
+        annotations:
+          summary: "Locked balance accounting divergence detected"
+          description: |
+            The sum of locked + unlocked balances does not match contract balance.
+            Possible invariant violation. Contract: {{ $labels.contract_id }}.
+
+      # ── Payment Processing Alerts ────────────────────────────
+
+      - alert: BatchPaymentFailureRateHigh
+        expr: |
+          rate(ophirpay_batch_failed_items[15m]) /
+          rate(ophirpay_batch_total_items[15m]) > 0.5
+        for: 10m
+        labels:
+          severity: critical
+          component: payments
+        annotations:
+          summary: "Batch payment failure rate > 50%"
+          description: |
+            {{ $value | humanizePercentage }} of batch payment items are failing.
+            Check RPC connectivity and token contract state.
+
+      - alert: PaymentProcessingLatencyHigh
+        expr: |
+          histogram_quantile(0.95, rate(ophirpay_payment_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+          component: payments
+        annotations:
+          summary: "Payment processing latency > 30s (p95)"
+          description: |
+            P95 payment processing time is {{ $value }}s. Check Stellar RPC
+            and database performance.
+
+      # ── Webhook Delivery Alerts ──────────────────────────────
+
+      - alert: WebhookDeliveryFailureRateHigh
+        expr: |
+          rate(ophirpay_webhook_failures_total[15m]) /
+          rate(ophirpay_webhook_attempts_total[15m]) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+          component: webhooks
+        annotations:
+          summary: "Webhook delivery failure rate > 25%"
+          description: |
+            {{ $value | humanizePercentage }} of webhook deliveries are failing.
+            Check subscriber endpoints.
+
+      - alert: WebhookQueueDepthHigh
+        expr: ophirpay_webhook_queue_depth > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: webhooks
+        annotations:
+          summary: "Webhook delivery queue > 1000 items"
+          description: |
+            Webhook queue has {{ $value }} pending deliveries. Delivery may be
+            backed up. Check webhook worker health.
+
+      # ── API Health Alerts ────────────────────────────────────
+
+      - alert: ApiHighErrorRate
+        expr: |
+          rate(ophirpay_http_errors_total[5m]) /
+          rate(ophirpay_http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API error rate > 5%"
+          description: |
+            OphirPay API is returning errors at {{ $value | humanizePercentage }}.
+            Check logs for root cause.
+
+      - alert: ApiDown
+        expr: up{job="ophirpay"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "OphirPay API is down"
+          description: |
+            The OphirPay API server is not responding to health checks.
+            Instance: {{ $labels.instance }}.
+
+      # ── Database Alerts ──────────────────────────────────────
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: ophirpay_db_pool_available < 2
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: |
+            Only {{ $value }} available connections remaining. Check for
+            connection leaks or increase pool size.
+
+      - alert: DatabaseQueryLatencyHigh
+        expr: |
+          histogram_quantile(0.95, rate(ophirpay_db_query_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Database query latency > 1s (p95)"
+          description: |
+            P95 query time is {{ $value }}s. Check for missing indexes
+            or database resource pressure.
+
+      # ── Rate Limiting Alerts ─────────────────────────────────
+
+      - alert: RateLimitHitsHigh
+        expr: rate(ophirpay_rate_limit_hits_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "Rate limit hits exceeding threshold"
+          description: |
+            {{ $value | humanize }}/s rate limit hits. Possible abuse or
+            misconfigured client. Check IP distribution.

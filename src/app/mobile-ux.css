@@ -1,0 +1,106 @@
+/* ── Mobile UX Enhancements ───────────────────────────────── */
+
+/* 48px minimum touch targets (WCAG 2.5.5) */
+@media (max-width: 768px) {
+  button, 
+  a[role="button"],
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+    padding: 12px 16px;
+  }
+
+  /* Larger form inputs for touch */
+  input, select, textarea {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+    padding: 12px 14px !important;
+    min-height: 48px;
+  }
+
+  /* Card swipe-to-dismiss animation */
+  .swipe-card {
+    touch-action: pan-y;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+  .swipe-card.swiping {
+    transition: none;
+  }
+  .swipe-card.dismissed {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+
+  /* Pull-to-refresh indicator */
+  .pull-indicator {
+    height: 0;
+    overflow: hidden;
+    transition: height 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6b7280;
+  }
+  .pull-indicator.active {
+    height: 48px;
+  }
+
+  /* Bottom sheet for mobile modals */
+  .modal-content {
+    border-radius: 16px 16px 0 0 !important;
+    max-height: 85vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Safe area insets for notched phones */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 16px);
+  }
+
+  /* Tap highlight removal */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Active state for touch feedback */
+  .touch-feedback:active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease;
+  }
+
+  /* Numeric input keyboard */
+  input[inputmode="decimal"],
+  input[inputmode="numeric"] {
+    -moz-appearance: textfield;
+  }
+  input[inputmode="decimal"]::-webkit-inner-spin-button,
+  input[inputmode="decimal"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  /* Overscroll bounce prevention on modals */
+  .no-overscroll {
+    overscroll-behavior: contain;
+  }
+
+  /* Larger spacing for touch scrolling */
+  .touch-list > * + * {
+    margin-top: 12px;
+  }
+}
+
+/* Prevent text selection during swipe */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Momentum scrolling for lists */
+.momentum-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}

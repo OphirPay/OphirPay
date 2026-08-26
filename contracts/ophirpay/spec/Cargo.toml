@@ -1,0 +1,14 @@
+[package]
+name = "ophirpay-formal-verification"
+version = "0.1.0"
+edition = "2021"
+description = "Kani formal verification proofs for OphirPay contract invariants"
+
+[dependencies]
+# The model functions are pure Rust — no Soroban SDK dependency needed.
+# Kani is injected automatically by `cargo kani`, don't list it here.
+
+[dev-dependencies]
+
+[profile.release]
+opt-level = 0  # Kani works better without optimization

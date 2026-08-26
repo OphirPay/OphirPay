@@ -1,0 +1,9 @@
+# Mark WASM binaries as binary — prevent git from trying to diff them
+*.wasm binary
+*.wasm -text -diff
+
+# Mark generated files
+.next/** linguist-generated=true
+prisma/migrations/** linguist-generated=true
+coverage/** linguist-generated=true
+playwright-report/** linguist-generated=true

@@ -1,0 +1,52 @@
+---
+name: 🐛 Bug Report
+about: Report a bug in OphirPay
+title: "[BUG] "
+labels: ["🐛 bug", "triage"]
+assignees: []
+---
+
+## Bug Description
+
+<!-- A clear and concise description of the bug. -->
+
+## Steps to Reproduce
+
+1. Go to '...'
+2. Click on '...'
+3. See error
+
+## Expected Behavior
+
+<!-- What should have happened? -->
+
+## Actual Behavior
+
+<!-- What actually happened? Include error messages, screenshots, or logs. -->
+
+## Environment
+
+- **OphirPay version/commit**: <!-- e.g. main @ a1b2c3d -->
+- **Browser**: <!-- e.g. Chrome 120, Firefox 121 -->
+- **Wallet**: <!-- e.g. Freighter 5.x, Albedo -->
+- **Network**: <!-- e.g. Stellar Testnet, Futurenet -->
+- **OS**: <!-- e.g. macOS 14, Windows 11 -->
+
+## Affected Component
+
+<!-- Check all that apply -->
+- [ ] Frontend UI (pages, components)
+- [ ] API routes (backend)
+- [ ] Smart contract (OphirPay)
+- [ ] Smart contract (Emitter)
+- [ ] CI/CD pipeline
+- [ ] Documentation
+- [ ] Other: ___
+
+## Possible Solution
+
+<!-- Optional: any ideas on how to fix it. -->
+
+## Additional Context
+
+<!-- Add any other context, screenshots, or logs here. -->

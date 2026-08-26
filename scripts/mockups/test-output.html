@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OphirPay Test Output</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{font-family:'Courier New',monospace;background:#0d1117;color:#c9d1d9;padding:32px}</style>
+</head>
+<body style="max-width:800px;margin:0 auto">
+<div style="font-size:14px;line-height:1.6">
+  <!-- Header -->
+  <div style="color:#58a6ff">▶ npx vitest run --reporter=verbose</div>
+  <div style="color:#8b949e;margin-top:8px">RUN  v4.1.10 /workspaces/OphirPay</div>
+
+  <!-- Contract tests -->
+  <div style="margin-top:16px;color:#8b949e">src/__tests__/contracts.test.ts</div>
+  <div style="padding-left:8px">
+    <div style="color:#3fb950">✓ ContractError · creates a CONTRACT error</div>
+    <div style="color:#3fb950">✓ classifyContractError · classifies user rejection errors</div>
+    <div style="color:#3fb950">✓ classifyContractError · classifies Freighter declined errors</div>
+    <div style="color:#3fb950">✓ classifyContractError · classifies contract execution errors</div>
+    <div style="color:#3fb950">✓ classifyContractError · classifies network errors</div>
+    <div style="color:#3fb950">✓ classifyContractError · defaults to CONTRACT for unknown errors</div>
+  </div>
+
+  <!-- Utils tests -->
+  <div style="margin-top:16px;color:#8b949e">src/__tests__/utils.test.ts</div>
+  <div style="padding-left:8px">
+    <div style="color:#3fb950">✓ shortenAddress · shortens a Stellar address</div>
+    <div style="color:#3fb950">✓ shortenAddress · handles custom segment length</div>
+    <div style="color:#3fb950">✓ formatAmount · formats a number with XLM suffix</div>
+    <div style="color:#3fb950">✓ formatAmount · formats without an asset code</div>
+    <div style="color:#3fb950">✓ formatAmount · handles zero</div>
+    <div style="color:#3fb950">✓ getStatusColor · returns green for COMPLETED</div>
+    <div style="color:#3fb950">✓ getStatusColor · returns blue for PENDING</div>
+    <div style="color:#3fb950">✓ getStatusColor · returns red for FAILED</div>
+    <div style="color:#3fb950">✓ timeAgo · returns "just now" for recent dates</div>
+    <div style="color:#3fb950">✓ timeAgo · returns minutes for dates within the hour</div>
+    <div style="color:#3fb950">✓ cn · merges class names</div>
+    <div style="color:#3fb950">✓ cn · filters falsy values</div>
+  </div>
+
+  <!-- Stellar tests -->
+  <div style="margin-top:16px;color:#8b949e">src/__tests__/stellar.test.ts</div>
+  <div style="padding-left:8px">
+    <div style="color:#3fb950">✓ isValidStellarAddress · accepts a 56-char G-prefixed address</div>
+    <div style="color:#3fb950">✓ isValidStellarAddress · rejects non-G addresses</div>
+    <div style="color:#3fb950">✓ isValidStellarAddress · rejects empty strings</div>
+    <div style="color:#3fb950">✓ isValidStellarAddress · validates 56-char G-address</div>
+    <div style="color:#3fb950">✓ getStellarExplorerUrl · returns testnet explorer URL</div>
+  </div>
+
+  <!-- Summary -->
+  <div style="margin-top:24px;padding-top:16px;border-top:1px solid #30363d">
+    <div style="color:#3fb950">Test Files  3 passed (3)</div>
+    <div style="color:#3fb950">     Tests  23 passed (23)</div>
+    <div style="color:#8b949e">  Start at  03:56:06</div>
+    <div style="color:#8b949e">  Duration  9.02s</div>
+  </div>
+</div>
+</body>
+</html>

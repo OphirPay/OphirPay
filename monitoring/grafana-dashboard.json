@@ -1,0 +1,95 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "displayMode": "gradient", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Platform Health",
+      "type": "stat",
+      "targets": [
+        { "expr": "ophirpay_http_requests_total", "legendFormat": "HTTP Requests" },
+        { "expr": "ophirpay_payments_created_total", "legendFormat": "Payments" },
+        { "expr": "ophirpay_webhooks_delivered_total", "legendFormat": "Webhooks" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": {},
+      "title": "HTTP Request Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(ophirpay_http_requests_total[5m])", "legendFormat": "Requests/s" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "options": {},
+      "title": "Payments — Created vs Failed",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(ophirpay_payments_created_total[5m])", "legendFormat": "Created" },
+        { "expr": "rate(ophirpay_payments_failed_total[5m])", "legendFormat": "Failed" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "options": {},
+      "title": "Webhook Delivery Health",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(ophirpay_webhooks_delivered_total[5m])", "legendFormat": "Delivered" },
+        { "expr": "rate(ophirpay_webhooks_failed_total[5m])", "legendFormat": "Failed" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "options": {},
+      "title": "Database Query Latency (avg)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "ophirpay_db_query_duration_seconds_sum / ophirpay_db_query_duration_seconds_count", "legendFormat": "Avg Query Time" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": {},
+      "title": "Batch Processing Volume",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(ophirpay_batches_processed_total[5m])", "legendFormat": "Batches/min" }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["ophirpay", "stellar", "payments"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "OphirPay — Payment Infrastructure",
+  "uid": "ophirpay",
+  "version": 1
+}

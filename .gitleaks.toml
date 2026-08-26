@@ -1,0 +1,28 @@
+# OphirPay Gitleaks Configuration
+# Ignores known false positives in test fixtures, snapshots, and demo seed data.
+
+title = "OphirPay Gitleaks Config"
+
+[allowlist]
+  description = "Known non-sensitive values in test files and demos"
+
+  # Paths containing demo/test fixtures and public identifiers — NOT secrets
+  paths = [
+    '''src/lib/contracts.ts''',
+    '''README.md''',
+    '''contracts/ophirpay/test_snapshots/''',
+    '''contracts/emitter/test_snapshots/''',
+    '''prisma/seed.ts''',
+    '''scripts/mockups/''',
+    '''public/''',
+  ]
+
+  # Demo/test private keys and public identifiers that are NOT real secrets
+  regexes = [
+    '''GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U''',  # seed.ts demo address
+    '''GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA''',  # burn address
+    # Public Stellar Testnet identifiers — NOT secrets, NOT private keys
+    '''GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU''',  # Testnet chain read source (public key)
+    '''CAW7OORNGPRBRQJIXRXZOXEPZZO3Z5FKSCLBULGLBTVVPZYYVTK2UKIA''',  # OphirPay Testnet contract ID
+    '''CCMXLNRPBTHVTEH7UEBXQVZ4YJZB5NN7LXJBAL465A6YFXJPJGV2CYPX''',  # Emitter Testnet contract ID
+  ]

@@ -1,0 +1,5 @@
+# OphirPay Funding Configuration
+# These values are displayed on the repository and in GitHub Sponsors.
+
+github: [OphirPay]
+custom: ["https://ophirpay.dev/sponsor"]

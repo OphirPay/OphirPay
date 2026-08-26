@@ -1,0 +1,1673 @@
+openapi: "3.1.0"
+info:
+  title: OphirPay API
+  description: |
+    REST API for the OphirPay Stellar payment platform — batch payments,
+    escrow, recurring payments, webhook delivery, multisig governance,
+    and real-time event streaming.
+
+    **Authentication** — two modes:
+    - `Authorization: Bearer <api-key>` (recommended)
+    - `X-API-Key: <api-key>`
+    
+    API keys are generated at `POST /api/keys` and shown only once.
+  version: 0.1.0
+  contact:
+    name: OphirPay Team
+  license:
+    name: MIT
+    url: https://github.com/ophirpay/ophirpay/blob/main/LICENSE
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://api.ophirpay.com
+    description: Production
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+tags:
+  - name: Payments
+    description: Individual payment operations
+  - name: Batches
+    description: Batch payment operations (authenticated)
+  - name: Recurring
+    description: Recurring / subscription payment management
+  - name: Payment Requests
+    description: Payment link / request creation
+  - name: Webhooks
+    description: Outgoing webhook registration (authenticated)
+  - name: API Keys
+    description: API key generation and revocation (authenticated)
+  - name: Multisig
+    description: Multisig configuration, proposals, approvals (on-chain)
+  - name: Governance
+    description: DAO-governed proposals and voting (on-chain)
+  - name: Analytics
+    description: Aggregated payment metrics
+  - name: Refunds
+    description: Refund tracking and analytics
+  - name: Hooks
+    description: Notification hook registry
+  - name: Audit Log
+    description: Contract audit log (authenticated)
+  - name: Events
+    description: Server-Sent Events stream for real-time payments
+  - name: Health
+    description: Service health and readiness checks
+  - name: Metrics
+    description: Prometheus metrics endpoint
+  - name: Escrows
+    description: On-chain escrow accounts (authenticated)
+  - name: Streams
+    description: On-chain payment streams (authenticated)
+  - name: Timelock
+    description: Timelocked administrative actions (on-chain)
+  - name: RBAC
+    description: Role-based access control lookups (on-chain)
+  - name: Fee Config
+    description: Fee configuration and history (on-chain)
+  - name: Policy Versions
+    description: Fee and multisig config version history (on-chain)
+  - name: Contracts
+    description: Contract deployment info and version
+  - name: Stats
+    description: Aggregate on-chain contract statistics
+  - name: Session
+    description: Wallet session issuance and revocation
+
+paths:
+  # ── Payments ──────────────────────────────────────────────
+  /api/payments:
+    get:
+      tags: [Payments]
+      summary: List payments
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [CREATED, PENDING, COMPLETED, FAILED, CANCELLED]
+        - name: search
+          in: query
+          schema: { type: string }
+          description: Search in description, memo, or transaction hash
+      responses:
+        "200":
+          description: Paginated payment list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedPayments"
+    post:
+      tags: [Payments]
+      summary: Create a payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentRequest"
+      responses:
+        "201":
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/payments/{id}:
+    get:
+      tags: [Payments]
+      summary: Get a payment by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Payments]
+      summary: Update payment status or metadata
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [CREATED, PENDING, COMPLETED, FAILED, CANCELLED]
+                description:
+                  type: string
+                memo:
+                  type: string
+      responses:
+        "200":
+          description: Payment updated
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Payments]
+      summary: Delete a payment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Payment deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Escrows ───────────────────────────────────────────────
+  /api/escrows:
+    get:
+      tags: [Escrows]
+      summary: List escrows or fetch one by id
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: query
+          schema: { type: integer }
+          description: Fetch a single escrow by on-chain id
+      responses:
+        "200":
+          description: Escrow list or single escrow
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Escrows]
+      summary: Create an on-chain escrow
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payee, amount]
+              properties:
+                payee: { type: string, description: "Recipient Stellar address" }
+                amount: { type: number, description: "Amount in stroops" }
+                assetCode: { type: string, default: XLM }
+                releaseAfter: { type: integer, description: "Unix timestamp" }
+                releaseTo: { type: string, description: "Stellar address, defaults to caller" }
+                memo: { type: string, maxLength: 28 }
+      responses:
+        "201":
+          description: Escrow created
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/escrows/{id}:
+    get:
+      tags: [Escrows]
+      summary: Get an escrow by id
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Escrow details
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Streams ───────────────────────────────────────────────
+  /api/streams:
+    get:
+      tags: [Streams]
+      summary: List streams or fetch one by id
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: query
+          schema: { type: integer }
+          description: Fetch a single stream by on-chain id
+      responses:
+        "200":
+          description: Stream list or single stream
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Streams]
+      summary: Create an on-chain payment stream
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payee, amount]
+              properties:
+                payee: { type: string, description: "Recipient Stellar address" }
+                amount: { type: number, description: "Total amount in stroops" }
+                assetCode: { type: string, default: XLM }
+                startTime: { type: integer, description: "Unix timestamp" }
+                endTime: { type: integer, description: "Unix timestamp" }
+                memo: { type: string, maxLength: 28 }
+      responses:
+        "201":
+          description: Stream created
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/streams/{id}:
+    get:
+      tags: [Streams]
+      summary: Get a stream by id
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Stream details
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Timelock ──────────────────────────────────────────────
+  /api/timelock:
+    get:
+      tags: [Timelock]
+      summary: List pending timelocked actions
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: query
+          schema: { type: integer, minimum: 1 }
+          description: Fetch a single timelocked action; rejected if non-numeric
+      responses:
+        "200":
+          description: Timelock list or single action
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── RBAC ──────────────────────────────────────────────────
+  /api/rbac:
+    get:
+      tags: [RBAC]
+      summary: Look up role assignments
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: addr
+          in: query
+          schema: { type: string }
+          description: Stellar address to look up; returns the full role map when omitted
+      responses:
+        "200":
+          description: Role assignment(s)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Fee Config ────────────────────────────────────────────
+  /api/fee-config:
+    get:
+      tags: [Fee Config]
+      summary: Get the current fee configuration
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      responses:
+        "200":
+          description: Fee configuration
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/fee-config/collector:
+    get:
+      tags: [Fee Config]
+      summary: Get the fee collector address
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      responses:
+        "200":
+          description: Fee collector address
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/fee-config/history:
+    get:
+      tags: [Fee Config]
+      summary: Get fee configuration version history
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      responses:
+        "200":
+          description: Fee config history
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Policy Versions ───────────────────────────────────────
+  /api/policy-versions:
+    get:
+      tags: [Policy Versions]
+      summary: Get fee and multisig config version history
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      responses:
+        "200":
+          description: Version history
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Contracts ─────────────────────────────────────────────
+  /api/contracts:
+    get:
+      tags: [Contracts]
+      summary: Get contract deployment info and version
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      responses:
+        "200":
+          description: Contract version and owner
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Stats ─────────────────────────────────────────────────
+  /api/stats:
+    get:
+      tags: [Stats]
+      summary: Aggregate on-chain contract statistics
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      responses:
+        "200":
+          description: Payment/escrow/stream/batch counters and total amounts
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Batches ────────────────────────────────────────────────
+  /api/batches:
+    get:
+      tags: [Batches]
+      summary: List batches with pagination
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+          description: Search in name or description
+      responses:
+        "200":
+          description: Paginated batch list
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Batches]
+      summary: Create a batch payment
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBatchRequest"
+      responses:
+        "201":
+          description: Batch created with child payments
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/batches/{id}:
+    get:
+      tags: [Batches]
+      summary: Get a batch with its child payments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Batch details with child payments
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Recurring Payments ────────────────────────────────────
+  /api/recurring:
+    get:
+      tags: [Recurring]
+      summary: List recurring payments
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Paginated recurrence list
+    post:
+      tags: [Recurring]
+      summary: Create a recurring payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRecurrenceRequest"
+      responses:
+        "201":
+          description: Recurrence created
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/recurring/{id}:
+    get:
+      tags: [Recurring]
+      summary: Get a recurring payment by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Recurrence details
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Payment Requests ──────────────────────────────────────
+  /api/requests:
+    get:
+      tags: [Payment Requests]
+      summary: List payment requests
+      responses:
+        "200":
+          description: List of payment requests
+    post:
+      tags: [Payment Requests]
+      summary: Create a payment request / payment link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentRequestSchema"
+      responses:
+        "201":
+          description: Payment request created
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  # ── Webhooks ──────────────────────────────────────────────
+  /api/webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List registered webhooks (secrets redacted)
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      responses:
+        "200":
+          description: Webhook list
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Webhooks]
+      summary: Register a new webhook
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookRequest"
+      responses:
+        "201":
+          description: Webhook registered (secret returned once)
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [Webhooks]
+      summary: Delete a webhook
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Webhook deleted
+        "400":
+          description: Missing webhook ID
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── API Keys ──────────────────────────────────────────────
+  /api/keys:
+    get:
+      tags: [API Keys]
+      summary: List API keys (hashes hidden)
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      responses:
+        "200":
+          description: API key list (id, name, prefix, timestamps only)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [API Keys]
+      summary: Generate a new API key (raw key shown once)
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, userId]
+              properties:
+                name:
+                  type: string
+                  description: Label for this key
+                userId:
+                  type: string
+                  description: Owning user ID
+      responses:
+        "201":
+          description: Key generated — store the raw key immediately
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+                      prefix: { type: string }
+                      key:
+                        type: string
+                        description: Raw API key — shown only once
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [API Keys]
+      summary: Revoke an API key
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Key revoked
+        "400":
+          description: Missing key ID
+
+  # ── Session ───────────────────────────────────────────────
+  /api/auth/session:
+    post:
+      tags: [Session]
+      summary: Issue a signed session cookie for a connected wallet
+      description: |
+        Called by the UI after a successful wallet connect. Sets an HttpOnly
+        HMAC-signed session cookie carrying the wallet public key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey, signature]
+              properties:
+                publicKey: { type: string, description: "Stellar wallet public key" }
+                signature: { type: string, description: "Wallet-signed payload proving ownership" }
+      responses:
+        "200":
+          description: Session cookie issued
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [Session]
+      summary: Revoke the session cookie
+      responses:
+        "200":
+          description: Session revoked
+
+  /api/csrf:
+    get:
+      tags: [Session]
+      summary: Mint a CSRF token for this session
+      description: |
+        Sets the HttpOnly `__Host-csrf` cookie AND returns the token in the
+        body so clients can echo it via the `x-csrf-token` header on mutation
+        requests (double-submit cookie pattern).
+      responses:
+        "200":
+          description: CSRF token issued
+
+  # ── Multisig ──────────────────────────────────────────────
+  /api/multisig:
+    get:
+      tags: [Multisig]
+      summary: Get current multisig configuration
+      responses:
+        "200":
+          description: Multisig config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      threshold: { type: integer }
+                      signers:
+                        type: array
+                        items: { type: string }
+                      enabled: { type: boolean }
+    post:
+      tags: [Multisig]
+      summary: Configure multisig (owner-only on-chain)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                threshold: { type: integer }
+                signers:
+                  type: array
+                  items: { type: string }
+                enabled: { type: boolean }
+      responses:
+        "201":
+          description: Multisig configured
+
+  /api/multisig/propose:
+    post:
+      tags: [Multisig]
+      summary: Propose a payment for multisig approval
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payee, amount]
+              properties:
+                payee: { type: string }
+                amount: { type: number }
+                assetCode: { type: string }
+                memo: { type: string }
+      responses:
+        "201":
+          description: Proposal created
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/multisig/approve:
+    post:
+      tags: [Multisig]
+      summary: Approve a pending multisig proposal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId]
+              properties:
+                requestId: { type: integer }
+      responses:
+        "200":
+          description: Proposal approved
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/multisig/execute:
+    post:
+      tags: [Multisig]
+      summary: Execute a fully approved multisig payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId]
+              properties:
+                requestId: { type: integer }
+      responses:
+        "200":
+          description: Payment executed
+
+  /api/multisig/requests:
+    get:
+      tags: [Multisig]
+      summary: List pending approval requests
+      responses:
+        "200":
+          description: Pending requests list
+
+  # ── Governance ────────────────────────────────────────────
+  /api/governance/proposals:
+    get:
+      tags: [Governance]
+      summary: List governance proposals (most recent first)
+      description: |
+        Enumerates the contract's proposals, capped at the 100 most recent to
+        bound the N+1 on-chain read cost. `truncated` is true when the chain
+        holds more proposals than the cap, so callers know the list is partial.
+      responses:
+        "200":
+          description: Proposals list with total and truncation signal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer }
+                            title: { type: string }
+                            description: { type: string }
+                            action_type: { type: string }
+                            yes_votes: { type: integer }
+                            no_votes: { type: integer }
+                            voting_ends_at: { type: [integer, 'null'] }
+                            executed: { type: boolean }
+                            proposer: { type: string }
+                      total: { type: integer, description: "Total proposal count on-chain" }
+                      truncated: { type: boolean, description: "True when older proposals were dropped" }
+    post:
+      tags: [Governance]
+      summary: Create a governance proposal (on-chain)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [proposer, title]
+              properties:
+                proposer: { type: string }
+                title: { type: string }
+                description: { type: string }
+                actionType: { type: string }
+                target: { type: string }
+                data: { type: string }
+                depositAsset: { type: string, description: "Stellar asset address for deposit" }
+                depositAmount: { type: integer, description: "Deposit amount (must be >= min_proposal_deposit)" }
+      responses:
+        "201":
+          description: Proposal created
+
+  /api/governance/vote:
+    post:
+      tags: [Governance]
+      summary: Cast a vote on a proposal (on-chain, 1 vote per address)
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [voter, proposalId]
+              properties:
+                proposalId: { type: integer }
+                voter: { type: string }
+                support: { type: boolean }
+      responses:
+        "200":
+          description: Vote cast
+
+  /api/governance/execute:
+    post:
+      tags: [Governance]
+      summary: Execute a passed proposal
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [proposalId]
+              properties:
+                proposalId:
+                  type: integer
+                  minimum: 1
+      responses:
+        "200":
+          description: Proposal executed
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Analytics ─────────────────────────────────────────────
+  /api/analytics:
+    get:
+      tags: [Analytics]
+      summary: Aggregated payment analytics
+      responses:
+        "200":
+          description: Payment metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      totalPayments: { type: integer }
+                      completedPayments: { type: integer }
+                      failedPayments: { type: integer }
+                      totalVolume: { type: number }
+                      averageAmount: { type: number }
+                      successRate: { type: integer }
+                      volumeByDay:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date: { type: string }
+                            volume: { type: number }
+                            count: { type: integer }
+
+  # ── Refunds ───────────────────────────────────────────────
+  /api/refunds:
+    get:
+      tags: [Refunds]
+      summary: List refunds or refund analytics
+      parameters:
+        - name: analytics
+          in: query
+          schema: { type: boolean }
+          description: Return reason-code buckets instead of full refund list
+      responses:
+        "200":
+          description: Refund data
+    post:
+      tags: [Refunds]
+      summary: Persist a refund ledger row after an on-chain request_refund
+      description: |
+        Called by the UI AFTER the on-chain request_refund transaction succeeds.
+        Stores the contract's refund id (`onChainId`, captured from the tx
+        return value) so approve/process can later target the right record.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentId, amount]
+              properties:
+                paymentId: { type: integer, description: "On-chain payment id" }
+                amount: { type: number, description: "Refund amount in stroops" }
+                asset: { type: string, default: native }
+                reason: { type: string, maxLength: 500 }
+                reasonCode: { type: integer, minimum: 0, maximum: 5 }
+                onChainId: { type: integer, description: "Contract refund id from the tx return value" }
+      responses:
+        "201":
+          description: Refund ledger row created
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/refunds/{id}:
+    patch:
+      tags: [Refunds]
+      summary: Update the lifecycle status of a refund ledger row
+      description: |
+        Mirrors an on-chain transition (approve_refund / process_refund) onto
+        the ledger row so the list reflects Request → Approve → Process.
+        Owner-scoped — only the row's user can update it.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [APPROVED, PROCESSED, REJECTED] }
+      responses:
+        "200":
+          description: Refund status updated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Hooks ─────────────────────────────────────────────────
+  /api/hooks:
+    get:
+      tags: [Hooks]
+      summary: List notification hooks
+      parameters:
+        - name: event_type
+          in: query
+          schema: { type: string }
+          description: Filter by event type
+      responses:
+        "200":
+          description: Hook list
+    post:
+      tags: [Hooks]
+      summary: Persist a hook ledger row after an on-chain register_hook
+      description: |
+        Called by the UI AFTER the on-chain register_hook transaction succeeds.
+        Stores the contract's hook id (`onChainId`, captured from the tx return
+        value) so Deactivate can later target the right record.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventType, webhookUrl]
+              properties:
+                eventType: { type: string, maxLength: 100 }
+                webhookUrl: { type: string, format: uri }
+                onChainId: { type: integer, description: "Contract hook id from the tx return value" }
+      responses:
+        "201":
+          description: Hook ledger row created
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/hooks/{id}:
+    patch:
+      tags: [Hooks]
+      summary: Deactivate a hook ledger row after an on-chain unregister_hook
+      description: Owner-scoped — only the row's user can update it.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+      responses:
+        "200":
+          description: Hook updated
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Audit Log ─────────────────────────────────────────────
+  /api/audit-log:
+    get:
+      tags: [Audit Log]
+      summary: Query contract audit log
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: actor
+          in: query
+          schema: { type: string }
+          description: Filter by Stellar address
+        - name: action
+          in: query
+          schema: { type: string }
+          description: Filter by action type
+        - name: since
+          in: query
+          schema: { type: integer }
+          description: Unix timestamp filter
+      responses:
+        "200":
+          description: Paginated audit log entries
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/audit-log/sse:
+    get:
+      tags: [Audit Log]
+      summary: Subscribe to the live audit-log stream
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      description: |
+        Server-Sent Events stream that polls the contract audit log every few
+        seconds and pushes new entries to connected clients.
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  # ── SSE Events ────────────────────────────────────────────
+  /api/events:
+    get:
+      tags: [Events]
+      summary: Subscribe to real-time payment events
+      description: |
+        Server-Sent Events stream. Polls the Stellar emitter contract every 10 seconds.
+        
+        Events:
+        - `connected` — stream established
+        - `heartbeat` — keep-alive every 15s
+        - `payment:created` — new payment detected from emitter contract
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /api/events/history:
+    get:
+      tags: [Events]
+      summary: Fetch on-chain payment event history
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+          description: Number of recent events to return
+      responses:
+        "200":
+          description: Recent event history
+
+  # ── Health ────────────────────────────────────────────────
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Service health check
+      responses:
+        "200":
+          description: All services healthy
+        "503":
+          description: One or more services unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  # ── Metrics ───────────────────────────────────────────────
+  /api/metrics:
+    get:
+      tags: [Metrics]
+      summary: Prometheus metrics endpoint
+      responses:
+        "200":
+          description: Prometheus text format metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+# ── Components ────────────────────────────────────────────────
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key generated from POST /api/keys
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: oph_
+      description: Same API key, passed as Bearer token
+
+  schemas:
+    PaymentResponse:
+      type: object
+      properties:
+        id: { type: string }
+        amount: { type: number }
+        assetCode: { type: string }
+        assetIssuer: { type: [string, 'null'] }
+        description: { type: [string, 'null'] }
+        memo: { type: [string, 'null'] }
+        status: { type: string }
+        transactionHash: { type: [string, 'null'] }
+        sourceAccountId: { type: string }
+        userId: { type: string }
+        batchId: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        errorMessage: { type: [string, 'null'] }
+
+    PaginatedPayments:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentResponse"
+        meta:
+          type: object
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            total: { type: integer }
+
+    CreatePaymentRequestSchema:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          minimum: 0
+          exclusiveMinimum: 0
+          description: Payment request amount
+        assetCode:
+          type: string
+          default: XLM
+        assetIssuer:
+          type: string
+          description: Issuer account for non-XLM assets
+        description:
+          type: string
+          maxLength: 500
+        recipientAddress:
+          type: string
+          pattern: "^G[A-Z0-9]{55}$"
+          description: Optional recipient Stellar address
+
+    CreatePaymentRequest:
+      type: object
+      required: [amount, sourceAccountId, destAddress]
+      properties:
+        amount:
+          type: number
+          minimum: 0
+          exclusiveMinimum: 0
+          description: Payment amount in stroops for XLM, or smallest unit for other assets
+        assetCode:
+          type: string
+          default: XLM
+        assetIssuer:
+          type: string
+          description: Issuer account for non-XLM assets
+        description:
+          type: string
+          maxLength: 200
+        memo:
+          type: string
+          maxLength: 28
+        sourceAccountId:
+          type: string
+          description: Source Stellar account
+        destAddress:
+          type: string
+          pattern: "^G[A-Z0-9]{55}$"
+          description: Destination Stellar address (56 chars, starts with G)
+
+    CreateBatchRequest:
+      type: object
+      required: [name, recipients, sourceAccountId]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        recipients:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required: [address, amount]
+            properties:
+              address:
+                type: string
+                pattern: "^G[A-Z0-9]{55}$"
+              amount:
+                type: number
+                minimum: 0
+                exclusiveMinimum: 0
+              assetCode:
+                type: string
+                default: XLM
+              memo:
+                type: string
+                maxLength: 28
+        sourceAccountId:
+          type: string
+
+    CreateRecurrenceRequest:
+      type: object
+      required: [name, frequency, amount, destAddress, sourceAccountId]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        frequency:
+          type: string
+          enum: [DAILY, WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, YEARLY]
+        amount:
+          type: number
+          minimum: 0
+          exclusiveMinimum: 0
+        assetCode:
+          type: string
+          default: XLM
+        destAddress:
+          type: string
+          pattern: "^G[A-Z0-9]{55}$"
+        description:
+          type: string
+          maxLength: 500
+        sourceAccountId:
+          type: string
+
+    CreateWebhookRequest:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: Event types to subscribe to
+        isActive:
+          type: boolean
+          default: true
+
+    HealthResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        data:
+          type: object
+          properties:
+            version: { type: string }
+            services:
+              type: object
+              properties:
+                database:
+                  type: object
+                  properties:
+                    status: { type: string, enum: [ok, error] }
+                    latencyMs: { type: [integer, 'null'] }
+                redis:
+                  type: object
+                  properties:
+                    status: { type: string, enum: [ok, error, disabled] }
+                    latencyMs: { type: [integer, 'null'] }
+                stellar:
+                  type: object
+                  properties:
+                    network: { type: string }
+                    rpcUrl: { type: string }
+                    rpc:
+                      type: object
+                      properties:
+                        status: { type: string, enum: [ok, error, unchecked] }
+                        latencyMs: { type: [integer, 'null'] }
+            uptime: { type: number }
+        meta:
+          type: object
+          properties:
+            timestamp: { type: string }
+
+    ErrorResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: false }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+
+  responses:
+    ValidationError:
+      description: Invalid request data
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Resource state conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServiceUnavailable:
+      description: Service temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Error Codes Catalog (209 codes across 11 HTTP status classes) ──
+  x-error-codes:
+    "400":
+      - BAD_REQUEST
+      - VALIDATION_ERROR
+      - MISSING_REQUIRED_FIELD
+      - INVALID_INPUT
+      - INVALID_PAGE
+      - INVALID_LIMIT
+      - INVALID_SORT
+      - INVALID_FILTER
+      - INVALID_CURSOR
+      - INVALID_FORMAT
+      - INVALID_AMOUNT
+      - AMOUNT_TOO_SMALL
+      - AMOUNT_TOO_LARGE
+      - AMOUNT_BELOW_MINIMUM
+      - AMOUNT_EXCEEDS_MAXIMUM
+      - INVALID_ADDRESS
+      - ADDRESS_MALFORMED
+      - MISSING_DESTINATION
+      - SELF_PAYMENT
+      - DESTINATION_INVALID
+      - INVALID_MEMO
+      - MEMO_REQUIRED
+      - MEMO_TOO_LONG
+      - MEMO_INVALID_FORMAT
+      - INVALID_ASSET
+      - ASSET_NOT_SUPPORTED
+      - INVALID_TRUSTLINE
+      - CSV_IMPORT_ERROR
+      - CSV_FORMAT_ERROR
+      - CSV_TOO_LARGE
+      - CSV_EMPTY
+      - CSV_MALFORMED_ROW
+      - EXPORT_FORMAT_INVALID
+      - EXPORT_TOO_LARGE
+      - DATE_RANGE_INVALID
+      - DATE_RANGE_TOO_LARGE
+      - INVALID_SIGNATURE
+      - INVALID_TIMESTAMP
+      - INVALID_CHALLENGE
+      - CHALLENGE_EXPIRED
+      - PAYMENT_CANCELLED
+      - PAYMENT_EXPIRED
+      - PAYMENT_PENDING
+      - PAYMENT_ALREADY_PROCESSED
+      - STREAM_PAUSED
+      - STREAM_RESUMED
+      - STREAM_CANCELLED
+      - STREAM_COMPLETED
+      - BATCH_PROCESSING
+      - BATCH_CANCELLED
+      - ESCROW_EXPIRED
+      - ESCROW_RESOLVED
+      - THRESHOLD_NOT_MET
+      - INVALID_THRESHOLD
+      - SIGNER_LIMIT_EXCEEDED
+      - SIGNER_WEIGHT_EXCEEDED
+      - SIGNER_WEIGHT_INVALID
+      - PROPOSAL_EXPIRED
+      - PROPOSAL_CANCELLED
+      - PROPOSAL_NOT_ACTIVE
+      - VOTING_ENDED
+      - VOTING_NOT_STARTED
+      - QUORUM_NOT_MET
+      - INSUFFICIENT_VOTING_POWER
+    "401":
+      - UNAUTHORIZED
+      - INVALID_API_KEY
+      - API_KEY_MISSING
+      - API_KEY_DISABLED
+      - EXPIRED_API_KEY
+      - TOKEN_EXPIRED
+      - TOKEN_REVOKED
+      - TOKEN_MISSING
+      - TOKEN_INVALID
+      - SESSION_EXPIRED
+      - SESSION_INVALID
+      - INVALID_CREDENTIALS
+    "402":
+      - INSUFFICIENT_FUNDS
+      - INSUFFICIENT_RESERVE
+    "403":
+      - FORBIDDEN
+      - INSUFFICIENT_PERMISSIONS
+      - ROLE_REQUIRED
+      - NOT_OWNER
+      - NOT_SIGNER
+      - NOT_MEMBER
+      - NOT_APPROVER
+      - NOT_ADMIN
+      - ACCOUNT_DISABLED
+      - ACCOUNT_SUSPENDED
+      - RESOURCE_LOCKED
+      - WALLET_LOCKED
+      - REGION_RESTRICTED
+    "404":
+      - NOT_FOUND
+      - PAYMENT_NOT_FOUND
+      - ESCROW_NOT_FOUND
+      - STREAM_NOT_FOUND
+      - BATCH_NOT_FOUND
+      - WEBHOOK_NOT_FOUND
+      - USER_NOT_FOUND
+      - ACCOUNT_NOT_FOUND
+      - WALLET_NOT_FOUND
+      - SIGNER_NOT_FOUND
+      - ASSET_NOT_FOUND
+      - API_KEY_NOT_FOUND
+      - KEY_NOT_FOUND
+      - TOKEN_NOT_FOUND
+      - CONTRACT_NOT_FOUND
+      - FUNCTION_NOT_FOUND
+      - FILE_NOT_FOUND
+      - EXPORT_NOT_FOUND
+      - NOTIFICATION_NOT_FOUND
+      - ROUTE_NOT_FOUND
+      - PROPOSAL_NOT_FOUND
+    "408":
+      - REQUEST_TIMEOUT
+      - TRANSACTION_TIMEOUT
+      - CONTRACT_TIMEOUT
+      - RPC_TIMEOUT
+    "409":
+      - CONFLICT
+      - UNIQUE_CONSTRAINT
+      - DUPLICATE_REQUEST
+      - STATE_CONFLICT
+      - VERSION_CONFLICT
+      - SEQUENCE_NUMBER_MISMATCH
+      - OPERATION_IN_PROGRESS
+      - RESOURCE_IN_USE
+      - WALLET_ALREADY_CONNECTED
+      - STREAM_ALREADY_ACTIVE
+      - ESCROW_ALREADY_FUNDED
+      - ESCROW_ALREADY_COMPLETED
+      - USER_EXISTS
+      - EMAIL_EXISTS
+      - WALLET_EXISTS
+      - SIGNER_EXISTS
+      - WEBHOOK_EXISTS
+      - BATCH_CONFLICT
+      - ALREADY_APPROVED
+      - ALREADY_EXECUTED
+      - ALREADY_VOTED
+      - PROPOSAL_ALREADY_EXECUTED
+      - ESCROW_DISPUTED
+    "413":
+      - PAYLOAD_TOO_LARGE
+      - BATCH_TOO_LARGE
+      - FILE_TOO_LARGE
+      - REQUEST_BODY_TOO_LARGE
+    "429":
+      - RATE_LIMITED
+      - RATE_LIMIT_IP
+      - RATE_LIMIT_USER
+      - RATE_LIMIT_WALLET
+      - RATE_LIMIT_API_KEY
+      - RATE_LIMIT_GLOBAL
+      - RATE_LIMIT_BACKOFF
+    "500":
+      - INTERNAL_ERROR
+      - DATABASE_ERROR
+      - DATABASE_QUERY_FAILED
+      - DATABASE_CONNECTION_FAILED
+      - DATABASE_TRANSACTION_FAILED
+      - DATABASE_DEADLOCK
+      - CONTRACT_ERROR
+      - CONTRACT_CALL_FAILED
+      - CONTRACT_DEPLOY_FAILED
+      - CONTRACT_COMPILE_FAILED
+      - CONTRACT_VERIFY_FAILED
+      - RPC_ERROR
+      - RPC_NODE_ERROR
+      - NETWORK_ERROR
+      - NETWORK_TIMEOUT
+      - STELLAR_ERROR
+      - HORIZON_ERROR
+      - SOROBAN_ERROR
+      - EMAIL_SEND_FAILED
+      - NOTIFICATION_FAILED
+      - WEBHOOK_DELIVERY_FAILED
+      - WEBHOOK_SIGNATURE_INVALID
+      - FILE_UPLOAD_FAILED
+      - FILE_PROCESSING_FAILED
+      - EXPORT_FAILED
+      - IMPORT_FAILED
+      - SEARCH_INDEX_ERROR
+      - SEARCH_FAILED
+      - CACHE_ERROR
+      - CACHE_MISS
+      - CONFIG_ERROR
+      - FEATURE_NOT_ENABLED
+      - MAINTENANCE_MODE
+      - UNKNOWN_ERROR
+      - PAYMENT_FAILED
+      - TRANSACTION_FAILED
+      - TRANSACTION_EXPIRED
+      - TRANSACTION_REJECTED
+      - BATCH_PARTIAL_SUCCESS
+      - BATCH_FAILED
+      - MULTISIG_NOT_CONFIGURED
+      - WALLET_NOT_INSTALLED
+      - WALLET_CONNECTION_FAILED
+      - WALLET_DISCONNECTED
+      - WALLET_NETWORK_MISMATCH
+      - WALLET_SIGN_FAILED
+      - WALLET_SIGN_REJECTED
+      - WALLET_NOT_SUPPORTED
+    "503":
+      - CONTRACT_UNAVAILABLE
+      - SERVICE_UNAVAILABLE
+      - OVERLOADED
+      - DEPENDENCY_UNAVAILABLE
+      - STELLAR_UNAVAILABLE
+      - HORIZON_UNAVAILABLE
+      - SOROBAN_UNAVAILABLE
+      - RPC_UNAVAILABLE
+      - DATABASE_UNAVAILABLE
+      - CACHE_UNAVAILABLE
+      - EMAIL_UNAVAILABLE

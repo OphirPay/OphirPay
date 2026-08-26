@@ -1,0 +1,56 @@
+name: "🧹 Stale Issue & PR Management"
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Every Monday at 08:00 UTC
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    name: Mark & Close Stale
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/stale@v9
+        with:
+          # ── Issue settings ──────────────────────────────────
+          days-before-issue-stale: 60
+          days-before-issue-close: 14
+          stale-issue-label: "stale"
+          stale-issue-message: |
+            👋 This issue has been automatically marked as stale because it has been inactive for 60 days.
+
+            If this is still relevant, please comment within 14 days to keep it open. Otherwise it will be closed automatically.
+
+            Thank you for your contribution to OphirPay! 💙
+          close-issue-message: |
+            🔒 This issue has been closed due to inactivity.
+
+            If you believe this is still relevant, please open a new issue referencing this one.
+          exempt-issue-labels: "pinned,security,blocked,good first issue,help wanted"
+          exempt-all-issue-milestones: true
+
+          # ── PR settings ─────────────────────────────────────
+          days-before-pr-stale: 30
+          days-before-pr-close: 7
+          stale-pr-label: "stale"
+          stale-pr-message: |
+            👋 This PR has been automatically marked as stale due to 30 days of inactivity.
+
+            If you're still working on this, please comment or push new changes within 7 days. Otherwise it will be closed.
+
+            Thank you for contributing to OphirPay! 💙
+          close-pr-message: |
+            🔒 This PR has been closed due to inactivity.
+
+            Feel free to reopen or create a new PR when you're ready.
+          exempt-pr-labels: "pinned,blocked,security"
+          exempt-draft-pr: true
+
+          # ── General ─────────────────────────────────────────
+          operations-per-run: 100
+          ascending: true
+          enable-statistics: true

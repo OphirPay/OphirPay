@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0a0a1a"/>
+      <stop offset="1" stop-color="#1e1e3a"/>
+    </linearGradient>
+    <linearGradient id="icon" x1="128" y1="128" x2="384" y2="384" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7B68EE"/>
+      <stop offset="1" stop-color="#4B3FCF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <g transform="translate(256,256)">
+    <!-- Stellar-like star shape -->
+    <circle cx="0" cy="0" r="140" fill="url(#icon)" opacity="0.9"/>
+    <path d="M0,-120 L25,-30 L100,-20 L45,25 L60,100 L0,60 L-60,100 L-45,25 L-100,-20 L-25,-30 Z" fill="#fff" fill-opacity="0.95"/>
+    <!-- Inner circle -->
+    <circle cx="0" cy="0" r="50" fill="#0a0a1a" opacity="0.3"/>
+    <text x="0" y="8" text-anchor="middle" font-family="system-ui" font-weight="700" font-size="42" fill="#fff" opacity="0.9">OP</text>
+  </g>
+</svg>

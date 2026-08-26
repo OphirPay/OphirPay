@@ -1,0 +1,88 @@
+# OphirPay PR Labeler
+# Automatically labels pull requests based on changed file paths.
+# Uses: https://github.com/actions/labeler
+
+"📦 contracts":
+  - changed-files:
+      - any-glob-to-any-file: "contracts/**"
+
+"🎨 frontend":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/app/**"
+          - "src/components/**"
+
+"🔧 backend":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/app/api/**"
+          - "src/middleware.ts"
+
+"📚 lib":
+  - changed-files:
+      - any-glob-to-any-file: "src/lib/**"
+
+"🪝 hooks":
+  - changed-files:
+      - any-glob-to-any-file: "src/hooks/**"
+
+"📐 types":
+  - changed-files:
+      - any-glob-to-any-file: "src/types/**"
+
+"📝 docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
+          - "LICENSE"
+
+"⚙️ devops":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "Dockerfile"
+          - "docker-compose.yml"
+          - "k8s/**"
+          - "helm/**"
+          - "scripts/deploy-*.js"
+          - "scripts/deploy-*.sh"
+          - "scripts/demo-*.sh"
+
+"🧪 tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/__tests__/**"
+          - "e2e/**"
+          - "**/*.test.ts"
+          - "**/*.test.tsx"
+          - "vitest.config.ts"
+          - "playwright.config.ts"
+
+"🗄️ database":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "prisma/**"
+
+"🔒 security":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/lib/api-auth.ts"
+          - "src/lib/crypto.ts"
+          - "src/lib/rate-limit.ts"
+          - "src/middleware.ts"
+          - "SECURITY.md"
+
+"📦 dependencies":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "package.json"
+          - "package-lock.json"
+          - "contracts/**/Cargo.toml"
+          - "contracts/**/Cargo.lock"
+
+"🐛 bug":
+  - head-branch: ["^fix/", "^bugfix/", "^hotfix/"]
+
+"✨ feature":
+  - head-branch: ["^feature/", "^feat/"]

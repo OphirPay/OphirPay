@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture — OphirPay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 40px; }
+  h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 32px; }
+  .arch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .layer { background: #1e293b; border-radius: 14px; padding: 20px; border: 1px solid #334155; }
+  .layer h2 { font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .layer .icon { font-size: 20px; }
+  .tech-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tech-tag { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .tag-frontend { background: #3b82f620; color: #60a5fa; }
+  .tag-blockchain { background: #7c3aed20; color: #a78bfa; }
+  .tag-infra { background: #22c55e20; color: #4ade80; }
+  .tag-db { background: #f59e0b20; color: #fbbf24; }
+  .flow-row { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 24px; padding: 20px; background: #1e293b; border-radius: 14px; border: 1px dashed #334155; }
+  .flow-box { background: #0f172a; border-radius: 10px; padding: 14px 20px; text-align: center; border: 1px solid #334155; }
+  .flow-box h3 { font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
+  .flow-box p { font-size: 12px; color: #a78bfa; font-family: monospace; }
+  .flow-arrow { color: #64748b; font-size: 24px; }
+  .stats-row { display: flex; gap: 16px; margin-top: 24px; }
+  .stat { flex: 1; background: #1e293b; border-radius: 12px; padding: 16px; text-align: center; border: 1px solid #334155; }
+  .stat .num { font-size: 28px; font-weight: 800; }
+  .stat .num.purple { color: #a78bfa; }
+  .stat .num.green { color: #4ade80; }
+  .stat .num.blue { color: #60a5fa; }
+  .stat .num.yellow { color: #fbbf24; }
+  .stat .label { font-size: 12px; color: #64748b; margin-top: 4px; }
+</style>
+</head>
+<body>
+<h1>🏗 Production Architecture</h1>
+<p class="subtitle">Stellar + Next.js 16 + Soroban smart contracts with cross-contract communication</p>
+
+<div class="arch-grid">
+  <div class="layer">
+    <h2><span class="icon">🎨</span> Frontend</h2>
+    <div class="tech-list">
+      <span class="tech-tag tag-frontend">Next.js 16</span>
+      <span class="tech-tag tag-frontend">TypeScript</span>
+      <span class="tech-tag tag-frontend">Tailwind v4</span>
+      <span class="tech-tag tag-frontend">React</span>
+      <span class="tech-tag tag-frontend">Vitest</span>
+    </div>
+  </div>
+  <div class="layer">
+    <h2><span class="icon">⛓️</span> Blockchain</h2>
+    <div class="tech-list">
+      <span class="tech-tag tag-blockchain">Stellar SDK v13</span>
+      <span class="tech-tag tag-blockchain">Soroban Rust</span>
+      <span class="tech-tag tag-blockchain">Freighter</span>
+      <span class="tech-tag tag-blockchain">Testnet</span>
+    </div>
+  </div>
+  <div class="layer">
+    <h2><span class="icon">⚙️</span> Infrastructure</h2>
+    <div class="tech-list">
+      <span class="tech-tag tag-infra">Vercel</span>
+      <span class="tech-tag tag-infra">GitHub Actions</span>
+      <span class="tech-tag tag-infra">SSE Events</span>
+      <span class="tech-tag tag-infra">Error Boundaries</span>
+    </div>
+  </div>
+  <div class="layer">
+    <h2><span class="icon">💾</span> Data</h2>
+    <div class="tech-list">
+      <span class="tech-tag tag-db">Prisma ORM</span>
+      <span class="tech-tag tag-db">SQLite</span>
+      <span class="tech-tag tag-db">Soroban Storage</span>
+      <span class="tech-tag tag-db">Persistent TTL</span>
+    </div>
+  </div>
+</div>
+
+<div class="flow-row">
+  <div class="flow-box"><h3>User</h3><p>Freighter Wallet</p></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box"><h3>Next.js App</h3><p>ophirpay.vercel.app</p></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box"><h3>Soroban RPC</h3><p>Testnet</p></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box"><h3>Smart Contracts</h3><p>2 contracts</p></div>
+</div>
+
+<div class="stats-row">
+  <div class="stat"><div class="num purple">2</div><div class="label">Soroban Contracts</div></div>
+  <div class="stat"><div class="num green">23</div><div class="label">Passing Tests</div></div>
+  <div class="stat"><div class="num blue">80</div><div class="label">Commits</div></div>
+  <div class="stat"><div class="num yellow">12</div><div class="label">App Routes</div></div>
+</div>
+</body>
+</html>

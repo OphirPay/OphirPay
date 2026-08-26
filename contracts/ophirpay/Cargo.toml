@@ -1,0 +1,25 @@
+[package]
+name = "ophirpay-contract"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = "=27.0.5"
+
+[dev-dependencies]
+soroban-sdk = { version = "=27.0.5", features = ["testutils"] }
+
+# cargo test runs natively (50 unit tests). soroban-sdk 27 fixed the
+# ed25519-dalek 3.0 / rand_chacha 0.3 conflict from env-host 22.1.3.
+# WASM builds target wasm32v1-none (protocol 25+ Soroban target).
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"
+

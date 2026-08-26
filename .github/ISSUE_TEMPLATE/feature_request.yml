@@ -1,0 +1,38 @@
+---
+name: ✨ Feature Request
+about: Suggest a new feature for OphirPay
+title: "[FEATURE] "
+labels: ["✨ feature", "triage"]
+assignees: []
+---
+
+## Problem Statement
+
+<!-- What problem does this feature solve? Be specific. -->
+
+## Proposed Solution
+
+<!-- Describe the feature you'd like to see. -->
+
+## Alternatives Considered
+
+<!-- Have you considered alternative approaches? -->
+
+## Affected Area
+
+<!-- Check all that apply -->
+- [ ] Smart contracts (OphirPay / Emitter)
+- [ ] Frontend UI
+- [ ] API / Backend
+- [ ] SDK / Package exports
+- [ ] CI/CD
+- [ ] Documentation
+- [ ] Developer tooling
+
+## User Impact
+
+<!-- Who benefits from this? Developers, end users, operators? -->
+
+## Implementation Hints
+
+<!-- Optional: any technical ideas on how to implement this. -->

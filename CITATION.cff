@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use OphirPay in your research or project, please cite it as below."
+title: "OphirPay: Open-Source Payment Orchestration Layer for Stellar"
+authors:
+  - name: "OphirPay Contributors"
+    website: "https://github.com/OphirPay"
+url: "https://github.com/OphirPay/OphirPay"
+repository-code: "https://github.com/OphirPay/OphirPay"
+abstract: "OphirPay is an open-source payment orchestration layer built on the Stellar blockchain. It provides smart contracts (Soroban/Rust) for payments, escrows, streaming, batch payments, refunds, multisig approvals, DAO governance, and real-time event streaming — with a Next.js frontend, 15-job CI/CD pipeline, and comprehensive developer tooling."
+keywords:
+  - "stellar"
+  - "soroban"
+  - "blockchain"
+  - "payments"
+  - "smart-contracts"
+  - "web3"
+  - "fintech"
+license: MIT
+version: 0.1.0
+date-released: "2026-08-05"

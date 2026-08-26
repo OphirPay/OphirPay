@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Contracts — OphirPay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 40px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+  .header h1 { font-size: 24px; font-weight: 700; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; background: #1e293b; color: #94a3b8; }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity:1 } 50% { opacity:0.4 } }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .card { background: #1e293b; border-radius: 16px; padding: 24px; border: 1px solid #334155; }
+  .card h2 { font-size: 18px; margin-bottom: 16px; color: #f1f5f9; }
+  .card h3 { font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .id-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; font-family: 'Courier New', monospace; font-size: 12px; color: #7c3aed; word-break: break-all; margin-bottom: 16px; }
+  .func-list { list-style: none; }
+  .func-list li { padding: 8px 0; border-bottom: 1px solid #1e293b; font-size: 13px; }
+  .func-list li:last-child { border-bottom: none; }
+  .func-list li code { color: #a78bfa; background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .arrow-section { text-align: center; padding: 20px; }
+  .arrow-section .arrow { font-size: 28px; color: #7c3aed; }
+  .arrow-section .label { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+  .link { color: #7c3aed; font-size: 13px; text-decoration: none; }
+  .link:hover { text-decoration: underline; }
+  .tags { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tag { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .tag-main { background: #7c3aed20; color: #a78bfa; }
+  .tag-emitter { background: #06b6d420; color: #22d3ee; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🧪 Smart Contracts</h1>
+  <div class="badge"><span class="dot"></span> Stellar Testnet</div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="tags"><span class="tag tag-main">Main Contract</span></div>
+    <h2>📦 OphirPay Contract</h2>
+    <h3>Contract ID</h3>
+    <div class="id-box">CBRCZHMNWOFTWOTCI2WBQ5A5HVKVLO2AXHYIWJ5FVYB45OHLSLWGJGYB</div>
+    <h3>Functions</h3>
+    <ul class="func-list">
+      <li><code>init(owner, emitter)</code> — Initialize with owner + emitter address</li>
+      <li><code>get_owner()</code> — Query contract owner</li>
+      <li><code>get_emitter()</code> — Get emitter contract address</li>
+      <li><code>create_payment(payer, payee, amount, tx_hash)</code> — Store payment + emit event</li>
+      <li><code>get_payment(id)</code> — Retrieve payment by ID</li>
+      <li><code>get_payment_count()</code> — Total payments stored</li>
+    </ul>
+    <a class="link" href="#">View on Stellar Expert →</a>
+  </div>
+
+  <div class="card">
+    <div class="tags"><span class="tag tag-emitter">Emitter Contract</span></div>
+    <h2>📡 PaymentEventEmitter</h2>
+    <h3>Contract ID</h3>
+    <div class="id-box">CA6LAPR4OWABPWORBQGK5O5H5S62GIPQBKP3PH7H2DQ3ZNSWSH3RHFE4</div>
+    <h3>Functions</h3>
+    <ul class="func-list">
+      <li><code>init(owner)</code> — Initialize emitter</li>
+      <li><code>get_owner()</code> — Query emitter owner</li>
+      <li><code>emit_payment(emitter, payer, payee, amount, tx_hash)</code> — Store event</li>
+      <li><code>get_event(event_id)</code> — Retrieve event by ID</li>
+      <li><code>get_event_count()</code> — Total events emitted</li>
+    </ul>
+    <a class="link" href="#">View on Stellar Expert →</a>
+  </div>
+</div>
+
+<div class="arrow-section">
+  <div class="arrow">↓ ↑ ↓</div>
+  <div class="label">Cross-contract communication via invoke_contract</div>
+</div>
+</body>
+</html>

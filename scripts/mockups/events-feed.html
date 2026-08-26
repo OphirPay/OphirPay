@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Events — OphirPay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 40px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .header h1 { font-size: 24px; font-weight: 700; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity:1 } 50% { opacity:0.4 } }
+  .event-card { background: #1e293b; border-left: 3px solid; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
+  .event-card.created { border-color: #3b82f6; }
+  .event-card.submitted { border-color: #f59e0b; }
+  .event-card.completed { border-color: #22c55e; }
+  .event-card.failed { border-color: #ef4444; }
+  .event-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .event-type { font-weight: 600; font-size: 14px; }
+  .event-time { font-size: 11px; color: #64748b; font-family: monospace; }
+  .event-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .event-badge.completed { background: #22c55e20; color: #22c55e; }
+  .event-badge.submitted { background: #f59e0b20; color: #f59e0b; }
+  .event-body { font-size: 13px; color: #94a3b8; }
+  .event-body span { font-weight: 600; color: #e2e8f0; }
+  .live-indicator { background: #22c55e15; border: 1px solid #22c55e30; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; }
+  .live-indicator .pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; animation: pulse 1.5s infinite; }
+  .live-indicator .text { font-size: 13px; font-weight: 500; }
+  .id-monospace { font-family: 'Courier New', monospace; font-size: 11px; color: #7c3aed; background: #0f172a; padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>⚡ Live Events</h1>
+  <div class="status"><div class="dot"></div> Connected · SSE</div>
+</div>
+
+<div class="live-indicator">
+  <div class="pulse-dot"></div>
+  <div class="text">Server-Sent Events stream active — receiving payment lifecycle events in real time</div>
+</div>
+
+<div class="event-card completed">
+  <div class="event-top">
+    <div class="event-type">✅ payment:completed</div>
+    <div class="event-time">12:34:56 UTC</div>
+  </div>
+  <div class="event-body">
+    Payment <span>50 XLM</span> to <span class="id-monospace">GDEMO...78901</span> confirmed · TX <span class="id-monospace">80cf9b7f...</span>
+  </div>
+</div>
+
+<div class="event-card submitted">
+  <div class="event-top">
+    <div class="event-type">📤 payment:submitted</div>
+    <div class="event-time">12:34:48 UTC</div>
+  </div>
+  <div class="event-body"><span class="event-badge submitted">PROCESSING</span> Awaiting network confirmation...</div>
+</div>
+
+<div class="event-card created">
+  <div class="event-top">
+    <div class="event-type">📝 payment:created</div>
+    <div class="event-time">12:34:45 UTC</div>
+  </div>
+  <div class="event-body">
+    New payment <span>50 XLM</span> from <span class="id-monospace">GACZ7...</span> · Cross-contract event emitted to PaymentEventEmitter
+  </div>
+</div>
+
+<div class="event-card completed">
+  <div class="event-top">
+    <div class="event-type">✅ payment:completed</div>
+    <div class="event-time">12:31:20 UTC</div>
+  </div>
+  <div class="event-body">
+    Payment <span>1,000 XLM</span> to <span class="id-monospace">GBETA...45XYZ</span> confirmed · TX <span class="id-monospace">29879bd9...</span>
+  </div>
+</div>
+
+<div class="event-card failed">
+  <div class="event-top">
+    <div class="event-type">❌ payment:failed</div>
+    <div class="event-time">12:28:03 UTC</div>
+  </div>
+  <div class="event-body">Insufficient balance — 500 XLM required, 342 XLM available</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a1a;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#111133;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1a0a2e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#7B68EE;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00d4aa;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#c4b5fd;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="400" fill="url(#bg)" rx="12" />
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.03" stroke="#7B68EE" stroke-width="0.5">
+    <line x1="0" y1="60" x2="1200" y2="60" />
+    <line x1="0" y1="120" x2="1200" y2="120" />
+    <line x1="0" y1="180" x2="1200" y2="180" />
+    <line x1="0" y1="240" x2="1200" y2="240" />
+    <line x1="0" y1="300" x2="1200" y2="300" />
+    <line x1="0" y1="360" x2="1200" y2="360" />
+    <line x1="200" y1="0" x2="200" y2="400" />
+    <line x1="400" y1="0" x2="400" y2="400" />
+    <line x1="600" y1="0" x2="600" y2="400" />
+    <line x1="800" y1="0" x2="800" y2="400" />
+    <line x1="1000" y1="0" x2="1000" y2="400" />
+  </g>
+
+  <!-- Decorative circles -->
+  <circle cx="1050" cy="80" r="120" fill="#7B68EE" opacity="0.04" />
+  <circle cx="100" cy="320" r="80" fill="#00d4aa" opacity="0.04" />
+  <circle cx="600" cy="200" r="180" fill="#7B68EE" opacity="0.02" />
+
+  <!-- Bank/treasury icon -->
+  <g transform="translate(100, 100)" filter="url(#glow)">
+    <!-- Building body -->
+    <rect x="30" y="60" width="140" height="120" rx="6" fill="none" stroke="url(#accent)" stroke-width="2.5" />
+    <!-- Roof -->
+    <polygon points="10,60 100,10 190,60" fill="none" stroke="url(#accent)" stroke-width="2.5" stroke-linejoin="round" />
+    <!-- Pillars -->
+    <line x1="55" y1="60" x2="55" y2="180" stroke="url(#accent)" stroke-width="1.5" opacity="0.5" />
+    <line x1="80" y1="60" x2="80" y2="180" stroke="url(#accent)" stroke-width="1.5" opacity="0.5" />
+    <line x1="100" y1="10" x2="100" y2="60" stroke="url(#accent)" stroke-width="1.5" opacity="0.5" />
+    <line x1="120" y1="60" x2="120" y2="180" stroke="url(#accent)" stroke-width="1.5" opacity="0.5" />
+    <line x1="145" y1="60" x2="145" y2="180" stroke="url(#accent)" stroke-width="1.5" opacity="0.5" />
+    <!-- Door -->
+    <path d="M80,180 Q100,155 120,180" fill="none" stroke="#00d4aa" stroke-width="1.5" opacity="0.7" />
+  </g>
+
+  <!-- Text content -->
+  <text x="280" y="155" font-family="system-ui,-apple-system,sans-serif" font-size="52" font-weight="800" letter-spacing="-1" fill="white">OphirPay</text>
+
+  <text x="280" y="200" font-family="system-ui,-apple-system,sans-serif" font-size="20" font-weight="400" fill="#a5a5c8" letter-spacing="1">
+    The Open-Source Payment Orchestration Layer for Stellar
+  </text>
+
+  <!-- Accent line -->
+  <line x1="280" y1="220" x2="580" y2="220" stroke="url(#accent)" stroke-width="3" stroke-linecap="round" />
+
+  <!-- Tag badges -->
+  <g transform="translate(280, 260)" font-family="system-ui,-apple-system,sans-serif" font-size="12">
+    <rect x="0" y="0" width="105" height="24" rx="12" fill="#7B68EE" opacity="0.15" />
+    <text x="52" y="16" fill="#c4b5fd" text-anchor="middle">Soroban • Rust</text>
+
+    <rect x="115" y="0" width="95" height="24" rx="12" fill="#00d4aa" opacity="0.15" />
+    <text x="162" y="16" fill="#6ee7b7" text-anchor="middle">Next.js 16</text>
+
+    <rect x="220" y="0" width="90" height="24" rx="12" fill="#7B68EE" opacity="0.15" />
+    <text x="265" y="16" fill="#c4b5fd" text-anchor="middle">TypeScript</text>
+  </g>
+
+  <!-- Bottom decorative line -->
+  <rect x="0" y="396" width="1200" height="4" fill="url(#accent)" rx="2" opacity="0.6" />
+</svg>

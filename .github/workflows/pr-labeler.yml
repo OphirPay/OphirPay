@@ -1,0 +1,26 @@
+name: "🏷️ Meta — PR Labeler"
+
+on:
+  # `pull_request_target` (not `pull_request`) so the workflow runs with a
+  # token that has `pull-requests: write` even for pull requests from forks.
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pr-labeler:
+    name: "🏷️ Meta — PR Labeler"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      # Checkout the base branch (main) so the labeler reads the trusted
+      # `.github/labeler.yml` rather than one from an untrusted PR head.
+      - uses: actions/checkout@v4
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
+          sync-labels: true

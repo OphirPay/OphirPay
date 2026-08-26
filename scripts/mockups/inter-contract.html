@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inter-Contract Communication — OphirPay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 40px; }
+  h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 40px; }
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .box { background: #1e293b; border: 2px solid #334155; border-radius: 16px; padding: 24px 40px; text-align: center; min-width: 420px; }
+  .box.main { border-color: #7c3aed; }
+  .box.emitter { border-color: #06b6d4; }
+  .box h2 { font-size: 18px; margin-bottom: 8px; }
+  .box p { font-size: 13px; color: #94a3b8; }
+  .code-block { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; font-family: 'Courier New', monospace; font-size: 12px; color: #a78bfa; margin-top: 12px; text-align: left; line-height: 1.6; }
+  .code-block .kw { color: #c084fc; }
+  .code-block .fn { color: #22d3ee; }
+  .code-block .str { color: #4ade80; }
+  .code-block .cmt { color: #64748b; }
+  .arrow-box { display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
+  .arrow-down { font-size: 32px; color: #7c3aed; line-height: 1; }
+  .arrow-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+  .result-row { display: flex; gap: 24px; margin-top: 24px; }
+  .mini-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px 24px; text-align: center; }
+  .mini-card .label { font-size: 11px; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+  .mini-card .value { font-size: 20px; font-weight: 700; }
+  .mini-card .value.green { color: #22c55e; }
+  .mini-card .value.purple { color: #a78bfa; }
+  .checkmark { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 50%; background: #22c55e20; margin-bottom: 12px; font-size: 24px; }
+</style>
+</head>
+<body>
+<h1>🔗 Inter-Contract Communication</h1>
+<p class="subtitle">OphirPayContract calls PaymentEventEmitter via Soroban invoke_contract</p>
+
+<div class="flow">
+  <div class="box main">
+    <h2>📦 OphirPayContract</h2>
+    <p>Main payment lifecycle contract</p>
+    <div class="code-block">
+      <span class="kw">pub fn</span> <span class="fn">create_payment</span>(env, payer, payee, amount, tx_hash) {<br>
+      &nbsp;&nbsp;<span class="cmt">// 1. Store payment in persistent storage</span><br>
+      &nbsp;&nbsp;env.storage().persistent().set(&amp;count, &amp;payment);<br>
+      &nbsp;&nbsp;<span class="cmt">// 2. Cross-contract call to emitter</span><br>
+      &nbsp;&nbsp;env.<span class="fn">invoke_contract</span>(&amp;emitter_addr, <span class="str">"emit_payment"</span>, args);<br>
+      }
+    </div>
+  </div>
+
+  <div class="arrow-box">
+    <div class="arrow-down">⬇</div>
+    <div class="arrow-label">invoke_contract</div>
+  </div>
+
+  <div class="box emitter">
+    <h2>📡 PaymentEventEmitter</h2>
+    <p>Receives and stores payment events</p>
+    <div class="code-block">
+      <span class="kw">pub fn</span> <span class="fn">emit_payment</span>(env, emitter, payer, payee, amount, tx_hash) {<br>
+      &nbsp;&nbsp;<span class="cmt">// Store PaymentEvent in persistent storage</span><br>
+      &nbsp;&nbsp;env.storage().persistent().set(&amp;event_id, &amp;event);<br>
+      }
+    </div>
+  </div>
+
+  <div class="result-row">
+    <div class="mini-card">
+      <div class="label">Main Contract</div>
+      <div class="value purple">1 payment</div>
+    </div>
+    <div class="mini-card">
+      <div class="checkmark">✅</div>
+      <div class="label">Emitter Events</div>
+      <div class="value green">1 event</div>
+    </div>
+    <div class="mini-card">
+      <div class="label">TX Hash</div>
+      <div style="font-family:monospace;font-size:11px;color:#94a3b8;margin-top:4px">80cf9b7f...49d79ac1</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

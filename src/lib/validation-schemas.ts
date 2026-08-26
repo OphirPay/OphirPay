@@ -136,6 +136,19 @@ export const paginationSchema = z.object({
   search: z.string().optional(),
 });
 
+/**
+ * Filters accepted by GET /api/payments/export.
+ *
+ * Deliberately the filter subset of `paginationSchema` with no page/limit: an
+ * export covers every row matching the filters, not one page of them.
+ */
+export const exportFiltersSchema = z.object({
+  status: z.string().optional(),
+  search: z.string().optional(),
+});
+
+export type ExportFilters = z.infer<typeof exportFiltersSchema>;
+
 export type PaginationParams = z.infer<typeof paginationSchema>;
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;

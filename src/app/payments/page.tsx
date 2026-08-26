@@ -11,7 +11,6 @@ import {
   type OnChainPayment,
 } from "@/lib/contracts";
 import { getStellarExplorerUrl, XLM_STROOPS } from "@/lib/stellar";
-import { exportToCsv } from "@/lib/csv";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { CopyButton } from "@/components/ui/CopyButton";
@@ -123,15 +122,17 @@ function PaymentsClient() {
       page: null,
     });
 
-  const handleExport = () => {
-    exportToCsv(filtered, [
-      { key: "id", header: "Payment ID" },
-      { key: "payer", header: "Payer" },
-      { key: "payee", header: "Payee" },
-      { key: "amountStroops", header: "Amount (Stroops)" },
-      { key: "txHash", header: "Tx Hash" },
-    ], { filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv` });
-  };
+  // Export runs server-side so it covers every row matching the active filters,
+  // not just the page currently rendered. This is a plain link rather than a
+  // scripted navigation: the response is a file download driven by the
+  // endpoint's Content-Disposition header, so Next's client router must not
+  // intercept it and try to render the result as a page.
+  const exportHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    const query = params.toString();
+    return `/api/payments/export${query ? `?${query}` : ""}`;
+  }, [debouncedSearch]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -149,17 +150,17 @@ function PaymentsClient() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleExport}
-            disabled={payments.length === 0}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+          <a
+            href={exportHref}
+            download
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             title="Export CSV"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
             </svg>
             CSV
-          </button>
+          </a>
           <button
             onClick={() => load()}
             disabled={loading}

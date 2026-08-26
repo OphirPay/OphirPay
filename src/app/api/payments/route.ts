@@ -13,6 +13,7 @@ import { getAuthContext } from "@/lib/auth-session";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { incMetric } from "@/lib/metrics-counters";
+import { buildPaymentWhere, PAYMENT_ORDER_BY } from "@/lib/payment-filters";
 
 export async function GET(request: Request) {
   try {
@@ -35,21 +36,14 @@ export async function GET(request: Request) {
 
     const { page, limit, status, search } = parsed.data;
 
-    // Always scope to the authenticated user — never expose other users' data
-    const where: Record<string, unknown> = { userId: auth.userId };
-    if (status) where.status = status;
-    if (search) {
-      where.OR = [
-        { description: { contains: search } },
-        { memo: { contains: search } },
-        { transactionHash: { contains: search } },
-      ];
-    }
+    // Always scope to the authenticated user — never expose other users' data.
+    // Shared with GET /api/payments/export so the two cannot drift apart.
+    const where = buildPaymentWhere({ userId: auth.userId, status, search });
 
     const [payments, total] = await Promise.all([
       prisma.payment.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: PAYMENT_ORDER_BY,
         skip: (page - 1) * limit,
         take: limit,
       }),

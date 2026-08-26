@@ -20,7 +20,16 @@ export function toCsvString<T extends Record<string, unknown>>(
 }
 
 function escapeField(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+  // RFC 4180 §2.6: fields containing a comma, double quote, CR or LF must be
+  // enclosed in double quotes. A bare CR was previously left unquoted, which
+  // splits the record when the file is opened in Excel or parsed by a reader
+  // that treats CR as a line terminator.
+  if (
+    value.includes(",") ||
+    value.includes('"') ||
+    value.includes("\n") ||
+    value.includes("\r")
+  ) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
@@ -28,15 +37,20 @@ function escapeField(value: string): string {
 
 /**
  * Create a CSV Response object for API download endpoints.
+ *
+ * `extraHeaders` lets a caller attach export metadata (row counts, truncation
+ * flags) without every consumer having to rebuild the Response by hand.
  */
 export function createCsvResponse(
   filename: string,
-  data: string
+  data: string,
+  extraHeaders?: Record<string, string>
 ): Response {
   return new Response(data, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${filename}"`,
+      ...extraHeaders,
     },
   });
 }

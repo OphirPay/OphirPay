@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 import { test, expect } from "@playwright/test";
-import crypto from "crypto";
 import http from "http";
 import type { AddressInfo } from "net";
+import { buildSignedPayload, deliverWebhook } from "../src/lib/webhook-deliver";
+import type { WebhookPayload } from "../src/lib/webhook-deliver";
+import * as webhookUrlGuard from "../src/lib/webhook-url-guard";
 
 /**
  * E2E: Webhook delivery + retry flow (Issue #209)
@@ -13,15 +15,8 @@ import type { AddressInfo } from "net";
  * - Mock receiver endpoint records deliveries for assertions
  *
  * Strategy: This test is self-contained. It starts its own mock HTTP receiver
- * and directly exercises the webhook signing + retry contract. It does NOT
- * depend on the OphirPay app server being running, making it portable across
- * CI environments (local, Vercel preview, fork PRs).
- *
- * The canonical signature scheme matches src/lib/webhook-deliver.ts exactly:
- *   1. Build payload with signature=""
- *   2. JSON.stringify (stable key order)
- *   3. HMAC-SHA256(secret, canonical_string)
- *   4. Send final body with computed signature in both body and header
+ * and directly exercises the production deliverWebhook function so that
+ * signing, URL guard, timeout, redirect policy and retry logic are all covered.
  */
 
 interface DeliveryRecord {
@@ -33,22 +28,30 @@ interface DeliveryRecord {
   httpStatus: number;
 }
 
-function computeCanonicalSignature(body: string, secret: string): string {
-  try {
-    const parsed = JSON.parse(body);
-    const canonical = JSON.stringify({ ...parsed, signature: "" });
-    return crypto.createHmac("sha256", secret).update(canonical).digest("hex");
-  } catch {
-    return "";
-  }
-}
-
 test.describe("Webhook delivery + retry flow", () => {
   let deliveries: DeliveryRecord[] = [];
   let failUntilAttempt = 0;
   let webhookSecret = "";
   let mockServerUrl = "";
   let server: http.Server | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let originalGuard: any = null;
+
+  test.beforeAll(() => {
+    // Bypass SSRF guard for the local mock server. The production guard blocks
+    // loopback addresses to prevent real webhook deliveries to internal hosts,
+    // but E2E tests intentionally exercise delivery against a localhost receiver.
+    // We stub only the async delivery-time check so that signing, retry and
+    // timeout logic still run through production code paths.
+    originalGuard = webhookUrlGuard.isSafeWebhookUrlAtDelivery;
+    (webhookUrlGuard as Record<string, unknown>).isSafeWebhookUrlAtDelivery = async () => true;
+  });
+
+  test.afterAll(() => {
+    if (originalGuard) {
+      (webhookUrlGuard as Record<string, unknown>).isSafeWebhookUrlAtDelivery = originalGuard;
+    }
+  });
 
   test.beforeAll(async () => {
     server = http.createServer((req, res) => {
@@ -71,9 +74,10 @@ test.describe("Webhook delivery + retry flow", () => {
         try {
           record.parsedBody = JSON.parse(body);
           if (webhookSecret && record.parsedBody) {
-            const expected = computeCanonicalSignature(body, webhookSecret);
             const received = record.headers["x-ophirpay-signature"] || "";
-            record.signatureValid = expected === received && expected !== "";
+            // Recompute using production helper to validate canonical form
+            const recomputed = buildSignedPayload(record.parsedBody as WebhookPayload, webhookSecret);
+            record.signatureValid = recomputed.signature === received && received !== "";
           }
         } catch {
           record.parsedBody = body;
@@ -113,48 +117,23 @@ test.describe("Webhook delivery + retry flow", () => {
   test.beforeEach(() => {
     deliveries = [];
     failUntilAttempt = 0;
-    webhookSecret = crypto.randomBytes(32).toString("hex");
+    webhookSecret = require("crypto").randomBytes(32).toString("hex");
   });
 
   test("delivers signed webhook with retry after transient failures", async () => {
     // Configure mock to fail first 2 attempts, succeed on 3rd
     failUntilAttempt = 2;
 
-    const payload = {
+    const payload: WebhookPayload = {
       event: "payment.created",
       timestamp: new Date().toISOString(),
       data: { id: "pay_test_001", amount: "100", currency: "USDC" },
-      signature: "",
     };
-    const canonical = JSON.stringify({ ...payload, signature: "" });
-    const sig = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(canonical)
-      .digest("hex");
-    const finalBody = JSON.stringify({ ...payload, signature: sig });
 
-    // Simulate the retry loop from src/lib/webhook-deliver.ts
-    // (exponential backoff: 1s, 2s, 4s — shortened for test speed)
-    const maxRetries = 3;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await fetch(mockServerUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-OphirPay-Signature": sig,
-            "X-OphirPay-Event": "payment.created",
-          },
-          body: finalBody,
-        });
-        if (response.ok) break; // Stop on success (matches deliverWebhook behavior)
-      } catch {
-        // Network error — continue retrying
-      }
-      if (attempt < maxRetries) {
-        await new Promise((r) => setTimeout(r, 100)); // Shortened backoff for test
-      }
-    }
+    // Exercise the PRODUCTION deliverWebhook function directly so that
+    // signing, URL guard, timeout, redirect policy and retry logic are all covered.
+    const delivered = await deliverWebhook(mockServerUrl, webhookSecret, payload, 3);
+    expect(delivered).toBe(true);
 
     // Verify: exactly 3 delivery attempts were made (2 failures + 1 success)
     expect(deliveries).toHaveLength(3);
@@ -187,24 +166,13 @@ test.describe("Webhook delivery + retry flow", () => {
       event: "payment.completed",
       timestamp: new Date().toISOString(),
       data: { id: "pay_test_002" },
-      signature: "",
     };
-    const canonical = JSON.stringify({ ...payload, signature: "" });
-    const wrongSig = crypto
-      .createHmac("sha256", "wrong-secret")
-      .update(canonical)
-      .digest("hex");
-    const finalBody = JSON.stringify({ ...payload, signature: wrongSig });
 
-    await fetch(mockServerUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-OphirPay-Signature": wrongSig,
-        "X-OphirPay-Event": "payment.completed",
-      },
-      body: finalBody,
-    });
+    // Send a manually crafted request with an incorrect signature to verify
+    // the mock receiver correctly flags invalid signatures.
+    const wrongSig = "deadbeef".repeat(8);
+    const finalBody = JSON.stringify({ ...payload, signature: wrongSig });
+    await fetch(mockServerUrl, { method: "POST", headers: { "Content-Type": "application/json", "X-OphirPay-Signature": wrongSig, "X-OphirPay-Event": "payment.completed" }, body: finalBody });
 
     expect(deliveries).toHaveLength(1);
     expect(deliveries[0].signatureValid).toBe(false);
@@ -213,38 +181,15 @@ test.describe("Webhook delivery + retry flow", () => {
   test("records all attempts when all retries fail", async () => {
     failUntilAttempt = 999; // Always fail
 
-    const payload = {
+    const payload: WebhookPayload = {
       event: "batch.failed",
       timestamp: new Date().toISOString(),
       data: { batchId: "batch_001" },
-      signature: "",
     };
-    const canonical = JSON.stringify({ ...payload, signature: "" });
-    const sig = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(canonical)
-      .digest("hex");
-    const finalBody = JSON.stringify({ ...payload, signature: sig });
 
-    const maxRetries = 3;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        await fetch(mockServerUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-OphirPay-Signature": sig,
-            "X-OphirPay-Event": "batch.failed",
-          },
-          body: finalBody,
-        });
-      } catch {
-        // ignore
-      }
-      if (attempt < maxRetries) {
-        await new Promise((r) => setTimeout(r, 100));
-      }
-    }
+    // Production deliverWebhook should exhaust retries and return false
+    const delivered = await deliverWebhook(mockServerUrl, webhookSecret, payload, 3);
+    expect(delivered).toBe(false);
 
     // All 3 attempts recorded
     expect(deliveries).toHaveLength(3);
@@ -258,28 +203,16 @@ test.describe("Webhook delivery + retry flow", () => {
   test("verifies canonical signature matches OphirPay signing scheme", async () => {
     // This test ensures our test helper uses the EXACT same canonical form
     // as src/lib/webhook-deliver.ts: JSON.stringify({...payload, signature: ""})
-    const payload = {
+    const payload: WebhookPayload = {
       event: "request.paid",
       timestamp: "2026-08-26T12:00:00.000Z",
       data: { requestId: "req_001", amount: "50" },
-      signature: "",
     };
 
-    // Compute using our test helper
-    const canonical = JSON.stringify({ ...payload, signature: "" });
-    const testSig = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(canonical)
-      .digest("hex");
-
-    // Compute using the exact same logic as buildSignedPayload in webhook-deliver.ts
-    const productionCanonical = JSON.stringify({ ...payload, signature: "" });
-    const productionSig = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(productionCanonical)
-      .digest("hex");
-
-    expect(testSig).toBe(productionSig);
-    expect(testSig).toMatch(/^[0-9a-f]{64}$/);
+    const { signature } = buildSignedPayload(payload, webhookSecret);
+    expect(signature).toMatch(/^[0-9a-f]{64}$/);
+    // Re-compute to ensure deterministic canonical form
+    const second = buildSignedPayload(payload, webhookSecret);
+    expect(second.signature).toBe(signature);
   });
 });

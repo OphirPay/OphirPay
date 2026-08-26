@@ -53,5 +53,11 @@
     "autoAlias": true,
     "silent": false,
     "productionBranch": "main"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

@@ -3,8 +3,10 @@
 
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { shortenAddress, timeAgo } from "@/lib/utils";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { EmptyState } from "@/components/EmptyState";
 
 import {
   fetchOnChainPayments,
@@ -26,6 +28,7 @@ interface SseEvent {
 }
 
 export default function EventsPage() {
+  const router = useRouter();
   const [connected, setConnected] = useState(false);
   const [liveEvents, setLiveEvents] = useState<SseEvent[]>([]);
   const [viewMode, setViewMode] = useState<"live" | "onchain">("live");
@@ -196,61 +199,68 @@ export default function EventsPage() {
         </div>
       ) : (
         /* On-Chain Records */
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
-                  <th className="py-3 px-4 font-medium">#</th>
-                  <th className="py-3 px-4 font-medium">From → To</th>
-                  <th className="py-3 px-4 font-medium">Amount</th>
-                  <th className="py-3 px-4 font-medium">Status</th>
-                  <th className="py-3 px-4 font-medium">TX</th>
-                </tr>
-              </thead>
-              <tbody>
-                {onChainPayments.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-12 text-center">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">No on-chain records yet</p>
-                    </td>
+        onChainPayments.length === 0 ? (
+          <EmptyState
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+            }
+            title="No On-Chain Records Yet"
+            description="No on-chain payment events have been emitted by the contract yet."
+            actionLabel="Send Payment"
+            onAction={() => router.push("/send")}
+          />
+        ) : (
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
+                    <th className="py-3 px-4 font-medium">#</th>
+                    <th className="py-3 px-4 font-medium">From → To</th>
+                    <th className="py-3 px-4 font-medium">Amount</th>
+                    <th className="py-3 px-4 font-medium">Status</th>
+                    <th className="py-3 px-4 font-medium">TX</th>
                   </tr>
-                )}
-                {onChainPayments.map((p) => (
-                  <tr key={p.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                    <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">#{p.id}</td>
-                    <td className="py-3 px-4">
-                      <span className="text-xs font-mono text-gray-500">
-                        {shortenAddress(p.payer, 4)} → {shortenAddress(p.payee, 4)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-mono text-gray-700 dark:text-gray-300">
-                      {(p.amountStroops / XLM_STROOPS).toFixed(2)} XLM
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                        RECORDED
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {p.txHash && (
-                        <a
-                          href={getStellarExplorerUrl(p.txHash)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-mono text-ophir-600 dark:text-ophir-400 hover:underline"
-                        >
-                          {shortenAddress(p.txHash, 6)}
-                        </a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {onChainPayments.map((p) => (
+                    <tr key={p.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                      <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">#{p.id}</td>
+                      <td className="py-3 px-4">
+                        <span className="text-xs font-mono text-gray-500">
+                          {shortenAddress(p.payer, 4)} → {shortenAddress(p.payee, 4)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-gray-700 dark:text-gray-300">
+                        {(p.amountStroops / XLM_STROOPS).toFixed(2)} XLM
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                          RECORDED
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {p.txHash && (
+                          <a
+                            href={getStellarExplorerUrl(p.txHash)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-mono text-ophir-600 dark:text-ophir-400 hover:underline"
+                          >
+                            {shortenAddress(p.txHash, 6)}
+                          </a>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )
       )}
     </div>
   );

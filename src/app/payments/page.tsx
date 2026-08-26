@@ -14,6 +14,7 @@ import { getStellarExplorerUrl, XLM_STROOPS } from "@/lib/stellar";
 import { exportToCsv } from "@/lib/csv";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Pagination } from "@/components/ui/Pagination";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -228,37 +229,49 @@ function PaymentsClient() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
-                <th className="py-3 px-4 font-medium">Payment</th>
-                <th className="py-3 px-4 font-medium">Amount</th>
-                <th className="py-3 px-4 font-medium">Status</th>
-                <th className="py-3 px-4 font-medium">Date</th>
-                <th className="py-3 px-4 font-medium">Tx Hash</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={5} className="py-4 px-4">
-                    <LoadingSkeleton variant="table" lines={5} />
-                  </td>
+      {/* Content */}
+      {loading ? (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+          <LoadingSkeleton variant="table" lines={5} />
+        </div>
+      ) : payments.length === 0 && !error ? (
+        <EmptyState
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-400">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6H2.25m0 0v8.25m0-8.25h16.5m0 0a.75.75 0 01.75.75v.75m0 0v8.25m0-8.25H3m16.5 0h.75A.75.75 0 0121 6.75v8.25a.75.75 0 01-.75.75H3.75A.75.75 0 013 15V6.75A.75.75 0 013.75 6H6" />
+            </svg>
+          }
+          title="No Payments Yet"
+          description="Send, batch, or schedule your first payment on Stellar."
+          actionLabel="Send Payment"
+          onAction={() => router.push("/send")}
+        />
+      ) : filtered.length === 0 && !error ? (
+        <EmptyState
+          icon={
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-400">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+          }
+          title="No Matching Payments"
+          description="No payment records match your active search filter."
+          actionLabel="Clear Search"
+          onAction={() => setSearch("")}
+        />
+      ) : (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
+                  <th className="py-3 px-4 font-medium">Payment</th>
+                  <th className="py-3 px-4 font-medium">Amount</th>
+                  <th className="py-3 px-4 font-medium">Status</th>
+                  <th className="py-3 px-4 font-medium">Date</th>
+                  <th className="py-3 px-4 font-medium">Tx Hash</th>
                 </tr>
-              )}
-
-              {!loading && filtered.length === 0 && !error && (
-                <tr>
-                  <td colSpan={5} className="py-12 text-center">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {search ? "No payments match your search." : "No on-chain payments yet — send one from the Send page."}
-                    </p>
-                  </td>
-                </tr>
-              )}
+              </thead>
+              <tbody>
 
               {!loading &&
                 paginated.map((payment) => (
@@ -346,6 +359,7 @@ function PaymentsClient() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

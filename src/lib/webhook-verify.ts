@@ -91,7 +91,11 @@ export function verifyWebhookSignature(
 
   // 4. Replay protection: verify timestamp tolerance
   const tolerance = options.toleranceSeconds ?? 300;
-  if (tolerance > 0 && typeof parsed.timestamp === "string") {
+  if (tolerance > 0) {
+    if (typeof parsed.timestamp !== "string") {
+      return { valid: false, reason: "Invalid ISO timestamp in payload" };
+    }
+
     const eventTime = new Date(parsed.timestamp).getTime();
     if (isNaN(eventTime)) {
       return { valid: false, reason: "Invalid ISO timestamp in payload" };

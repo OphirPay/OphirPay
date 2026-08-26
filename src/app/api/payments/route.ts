@@ -24,16 +24,13 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const parsed = paginationSchema.safeParse({
-      page: searchParams.get("page"),
-      limit: searchParams.get("limit"),
-      status: searchParams.get("status"),
-      search: searchParams.get("search"),
-    });
-
-    if (!parsed.success) return validationError(parsed.error);
-
-    const { page, limit, status, search } = parsed.data;
+    const rawLimit = searchParams.get("limit");
+    const limit = rawLimit ? Math.min(Math.max(parseInt(rawLimit, 10) || 20, 1), 100) : 20;
+    const cursor = searchParams.get("cursor") || undefined;
+    const pageParam = searchParams.get("page");
+    const page = pageParam ? Math.max(parseInt(pageParam, 10) || 1, 1) : undefined;
+    const status = searchParams.get("status") || undefined;
+    const search = searchParams.get("search") || undefined;
 
     // Always scope to the authenticated user — never expose other users' data
     const where: Record<string, unknown> = { userId: auth.userId };
@@ -46,19 +43,61 @@ export async function GET(request: Request) {
       ];
     }
 
-    const [payments, total] = await Promise.all([
-      prisma.payment.findMany({
+    let payments: any[];
+    let nextCursor: string | null = null;
+    let hasMore = false;
+    let total: number | undefined;
+
+    if (cursor) {
+      // Keyset cursor pagination
+      const items = await prisma.payment.findMany({
         where,
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.payment.count({ where }),
-    ]);
+        take: limit + 1,
+        cursor: { id: cursor },
+        skip: 1,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      });
 
-    logger.request("GET", `/api/payments?page=${page}&limit=${limit}`, 200, 0);
+      hasMore = items.length > limit;
+      payments = hasMore ? items.slice(0, limit) : items;
+      nextCursor = hasMore && payments.length > 0 ? payments[payments.length - 1].id : null;
+    } else if (page !== undefined) {
+      // Offset pagination fallback
+      const [pagedItems, count] = await Promise.all([
+        prisma.payment.findMany({
+          where,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          skip: (page - 1) * limit,
+          take: limit + 1,
+        }),
+        prisma.payment.count({ where }),
+      ]);
+      total = count;
+      hasMore = pagedItems.length > limit;
+      payments = hasMore ? pagedItems.slice(0, limit) : pagedItems;
+      nextCursor = hasMore && payments.length > 0 ? payments[payments.length - 1].id : null;
+    } else {
+      // First page cursor query
+      const items = await prisma.payment.findMany({
+        where,
+        take: limit + 1,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      });
 
-    return successResponse(payments, { page, limit, total });
+      hasMore = items.length > limit;
+      payments = hasMore ? items.slice(0, limit) : items;
+      nextCursor = hasMore && payments.length > 0 ? payments[payments.length - 1].id : null;
+    }
+
+    logger.request("GET", `/api/payments?limit=${limit}&cursor=${cursor || ""}`, 200, 0);
+
+    return successResponse(payments, {
+      limit,
+      cursor: cursor || null,
+      nextCursor,
+      hasMore,
+      ...(total !== undefined && { total, page: page || 1 }),
+    });
   } catch (err) {
     return handleApiError(err, "GET /api/payments");
   }

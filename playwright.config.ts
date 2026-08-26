@@ -18,22 +18,16 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
-      testIgnore: ["**/visual/**"],
     },
     {
       name: "firefox",
       use: { ...devices["Desktop Firefox"] },
-      testIgnore: ["**/visual/**"],
+      testIgnore: ["e2e/visual/**"],
     },
     {
       name: "mobile-chrome",
       use: { ...devices["Pixel 5"] },
-      testIgnore: ["**/visual/**"],
-    },
-    {
-      name: "visual-regression",
-      use: { ...devices["Desktop Chrome"] },
-      testMatch: ["**/visual/**"],
+      testIgnore: ["e2e/visual/**"],
     },
   ],
   // No webServer — E2E runs against live Vercel deployment.

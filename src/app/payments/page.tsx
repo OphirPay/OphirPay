@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatAmount, shortenAddress, timeAgo } from "@/lib/utils";
@@ -123,6 +123,38 @@ function PaymentsClient() {
       page: null,
     });
 
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+
+  const handleRowKeyDown = (
+    e: React.KeyboardEvent<HTMLTableRowElement>,
+    index: number
+  ) => {
+    switch (e.key) {
+      case "ArrowDown": {
+        e.preventDefault();
+        const nextIndex = Math.min(index + 1, paginated.length - 1);
+        rowRefs.current[nextIndex]?.focus();
+        break;
+      }
+      case "ArrowUp": {
+        e.preventDefault();
+        const prevIndex = Math.max(index - 1, 0);
+        rowRefs.current[prevIndex]?.focus();
+        break;
+      }
+      case "Home": {
+        e.preventDefault();
+        rowRefs.current[0]?.focus();
+        break;
+      }
+      case "End": {
+        e.preventDefault();
+        rowRefs.current[paginated.length - 1]?.focus();
+        break;
+      }
+    }
+  };
+
   const handleExport = () => {
     exportToCsv(filtered, [
       { key: "id", header: "Payment ID" },
@@ -231,14 +263,19 @@ function PaymentsClient() {
       {/* Table */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table
+            className="w-full text-sm"
+            role="table"
+            aria-label="Payments table"
+            aria-rowcount={filtered.length}
+          >
             <thead>
               <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
-                <th className="py-3 px-4 font-medium">Payment</th>
-                <th className="py-3 px-4 font-medium">Amount</th>
-                <th className="py-3 px-4 font-medium">Status</th>
-                <th className="py-3 px-4 font-medium">Date</th>
-                <th className="py-3 px-4 font-medium">Tx Hash</th>
+                <th scope="col" className="py-3 px-4 font-medium">Payment</th>
+                <th scope="col" className="py-3 px-4 font-medium">Amount</th>
+                <th scope="col" className="py-3 px-4 font-medium">Status</th>
+                <th scope="col" className="py-3 px-4 font-medium">Date</th>
+                <th scope="col" className="py-3 px-4 font-medium">Tx Hash</th>
               </tr>
             </thead>
             <tbody>
@@ -261,10 +298,18 @@ function PaymentsClient() {
               )}
 
               {!loading &&
-                paginated.map((payment) => (
+                paginated.map((payment, idx) => (
                   <tr
                     key={payment.id}
-                    className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
+                    ref={(el) => {
+                      rowRefs.current[idx] = el;
+                    }}
+                    tabIndex={0}
+                    role="row"
+                    aria-rowindex={startIndex + idx + 1}
+                    data-testid={`payment-row-${payment.id}`}
+                    onKeyDown={(e) => handleRowKeyDown(e, idx)}
+                    className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ophir-500 dark:focus-visible:ring-ophir-400 focus:bg-gray-100 dark:focus:bg-gray-800/50 transition-colors"
                   >
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-900 dark:text-white">#{payment.id}</p>
@@ -293,7 +338,7 @@ function PaymentsClient() {
                             href={getStellarExplorerUrl(payment.txHash)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-mono text-xs text-ophir-600 dark:text-ophir-400 hover:underline"
+                            className="font-mono text-xs text-ophir-600 dark:text-ophir-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ophir-500 rounded"
                           >
                             {shortenAddress(payment.txHash)}
                           </a>

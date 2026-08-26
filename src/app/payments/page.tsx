@@ -17,6 +17,8 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { Pagination } from "@/components/ui/Pagination";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import { useWallet } from "@/hooks/useMultiWallet";
+import { exportToCsv } from "@/lib/csv";
 
 // ── Page ──────────────────────────────────────────────────────
 
@@ -122,17 +124,54 @@ function PaymentsClient() {
       page: null,
     });
 
-  // Export runs server-side so it covers every row matching the active filters,
-  // not just the page currently rendered. This is a plain link rather than a
-  // scripted navigation: the response is a file download driven by the
-  // endpoint's Content-Disposition header, so Next's client router must not
-  // intercept it and try to render the result as a page.
+  // The export endpoint is authenticated and returns the caller's own payment
+  // records, so it is only offered to a connected wallet. Without one this page
+  // is still readable — it renders public on-chain data — and pointing an
+  // anonymous visitor at the endpoint would hand them a 401 where they used to
+  // get a file. So the control keeps its previous client-side behaviour when
+  // disconnected, and upgrades to the full server-side export when signed in.
+  const { wallet } = useWallet();
+  const isConnected = Boolean(wallet.publicKey);
+
+  // A plain link rather than a scripted navigation: the response is a file
+  // download driven by Content-Disposition, so Next's client router must not
+  // intercept it and try to render the CSV as a page.
   const exportHref = useMemo(() => {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
     const query = params.toString();
     return `/api/payments/export${query ? `?${query}` : ""}`;
   }, [debouncedSearch]);
+
+  // Fallback for the disconnected case: exports the on-chain rows already
+  // rendered, exactly as before this change.
+  const handleClientExport = () => {
+    exportToCsv(
+      filtered,
+      [
+        { key: "id", header: "Payment ID" },
+        { key: "payer", header: "Payer" },
+        { key: "payee", header: "Payee" },
+        { key: "amountStroops", header: "Amount (Stroops)" },
+        { key: "txHash", header: "Tx Hash" },
+      ],
+      {
+        filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv`,
+      }
+    );
+  };
+
+  const exportLabel = (
+    <>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+      CSV
+    </>
+  );
+
+  const exportClasses =
+    "inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors";
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -150,17 +189,25 @@ function PaymentsClient() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <a
-            href={exportHref}
-            download
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            title="Export CSV"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            CSV
-          </a>
+          {isConnected ? (
+            <a
+              href={exportHref}
+              download
+              className={exportClasses}
+              title="Export all payments matching the current filters"
+            >
+              {exportLabel}
+            </a>
+          ) : (
+            <button
+              onClick={handleClientExport}
+              disabled={payments.length === 0}
+              className={exportClasses}
+              title="Export the payments shown here"
+            >
+              {exportLabel}
+            </button>
+          )}
           <button
             onClick={() => load()}
             disabled={loading}

@@ -5,7 +5,8 @@ import { renderHook } from "@testing-library/react";
 import {
   generatePaymentLink,
   parsePaymentLink,
-  MAX_MEMO_LENGTH,
+  memoByteLength,
+  MAX_MEMO_BYTES,
 } from "@/lib/payment-link";
 
 // `useSearchParams` is the only thing the prefill hook needs from Next, so the
@@ -106,17 +107,62 @@ describe("parsePaymentLink", () => {
 
   it("rejects a memo longer than the Stellar limit", () => {
     const result = parsePaymentLink(
-      params(`dest=${VALID_ADDRESS}&memo=${"x".repeat(MAX_MEMO_LENGTH + 1)}`)
+      params(`dest=${VALID_ADDRESS}&memo=${"x".repeat(MAX_MEMO_BYTES + 1)}`)
     );
     expect(result.status).toBe("invalid");
     if (result.status === "invalid") {
-      expect(result.error).toMatch(new RegExp(`${MAX_MEMO_LENGTH}`));
+      expect(result.error).toMatch(new RegExp(`${MAX_MEMO_BYTES}`));
     }
   });
 
   it("accepts a memo exactly at the limit", () => {
     const result = parsePaymentLink(
-      params(`dest=${VALID_ADDRESS}&memo=${"x".repeat(MAX_MEMO_LENGTH)}`)
+      params(`dest=${VALID_ADDRESS}&memo=${"x".repeat(MAX_MEMO_BYTES)}`)
+    );
+    expect(result.status).toBe("ok");
+  });
+
+  it("measures the memo limit in BYTES, not characters", () => {
+    // MEMO_TEXT is capped at 28 bytes. Ten Chinese characters are 30 bytes but
+    // only 10 JavaScript code units, so a length check would wrongly accept
+    // this and the transaction would throw at Memo.text construction.
+    const tenChineseChars = "一二三四五六七八九十";
+    expect(tenChineseChars.length).toBe(10);
+    expect(memoByteLength(tenChineseChars)).toBe(30);
+
+    const result = parsePaymentLink(
+      params(`dest=${VALID_ADDRESS}&memo=${encodeURIComponent(tenChineseChars)}`)
+    );
+    expect(result.status).toBe("invalid");
+    if (result.status === "invalid") {
+      expect(result.error).toMatch(/byte/i);
+    }
+  });
+
+  it("accepts a multibyte memo that fits within the byte budget", () => {
+    const shortChinese = "咖啡"; // 6 bytes
+    expect(memoByteLength(shortChinese)).toBe(6);
+    const result = parsePaymentLink(
+      params(`dest=${VALID_ADDRESS}&memo=${encodeURIComponent(shortChinese)}`)
+    );
+    expect(result.status).toBe("ok");
+  });
+
+  it("rejects an asset the app cannot resolve to an issuer", () => {
+    // buildPaymentTx falls back to Asset.native() when the issuer is missing,
+    // so accepting `asset=FOO` would show FOO in the form and send XLM.
+    const result = parsePaymentLink(
+      params(`dest=${VALID_ADDRESS}&asset=FOO`)
+    );
+    expect(result.status).toBe("invalid");
+    if (result.status === "invalid") {
+      expect(result.error).toMatch(/unsupported asset/i);
+    }
+  });
+
+  it.each(["XLM", "USDC", "usdc"])("accepts the supported asset %s", (code) => {
+    const result = parsePaymentLink(
+      params(`dest=${VALID_ADDRESS}&asset=${code}`)
     );
     expect(result.status).toBe("ok");
   });
@@ -179,6 +225,19 @@ describe("usePaymentLinkPrefill", () => {
     const { result } = renderHook(() => usePaymentLinkPrefill());
     expect(result.current.value).toBeNull();
     expect(result.current.error).toMatch(/invalid Stellar address/i);
+  });
+
+  it("reflects a changed query string rather than stale values", () => {
+    // Navigating between payment links is a client-side query change that does
+    // not remount the page, so the hook must report the new link's values.
+    h.params = params(`dest=${VALID_ADDRESS}&amount=7&memo=rent`);
+    const first = renderHook(() => usePaymentLinkPrefill());
+    expect(first.result.current.value?.amount).toBe("7");
+
+    h.params = params(`dest=${VALID_ADDRESS}`);
+    const second = renderHook(() => usePaymentLinkPrefill());
+    expect(second.result.current.value?.amount).toBeUndefined();
+    expect(second.result.current.value?.memo).toBeUndefined();
   });
 
   it("surfaces an error for a valid address with a bad amount", () => {

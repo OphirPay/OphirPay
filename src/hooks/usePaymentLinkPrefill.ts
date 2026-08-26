@@ -23,13 +23,16 @@ export interface PaymentLinkPrefill {
  * error state and must not surface a warning.
  */
 export function usePaymentLinkPrefill(): PaymentLinkPrefill {
-  const searchParams = useSearchParams();
+  // Depend on the serialised query string, not the params object: its identity
+  // is not guaranteed stable across renders, and an unstable dependency would
+  // re-run the consumer's prefill effect and wipe whatever the user had typed.
+  const search = useSearchParams().toString();
 
   return useMemo(() => {
-    const result = parsePaymentLink(searchParams);
+    const result = parsePaymentLink(new URLSearchParams(search));
 
     if (result.status === "ok") return { value: result.value, error: null };
     if (result.status === "invalid") return { value: null, error: result.error };
     return { value: null, error: null };
-  }, [searchParams]);
+  }, [search]);
 }

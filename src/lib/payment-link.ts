@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { isValidStellarAddress } from "@/lib/stellar";
+import { getAssetInfo } from "@/lib/assets";
 
 /**
  * Generate shareable payment request links.
@@ -56,11 +57,16 @@ export function generatePaymentQrData(params: PaymentLinkParams): string {
 // ── Parsing ───────────────────────────────────────────────────
 
 /**
- * Stellar `MEMO_TEXT` is capped at 28 bytes. The send form enforces the same
- * limit, so a link carrying a longer memo is rejected here rather than silently
- * producing a form that cannot be submitted.
+ * Stellar `MEMO_TEXT` is capped at 28 **bytes**, not 28 characters. Ten Chinese
+ * characters are 30 bytes: measuring in JavaScript code units would accept such
+ * a memo here and then throw when `Memo.text` is constructed.
  */
-export const MAX_MEMO_LENGTH = 28;
+export const MAX_MEMO_BYTES = 28;
+
+/** Byte length of a memo once UTF-8 encoded. */
+export function memoByteLength(memo: string): number {
+  return new TextEncoder().encode(memo).length;
+}
 
 /** Values recovered from a payment link, ready to prefill the send form. */
 export interface ParsedPaymentLink {
@@ -127,11 +133,27 @@ export function parsePaymentLink(source: ParamSource): PaymentLinkParseResult {
   }
 
   const memo = read(source, "memo");
-  if (memo !== undefined && memo.length > MAX_MEMO_LENGTH) {
+  if (memo !== undefined && memoByteLength(memo) > MAX_MEMO_BYTES) {
     return {
       status: "invalid",
-      error: `This payment link's memo exceeds the ${MAX_MEMO_LENGTH}-character Stellar limit.`,
+      error: `This payment link's memo exceeds the ${MAX_MEMO_BYTES}-byte Stellar limit.`,
     };
+  }
+
+  // An unresolvable asset code is dangerous, not merely unknown: buildPaymentTx
+  // falls back to `Asset.native()` whenever the issuer is missing, so a link
+  // saying `asset=FOO` would display FOO and actually send XLM. Testing for a
+  // resolvable issuer rather than matching a hard-coded list keeps this correct
+  // as assets are added.
+  const asset = read(source, "asset");
+  if (asset !== undefined) {
+    const info = getAssetInfo(asset);
+    if (info.type !== "native" && !info.issuer) {
+      return {
+        status: "invalid",
+        error: `This payment link requests an unsupported asset (${asset}).`,
+      };
+    }
   }
 
   return {
@@ -140,9 +162,7 @@ export function parsePaymentLink(source: ParamSource): PaymentLinkParseResult {
       destination,
       ...(amount !== undefined ? { amount } : {}),
       ...(memo !== undefined ? { memo } : {}),
-      ...(read(source, "asset") !== undefined
-        ? { assetCode: read(source, "asset") }
-        : {}),
+      ...(asset !== undefined ? { assetCode: asset } : {}),
     },
   };
 }

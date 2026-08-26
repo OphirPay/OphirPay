@@ -92,16 +92,22 @@ function SendPageContent() {
   const { value: linkValues, error: linkError } = usePaymentLinkPrefill();
 
   useEffect(() => {
-    if (linkValues) {
-      setDestination(linkValues.destination);
-      if (linkValues.amount) setAmount(linkValues.amount);
-      if (linkValues.memo) setMemo(linkValues.memo);
-      if (linkValues.assetCode) setSelectedAsset(getAssetInfo(linkValues.assetCode));
-    } else if (linkError) {
-      // Deliberately leaves the form blank: a bad address must not be prefilled
-      // into a field the user might submit without re-reading it.
-      setValidationError(linkError);
-    }
+    // Every field is assigned, not just the ones the new link supplies.
+    // Navigating from one link to another (or back to a bare /send) is a
+    // client-side query change that does not remount this component, so
+    // conditional assignment would carry the previous link's amount, memo or
+    // asset into the next payment.
+    //
+    // An invalid link deliberately clears the form rather than prefilling it:
+    // a bad address sitting in the destination field is one a user can submit
+    // without re-reading.
+    setDestination(linkValues?.destination ?? "");
+    setAmount(linkValues?.amount ?? "");
+    setMemo(linkValues?.memo ?? "");
+    setSelectedAsset(
+      linkValues?.assetCode ? getAssetInfo(linkValues.assetCode) : XLM_ASSET
+    );
+    setValidationError(linkError);
   }, [linkValues, linkError]);
 
   // Best-effort DB record — invalidates dashboard/payments caches on success

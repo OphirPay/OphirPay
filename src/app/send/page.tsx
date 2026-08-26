@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { getWalletConnector } from "@/lib/wallets";
 import {
@@ -21,7 +21,8 @@ import { useToast } from "@/components/ui/Toast";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useApiMutation } from "@/hooks/useApiQuery";
 import { AssetSelector } from "@/components/AssetSelector";
-import { XLM_ASSET, type AssetInfo } from "@/lib/assets";
+import { XLM_ASSET, getAssetInfo, type AssetInfo } from "@/lib/assets";
+import { usePaymentLinkPrefill } from "@/hooks/usePaymentLinkPrefill";
 import Link from "next/link";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -50,7 +51,26 @@ type TxResult =
 
 // ── Page ──────────────────────────────────────────────────────
 
+// `useSearchParams` requires a Suspense boundary during static prerendering —
+// same split as src/app/payments/page.tsx.
 export default function SendPage() {
+  return (
+    <Suspense fallback={<SendFallback />}>
+      <SendPageContent />
+    </Suspense>
+  );
+}
+
+function SendFallback() {
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="h-8 w-40 rounded bg-gray-100 dark:bg-gray-800 animate-pulse" />
+      <div className="h-64 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+    </div>
+  );
+}
+
+function SendPageContent() {
   const { wallet, fetchBalance } = useWallet();
   const toast = useToast();
 
@@ -62,6 +82,27 @@ export default function SendPage() {
   const [step, setStep] = useState<TxStep>("idle");
   const [result, setResult] = useState<TxResult>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // ── Shareable payment link prefill ──────────────────────────
+  //
+  // A link produced by `generatePaymentLink` lands here as query params. The
+  // parser distinguishes "no link" from "bad link": visiting /send directly
+  // must not raise an error, while following a malformed link must say what is
+  // wrong rather than rendering a half-filled form.
+  const { value: linkValues, error: linkError } = usePaymentLinkPrefill();
+
+  useEffect(() => {
+    if (linkValues) {
+      setDestination(linkValues.destination);
+      if (linkValues.amount) setAmount(linkValues.amount);
+      if (linkValues.memo) setMemo(linkValues.memo);
+      if (linkValues.assetCode) setSelectedAsset(getAssetInfo(linkValues.assetCode));
+    } else if (linkError) {
+      // Deliberately leaves the form blank: a bad address must not be prefilled
+      // into a field the user might submit without re-reading it.
+      setValidationError(linkError);
+    }
+  }, [linkValues, linkError]);
 
   // Best-effort DB record — invalidates dashboard/payments caches on success
   const recordPaymentMutation = useApiMutation<

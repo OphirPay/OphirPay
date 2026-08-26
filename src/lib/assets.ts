@@ -53,7 +53,7 @@ export function getAssetInfo(code: string): AssetInfo {
 /** Format a stroop amount based on asset decimals. */
 export function formatAssetAmount(stroops: number, asset: AssetInfo): string {
   const divisor = Math.pow(10, asset.decimals);
-  return (stroops / divisor).toLocaleString("en-US", {
+  return (stroops / divisor).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: asset.decimals,
   });

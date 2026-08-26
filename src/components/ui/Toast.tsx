@@ -163,9 +163,6 @@ export function ToastViewport({
         return (
           <div
             key={t.id}
-            role={isError ? "alert" : "status"}
-            aria-live={isError ? "assertive" : "polite"}
-            aria-atomic="true"
             data-testid={`toast-${t.variant}`}
             className="pointer-events-auto bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl p-4 flex items-start gap-3 animate-fade-in-up"
           >

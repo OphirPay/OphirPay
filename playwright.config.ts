@@ -18,6 +18,9 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      // Visual tests run under chromium so snapshotPathTemplate resolves
+      // {projectName} to "chromium", matching committed *-chromium-linux.png baselines.
+      // Non-visual tests also run here for full coverage.
     },
     {
       name: "firefox",

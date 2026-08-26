@@ -10,6 +10,7 @@ import {
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 
 export async function GET(request: Request) {
   try {
@@ -54,6 +55,9 @@ export async function POST(request: Request) {
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
+
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
 
     const body = await request.json();
     const parsed = createRecurrenceSchema.safeParse(body);

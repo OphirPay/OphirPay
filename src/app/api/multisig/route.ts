@@ -2,6 +2,7 @@
 
 import { successResponse, handleApiError, badRequestError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { setMultisigConfig } from "@/lib/contract-advanced";
 
@@ -50,6 +51,9 @@ export async function POST(request: Request) {
     if (!auth) {
       return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
     }
+
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
 
     const body = await request.json().catch(() => ({}));
     const { caller, threshold, signers, enabled } = body;

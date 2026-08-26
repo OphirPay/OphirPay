@@ -9,6 +9,7 @@ import {
   handleApiError,
 } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { incMetric } from "@/lib/metrics-counters";
 
 // ── GET /api/batches — List batches with pagination ──────────
@@ -69,6 +70,9 @@ export async function POST(request: Request) {
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
+
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
 
     const body = await request.json();
 

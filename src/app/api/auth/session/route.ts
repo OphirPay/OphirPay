@@ -81,7 +81,10 @@ export async function POST(request: Request) {
   return response;
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
+  const csrfError = verifyCsrf(request);
+  if (csrfError) return csrfError;
+
   const response = successResponse({ authenticated: false });
   response.headers.set("Set-Cookie", buildLogoutCookie());
   return response;

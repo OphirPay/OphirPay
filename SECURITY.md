@@ -79,6 +79,33 @@ OphirPay implements the following security headers:
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `X-XSS-Protection: 0`
 
+## CSRF Policy
+
+All state-changing API routes (POST/PATCH/PUT/DELETE) are protected against
+Cross-Site Request Forgery using the **double-submit cookie** pattern:
+
+1. The client mints a CSRF token via `GET /api/csrf`; the server sets it as an
+   `HttpOnly; SameSite=Strict` cookie (`__Host-csrf` over HTTPS, `csrf` over
+   plain-http dev) and returns the raw token in the response body.
+2. Every mutating request must echo that token back in the `x-csrf-token`
+   header. The client helpers do this automatically (`withCsrf()` in
+   `src/lib/client-auth.ts`, and `src/hooks/useApiQuery.ts` for all mutations).
+3. The server verifies header === cookie with a timing-safe comparison
+   (`verifyCsrf()` in `src/lib/csrf.ts`) and rejects mismatches with `403
+   CSRF_INVALID`.
+
+**Rules for new routes:**
+
+- Every handler exporting POST/PATCH/PUT/DELETE **must** call
+  `const csrfError = verifyCsrf(request); if (csrfError) return csrfError;`
+  after authentication.
+- Requests authenticated solely by an API key (`Authorization: Bearer` /
+  `X-API-Key`) are not cookie-authenticated, so CSRF does not apply to them —
+  but the check is still performed uniformly; API-key clients simply never
+  present cookies.
+- Enforcement is covered by `src/__tests__/csrf-enforcement.test.ts`, which
+  fails CI if any mutating route file omits `verifyCsrf`.
+
 ## Smart Contract Security
 
 - All contract functions use proper access control

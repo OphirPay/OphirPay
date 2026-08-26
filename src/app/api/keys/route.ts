@@ -10,6 +10,7 @@ import {
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { deriveKeyPrefix } from "@/lib/api-auth";
 
 /**
@@ -39,6 +40,9 @@ export async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
 
     const { name } = await request.json() as { name?: string };
     if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -72,6 +76,9 @@ export async function DELETE(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");

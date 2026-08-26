@@ -11,6 +11,7 @@ import { logger } from "@/lib/logger";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 
 export async function GET(
   request: Request,
@@ -47,6 +48,9 @@ export async function PATCH(
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
+
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
 
     const { id } = await params;
     const body = await request.json() as { status?: string; description?: string; memo?: string };
@@ -102,6 +106,9 @@ export async function DELETE(
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
+
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
 
     const { id } = await params;
     // deleteMany scopes the delete to the authenticated user's records

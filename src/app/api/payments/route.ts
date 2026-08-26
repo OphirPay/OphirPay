@@ -10,6 +10,7 @@ import {
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { incMetric } from "@/lib/metrics-counters";
@@ -72,6 +73,9 @@ export async function POST(request: Request) {
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
+
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
 
     const body = await request.json();
     const parsed = createPaymentSchema.safeParse(body);

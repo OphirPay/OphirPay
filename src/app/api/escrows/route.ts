@@ -2,6 +2,7 @@
 
 import { successResponse, handleApiError, badRequestError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
 
@@ -51,6 +52,9 @@ export async function POST(request: Request) {
     if (!auth) {
       return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
     }
+
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
 
     const body = await request.json().catch(() => ({}));
     const { depositor, beneficiary, amount, asset, deadline, metadata } = body;

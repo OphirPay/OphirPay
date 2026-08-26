@@ -234,7 +234,7 @@ def generate():
             elif "keys" in path and method == "GET":
                 lines.append('{\n  "keys": [\n    {\n      "id": "key_01",\n      "name": "Backend Service Production",\n      "prefix": "ophir_live_sk_7f8a...",\n      "createdAt": "2026-08-01T00:00:00.000Z",\n      "lastUsedAt": "2026-08-26T12:00:00.000Z"\n    }\n  ]\n}')
             elif "webhooks" in path and method == "POST":
-                lines.append('{\n  "id": "whk_02",\n  "url": "https://api.merchant.com/webhooks/ophirpay",\n  "secret": "whsec_3a7b9c1d5e6f8a0b2c4d6e8f0a2b4c6d",\n  "events": ["payment.completed", "refund.created"],\n  "active": true\n}')
+                lines.append('{\n  "id": "whk_02",\n  "url": "https://api.merchant.com/webhooks/ophirpay",\n  "secret": "sec_mock_webhook_secret_key_example",\n  "events": ["payment.completed", "refund.created"],\n  "active": true\n}')
             elif "webhooks" in path and method == "GET":
                 lines.append('{\n  "webhooks": [\n    {\n      "id": "whk_01",\n      "url": "https://api.merchant.com/webhooks/ophirpay",\n      "events": ["payment.completed", "batch.completed"],\n      "active": true,\n      "createdAt": "2026-08-20T10:00:00.000Z"\n    }\n  ]\n}')
             elif "auth/session" in path and method == "POST":

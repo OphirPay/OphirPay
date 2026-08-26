@@ -624,7 +624,7 @@ curl -X POST "http://localhost:3000/api/webhooks" \
 {
   "id": "whk_02",
   "url": "https://api.merchant.com/webhooks/ophirpay",
-  "secret": "whsec_3a7b9c1d5e6f8a0b2c4d6e8f0a2b4c6d",
+  "secret": "sec_mock_webhook_secret_key_example",
   "events": ["payment.completed", "refund.created"],
   "active": true
 }

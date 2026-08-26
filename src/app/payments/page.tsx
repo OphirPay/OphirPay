@@ -267,10 +267,14 @@ function PaymentsClient() {
             className="w-full text-sm"
             role="table"
             aria-label="Payments table"
-            aria-rowcount={filtered.length}
+            aria-rowcount={filtered.length + 1}
           >
             <thead>
-              <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
+              <tr
+                role="row"
+                aria-rowindex={1}
+                className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50"
+              >
                 <th scope="col" className="py-3 px-4 font-medium">Payment</th>
                 <th scope="col" className="py-3 px-4 font-medium">Amount</th>
                 <th scope="col" className="py-3 px-4 font-medium">Status</th>
@@ -306,9 +310,13 @@ function PaymentsClient() {
                     }}
                     tabIndex={0}
                     role="row"
-                    aria-rowindex={startIndex + idx + 1}
+                    aria-rowindex={startIndex + idx + 2}
                     data-testid={`payment-row-${payment.id}`}
-                    onKeyDown={(e) => handleRowKeyDown(e, idx)}
+                    onKeyDown={(e) => {
+                      if (e.target === e.currentTarget) {
+                        handleRowKeyDown(e, idx);
+                      }
+                    }}
                     className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ophir-500 dark:focus-visible:ring-ophir-400 focus:bg-gray-100 dark:focus:bg-gray-800/50 transition-colors"
                   >
                     <td className="py-3 px-4">

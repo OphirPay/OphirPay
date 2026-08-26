@@ -68,15 +68,17 @@ describe("Payments Table Keyboard Navigation & Accessibility", () => {
     const row2 = await screen.findByTestId("payment-row-102");
     const row3 = await screen.findByTestId("payment-row-103");
 
+    expect(table).toHaveAttribute("aria-rowcount", "4"); // 3 data rows + 1 header row
+
     expect(row1).toHaveAttribute("tabIndex", "0");
     expect(row1).toHaveAttribute("role", "row");
-    expect(row1).toHaveAttribute("aria-rowindex", "1");
+    expect(row1).toHaveAttribute("aria-rowindex", "2"); // row 1 is header
 
     expect(row2).toHaveAttribute("tabIndex", "0");
-    expect(row2).toHaveAttribute("aria-rowindex", "2");
+    expect(row2).toHaveAttribute("aria-rowindex", "3");
 
     expect(row3).toHaveAttribute("tabIndex", "0");
-    expect(row3).toHaveAttribute("aria-rowindex", "3");
+    expect(row3).toHaveAttribute("aria-rowindex", "4");
   });
 
   it("navigates down and up rows with ArrowDown and ArrowUp keys", async () => {
@@ -131,5 +133,21 @@ describe("Payments Table Keyboard Navigation & Accessibility", () => {
       name: /copy hash/i,
     });
     expect(copyButtons.length).toBeGreaterThan(0);
+  });
+
+  it("does not hijack focus when arrow keys are pressed on nested buttons", async () => {
+    renderPage();
+
+    const copyButtons = await screen.findAllByRole("button", {
+      name: /copy hash/i,
+    });
+    const firstCopyBtn = copyButtons[0];
+    firstCopyBtn.focus();
+    expect(document.activeElement).toBe(firstCopyBtn);
+
+    // Press ArrowDown on the copy button itself
+    fireEvent.keyDown(firstCopyBtn, { key: "ArrowDown" });
+    // Focus should remain on the button, not jump to the next row
+    expect(document.activeElement).toBe(firstCopyBtn);
   });
 });

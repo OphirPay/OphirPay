@@ -123,7 +123,10 @@ export function buildSessionCookie(publicKey: string, network: string): string {
 
 /** Build the Set-Cookie value that clears the session. */
 export function buildLogoutCookie(): string {
-  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  // Must mirror the session cookie's attributes — a non-Secure clearing
+  // cookie does not reliably delete a Secure cookie in all browsers.
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
 }
 
 // ── Auth context resolution ───────────────────────────────────

@@ -23,11 +23,11 @@ jobs:
       - name: Run E2E with automatic retry
         id: e2e
         continue-on-error: true
-        run: npm run test:e2e:retry
+        run: npx playwright test --retries=2
       - name: Detect flaky passes
         id: flaky
         run: |
-          python3 /tmp/detect_flaky.py
+          python3 scripts/detect-flaky.py
       - name: Annotate PR with flaky results
         if: ${{ github.event_name == 'pull_request' && always() }}
         uses: actions/github-script@v7

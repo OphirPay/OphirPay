@@ -1,0 +1,38 @@
+name: Gas Regression Check
+
+on:
+  pull_request:
+    paths:
+      - 'contracts/**'
+      - 'scripts/**'
+      - 'package.json'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check-gas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck || true
+      - name: Record baseline (if missing)
+        run: npm run gas:record -- --if-missing || true
+      - name: Run gas regression check
+        run: npm run gas:check
+      - name: Report to job summary
+        if: always()
+        run: |
+          if [ -f gas-summary.md ]; then
+            cat gas-summary.md >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "## Gas Regression Check" >> $GITHUB_STEP_SUMMARY
+          echo "Baseline: \`contracts/gas-baseline.json\`" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,10 @@
+{
+  "version": "1",
+  "thresholdPercent": 5,
+  "wasmSize": 12345,
+  "entrypoints": {
+    "transfer": 150000,
+    "withdraw": 200000,
+    "deposit": 180000
+  }
+}

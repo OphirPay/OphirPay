@@ -38,11 +38,14 @@ export const GET = withMetrics("GET /api/webhooks", withRequestLogging(async fun
 
 export const POST = withMetrics("POST /api/webhooks", withRequestLogging(async function POST(request: Request) {
   try {
-    const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
-
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+
+    // Only apply CSRF protection for session-based requests
+    if (!auth.keyId) {
+      const csrfError = verifyCsrf(request);
+      if (csrfError) return csrfError;
+    }
 
     const body = await request.json();
     const parsed = createWebhookSchema.safeParse(body);
@@ -79,11 +82,14 @@ export const POST = withMetrics("POST /api/webhooks", withRequestLogging(async f
 
 export const DELETE = withMetrics("DELETE /api/webhooks", withRequestLogging(async function DELETE(request: Request) {
   try {
-    const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
-
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+
+    // Only apply CSRF protection for session-based requests
+    if (!auth.keyId) {
+      const csrfError = verifyCsrf(request);
+      if (csrfError) return csrfError;
+    }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");

@@ -17,6 +17,10 @@ interface ApiSuccess<T> {
     limit?: number;
     total?: number;
     timestamp?: string;
+    /** Opaque cursor for the next page (keyset pagination). */
+    nextCursor?: string | null;
+    /** Whether more rows exist after this page. */
+    hasMore?: boolean;
   };
 }
 

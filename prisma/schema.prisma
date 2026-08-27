@@ -102,6 +102,10 @@ model Payment {
   metadata          String?   // JSON string for flexible metadata
   errorMessage      String?
 
+  // Idempotency: a per-attempt key so retries (issue #159) are never
+  // mistaken for the original attempt. Regenerated on every retry.
+  idempotencyKey    String?
+
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   completedAt       DateTime?

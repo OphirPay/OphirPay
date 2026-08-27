@@ -7,12 +7,13 @@ import {
   handleApiError,
 } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/analytics — Aggregated payment metrics scoped to the
  * authenticated user. Previously returned platform-wide totals.
  */
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -71,4 +72,4 @@ export async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/analytics");
   }
-}
+});

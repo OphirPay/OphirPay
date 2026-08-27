@@ -4,12 +4,13 @@ import { successResponse, handleApiError, badRequestError, unauthorizedError } f
 import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/escrows — list escrows or fetch single by ?id=N
  * Reads from OphirPayContract on-chain.
  */
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -40,12 +41,12 @@ export async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/escrows");
   }
-}
+});
 
 /**
  * POST /api/escrows — create escrow (requires wallet signing, delegates to client)
  */
-export async function POST(request: Request) {
+export const POST = withRequestLogging(async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -66,4 +67,4 @@ export async function POST(request: Request) {
   } catch (err) {
     return handleApiError(err, "POST /api/escrows");
   }
-}
+});

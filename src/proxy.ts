@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { InMemoryRateLimitStore } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 // Configurable via RATE_LIMIT_RPM env (defaults to 120 requests/min/IP)
@@ -65,6 +66,7 @@ function buildCsp(): string {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const requestId = generateRequestId();
+  const startedAt = performance.now();
 
   // ── API routes: rate limiting + API headers ─────────────────
   if (pathname.startsWith("/api/")) {
@@ -89,6 +91,9 @@ export async function proxy(request: NextRequest) {
       // Rate limit exceeded
       if (!result.allowed) {
         const retryAfter = Math.ceil((resetAt - Date.now()) / 1000);
+        // Rejected before any route handler runs, so log here (with the same
+        // request id returned in the response header below).
+        logger.request(request.method, pathname, 429, performance.now() - startedAt, requestId);
         return NextResponse.json(
           {
             success: false,
@@ -108,7 +113,15 @@ export async function proxy(request: NextRequest) {
       }
     }
 
-    const response = NextResponse.next();
+    // Thread the request id into the downstream request headers so route
+    // handlers (and their error logs) correlate with the X-Request-Id value
+    // returned on the response. NOTE: this must use the `request.headers`
+    // option of NextResponse.next() — setting it on the response only is
+    // invisible to the route handler.
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-request-id", requestId);
+
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
 
     // Security, CORS, and observability headers
     response.headers.set("X-Request-Id", requestId);

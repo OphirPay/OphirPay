@@ -124,6 +124,9 @@ model Payment {
 
 enum PaymentStatus {
   CREATED
+  SIGNED
+  SUBMITTED
+  CONFIRMED
   PENDING
   PROCESSING
   COMPLETED

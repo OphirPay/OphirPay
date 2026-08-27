@@ -11,8 +11,9 @@ import { logger } from "@/lib/logger";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { getAuthContext } from "@/lib/auth-session";
+import { withRequestLogging } from "@/lib/request-logging";
 
-export async function GET(
+export const GET = withRequestLogging(async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -34,9 +35,9 @@ export async function GET(
   } catch (err) {
     return handleApiError(err, `GET /api/payments/[id]`);
   }
-}
+});
 
-export async function PATCH(
+export const PATCH = withRequestLogging(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -67,7 +68,31 @@ export async function PATCH(
 
     logger.info("Payment updated", { id, status: payment.status });
 
-    if (body.status === "COMPLETED") {
+    if (body.status === "SIGNED") {
+      dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_SIGNED, {
+        paymentId: payment.id,
+        amount: payment.amount,
+        assetCode: payment.assetCode,
+        status: payment.status,
+        signedAt: new Date().toISOString(),
+      });
+    } else if (body.status === "SUBMITTED") {
+      dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_SUBMITTED, {
+        paymentId: payment.id,
+        amount: payment.amount,
+        assetCode: payment.assetCode,
+        transactionHash: payment.transactionHash,
+        submittedAt: new Date().toISOString(),
+      });
+    } else if (body.status === "CONFIRMED") {
+      dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_CONFIRMED, {
+        paymentId: payment.id,
+        amount: payment.amount,
+        assetCode: payment.assetCode,
+        transactionHash: payment.transactionHash,
+        confirmedAt: new Date().toISOString(),
+      });
+    } else if (body.status === "COMPLETED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_COMPLETED, {
         paymentId: payment.id,
         amount: payment.amount,
@@ -89,9 +114,9 @@ export async function PATCH(
   } catch (err) {
     return handleApiError(err, `PATCH /api/payments/[id]`);
   }
-}
+});
 
-export async function DELETE(
+export const DELETE = withRequestLogging(async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -114,4 +139,4 @@ export async function DELETE(
   } catch (err) {
     return handleApiError(err, `DELETE /api/payments/[id]`);
   }
-}
+});

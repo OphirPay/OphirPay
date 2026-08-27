@@ -10,6 +10,7 @@ import {
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, updateHookSchema } from "@/lib/validation-schemas";
+import { withRequestLogging } from "@/lib/request-logging";
 
 // ── PATCH /api/hooks/[id] ─────────────────────────────────────
 
@@ -17,7 +18,7 @@ import { validateBody, updateHookSchema } from "@/lib/validation-schemas";
  * Update a notification hook ledger row AFTER the matching on-chain
  * transition (unregister_hook) succeeded, so the list reflects deactivation.
  */
-export async function PATCH(
+export const PATCH = withRequestLogging(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -43,4 +44,4 @@ export async function PATCH(
   } catch (err) {
     return handleApiError(err, "PATCH /api/hooks/[id]");
   }
-}
+});

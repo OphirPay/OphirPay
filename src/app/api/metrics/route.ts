@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { getMetricsSnapshot } from "@/lib/metrics-counters";
+import { withRequestLogging } from "@/lib/request-logging";
 
 function buildMetrics(): string {
   const c = getMetricsSnapshot();
@@ -44,7 +45,7 @@ function buildMetrics(): string {
   return lines.join("\n") + "\n";
 }
 
-export async function GET() {
+export const GET = withRequestLogging(async function GET() {
   return new NextResponse(buildMetrics(), {
     status: 200,
     headers: {
@@ -52,4 +53,4 @@ export async function GET() {
       "Cache-Control": "no-cache, no-store, must-revalidate",
     },
   });
-}
+});

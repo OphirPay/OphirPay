@@ -4,6 +4,9 @@
 
 export type PaymentStatus =
   | "CREATED"
+  | "SIGNED"
+  | "SUBMITTED"
+  | "CONFIRMED"
   | "PENDING"
   | "PROCESSING"
   | "COMPLETED"

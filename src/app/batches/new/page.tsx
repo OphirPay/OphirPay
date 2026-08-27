@@ -13,6 +13,8 @@ import {
   NETWORK_PASSPHRASE,
 } from "@/lib/stellar";
 import { formatAmount, shortenAddress } from "@/lib/utils";
+import { estimateBatchFee } from "@/lib/fee-estimator";
+import { BatchConfirmDialog } from "@/components/BatchConfirmDialog";
 import { CopyButton } from "@/components/ui/CopyButton";
 import Link from "next/link";
 import type { BatchRecipientInput } from "@/lib/stellar";
@@ -55,6 +57,7 @@ export default function NewBatchPage() {
   const [step, setStep] = useState<TxStep>("idle");
   const [result, setResult] = useState<TxResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   // ── Recipient management ──────────────────────────────────
 
@@ -145,7 +148,13 @@ export default function NewBatchPage() {
   const handleSend = async () => {
     if (!wallet.publicKey) return;
     if (!validate()) return;
+    setShowConfirm(true);
+  };
 
+  const handleConfirmSend = async () => {
+    if (!wallet.publicKey) return;
+
+    setShowConfirm(false);
     setResult(null);
     setStep("building");
 
@@ -576,6 +585,19 @@ export default function NewBatchPage() {
           </p>
         )}
       </div>
+
+      {/* Confirmation dialog */}
+      <BatchConfirmDialog
+        open={showConfirm}
+        recipients={recipients.map((r) => ({
+          address: r.address,
+          amount: r.amount,
+        }))}
+        totalAmount={totalAmount}
+        estimatedFee={estimateBatchFee(recipients.length)}
+        onConfirm={handleConfirmSend}
+        onCancel={() => setShowConfirm(false)}
+      />
     </div>
   );
 }

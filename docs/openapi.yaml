@@ -1347,6 +1347,22 @@ components:
           minItems: 1
           items:
             type: string
+            enum:
+              - payment.created
+              - payment.signed
+              - payment.submitted
+              - payment.confirmed
+              - payment.completed
+              - payment.failed
+              - batch.created
+              - batch.completed
+              - batch.failed
+              - recurrence.triggered
+              - recurrence.completed
+              - recurrence.failed
+              - request.created
+              - request.paid
+              - request.expired
           description: Event types to subscribe to
         isActive:
           type: boolean

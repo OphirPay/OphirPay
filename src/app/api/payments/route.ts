@@ -14,8 +14,9 @@ import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { incMetric } from "@/lib/metrics-counters";
 import { buildPaymentWhere, PAYMENT_ORDER_BY } from "@/lib/payment-filters";
+import { withRequestLogging } from "@/lib/request-logging";
 
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -50,15 +51,13 @@ export async function GET(request: Request) {
       prisma.payment.count({ where }),
     ]);
 
-    logger.request("GET", `/api/payments?page=${page}&limit=${limit}`, 200, 0);
-
     return successResponse(payments, { page, limit, total });
   } catch (err) {
     return handleApiError(err, "GET /api/payments");
   }
-}
+});
 
-export async function POST(request: Request) {
+export const POST = withRequestLogging(async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -107,4 +106,4 @@ export async function POST(request: Request) {
   } catch (err) {
     return handleApiError(err, "POST /api/payments");
   }
-}
+});

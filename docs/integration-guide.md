@@ -140,6 +140,23 @@ const ok = signature.length === expected.length &&
 Always compare with a constant-time comparison (`timingSafeEqual`) and
 reject requests missing a valid signature.
 
+### Webhook Event Types
+
+Payments emit lifecycle events as they progress through their lifecycle:
+
+| Event | Fired when |
+|---|---|
+| `payment.created` | A payment record is created |
+| `payment.signed` | The payment transaction has been signed |
+| `payment.submitted` | The signed transaction has been submitted to the network |
+| `payment.confirmed` | The submitted transaction has been confirmed on-chain |
+| `payment.completed` | The payment is fully settled/completed |
+| `payment.failed` | The payment failed |
+
+Batches, recurrences, and payment requests emit their own events
+(`batch.*`, `recurrence.*`, `request.*`). Subscribe to any subset of these
+event types when registering a webhook.
+
 ## Available Contract Functions
 
 ### Payments
@@ -208,7 +225,7 @@ reject requests missing a valid signature.
 ## Testing
 
 ```bash
-# Frontend tests (800)
+# Frontend tests (834)
 npm test
 
 # Contract tests

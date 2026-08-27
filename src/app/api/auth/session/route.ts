@@ -23,8 +23,9 @@ import { verifyChallengeToken, challengeMessage, verifyWalletSignature } from "@
 import { isValidStellarAddress } from "@/lib/stellar";
 import { successResponse, badRequestError, unauthorizedError } from "@/lib/api-response";
 import { verifyCsrf } from "@/lib/csrf";
+import { withRequestLogging } from "@/lib/request-logging";
 
-export async function POST(request: Request) {
+export const POST = withRequestLogging(async function POST(request: Request) {
   const csrfError = verifyCsrf(request);
   if (csrfError) return csrfError;
 
@@ -79,10 +80,10 @@ export async function POST(request: Request) {
   const response = successResponse({ authenticated: true, publicKey, network });
   response.headers.set("Set-Cookie", buildSessionCookie(publicKey, network));
   return response;
-}
+});
 
-export async function DELETE() {
+export const DELETE = withRequestLogging(async function DELETE() {
   const response = successResponse({ authenticated: false });
   response.headers.set("Set-Cookie", buildLogoutCookie());
   return response;
-}
+});

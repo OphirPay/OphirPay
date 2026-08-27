@@ -7,6 +7,9 @@
 
 export const WEBHOOK_EVENTS = {
   PAYMENT_CREATED: "payment.created",
+  PAYMENT_SIGNED: "payment.signed",
+  PAYMENT_SUBMITTED: "payment.submitted",
+  PAYMENT_CONFIRMED: "payment.confirmed",
   PAYMENT_COMPLETED: "payment.completed",
   PAYMENT_FAILED: "payment.failed",
   BATCH_CREATED: "batch.created",
@@ -24,6 +27,9 @@ export type WebhookEventType = (typeof WEBHOOK_EVENTS)[keyof typeof WEBHOOK_EVEN
 
 export const WEBHOOK_EVENT_LABELS: Record<WebhookEventType, string> = {
   [WEBHOOK_EVENTS.PAYMENT_CREATED]: "Payment Created",
+  [WEBHOOK_EVENTS.PAYMENT_SIGNED]: "Payment Signed",
+  [WEBHOOK_EVENTS.PAYMENT_SUBMITTED]: "Payment Submitted",
+  [WEBHOOK_EVENTS.PAYMENT_CONFIRMED]: "Payment Confirmed",
   [WEBHOOK_EVENTS.PAYMENT_COMPLETED]: "Payment Completed",
   [WEBHOOK_EVENTS.PAYMENT_FAILED]: "Payment Failed",
   [WEBHOOK_EVENTS.BATCH_CREATED]: "Batch Created",

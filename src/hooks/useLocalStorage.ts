@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 /**
  * Type-safe localStorage hook with SSR safety (returns initial value on server).
  */
 export function useLocalStorage<T>(key: string, initialValue: T) {
+  const initialValueRef = useRef(initialValue);
   const [storedValue, setStoredValue] = useState<T>(initialValue);
 
   useEffect(() => {
@@ -15,9 +16,9 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       const item = window.localStorage.getItem(key);
       if (item) setStoredValue(JSON.parse(item) as T);
     } catch {
-      setStoredValue(initialValue);
+      setStoredValue(initialValueRef.current);
     }
-  }, [key, initialValue]);
+  }, [key]);
 
   const setValue = useCallback(
     (value: T | ((prev: T) => T)) => {
@@ -36,8 +37,8 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(key);
     }
-    setStoredValue(initialValue);
-  }, [key, initialValue]);
+    setStoredValue(initialValueRef.current);
+  }, [key]);
 
   return [storedValue, setValue, removeValue] as const;
 }

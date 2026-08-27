@@ -26,9 +26,10 @@ export const GET = withRequestLogging(async function GET(
     }
 
     const { id } = await params;
-    // Only the owning user may read the payment (no IDOR across users)
+    // Only the owning user may read the payment (no IDOR across users), and
+    // soft-deleted payments behave like they don't exist (consistent 404).
     const payment = await prisma.payment.findFirst({
-      where: { id, userId: auth.userId },
+      where: { id, userId: auth.userId, deletedAt: null },
     });
     if (!payment) return notFoundError("Payment");
     return successResponse(payment);
@@ -52,9 +53,10 @@ export const PATCH = withRequestLogging(async function PATCH(
     const { id } = await params;
     const body = await request.json() as { status?: string; description?: string; memo?: string };
 
-    // updateMany scopes the write to the authenticated user's records
+    // updateMany scopes the write to the authenticated user's records and
+    // excludes soft-deleted payments (consistent 404, same as GET).
     const updated = await prisma.payment.updateMany({
-      where: { id, userId: auth.userId },
+      where: { id, userId: auth.userId, deletedAt: null },
       data: {
         ...(body.status && { status: body.status as never }),
         ...(body.description !== undefined && { description: body.description }),
@@ -129,12 +131,15 @@ export const DELETE = withRequestLogging(async function DELETE(
     }
 
     const { id } = await params;
-    // deleteMany scopes the delete to the authenticated user's records
-    const deleted = await prisma.payment.deleteMany({
-      where: { id, userId: auth.userId },
+    // Soft-delete: mark deletedAt instead of removing the row so audit trails
+    // and analytics survive (issue #50). updateMany scopes the write to the
+    // authenticated user's records (no IDOR across users).
+    const deleted = await prisma.payment.updateMany({
+      where: { id, userId: auth.userId, deletedAt: null },
+      data: { deletedAt: new Date() },
     });
     if (deleted.count === 0) return notFoundError("Payment");
-    logger.info("Payment deleted", { id });
+    logger.info("Payment soft-deleted", { id });
     return successResponse({ deleted: true });
   } catch (err) {
     return handleApiError(err, `DELETE /api/payments/[id]`);

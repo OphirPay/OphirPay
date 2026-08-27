@@ -223,19 +223,45 @@ function PaymentsClient() {
       page: null,
     });
 
-  const handleExport = () => {
-    exportToCsv(
-      filtered,
-      [
-        { key: "id", header: "Payment ID" },
-        { key: "amount", header: "Amount" },
-        { key: "assetCode", header: "Asset" },
-        { key: "status", header: "Status" },
-        { key: "transactionHash", header: "Tx Hash" },
-        { key: "createdAt", header: "Created At" },
-      ],
-      { filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv` }
-    );
+  const handleExport = async () => {
+    // Prefer the server-side export (GET /api/payments/export): it applies the
+    // CURRENT search filter to the full DB-backed record set, so the CSV is
+    // not limited to the rows loaded into the page. It falls back to a
+    // client-side export of the loaded rows when there is no server session
+    // (e.g. wallet connected but the session cookie expired) so the button
+    // never dead-ends in a 401.
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("search", debouncedSearch);
+
+    try {
+      const res = await fetch(`/api/payments/export?${params.toString()}`, {
+        credentials: "same-origin",
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+      }
+    } catch {
+      // Network failure or missing session — fall through to the client-side
+      // export below.
+    }
+
+    exportToCsv(filtered, [
+      { key: "id", header: "Payment ID" },
+      { key: "amount", header: "Amount" },
+      { key: "assetCode", header: "Asset" },
+      { key: "status", header: "Status" },
+      { key: "transactionHash", header: "Tx Hash" },
+      { key: "createdAt", header: "Created At" },
+    ], { filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv` });
   };
 
   return (
@@ -256,8 +282,7 @@ function PaymentsClient() {
         <div className="flex items-center gap-3">
           <button
             onClick={handleExport}
-            disabled={payments.length === 0}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             title="Export CSV"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">

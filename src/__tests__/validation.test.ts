@@ -179,12 +179,13 @@ describe("createPaymentRequestSchema", () => {
 // ─── paginationSchema ───────────────────────────────────────────
 
 describe("paginationSchema", () => {
-  it("defaults page=1 limit=20", () => {
+  it("defaults page=1 limit=50", () => {
     const result = paginationSchema.safeParse({});
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.page).toBe(1);
-      expect(result.data.limit).toBe(20);
+      expect(result.data.limit).toBe(50);
+      expect(result.data.cursor).toBeUndefined();
     }
   });
 
@@ -194,6 +195,14 @@ describe("paginationSchema", () => {
     if (result.success) {
       expect(result.data.page).toBe(3);
       expect(result.data.limit).toBe(50);
+    }
+  });
+
+  it("accepts an opaque cursor", () => {
+    const result = paginationSchema.safeParse({ cursor: "eyJjcmVhdGVkQXQiOiJ4IiwiaWQiOiJ5In0" });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.cursor).toBe("eyJjcmVhdGVkQXQiOiJ4IiwiaWQiOiJ5In0");
     }
   });
 

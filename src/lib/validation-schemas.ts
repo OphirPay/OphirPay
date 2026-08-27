@@ -22,10 +22,37 @@ export const createPaymentSchema = z.object({
   memo: z.string().max(28).optional(),
 });
 
+/** Body for POST /api/payments/retry — which failed payment to retry. */
+export const retryPaymentSchema = z.object({
+  id: z.string().min(1, "Payment id is required"),
+});
+
 export const updatePaymentSchema = z.object({
   status: z.enum(["CREATED", "PENDING", "COMPLETED", "FAILED", "CANCELLED"]).optional(),
   description: z.string().max(500).optional(),
   memo: z.string().max(28).optional(),
+});
+
+// Keep in sync with the PaymentStatus enum in prisma/schema.prisma.
+const paymentStatusValues = [
+  "CREATED",
+  "SIGNED",
+  "SUBMITTED",
+  "CONFIRMED",
+  "PENDING",
+  "PROCESSING",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+] as const;
+
+/** Status filter accepted by the payment CSV export endpoint. */
+export const paymentStatusSchema = z.enum(paymentStatusValues);
+
+/** Query params for GET /api/payments/export — same filters as the list route. */
+export const paymentExportParamsSchema = z.object({
+  status: paymentStatusSchema.optional(),
+  search: z.string().optional(),
 });
 
 // ── Batch Schemas ─────────────────────────────────────────────
@@ -131,7 +158,9 @@ export const createPaymentRequestSchema = z.object({
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  /** Opaque keyset cursor from a previous response's meta.nextCursor. */
+  cursor: z.string().min(1).optional(),
   status: z.string().optional(),
   search: z.string().optional(),
 });

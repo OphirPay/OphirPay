@@ -7,8 +7,10 @@
 
 /**
  * Convert an array of objects to CSV string (server-safe, no Blob).
+ * `T extends object` (rather than Record<string, unknown>) so interfaces —
+ * which have no implicit index signature — are accepted.
  */
-export function toCsvString<T extends Record<string, unknown>>(
+export function toCsvString<T extends object>(
   data: T[],
   columns: { key: keyof T; header: string }[]
 ): string {
@@ -20,7 +22,14 @@ export function toCsvString<T extends Record<string, unknown>>(
 }
 
 function escapeField(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+  if (
+    value.includes(",") ||
+    value.includes('"') ||
+    value.includes("\n") ||
+    // RFC 4180 §2.6 — a bare carriage return splits the record in Excel and
+    // in any reader that treats CR as a line terminator.
+    value.includes("\r")
+  ) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
@@ -28,15 +37,18 @@ function escapeField(value: string): string {
 
 /**
  * Create a CSV Response object for API download endpoints.
+ * `extraHeaders` lets callers attach metadata (e.g. X-Export-Truncated).
  */
 export function createCsvResponse(
   filename: string,
-  data: string
+  data: string,
+  extraHeaders: Record<string, string> = {}
 ): Response {
   return new Response(data, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${filename}"`,
+      ...extraHeaders,
     },
   });
 }

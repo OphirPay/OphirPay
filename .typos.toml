@@ -1,0 +1,4 @@
+# English spell-checker config — exclude the non-English README translations
+# so legitimate Spanish/French/Japanese words are not flagged as typos.
+[files]
+extend-exclude = ["README.es.md", "README.fr.md", "README.ja.md"]

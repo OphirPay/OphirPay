@@ -4,45 +4,76 @@
  * Notifications library.
  *
  * Provides:
- *  - Browser notification API wrappers (existing).
- *  - In-app notification type system and factories.
+ *  - Browser notification API wrappers (existing, backward-compatible).
+ *  - In-app notification type system and factories (Issue #49).
  *  - Display formatting helpers for notification dropdown UI.
  */
 
 // ---------------------------------------------------------------------------
-// Browser notification API (existing)
+// Browser notification API (existing — preserved for backward compatibility)
 // ---------------------------------------------------------------------------
 
-type Permission = "default" | "granted" | "denied";
+let permissionRequested = false;
 
-export function getNotificationPermission(): Permission {
-  if (typeof window === "undefined" || !("Notification" in window)) {
-    return "denied";
-  }
-  return Notification.permission as Permission;
+export function isPermissionRequested(): boolean {
+  return permissionRequested;
 }
 
-export async function requestNotificationPermission(): Promise<Permission> {
-  if (typeof window === "undefined" || !("Notification" in window)) {
-    return "denied";
-  }
+/**
+ * Request browser notification permission.
+ * Call this once during onboarding or after a user action.
+ * Returns true if permission is granted, false otherwise.
+ */
+export async function requestNotificationPermission(): Promise<boolean> {
+  if (typeof Notification === "undefined") return false;
+
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") return false;
+
+  permissionRequested = true;
   const result = await Notification.requestPermission();
-  return result as Permission;
+  return result === "granted";
 }
 
-export function showBrowserNotification(title: string, options?: NotificationOptions): void {
-  if (typeof window === "undefined" || !("Notification" in window)) {
-    return;
-  }
-  if (Notification.permission !== "granted") {
-    return;
-  }
-  try {
-    new Notification(title, options);
-  } catch {
-    // Some browsers throw if the document is not visible.
+/**
+ * Send a browser notification.
+ * Only works after permission is granted.
+ */
+export function sendNotification(title: string, options?: NotificationOptions): void {
+  if (typeof Notification === "undefined") return;
+
+  if (Notification.permission === "granted") {
+    new Notification(title, {
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      ...options,
+    });
   }
 }
+
+/**
+ * Preconfigured notification templates.
+ */
+export const NOTIFY = {
+  paymentSent: (amount: string, txHash: string) => {
+    sendNotification(`Payment Sent: ${amount}`, {
+      body: `Transaction ${txHash.slice(0, 10)}... confirmed on Stellar`,
+      tag: "payment-sent",
+    });
+  },
+  paymentReceived: (amount: string, from: string) => {
+    sendNotification(`Payment Received: ${amount}`, {
+      body: `From ${from.slice(0, 10)}...`,
+      tag: "payment-received",
+    });
+  },
+  batchComplete: (recipients: number) => {
+    sendNotification("Batch Payment Complete", {
+      body: `Successfully sent payments to ${recipients} recipients.`,
+      tag: "batch-complete",
+    });
+  },
+};
 
 // ---------------------------------------------------------------------------
 // In-app notification system (new — GitHub Issue #49)
@@ -143,7 +174,7 @@ export function formatNotificationMessage(
       return d.recipients ? `Sent to ${d.recipients} recipients` : "Batch transfer completed";
     case "payment:created": {
       const payerName = d.from ? shortAddr(d.from) : "unknown";
-      const amountStr = n.amount ?? "—";
+      const amountStr = n.amount ?? "\u2014";
       return `${amountStr} from ${payerName}`;
     }
     default:
@@ -154,7 +185,7 @@ export function formatNotificationMessage(
 function shortAddr(addr: string, chars = 6): string {
   if (!addr) return "";
   if (addr.length <= chars * 2 + 1) return addr;
-  return `${addr.slice(0, chars)}…${addr.slice(-chars)}`;
+  return `${addr.slice(0, chars)}\u2026${addr.slice(-chars)}`;
 }
 
 const MAX_NOTIFICATIONS = 20;

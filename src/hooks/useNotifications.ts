@@ -97,7 +97,10 @@ export function useNotifications(): UseNotificationsResult {
     setNotifications((prev) => appendNotification(prev, n));
   }, []);
 
-  // Connect to SSE /api/events and listen for payment:created.
+  // Connect to SSE /api/events and listen for named "payment:created" events.
+  // The SSE endpoint emits: event: payment:created\ndata: {...}\n\n
+  // Using addEventListener with the event name ensures we only receive
+  // payment:created events, not heartbeat or connected events.
   useEffect(() => {
     if (typeof window === "undefined") return;
     let es: EventSource | null = null;
@@ -123,10 +126,10 @@ export function useNotifications(): UseNotificationsResult {
       });
     };
 
-    es.addEventListener("message", handler);
+    es.addEventListener("payment:created", handler);
 
     return () => {
-      es.removeEventListener("message", handler);
+      es.removeEventListener("payment:created", handler);
       es.close();
     };
   }, [addNotification]);

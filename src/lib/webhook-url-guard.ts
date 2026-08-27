@@ -101,6 +101,8 @@ export function isSafeWebhookUrl(url: string): boolean {
   // Reject credentials in the URL (user:pass@host) — unnecessary and risky
   if (parsed.username || parsed.password) return false;
 
+  if (process.env.ALLOW_LOCAL_WEBHOOKS === "true") return true;
+
   // Literal IP checks
   const ipVersion = isIP(host);
   if (ipVersion === 4 && isPrivateIpv4(host)) return false;
@@ -119,6 +121,7 @@ export function isSafeWebhookUrl(url: string): boolean {
  * Returns true only when the currently-resolved address is public.
  */
 export async function isSafeWebhookUrlAtDelivery(url: string): Promise<boolean> {
+  if (process.env.ALLOW_LOCAL_WEBHOOKS === "true") return true;
   if (!isSafeWebhookUrl(url)) return false;
   try {
     const { lookup } = await import("node:dns/promises");

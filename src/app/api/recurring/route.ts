@@ -10,8 +10,9 @@ import {
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
+import { withRequestLogging } from "@/lib/request-logging";
 
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -44,9 +45,9 @@ export async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/recurring");
   }
-}
+});
 
-export async function POST(request: Request) {
+export const POST = withRequestLogging(async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -87,4 +88,4 @@ export async function POST(request: Request) {
   } catch (err) {
     return handleApiError(err, "POST /api/recurring");
   }
-}
+});

@@ -4,12 +4,13 @@ import { successResponse, handleApiError, badRequestError, unauthorizedError } f
 import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { setMultisigConfig } from "@/lib/contract-advanced";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/multisig — current multisig configuration
  * Reads from the Soroban contract via OphirPayContract.get_multisig_config().
  */
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -39,12 +40,12 @@ export async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/multisig");
   }
-}
+});
 
 /**
  * POST /api/multisig — configure multisig (owner-only, calls Soroban contract)
  */
-export async function POST(request: Request) {
+export const POST = withRequestLogging(async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -73,4 +74,4 @@ export async function POST(request: Request) {
   } catch (err) {
     return handleApiError(err, "POST /api/multisig");
   }
-}
+});

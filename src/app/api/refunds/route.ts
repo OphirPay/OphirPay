@@ -9,8 +9,9 @@ import {
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, createRefundRecordSchema } from "@/lib/validation-schemas";
+import { withRequestLogging } from "@/lib/request-logging";
 
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/refunds");
   }
-}
+});
 
 // ── POST /api/refunds ─────────────────────────────────────────
 
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
  * The on-chain id (captured from the tx return value) is stored so the UI can
  * later target approve_refund / process_refund at the correct contract record.
  */
-export async function POST(request: Request) {
+export const POST = withRequestLogging(async function POST(request: Request) {
   try {
     const csrfError = verifyCsrf(request);
     if (csrfError) return csrfError;
@@ -91,4 +92,4 @@ export async function POST(request: Request) {
   } catch (err) {
     return handleApiError(err, "POST /api/refunds");
   }
-}
+});

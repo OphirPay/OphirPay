@@ -3,12 +3,13 @@
 import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/policy-versions — fee config + multisig config version history.
  * Reads from OphirPayContract.get_fee_config_history() and get_multisig_config_history().
  */
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -27,4 +28,4 @@ export async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/policy-versions");
   }
-}
+});

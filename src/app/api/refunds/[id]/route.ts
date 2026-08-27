@@ -10,6 +10,7 @@ import {
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, updateRefundStatusSchema } from "@/lib/validation-schemas";
+import { withRequestLogging } from "@/lib/request-logging";
 
 // ── PATCH /api/refunds/[id] ───────────────────────────────────
 
@@ -18,7 +19,7 @@ import { validateBody, updateRefundStatusSchema } from "@/lib/validation-schemas
  * on-chain transition (approve_refund / process_refund) succeeded, so the
  * Request → Approve → Process flow is reflected in the list.
  */
-export async function PATCH(
+export const PATCH = withRequestLogging(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -47,4 +48,4 @@ export async function PATCH(
   } catch (err) {
     return handleApiError(err, "PATCH /api/refunds/[id]");
   }
-}
+});

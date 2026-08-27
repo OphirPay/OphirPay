@@ -49,9 +49,25 @@ export const logger = {
   warn: (message: string, context?: Record<string, unknown>) => log("warn", message, context),
   error: (message: string, context?: Record<string, unknown>) => log("error", message, context),
 
-  /** Log an API request with method, path, status, and duration */
-  request: (method: string, path: string, status: number, durationMs: number) => {
-    log("info", `${method} ${path} ${status}`, { method, path, status, durationMs });
+  /**
+   * Log an API request with method, path, status, duration, and (when
+   * available) the request id so a log line can be correlated with the
+   * X-Request-Id response header.
+   */
+  request: (
+    method: string,
+    path: string,
+    status: number,
+    durationMs: number,
+    requestId?: string
+  ) => {
+    log("info", `${method} ${path} ${status}`, {
+      method,
+      path,
+      status,
+      durationMs,
+      ...(requestId ? { requestId } : {}),
+    });
   },
 
   /** Track a metric with a name and value for monitoring */

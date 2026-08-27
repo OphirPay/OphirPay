@@ -5,12 +5,13 @@ import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, proposeMultisigPaymentSchema } from "@/lib/validation-schemas";
 import { proposeMultisigPayment } from "@/lib/contract-advanced";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * POST /api/multisig/propose — propose a payment for multisig approval
  * Calls OphirPayContract.propose_payment() on-chain.
  */
-export async function POST(request: Request) {
+export const POST = withRequestLogging(async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -45,4 +46,4 @@ export async function POST(request: Request) {
   } catch (err) {
     return handleApiError(err, "POST /api/multisig/propose");
   }
-}
+});

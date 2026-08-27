@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handlePrismaError } from "@/lib/prisma-errors";
 import { logger } from "@/lib/logger";
+import { getCurrentRequestId } from "@/lib/request-logging";
 import { ERROR_CODES } from "@/lib/error-codes";
 
 // ── Standard Response Types ────────────────────────────────────
@@ -148,8 +149,11 @@ export function badRequestError(message: string) {
  * • Generic errors → 500 (masked in production for security)
  */
 export function handleApiError(err: unknown, context?: string): NextResponse {
-  // Log the real error for debugging
+  // Log the real error for debugging — the request id (set by the request
+  // logging middleware) lets operators correlate the log with the
+  // X-Request-Id returned to the client.
   logger.error(context ?? "API error", {
+    requestId: getCurrentRequestId(),
     error: err instanceof Error ? err.message : String(err),
     stack: err instanceof Error ? err.stack : undefined,
   });

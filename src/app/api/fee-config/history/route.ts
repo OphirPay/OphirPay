@@ -3,13 +3,14 @@
 import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/fee-config/history — fee config version history from the Soroban contract.
  * Simulates a read-only call to OphirPayContract.get_fee_config_history().
  * Returns up to 100 version entries (capped by the contract).
  */
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -30,4 +31,4 @@ export async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/fee-config/history");
   }
-}
+});

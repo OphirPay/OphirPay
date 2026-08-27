@@ -4,6 +4,7 @@ import { withApiAuth } from "@/lib/api-auth";
 import { successResponse, handleApiError, badRequestError } from "@/lib/api-response";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { z } from "zod";
+import { withRequestLogging } from "@/lib/request-logging";
 
 const auditLogQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
@@ -89,4 +90,4 @@ async function _GET(request: Request) {
   }
 }
 
-export const GET = withApiAuth(_GET);
+export const GET = withRequestLogging(withApiAuth(_GET));

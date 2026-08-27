@@ -14,6 +14,7 @@ import { getStellarExplorerUrl, XLM_STROOPS } from "@/lib/stellar";
 import { exportToCsv } from "@/lib/csv";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Pagination } from "@/components/ui/Pagination";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -231,7 +232,7 @@ function PaymentsClient() {
       {/* Table */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" aria-busy={loading}>
             <thead>
               <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
                 <th className="py-3 px-4 font-medium">Payment</th>
@@ -242,13 +243,26 @@ function PaymentsClient() {
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={5} className="py-4 px-4">
-                    <LoadingSkeleton variant="table" lines={5} />
-                  </td>
-                </tr>
-              )}
+              {loading &&
+                // Skeleton rows pulse in place so the table keeps its height
+                // (no layout shift) while the on-chain read is in flight.
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr
+                    key={i}
+                    aria-hidden="true"
+                    className="border-b border-gray-100 dark:border-gray-800/50"
+                  >
+                    <td className="py-3 px-4" colSpan={5}>
+                      <div className="flex items-center gap-4">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-4 flex-1" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
 
               {!loading && filtered.length === 0 && !error && (
                 <tr>

@@ -23,6 +23,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { EMITTER_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { SOROBAN_RPC_URL, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import { withRequestLogging } from "@/lib/request-logging";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +99,7 @@ async function readEmitterEvent(
   return null;
 }
 
-export async function GET() {
+export const GET = withRequestLogging(async function GET() {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -216,4 +217,4 @@ export async function GET() {
       "X-Accel-Buffering": "no",
     },
   });
-}
+});

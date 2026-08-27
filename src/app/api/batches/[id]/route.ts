@@ -4,12 +4,13 @@ import { successResponse, handleApiError, notFoundError, unauthorizedError } fro
 import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/batches/[id] — single batch lookup
  * Reads from OphirPayContract on-chain. Supports ?payments=true for included payment IDs.
  */
-export async function GET(
+export const GET = withRequestLogging(async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -60,4 +61,4 @@ export async function GET(
   } catch (err) {
     return handleApiError(err, "GET /api/batches/[id]");
   }
-}
+});

@@ -6,6 +6,7 @@ import {
 } from "@/lib/challenge";
 import { isValidStellarAddress } from "@/lib/stellar";
 import { successResponse, badRequestError } from "@/lib/api-response";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/auth/challenge?publicKey=G... — mint a proof-of-ownership challenge.
@@ -14,7 +15,7 @@ import { successResponse, badRequestError } from "@/lib/api-response";
  * wallet must sign. POST /api/auth/session only issues a session cookie when
  * the signature over this message verifies against the public key.
  */
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const publicKey = (searchParams.get("publicKey") ?? "").trim();
 
@@ -31,4 +32,4 @@ export async function GET(request: Request) {
     message: challengeMessage(publicKey, challenge),
     expiresIn: 300, // seconds
   });
-}
+});

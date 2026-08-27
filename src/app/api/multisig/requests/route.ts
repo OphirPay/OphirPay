@@ -2,6 +2,7 @@
 
 import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/multisig/requests — list pending approval requests
@@ -9,7 +10,7 @@ import { getAuthContext } from "@/lib/auth-session";
  * Note: contract iteration requires knowing the total count first,
  * then fetching each request by ID. For now, returns latest requests.
  */
-export async function GET(request: Request) {
+export const GET = withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -23,4 +24,4 @@ export async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/multisig/requests");
   }
-}
+});

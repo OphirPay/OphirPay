@@ -1,8 +1,13 @@
 # API Cookbook
 
-This document provides working `curl` examples and sample responses for every public
-endpoint exposed by the OphirPay API. All examples use the production base URL and
-the authentication scheme described below.
+This document provides working `curl` examples and sample responses for the
+public OphirPay API. Examples follow the schemas in `docs/openapi.yaml`.
+
+All endpoints return a shared envelope:
+
+```json
+{ "success": true, "data": { ... }, "meta": { ... } }
+```
 
 ## Base URL
 
@@ -12,83 +17,47 @@ https://api.ophirpay.com/api
 
 ## Authentication
 
-The API uses **X-API-Key** authentication for programmatic access and **Bearer JWT**
-for user-facing operations.
-
-### Obtain a JWT
+Authenticated endpoints accept a Bearer token in the `Authorization` header.
 
 ```bash
-curl -X POST https://api.ophirpay.com/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "password": "your-password"
-  }'
+curl https://api.ophirpay.com/api/health \
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>"
 ```
 
-**Response:**
-
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expiresIn": 3600,
-  "user": {
-    "id": "usr_abc123",
-    "email": "user@example.com"
-  }
-}
-```
-
-### Use API Key
-
-```bash
-curl -H "X-API-Key: your-api-key" \
-  https://api.ophirpay.com/api/v1/payments
-```
+Use `<REPLACE_WITH_TOKEN>` as a placeholder — never commit a real JWT.
 
 ---
 
 ## Payments
 
-### List Payments
+### Create Payment
 
-```bash
-curl -H "Authorization: Bearer <token>" \
-  https://api.ophirpay.com/api/payments?limit=20&offset=0
-```
+**Endpoint:** `POST /api/payments`
 
-**Response:**
+**Request body** (per `CreatePaymentRequest` schema):
 
 ```json
 {
-  "data": [
-    {
-      "id": "pay_abc123",
-      "amount": "150.00",
-      "currency": "USDC",
-      "status": "completed",
-      "createdAt": "2026-08-27T10:00:00Z"
-    }
-  ],
-  "meta": {
-    "total": 1,
-    "limit": 20,
-    "offset": 0
-  }
+  "amount": 150.5,
+  "sourceAccountId": "acc_123",
+  "destAddress": "GBCRVYEXAMPLEADDRESS",
+  "assetCode": "USDC",
+  "description": "Invoice #1042"
 }
 ```
 
-### Create Payment
+**curl:**
 
 ```bash
 curl -X POST https://api.ophirpay.com/api/payments \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": "150.00",
-    "currency": "USDC",
-    "recipient": "0xRecipientAddress",
-    "network": "base"
+    "amount": 150.5,
+    "sourceAccountId": "acc_123",
+    "destAddress": "GBCRVYEXAMPLEADDRESS",
+    "assetCode": "USDC",
+    "description": "Invoice #1042"
   }'
 ```
 
@@ -96,11 +65,45 @@ curl -X POST https://api.ophirpay.com/api/payments \
 
 ```json
 {
-  "id": "pay_def456",
-  "amount": "150.00",
-  "currency": "USDC",
-  "status": "pending",
-  "createdAt": "2026-08-27T10:05:00Z"
+  "success": true,
+  "data": {
+    "id": "pay_abc123",
+    "amount": 150.5,
+    "assetCode": "USDC",
+    "sourceAccountId": "acc_123",
+    "destAddress": "GBCRVYEXAMPLEADDRESS",
+    "status": "pending",
+    "createdAt": "2026-08-27T10:00:00Z"
+  },
+  "meta": {
+    "timestamp": "2026-08-27T10:00:00Z"
+  }
+}
+```
+
+### List Payments
+
+**Endpoint:** `GET /api/payments?limit=20&offset=0`
+
+```bash
+curl "https://api.ophirpay.com/api/payments?limit=20&offset=0" \
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>"
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "pay_abc123",
+      "amount": 150.5,
+      "status": "pending",
+      "createdAt": "2026-08-27T10:00:00Z"
+    }
+  ],
+  "meta": { "total": 1, "limit": 20, "offset": 0, "timestamp": "2026-08-27T10:00:00Z" }
 }
 ```
 
@@ -110,48 +113,29 @@ curl -X POST https://api.ophirpay.com/api/payments \
 
 ### Create Batch Payment
 
+**Endpoint:** `POST /api/batches`
+
 ```bash
 curl -X POST https://api.ophirpay.com/api/batches \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
+    "sourceAccountId": "acc_123",
     "payments": [
-      {"recipient": "0xAddr1", "amount": "50.00", "currency": "USDC"},
-      {"recipient": "0xAddr2", "amount": "75.00", "currency": "USDC"}
+      { "destAddress": "GBCRVYEXAMPLEADDRESS1", "amount": 50 },
+      { "destAddress": "GBCRVYEXAMPLEADDRESS2", "amount": 75 }
     ],
-    "network": "base"
+    "assetCode": "USDC"
   }'
 ```
 
-**Response (201):**
+### Get Batch
 
-```json
-{
-  "id": "batch_ghi789",
-  "status": "pending",
-  "totalAmount": "125.00",
-  "paymentCount": 2,
-  "createdAt": "2026-08-27T10:10:00Z"
-}
-```
-
-### Get Batch Status
+**Endpoint:** `GET /api/batches/{id}`
 
 ```bash
-curl -H "Authorization: Bearer <token>" \
-  https://api.ophirpay.com/api/batches/batch_ghi789
-```
-
-**Response:**
-
-```json
-{
-  "id": "batch_ghi789",
-  "status": "completed",
-  "totalAmount": "125.00",
-  "completedCount": 2,
-  "failedCount": 0
-}
+curl https://api.ophirpay.com/api/batches/batch_ghi789 \
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>"
 ```
 
 ---
@@ -160,30 +144,20 @@ curl -H "Authorization: Bearer <token>" \
 
 ### Create Recurring Payment
 
+**Endpoint:** `POST /api/recurring`
+
 ```bash
 curl -X POST https://api.ophirpay.com/api/recurring \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": "10.00",
-    "currency": "USDC",
-    "recipient": "0xRecipient",
+    "amount": 10,
+    "sourceAccountId": "acc_123",
+    "destAddress": "GBCRVYEXAMPLEADDRESS",
+    "assetCode": "USDC",
     "frequency": "weekly",
-    "interval": 1,
-    "network": "base"
+    "interval": 1
   }'
-```
-
-**Response (201):**
-
-```json
-{
-  "id": "rec_jkl012",
-  "amount": "10.00",
-  "frequency": "weekly",
-  "nextPayment": "2026-09-03T10:15:00Z",
-  "status": "active"
-}
 ```
 
 ---
@@ -192,21 +166,19 @@ curl -X POST https://api.ophirpay.com/api/recurring \
 
 ### List Webhooks
 
-```bash
-curl -H "Authorization: Bearer <token>" \
-  https://api.ophirpay.com/api/webhooks
-```
+**Endpoint:** `GET /api/webhooks`
 
 ### Register Webhook
 
+**Endpoint:** `POST /api/webhooks`
+
 ```bash
 curl -X POST https://api.ophirpay.com/api/webhooks \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://myapp.com/webhooks/ophirpay",
-    "events": ["payment.completed", "payment.failed"],
-    "secret": "whsec_your_webhook_secret"
+    "events": ["payment.completed", "payment.failed"]
   }'
 ```
 
@@ -216,25 +188,28 @@ curl -X POST https://api.ophirpay.com/api/webhooks \
 
 ### Create Escrow
 
+**Endpoint:** `POST /api/escrows`
+
 ```bash
 curl -X POST https://api.ophirpay.com/api/escrows \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": "500.00",
-    "currency": "USDC",
-    "seller": "0xSellerAddress",
-    "buyer": "0xBuyerAddress",
-    "network": "base",
-    "conditions": "delivery_confirmed"
+    "amount": 500,
+    "sourceAccountId": "acc_123",
+    "sellerAddress": "GBCRVYEXAMPLEADDRESS1",
+    "buyerAddress": "GBCRVYEXAMPLEADDRESS2",
+    "assetCode": "USDC"
   }'
 ```
 
 ### Release Escrow
 
+**Endpoint:** `POST /api/escrows/{id}/release`
+
 ```bash
 curl -X POST https://api.ophirpay.com/api/escrows/esc_mno345/release \
-  -H "Authorization: Bearer <token>"
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>"
 ```
 
 ---
@@ -243,22 +218,26 @@ curl -X POST https://api.ophirpay.com/api/escrows/esc_mno345/release \
 
 ### Create Payment Stream
 
+**Endpoint:** `POST /api/streams`
+
 ```bash
 curl -X POST https://api.ophirpay.com/api/streams \
-  -H "Authorization: Bearer <token>" \
+  -H "Authorization: Bearer <REPLACE_WITH_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "recipient": "0xRecipient",
-    "rate": "0.01",
-    "currency": "USDC",
-    "duration": 86400,
-    "network": "base"
+    "amountPerPeriod": 0.01,
+    "sourceAccountId": "acc_123",
+    "destAddress": "GBCRVYEXAMPLEADDRESS",
+    "assetCode": "USDC",
+    "periodSeconds": 3600
   }'
 ```
 
 ---
 
 ## Health
+
+**Endpoint:** `GET /api/health`
 
 ```bash
 curl https://api.ophirpay.com/api/health
@@ -268,10 +247,12 @@ curl https://api.ophirpay.com/api/health
 
 ```json
 {
-  "status": "ok",
-  "timestamp": "2026-08-27T10:00:00Z",
-  "version": "1.0.0",
-  "uptime": 3600
+  "success": true,
+  "data": {
+    "status": "ok",
+    "version": "1.0.0",
+    "timestamp": "2026-08-27T10:00:00Z"
+  }
 }
 ```
 
@@ -279,15 +260,16 @@ curl https://api.ophirpay.com/api/health
 
 ## Error Responses
 
-All endpoints return errors in a consistent format:
+Errors follow the shared envelope:
 
 ```json
 {
+  "success": false,
   "error": {
-    "code": "INSUFFICIENT_FUNDS",
-    "message": "Insufficient balance to complete this transaction.",
-    "requestId": "req_pqr678"
-  }
+    "code": "VALIDATION_ERROR",
+    "message": "amount must be a number"
+  },
+  "meta": { "timestamp": "2026-08-27T10:00:00Z" }
 }
 ```
 
@@ -295,7 +277,7 @@ Common HTTP status codes:
 - `200` — Success
 - `201` — Created
 - `400` — Bad Request (validation error)
-- `401` — Unauthorized (missing/invalid auth)
+- `401` — Unauthorized (missing/invalid token)
 - `403` — Forbidden (insufficient permissions)
 - `404` — Not Found
 - `429` — Rate Limited

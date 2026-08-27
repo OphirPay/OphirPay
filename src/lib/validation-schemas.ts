@@ -37,11 +37,17 @@ export const batchRecipientSchema = z.object({
   memo: z.string().max(28).optional(),
 });
 
+export const idempotencyKeySchema = z
+  .string()
+  .min(8, "Idempotency key must be at least 8 characters")
+  .max(255);
+
 export const createBatchSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   recipients: z.array(batchRecipientSchema).min(1).max(100),
   sourceAccountId: z.string().min(1),
+  idempotencyKey: idempotencyKeySchema.optional(),
 });
 
 // ── Multisig Schemas ──────────────────────────────────────────

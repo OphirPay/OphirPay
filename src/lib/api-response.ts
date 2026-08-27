@@ -17,6 +17,7 @@ interface ApiSuccess<T> {
     limit?: number;
     total?: number;
     timestamp?: string;
+    deduplicated?: boolean;
   };
 }
 

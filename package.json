@@ -52,8 +52,8 @@
     "ci": "npm run typecheck && npm run lint -- --max-warnings 0 && npm test && npm run build",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "gas:record": "ts-node scripts/check-gas-regression.ts --record",
-    "gas:check": "ts-node scripts/check-gas-regression.ts --check"
+    "gas:record": "node scripts/check-gas-regression.cjs --record",
+    "gas:check": "node scripts/check-gas-regression.cjs --check"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -88,7 +88,6 @@
     "puppeteer": "^25.4.0",
     "tailwindcss": "^4.1.6",
     "typescript": "^5.8.0",
-    "vitest": "^4.1.10",
-    "ts-node": "^10.9"
+    "vitest": "^4.1.10"
   }
 }

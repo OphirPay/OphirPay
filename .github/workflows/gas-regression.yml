@@ -22,17 +22,13 @@ jobs:
           node-version: 18
           cache: npm
       - run: npm ci
-      - name: Typecheck
-        run: npm run typecheck || true
       - name: Record baseline (if missing)
-        run: npm run gas:record -- --if-missing || true
-      - name: Run gas regression check
-        run: npm run gas:check
+        run: node scripts/check-gas-regression.cjs --record --if-missing
+      - name: Run gas/WASM regression check
+        run: node scripts/check-gas-regression.cjs --check
       - name: Report to job summary
         if: always()
         run: |
           if [ -f gas-summary.md ]; then
             cat gas-summary.md >> $GITHUB_STEP_SUMMARY
           fi
-          echo "## Gas Regression Check" >> $GITHUB_STEP_SUMMARY
-          echo "Baseline: \`contracts/gas-baseline.json\`" >> $GITHUB_STEP_SUMMARY

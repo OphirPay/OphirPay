@@ -28,6 +28,7 @@ export default defineConfig({
         "src/lib/contract-events.ts",
         "src/lib/stellar.ts",
         "src/lib/rpc-failover.ts",
+        "src/lib/events/event-source.ts",
         "src/lib/api-auth.ts",
         "src/lib/api-client.ts",
         "src/lib/rate-limit.ts",

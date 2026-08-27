@@ -61,10 +61,13 @@
 - [🔐 Wallet Integration](#-wallet-integration)
 - [📡 Real-Time Events](#-real-time-events)
 - [🧪 Smart Contracts](#-smart-contracts)
+- [🌟 New to Stellar?](docs/STELLAR_101.md)
 - [📊 Testing & Quality](#-testing--quality)
 - [🔄 CI/CD Pipeline](#-cicd-pipeline)
 - [📸 Screenshots](#-screenshots)
 - [🛠 Tech Stack](#-tech-stack)
+- [📊 Database Schema](docs/SCHEMA.md)
+- [🚀 Deployment Guide](docs/DEPLOYMENT.md)
 - [🤝 Contributing](#-contributing)
 - [🗺 Roadmap](#-roadmap)
 - [🔬 Formal Verification](#-formal-verification)
@@ -211,6 +214,8 @@ bash scripts/demo-test.sh
 ---
 
 ## ⚡ Quick Start
+
+> **New to Stellar?** Read our [Stellar 101 explainer](docs/STELLAR_101.md) for a concise primer on accounts, transactions, XLM, and Soroban — aimed at web developers new to blockchain.
 
 ### Prerequisites
 

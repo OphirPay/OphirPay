@@ -42,7 +42,7 @@ describe("GET /api/health", () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ 1: 1 }]);
     vi.mocked(global.fetch).mockResolvedValue({ ok: true } as Response);
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/health"));
     expect(res.status).toBe(200);
     const body = await res.json();
 
@@ -59,7 +59,7 @@ describe("GET /api/health", () => {
     // Fetch fails
     vi.mocked(global.fetch).mockRejectedValue(new Error("Network error"));
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/health"));
     expect(res.status).toBe(200); // degraded is still 200
 
     const body = await res.json();
@@ -75,7 +75,7 @@ describe("GET /api/health", () => {
     vi.mocked(prisma.$queryRaw).mockRejectedValueOnce(new Error("DB Down"));
     vi.mocked(global.fetch).mockResolvedValue({ ok: true } as Response);
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/health"));
     expect(res.status).toBe(503);
 
     const body = await res.json();
@@ -91,7 +91,7 @@ describe("GET /api/health", () => {
     vi.mocked(global.fetch).mockResolvedValue({ ok: true } as Response);
     (contracts as unknown as { setMockContractId: (id: string) => void }).setMockContractId("INVALID_ID");
 
-    const res = await GET();
+    const res = await GET(new Request("http://localhost/api/health"));
     expect(res.status).toBe(200);
 
     const body = await res.json();

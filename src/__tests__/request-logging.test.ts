@@ -42,7 +42,9 @@ describe("withRequestLogging", () => {
   it("records the actual duration of the handler", async () => {
     const spy = vi.spyOn(logger, "request").mockImplementation(() => {});
     const handler = withRequestLogging(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // 50ms gives the assertion below a comfortable margin so the test is not
+      // flaky when the suite runs with many parallel workers (10ms was racy).
+      await new Promise((resolve) => setTimeout(resolve, 50));
       return new Response("ok");
     });
 

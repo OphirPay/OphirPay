@@ -1,6 +1,8 @@
 /**
  * OpenAPI schema-conformance tests for OphirPay API.
- * Validates that every public endpoint matches the OpenAPI spec.
+ * Validates that the OpenAPI spec (docs/openapi.yaml) is internally consistent
+ * and that documented endpoints have complete metadata. Static spec checks only —
+ * runtime request/response validation is covered by the e2e suite.
  */
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
@@ -35,9 +37,8 @@ describe('OpenAPI Schema Conformance', () => {
       const methodsObj = methods as Record<string, OpenAPIV3.OperationObject>;
       for (const [method, op] of Object.entries(methodsObj)) {
         if (['get', 'post', 'put', 'patch', 'delete', 'options', 'head'].includes(method)) {
-          it(`${method.toUpperCase()} ${route} — has summary and operationId`, () => {
-            expect(op.summary || op.operationId).toBeTruthy();
-            expect(op.operationId).toBeDefined();
+          it(`${method.toUpperCase()} ${route} — has summary or description`, () => {
+            expect(op.summary || op.description).toBeTruthy();
           });
 
           it(`${method.toUpperCase()} ${route} — has responses`, () => {

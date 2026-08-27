@@ -59,6 +59,8 @@ jobs:
       - run: npm ci
       - run: npx prisma generate
       - run: npx vitest run --reporter=verbose
+      - name: OpenAPI conformance check
+        run: npx vitest run tests/openapi-conformance.test.ts --reporter=verbose
 
   # ══════════════════════════════════════════════════════════════
   # 4. TEST COVERAGE — Vitest coverage with thresholds

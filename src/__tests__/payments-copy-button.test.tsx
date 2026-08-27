@@ -41,7 +41,11 @@ beforeEach(() => {
     return {
       ok: true,
       status: 200,
-      json: async () => ({ success: true, data: [payment] }),
+      json: async () => ({
+        success: true,
+        data: [payment],
+        meta: { page: 1, limit: 100, total: 1 },
+      }),
     };
   });
   vi.stubGlobal("fetch", fetchMock);

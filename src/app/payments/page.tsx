@@ -5,7 +5,7 @@
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
 import { getStellarExplorerUrl } from "@/lib/stellar";
 import { exportToCsv } from "@/lib/csv";
@@ -37,6 +37,46 @@ const SAFE_TRANSITIONS: Partial<Record<PaymentStatus, PaymentStatus[]>> = {
 };
 
 const PAYMENTS_QUERY_KEY = ["payments", "list"];
+
+// The list API is server-paginated with a max limit of 100 rows per page. The
+// page paginates/searchs/exports client-side over the full collection, so the
+// query loads every page (using `meta.total`) rather than silently truncating
+// history to the first 100 records.
+
+const PAYMENTS_PAGE_LIMIT = 100;
+
+interface PaymentsListPage {
+  data: Payment[];
+  meta: { page: number; limit: number; total: number };
+}
+
+async function fetchPaymentsPage(page: number): Promise<PaymentsListPage> {
+  const res = await fetch(
+    `/api/payments?page=${page}&limit=${PAYMENTS_PAGE_LIMIT}`
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: { code?: string; message?: string };
+    };
+    const err: ApiError = {
+      code: body?.error?.code ?? `HTTP_${res.status}`,
+      message:
+        body?.error?.message ?? `Request failed with status ${res.status}`,
+    };
+    throw err;
+  }
+  return (await res.json()) as PaymentsListPage;
+}
+
+async function fetchAllPayments(): Promise<Payment[]> {
+  const first = await fetchPaymentsPage(1);
+  const total = first.meta?.total ?? first.data.length;
+  const pages = Math.max(1, Math.ceil(total / PAYMENTS_PAGE_LIMIT));
+  const remaining = await Promise.all(
+    Array.from({ length: pages - 1 }, (_, i) => fetchPaymentsPage(i + 2))
+  );
+  return [...first.data, ...remaining.flatMap((p) => p.data)];
+}
 
 // ── Page ──────────────────────────────────────────────────────
 
@@ -76,64 +116,62 @@ function PaymentsClient() {
     isLoading: loading,
     error: fetchError,
     refetch: load,
-  } = useApiQuery<Payment[]>(PAYMENTS_QUERY_KEY, "/api/payments?limit=100");
+  } = useApiQuery<Payment[]>(PAYMENTS_QUERY_KEY, undefined, {}, fetchAllPayments);
 
   const payments = useMemo(() => rawPayments ?? [], [rawPayments]);
   const error = fetchError ? fetchError.message : null;
 
   // ── Optimistic status updates ────────────────────────────────
   //
-  // Changing a row's status updates the cache immediately (optimistic), then
-  // the PATCH response reconciles it. On failure the pre-mutation snapshot is
-  // restored and the user gets an error toast.
+  // Changing a row's status updates that row in the cache immediately
+  // (optimistic), then the PATCH response reconciles it. Each update is
+  // tracked per-row so concurrent updates to different rows never interfere:
+  // a failed request rolls back only its own row's snapshot and its own row's
+  // control stays disabled until that request settles.
 
-  const updateStatusMutation = useMutation<
-    Payment,
-    ApiError,
-    { id: string; status: PaymentStatus },
-    { previous?: Payment[] }
-  >({
-    mutationFn: ({ id, status }) =>
-      apiFetch<Payment>(`/api/payments/${id}`, {
+  const [pendingStatuses, setPendingStatuses] = useState<
+    Record<string, PaymentStatus>
+  >({});
+
+  const handleStatusChange = async (payment: Payment, next: PaymentStatus) => {
+    if (next === payment.status || pendingStatuses[payment.id]) return;
+
+    const prevRow = payment;
+    setPendingStatuses((prev) => ({ ...prev, [payment.id]: next }));
+    queryClient.setQueryData<Payment[]>(PAYMENTS_QUERY_KEY, (old) =>
+      (old ?? []).map((p) => (p.id === payment.id ? { ...p, status: next } : p))
+    );
+
+    try {
+      const updated = await apiFetch<Payment>(`/api/payments/${payment.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status }),
-      }),
-    onMutate: async ({ id, status }) => {
-      await queryClient.cancelQueries({ queryKey: PAYMENTS_QUERY_KEY });
-      const previous = queryClient.getQueryData<Payment[]>(PAYMENTS_QUERY_KEY);
+        body: JSON.stringify({ status: next }),
+      });
       queryClient.setQueryData<Payment[]>(PAYMENTS_QUERY_KEY, (old) =>
-        (old ?? []).map((p) => (p.id === id ? { ...p, status } : p))
-      );
-      return { previous };
-    },
-    onError: (err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(PAYMENTS_QUERY_KEY, context.previous);
-      }
-      toast.error("Failed to update payment status", err.message);
-    },
-    onSuccess: (updated) => {
-      queryClient.setQueryData<Payment[]>(PAYMENTS_QUERY_KEY, (old) =>
-        (old ?? []).map((p) => (p.id === updated.id ? updated : p))
+        (old ?? []).map((p) => (p.id === payment.id ? updated : p))
       );
       toast.success(
         "Payment status updated",
         updated.status.replace(/_/g, " ")
       );
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: PAYMENTS_QUERY_KEY });
-    },
-  });
-
-  const handleStatusChange = (payment: Payment, next: PaymentStatus) => {
-    if (next === payment.status) return;
-    updateStatusMutation.mutate({ id: payment.id, status: next });
+    } catch (err) {
+      queryClient.setQueryData<Payment[]>(PAYMENTS_QUERY_KEY, (old) =>
+        (old ?? []).map((p) => (p.id === payment.id ? prevRow : p))
+      );
+      const message =
+        (err as { message?: string } | null | undefined)?.message ??
+        "Request failed";
+      toast.error("Failed to update payment status", message);
+    } finally {
+      setPendingStatuses((prev) => {
+        const nextState = { ...prev };
+        delete nextState[payment.id];
+        return nextState;
+      });
+    }
   };
 
-  const isStatusPending = (id: string) =>
-    updateStatusMutation.isPending &&
-    updateStatusMutation.variables?.id === id;
+  const isStatusPending = (id: string) => pendingStatuses[id] !== undefined;
 
   // Client-side search/filter
   const filtered = useMemo(() => {

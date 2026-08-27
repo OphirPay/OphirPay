@@ -5,7 +5,7 @@ import { render, screen, act, waitFor, fireEvent } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import PaymentsPage from "@/app/payments/page";
 import { ToastProvider } from "@/components/ui/Toast";
-import type { Payment } from "@/types";
+import type { Payment, PaymentStatus } from "@/types";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), prefetch: vi.fn() }),
@@ -14,18 +14,19 @@ vi.mock("next/navigation", () => ({
 }));
 
 const ID = "cm1234567890123456789012";
+const ID_B = "cm9876543210987654321098";
 
-const basePayment: Payment = {
-  id: ID,
+const basePayment = (id: string, status: PaymentStatus = "CREATED"): Payment => ({
+  id,
   amount: 250,
-  status: "CREATED",
+  status,
   assetCode: "XLM",
   createdAt: "2026-08-01T12:00:00.000Z",
   updatedAt: "2026-08-01T12:00:00.000Z",
   description: "Invoice #42",
   transactionHash:
     "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-};
+});
 
 function jsonResponse(status: number, body: unknown) {
   return {
@@ -39,39 +40,53 @@ function jsonResponse(status: number, body: unknown) {
 // (or rollback + refetch) reconciles it. The badge is a <span>; the select's
 // <option> elements carry the same text, so filter by element tag.
 const badgeFor = (text: string) =>
-  screen
-    .queryAllByText(text)
-    .filter((el) => el.tagName === "SPAN");
+  screen.queryAllByText(text).filter((el) => el.tagName === "SPAN");
 
 const fetchMock = vi.fn();
-let serverPayment: Payment;
-let resolvePatch:
-  | ((value: ReturnType<typeof jsonResponse>) => void)
-  | null = null;
+let serverPayments: Payment[];
+let patchResolvers: Record<
+  string,
+  (value: ReturnType<typeof jsonResponse>) => void
+>;
+
+function patchUrl(id: string) {
+  return `/api/payments/${id}`;
+}
 
 beforeEach(() => {
-  serverPayment = { ...basePayment };
-  resolvePatch = null;
+  serverPayments = [basePayment(ID)];
+  patchResolvers = {};
 
   fetchMock.mockReset();
   fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
+
     if (url === "/api/csrf") {
+      return Promise.resolve(jsonResponse(200, { token: "test-csrf" }));
+    }
+
+    // List endpoint is server-paginated; slice the mutable server state per page.
+    if (url.startsWith("/api/payments?page=") && method === "GET") {
+      const page = Number(new URLSearchParams(url.split("?")[1]).get("page") ?? "1");
+      const start = (page - 1) * 100;
+      const data = serverPayments.slice(start, start + 100);
       return Promise.resolve(
-        jsonResponse(200, { token: "test-csrf" })
+        jsonResponse(200, {
+          success: true,
+          data,
+          meta: { page, limit: 100, total: serverPayments.length },
+        })
       );
     }
-    if (url === "/api/payments?limit=100" && method === "GET") {
-      return Promise.resolve(
-        jsonResponse(200, { success: true, data: [serverPayment] })
-      );
-    }
-    if (url === `/api/payments/${ID}` && method === "PATCH") {
+
+    if (method === "PATCH" && url.startsWith("/api/payments/")) {
+      const id = url.replace("/api/payments/", "");
       return new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
-        resolvePatch = resolve;
+        patchResolvers[id] = resolve;
       });
     }
+
     return Promise.resolve(
       jsonResponse(404, {
         error: { code: "NOT_FOUND", message: "not found" },
@@ -102,25 +117,26 @@ describe("PaymentsPage optimistic status updates", () => {
       name: /change status of payment/i,
     });
 
-    // Row starts in CREATED; SIGNED is a safe transition offered by the control.
     expect(badgeFor("CREATED")).toHaveLength(1);
 
     fireEvent.change(select, { target: { value: "SIGNED" } });
 
-    // Optimistic: the badge flips to SIGNED before the server responds.
+    // Optimistic: badge flips before the server responds.
     await waitFor(() => {
       expect(badgeFor("SIGNED").length).toBeGreaterThan(0);
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      `/api/payments/${ID}`,
+      patchUrl(ID),
       expect.objectContaining({ method: "PATCH" })
     );
 
     // Server confirms — reconcile from the response.
-    serverPayment = { ...basePayment, status: "SIGNED" };
+    serverPayments = serverPayments.map((p) =>
+      p.id === ID ? { ...p, status: "SIGNED" } : p
+    );
     await act(async () => {
-      resolvePatch?.(
-        jsonResponse(200, { success: true, data: serverPayment })
+      patchResolvers[ID]?.(
+        jsonResponse(200, { success: true, data: serverPayments[0] })
       );
     });
 
@@ -140,14 +156,12 @@ describe("PaymentsPage optimistic status updates", () => {
 
     fireEvent.change(select, { target: { value: "SIGNED" } });
 
-    // Optimistic: badge flips immediately.
     await waitFor(() => {
       expect(badgeFor("SIGNED").length).toBeGreaterThan(0);
     });
 
-    // Server rejects the transition — roll back to CREATED.
     await act(async () => {
-      resolvePatch?.(
+      patchResolvers[ID]?.(
         jsonResponse(400, {
           error: { code: "INVALID_STATUS", message: "Invalid status transition" },
         })
@@ -163,8 +177,61 @@ describe("PaymentsPage optimistic status updates", () => {
     ).toBeInTheDocument();
   });
 
+  it("rolls back only the failed row when two status updates overlap", async () => {
+    serverPayments = [basePayment(ID), basePayment(ID_B)];
+    renderPage();
+
+    const [selectA, selectB] = await screen.findAllByRole("combobox", {
+      name: /change status of payment/i,
+    });
+
+    // Update both rows while both requests are in flight.
+    fireEvent.change(selectA, { target: { value: "SIGNED" } });
+    fireEvent.change(selectB, { target: { value: "SIGNED" } });
+
+    await waitFor(() => {
+      expect(badgeFor("SIGNED").length).toBeGreaterThan(0);
+    });
+
+    // Row A fails — only its badge should revert; row B keeps its optimistic state.
+    await act(async () => {
+      patchResolvers[ID]?.(
+        jsonResponse(400, {
+          error: { code: "INVALID_STATUS", message: "Invalid status transition" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("CREATED").filter((el) => el.tagName === "SPAN")
+      ).toHaveLength(1);
+    });
+    expect(badgeFor("SIGNED").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Failed to update payment status")
+    ).toBeInTheDocument();
+
+    // Row B still succeeds and keeps its status.
+    serverPayments = serverPayments.map((p) =>
+      p.id === ID_B ? { ...p, status: "SIGNED" } : p
+    );
+    await act(async () => {
+      patchResolvers[ID_B]?.(
+        jsonResponse(200, {
+          success: true,
+          data: serverPayments.find((p) => p.id === ID_B)!,
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(badgeFor("SIGNED").length).toBeGreaterThan(0);
+    });
+  });
+
   it("does not offer transitions for terminal statuses", async () => {
-    serverPayment = { ...basePayment, status: "COMPLETED" };
+    serverPayments = [basePayment(ID, "COMPLETED")];
     renderPage();
 
     await screen.findByText("COMPLETED");
@@ -182,12 +249,37 @@ describe("PaymentsPage optimistic status updates", () => {
 
     fireEvent.change(select, { target: { value: "SIGNED" } });
 
-    // While the PATCH is in flight the control is disabled, preventing a
-    // duplicate submission for the same row.
     await waitFor(() => {
       expect(
         screen.getByRole("combobox", { name: /change status of payment/i })
       ).toBeDisabled();
+    });
+  });
+});
+
+describe("PaymentsPage full payment history", () => {
+  it("loads every server page so older payments are reachable", async () => {
+    serverPayments = Array.from({ length: 250 }, (_, i) =>
+      basePayment(`cm${String(i + 1).padStart(18, "0")}`)
+    );
+    renderPage();
+
+    // All 250 records are loaded and counted, not just the first server page.
+    await waitFor(() => {
+      expect(screen.getByText("250 payments")).toBeInTheDocument();
+    });
+
+    // The last (oldest) record from page 3 is searchable client-side.
+    const lastId = `cm${String(250).padStart(18, "0")}`;
+    const search = screen.getByPlaceholderText(
+      /search by id, description, hash, or status/i
+    );
+    fireEvent.change(search, { target: { value: lastId } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(`#${lastId.slice(0, 9)}...${lastId.slice(-8)}`)
+      ).toBeInTheDocument();
     });
   });
 });

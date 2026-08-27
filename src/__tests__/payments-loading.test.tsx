@@ -47,7 +47,6 @@ beforeEach(() => {
   );
   vi.stubGlobal("fetch", fetchMock);
 });
-
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -71,7 +70,13 @@ describe("PaymentsPage loading skeleton", () => {
     expect(screen.queryByText(/Invoice #42/i)).not.toBeInTheDocument();
 
     await act(async () => {
-      resolveList?.(jsonResponse(200, { success: true, data: [payment] }));
+      resolveList?.(
+        jsonResponse(200, {
+          success: true,
+          data: [payment],
+          meta: { page: 1, limit: 100, total: 1 },
+        })
+      );
     });
 
     // Skeleton disappears cleanly and the payment row renders in its place.

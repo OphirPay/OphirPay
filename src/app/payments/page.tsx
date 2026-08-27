@@ -5,27 +5,40 @@
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { formatAmount, shortenAddress, timeAgo } from "@/lib/utils";
-import {
-  fetchOnChainPayments,
-  type OnChainPayment,
-} from "@/lib/contracts";
-import { getStellarExplorerUrl, XLM_STROOPS } from "@/lib/stellar";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
+import { getStellarExplorerUrl } from "@/lib/stellar";
 import { exportToCsv } from "@/lib/csv";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { StatusBadge } from "@/components/ui/Badge";
 import { Pagination } from "@/components/ui/Pagination";
+import { useToast } from "@/components/ui/Toast";
 import { useDebounce } from "@/hooks/useDebounce";
-import { useApiQuery } from "@/hooks/useApiQuery";
+import { useApiQuery, apiFetch, type ApiError } from "@/hooks/useApiQuery";
+import type { Payment, PaymentStatus } from "@/types";
+
+// ── Status lifecycle ──────────────────────────────────────────
+//
+// Only these transitions are offered optimistically. Terminal states
+// (COMPLETED / FAILED / CANCELLED) have no outgoing edges. The optimistic
+// write is reconciled against the PATCH response; a failed request rolls the
+// row back to its previous status and shows an error toast.
+
+const SAFE_TRANSITIONS: Partial<Record<PaymentStatus, PaymentStatus[]>> = {
+  CREATED: ["SIGNED", "CANCELLED"],
+  SIGNED: ["SUBMITTED", "CANCELLED"],
+  SUBMITTED: ["CONFIRMED", "FAILED"],
+  CONFIRMED: ["COMPLETED", "FAILED"],
+  PENDING: ["PROCESSING", "CANCELLED"],
+  PROCESSING: ["COMPLETED", "FAILED"],
+};
+
+const PAYMENTS_QUERY_KEY = ["payments", "list"];
 
 // ── Page ──────────────────────────────────────────────────────
-
-interface OnChainData {
-  payments: OnChainPayment[];
-  total: number;
-}
 
 const ALLOWED_PAGE_SIZES = [10, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 25;
@@ -52,28 +65,75 @@ function PaymentsClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
 
   const {
-    data,
+    data: rawPayments,
     isLoading: loading,
     error: fetchError,
     refetch: load,
-  } = useApiQuery<OnChainData>(
-    ["payments", "onchain"],
-    undefined, // REST not used — reads via Soroban simulation below
-    {
-      // On-chain reads are N+1 RPC simulations — don't refetch on tab focus
-      refetchOnWindowFocus: false,
-    },
-    () => fetchOnChainPayments(50),
-  );
+  } = useApiQuery<Payment[]>(PAYMENTS_QUERY_KEY, "/api/payments?limit=100");
 
-  const payments = useMemo(() => data?.payments ?? [], [data]);
-  const total = data?.total ?? 0;
+  const payments = useMemo(() => rawPayments ?? [], [rawPayments]);
   const error = fetchError ? fetchError.message : null;
+
+  // ── Optimistic status updates ────────────────────────────────
+  //
+  // Changing a row's status updates the cache immediately (optimistic), then
+  // the PATCH response reconciles it. On failure the pre-mutation snapshot is
+  // restored and the user gets an error toast.
+
+  const updateStatusMutation = useMutation<
+    Payment,
+    ApiError,
+    { id: string; status: PaymentStatus },
+    { previous?: Payment[] }
+  >({
+    mutationFn: ({ id, status }) =>
+      apiFetch<Payment>(`/api/payments/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: PAYMENTS_QUERY_KEY });
+      const previous = queryClient.getQueryData<Payment[]>(PAYMENTS_QUERY_KEY);
+      queryClient.setQueryData<Payment[]>(PAYMENTS_QUERY_KEY, (old) =>
+        (old ?? []).map((p) => (p.id === id ? { ...p, status } : p))
+      );
+      return { previous };
+    },
+    onError: (err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(PAYMENTS_QUERY_KEY, context.previous);
+      }
+      toast.error("Failed to update payment status", err.message);
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Payment[]>(PAYMENTS_QUERY_KEY, (old) =>
+        (old ?? []).map((p) => (p.id === updated.id ? updated : p))
+      );
+      toast.success(
+        "Payment status updated",
+        updated.status.replace(/_/g, " ")
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: PAYMENTS_QUERY_KEY });
+    },
+  });
+
+  const handleStatusChange = (payment: Payment, next: PaymentStatus) => {
+    if (next === payment.status) return;
+    updateStatusMutation.mutate({ id: payment.id, status: next });
+  };
+
+  const isStatusPending = (id: string) =>
+    updateStatusMutation.isPending &&
+    updateStatusMutation.variables?.id === id;
 
   // Client-side search/filter
   const filtered = useMemo(() => {
@@ -81,10 +141,11 @@ function PaymentsClient() {
     const q = debouncedSearch.toLowerCase();
     return payments.filter(
       (p) =>
-        p.payer.toLowerCase().includes(q) ||
-        p.payee.toLowerCase().includes(q) ||
-        p.txHash.toLowerCase().includes(q) ||
-        String(p.id).includes(q)
+        p.id.toLowerCase().includes(q) ||
+        (p.description ?? "").toLowerCase().includes(q) ||
+        (p.memo ?? "").toLowerCase().includes(q) ||
+        (p.transactionHash ?? "").toLowerCase().includes(q) ||
+        p.status.toLowerCase().includes(q)
     );
   }, [payments, debouncedSearch]);
 
@@ -125,13 +186,18 @@ function PaymentsClient() {
     });
 
   const handleExport = () => {
-    exportToCsv(filtered, [
-      { key: "id", header: "Payment ID" },
-      { key: "payer", header: "Payer" },
-      { key: "payee", header: "Payee" },
-      { key: "amountStroops", header: "Amount (Stroops)" },
-      { key: "txHash", header: "Tx Hash" },
-    ], { filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv` });
+    exportToCsv(
+      filtered,
+      [
+        { key: "id", header: "Payment ID" },
+        { key: "amount", header: "Amount" },
+        { key: "assetCode", header: "Asset" },
+        { key: "status", header: "Status" },
+        { key: "transactionHash", header: "Tx Hash" },
+        { key: "createdAt", header: "Created At" },
+      ],
+      { filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv` }
+    );
   };
 
   return (
@@ -146,7 +212,7 @@ function PaymentsClient() {
             Payments
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Payment records stored on-chain by the OphirPay Soroban contract
+            Your payment records and their lifecycle statuses
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -199,16 +265,16 @@ function PaymentsClient() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by address, hash, or ID..."
+          placeholder="Search by ID, description, hash, or status..."
           className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
         />
       </div>
 
-      {/* Chain record count */}
+      {/* Record count */}
       <div className="flex items-center gap-2">
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-xs font-medium text-green-700 dark:text-green-400">
           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          {total} on-chain {total === 1 ? "record" : "records"}
+          {payments.length} {payments.length === 1 ? "payment" : "payments"}
         </span>
         {!loading && filtered.length !== payments.length && (
           <span className="text-xs text-gray-400 dark:text-gray-500">
@@ -221,7 +287,7 @@ function PaymentsClient() {
       {error && (
         <div className="p-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30">
           <p className="text-sm text-red-700 dark:text-red-400">
-            Failed to load on-chain payments: {error}
+            Failed to load payments: {error}
           </p>
           <button onClick={() => load()} className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline">
             Try again
@@ -245,7 +311,7 @@ function PaymentsClient() {
             <tbody>
               {loading &&
                 // Skeleton rows pulse in place so the table keeps its height
-                // (no layout shift) while the on-chain read is in flight.
+                // (no layout shift) while the list is in flight.
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr
                     key={i}
@@ -268,57 +334,87 @@ function PaymentsClient() {
                 <tr>
                   <td colSpan={5} className="py-12 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {search ? "No payments match your search." : "No on-chain payments yet — send one from the Send page."}
+                      {search ? "No payments match your search." : "No payments yet — send one from the Send page."}
                     </p>
                   </td>
                 </tr>
               )}
 
               {!loading &&
-                paginated.map((payment) => (
-                  <tr
-                    key={payment.id}
-                    className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
-                  >
-                    <td className="py-3 px-4">
-                      <p className="font-medium text-gray-900 dark:text-white">#{payment.id}</p>
-                      <p className="text-xs text-gray-400 font-mono mt-0.5">
-                        {shortenAddress(payment.payer, 6)} → {shortenAddress(payment.payee, 6)}
-                      </p>
-                    </td>
-                    <td className="py-3 px-4 text-gray-700 dark:text-gray-300 font-mono">
-                      {formatAmount(payment.amountStroops / XLM_STROOPS, "XLM")}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                        {payment.metadata === "CANCELLED" ? "CANCELLED" : "RECORDED"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs">
-                      {payment.timestamp
-                        ? timeAgo(new Date(payment.timestamp * 1000).toISOString())
-                        : "—"}
-                    </td>
-                    <td className="py-3 px-4">
-                      {payment.txHash ? (
+                paginated.map((payment) => {
+                  const transitions = SAFE_TRANSITIONS[payment.status] ?? [];
+                  const pending = isStatusPending(payment.id);
+                  return (
+                    <tr
+                      key={payment.id}
+                      className={`border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors ${
+                        pending ? "opacity-60" : ""
+                      }`}
+                    >
+                      <td className="py-3 px-4">
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          #{shortenAddress(payment.id, 8)}
+                        </p>
+                        {payment.description && (
+                          <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]">
+                            {payment.description}
+                          </p>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-gray-700 dark:text-gray-300 font-mono">
+                        {formatAmount(payment.amount, payment.assetCode)}
+                      </td>
+                      <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <a
-                            href={getStellarExplorerUrl(payment.txHash)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-mono text-xs text-ophir-600 dark:text-ophir-400 hover:underline"
-                          >
-                            {shortenAddress(payment.txHash)}
-                          </a>
-                          <CopyButton value={payment.txHash} label="Hash" />
+                          <StatusBadge status={payment.status} />
+                          {transitions.length > 0 && (
+                            <select
+                              aria-label={`Change status of payment ${payment.id}`}
+                              value=""
+                              disabled={pending}
+                              onChange={(e) =>
+                                handleStatusChange(
+                                  payment,
+                                  e.target.value as PaymentStatus
+                                )
+                              }
+                              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1.5 py-1 text-xs text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500 disabled:opacity-50"
+                            >
+                              <option value="" disabled>
+                                {pending ? "Updating…" : "Change…"}
+                              </option>
+                              {transitions.map((s) => (
+                                <option key={s} value={s}>
+                                  {s.replace(/_/g, " ")}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs">
+                        {formatDate(payment.createdAt)}
+                      </td>
+                      <td className="py-3 px-4">
+                        {payment.transactionHash ? (
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={getStellarExplorerUrl(payment.transactionHash)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-xs text-ophir-600 dark:text-ophir-400 hover:underline"
+                            >
+                              {shortenAddress(payment.transactionHash)}
+                            </a>
+                            <CopyButton value={payment.transactionHash} label="Hash" />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
@@ -332,8 +428,8 @@ function PaymentsClient() {
                   {startIndex + 1}–
                   {Math.min(startIndex + pageSize, filtered.length)}
                 </span>{" "}
-                of <span className="font-medium">{filtered.length}</span> on-chain
-                records
+                of <span className="font-medium">{filtered.length}</span>{" "}
+                {filtered.length === 1 ? "payment" : "payments"}
               </p>
               <select
                 aria-label="Page size"

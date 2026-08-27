@@ -75,7 +75,7 @@ export default function SendPage() {
     },
     { id: string }
   >("/api/payments", {
-    invalidateKeys: [["dashboard", "payments"], ["payments", "onchain"], ["events", "onchain"]],
+    invalidateKeys: [["dashboard", "payments"], ["payments", "list"], ["events", "onchain"]],
   });
 
   // Fetch live fee estimate on mount

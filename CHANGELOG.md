@@ -6,6 +6,7 @@ All notable changes to OphirPay will be documented in this file.
 
 ### Added
 - **Request-id + duration structured request logging**: every API request now emits a single structured log line with the request id, HTTP method, path, response status, and duration in ms. `withRequestLogging()` wraps every route handler (the proxy cannot observe a handler's final status/duration), the proxy threads the `X-Request-Id` it mints into the downstream request headers so handlers and error logs correlate with the response header, and `logger.request()`/`handleApiError()` now include the request id in their structured context. Rate-limited (429) rejections are logged from the proxy with the same request id.
+- **Optimistic payment status updates**: the Payments page now lists the user's DB payment records with a per-row status control. Changing a status updates the row immediately, reconciles from the `PATCH /api/payments/[id]` response, and rolls the row back with an error toast if the request fails. Only safe lifecycle transitions (e.g. `CREATED → SIGNED/CANCELLED`) are offered; terminal states are locked.
 
 ## [Unreleased] — 2026-08-12 (submission hardening pass)
 

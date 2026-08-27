@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import PaymentsPage from "@/app/payments/page";
+import { ToastProvider } from "@/components/ui/Toast";
+import type { Payment } from "@/types";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), prefetch: vi.fn() }),
@@ -11,22 +13,39 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(""),
 }));
 
-vi.mock("@/lib/contracts", () => ({
-  fetchOnChainPayments: vi.fn().mockResolvedValue({
-    payments: [
-      {
-        id: 1,
-        payer: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        payee: "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-        amountStroops: 10000000,
-        txHash:
-          "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-        timestamp: 1700000000,
-      },
-    ],
-    total: 1,
-  }),
-}));
+const payment: Payment = {
+  id: "cm1234567890123456789012",
+  amount: 250,
+  status: "SIGNED",
+  assetCode: "XLM",
+  createdAt: "2026-08-01T12:00:00.000Z",
+  updatedAt: "2026-08-02T12:00:00.000Z",
+  description: "Invoice #42",
+  transactionHash:
+    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+};
+
+const fetchMock = vi.fn();
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/csrf") {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ token: "test-csrf" }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: [payment] }),
+    };
+  });
+  vi.stubGlobal("fetch", fetchMock);
+});
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -34,7 +53,9 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <PaymentsPage />
+      <ToastProvider>
+        <PaymentsPage />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

@@ -703,3 +703,40 @@ jobs:
             contracts/ophirpay/target/wasm32v1-none/release/*.wasm
             contracts/emitter/target/wasm32v1-none/release/*.wasm
           retention-days: 7
+
+
+  # ────────────────────────────────────────────────────────────
+  # 24. WASM REPRODUCIBILITY — Verify deterministic contract builds
+  # ────────────────────────────────────────────────────────────
+  wasm-repro:
+    name: "24️⃣ Contracts — WASM Reproducibility Check"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        contract: [ophirpay, emitter]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build ${{ matrix.contract }} — first pass
+        run: |
+          cargo build --release -p ${{ matrix.contract }} --target wasm32-unknown-unknown
+          cp target/wasm32-unknown-unknown/release/${{ matrix.contract }}.wasm /tmp/wasm-pass1.wasm
+      - name: Build ${{ matrix.contract }} — second pass
+        run: |
+          cargo build --release -p ${{ matrix.contract }} --target wasm32-unknown-unknown
+          cp target/wasm32-unknown-unknown/release/${{ matrix.contract }}.wasm /tmp/wasm-pass2.wasm
+      - name: Verify reproducibility
+        run: |
+          HASH1=$(sha256sum /tmp/wasm-pass1.wasm | cut -d' ' -f1)
+          HASH2=$(sha256sum /tmp/wasm-pass2.wasm | cut -d' ' -f1)
+          echo "Build 1: $HASH1"
+          echo "Build 2: $HASH2"
+          if [ "$HASH1" != "$HASH2" ]; then
+            echo "::error::WASM builds are NOT reproducible! Hashes differ."
+            echo "::error::This means the contract WASM is non-deterministic."
+            exit 1
+          fi
+          echo "✅ WASM builds are reproducible (identical hashes)"

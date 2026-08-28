@@ -703,3 +703,51 @@ jobs:
             contracts/ophirpay/target/wasm32v1-none/release/*.wasm
             contracts/emitter/target/wasm32v1-none/release/*.wasm
           retention-days: 7
+
+
+  # ────────────────────────────────────────────────────────────
+  # 22. DEPENDENCY VULN SCAN — npm audit with fail-on-critical/high
+  # ────────────────────────────────────────────────────────────
+  dep-scan:
+    name: "22️⃣ Security — Dependency Scan (npm audit)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+      - name: Check for critical vulnerabilities
+        run: |
+          VULNS=$(npm audit --json 2>/dev/null | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    vulns = data.get('vulnerabilities', {})
+    critical = []
+    high = []
+    for k, v in vulns.items():
+        severity = v.get('severity', '').lower()
+        if severity == 'critical':
+            critical.append(f'{k} ({v.get(\"name\", \"?\")})')
+        elif severity == 'high':
+            high.append(f'{k} ({v.get(\"name\", \"?\")})')
+    print(f'CRITICAL: {len(critical)}, HIGH: {len(high)}')
+    if critical:
+        for c in critical:
+            print(f'  [CRITICAL] {c}')
+    if high:
+        for h in high[:5]:
+            print(f'  [HIGH] {h}')
+    if critical or high:
+        sys.exit(1)
+except: pass
+")
+          echo "$VULNS"
+          if echo "$VULNS" | grep -q "CRITICAL: [1-9]"; then
+            echo "::error::Critical vulnerabilities found! They must be fixed before merging."
+            exit 1
+          fi

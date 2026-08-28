@@ -50,6 +50,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "ci": "npm run typecheck && npm run lint -- --max-warnings 0 && npm test && npm run build && bash scripts/validate-deploy-config.sh",
+    "test:a11y": "playwright test e2e/a11y.spec.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

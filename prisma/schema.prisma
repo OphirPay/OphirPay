@@ -45,6 +45,7 @@ model User {
   payments        Payment[]
   batches         Batch[]
   recurrences     Recurrence[]
+  scheduledPayments ScheduledPayment[]
   paymentRequests PaymentRequest[]
   webhooks        Webhook[]
   apiKeys         ApiKey[]
@@ -196,6 +197,60 @@ enum Frequency {
   MONTHLY
   QUARTERLY
   YEARLY
+}
+
+// ── Scheduled Payments ────────────────────────────────────────
+
+/// A one-off payment queued for a future date. Rows are executed by the
+/// Vercel cron endpoint (`/api/cron`, issue #175), which claims each due row
+/// atomically before submitting it so overlapping runs never double-execute.
+model ScheduledPayment {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Payment details — resolved at execution time, not at schedule time.
+  amount          Decimal  @db.Decimal(18, 7)
+  assetCode       String   @default("XLM")
+  assetIssuer     String?
+  destAddress     String
+  memo            String?
+  description     String?
+
+  /// When the payment becomes due. A row is picked up by the first cron run
+  /// whose wall clock has passed this instant.
+  scheduledAt     DateTime
+  status          ScheduledPaymentStatus @default(SCHEDULED)
+
+  /// Execution lease. `lockedAt` is stamped when a run claims the row
+  /// (SCHEDULED → PROCESSING); a lease older than the scheduler's lease
+  /// window is treated as abandoned (crashed run) and may be reclaimed.
+  /// `lockedBy` records which run holds it, for tracing overlapping runs.
+  lockedAt        DateTime?
+  lockedBy        String?
+  /// Number of execution attempts. Submission is retried on later runs until
+  /// this reaches the scheduler's attempt cap, after which the row is FAILED.
+  attempts        Int      @default(0)
+
+  transactionHash String?
+  errorMessage    String?
+  executedAt      DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  // Serves the cron's due-selection query: status filter + scheduledAt range.
+  @@index([status, scheduledAt])
+}
+
+enum ScheduledPaymentStatus {
+  SCHEDULED
+  PROCESSING
+  EXECUTED
+  FAILED
+  CANCELLED
 }
 
 // ── Payment Requests ──────────────────────────────────────────

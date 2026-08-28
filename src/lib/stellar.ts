@@ -8,6 +8,7 @@ import {
   Operation,
   Asset,
   Memo,
+  Keypair,
 } from "@stellar/stellar-sdk";
 
 // ── Batch Recipient ───────────────────────────────────────────
@@ -241,6 +242,41 @@ export async function submitSignedTx(
     NETWORK_PASSPHRASE
   );
   return server.submitTransaction(transaction);
+}
+
+/** Derive the public key of the account behind a Stellar secret key. */
+export function publicKeyFromSecret(secret: string): string {
+  return Keypair.fromSecret(secret).publicKey();
+}
+
+/**
+ * Build, sign and submit a payment from a server-held secret key.
+ *
+ * Unlike the interactive flows — which build an XDR here and hand it to the
+ * user's wallet to sign — the scheduled-payment cron (issue #175) has no
+ * browser to sign in, so it signs with the funded operator account named by
+ * `SCHEDULED_PAYMENTS_SOURCE_SECRET`. The account is loaded fresh on every
+ * call, so callers must submit sequentially to keep sequence numbers in step.
+ */
+export async function submitPaymentFromSecret(params: {
+  sourceSecret: string;
+  destination: string;
+  amount: string;
+  memo?: string;
+  assetCode?: string;
+  assetIssuer?: string;
+}): Promise<SubmitResult> {
+  const { sourceSecret, ...payment } = params;
+  const keypair = Keypair.fromSecret(sourceSecret);
+
+  const { xdr } = await buildPaymentTx({
+    sourcePublicKey: keypair.publicKey(),
+    ...payment,
+  });
+
+  const tx = TransactionBuilder.fromXDR(xdr, NETWORK_PASSPHRASE);
+  tx.sign(keypair);
+  return submitSignedTx(tx.toXDR());
 }
 
 // ── Helpers ────────────────────────────────────────────────────

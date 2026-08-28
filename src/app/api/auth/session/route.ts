@@ -24,6 +24,7 @@ import { isValidStellarAddress } from "@/lib/stellar";
 import { successResponse, badRequestError, unauthorizedError } from "@/lib/api-response";
 import { verifyCsrf } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
+import { checkWalletAuthRateLimit } from "@/lib/wallet-auth-rate-limit";
 
 export const POST = withRequestLogging(async function POST(request: Request) {
   const csrfError = verifyCsrf(request);
@@ -34,7 +35,12 @@ export const POST = withRequestLogging(async function POST(request: Request) {
     | null;
 
   const publicKey = body?.publicKey?.trim() ?? "";
+
+  const rateLimitError = await checkWalletAuthRateLimit(request, publicKey);
+  if (rateLimitError) return rateLimitError;
+
   if (!isValidStellarAddress(publicKey)) {
+
     return badRequestError(
       "A valid Stellar public key (G...) is required to open a session."
     );

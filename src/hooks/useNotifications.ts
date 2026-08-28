@@ -1,169 +1,150 @@
+"use client";
 // SPDX-License-Identifier: MIT
 
-"use client";
-
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  type AppNotification,
-  type NotificationType,
-  appendNotification,
-  createNotification,
+  type PaymentNotification,
+  type RawPaymentEventPayload,
+  getStoredNotifications,
+  saveStoredNotifications,
+  normalizePaymentEvent,
 } from "@/lib/notifications";
-import { STORAGE_KEYS } from "@/lib/storage-keys";
 
-interface SSEPaymentEvent {
-  event: "payment:created";
-  timestamp: string;
-  paymentId?: string;
-  status?: string;
-  emitter?: string;
-  payer?: string;
-  payee?: string;
-  amount?: string;
-  txHash?: string;
-}
-
-function loadNotifications(): AppNotification[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as AppNotification[];
-  } catch {
-    return [];
-  }
-}
-
-function saveNotifications(list: AppNotification[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    sessionStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(list));
-  } catch {
-    // Ignore quota errors.
-  }
-}
-
-export interface UseNotificationsResult {
-  notifications: AppNotification[];
-  unreadCount: number;
-  isOpen: boolean;
-  toggleOpen: () => void;
-  setOpen: (open: boolean) => void;
-  markAllRead: () => void;
-  clearAll: () => void;
-}
-
-export function useNotifications(): UseNotificationsResult {
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+export function useNotifications() {
+  const [notifications, setNotifications] = useState<PaymentNotification[]>(() => {
+    return getStoredNotifications();
+  });
   const [isOpen, setIsOpen] = useState(false);
-  const isOpenRef = useRef(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Derived unread count from the notifications list.
-  const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.read).length,
-    [notifications]
-  );
-
-  // Keep ref in sync so SSE handler can read current open state.
-  useEffect(() => {
-    isOpenRef.current = isOpen;
-  }, [isOpen]);
-
-  // Load persisted notifications on mount.
-  useEffect(() => {
-    setNotifications(loadNotifications());
+  // Sync to session storage on notification updates
+  const updateNotifications = useCallback((updater: (prev: PaymentNotification[]) => PaymentNotification[]) => {
+    setNotifications((prev) => {
+      const next = updater(prev);
+      saveStoredNotifications(next);
+      return next;
+    });
   }, []);
 
-  // Persist notifications whenever the list changes.
-  useEffect(() => {
-    saveNotifications(notifications);
-  }, [notifications]);
+  // Mark single item as read
+  const markAsRead = useCallback((id: string) => {
+    updateNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  }, [updateNotifications]);
 
-  const addNotification = useCallback((type: NotificationType, data: {
-    amount?: string;
-    from?: string;
-    to?: string;
-    txHash?: string;
-    recipients?: number;
-  }) => {
-    const n = createNotification(type, data);
-    // If the dropdown is open, the new notification arrives already read.
-    if (isOpenRef.current) {
-      n.read = true;
+  // Mark all as read
+  const markAllAsRead = useCallback(() => {
+    updateNotifications((prev) =>
+      prev.map((n) => (n.read ? n : { ...n, read: true }))
+    );
+  }, [updateNotifications]);
+
+  // Clear all notifications
+  const clearAll = useCallback(() => {
+    updateNotifications(() => []);
+  }, [updateNotifications]);
+
+  // Add a new notification
+  const addNotification = useCallback((raw: RawPaymentEventPayload) => {
+    const normalized = normalizePaymentEvent(raw);
+    updateNotifications((prev) => {
+      // Deduplicate by ID or txHash
+      if (prev.some((n) => n.id === normalized.id || (n.txHash && normalized.txHash && n.txHash === normalized.txHash))) {
+        return prev;
+      }
+      return [normalized, ...prev].slice(0, 50);
+    });
+  }, [updateNotifications]);
+
+  // Toggle open and mark all as read on open (per acceptance criteria)
+  const toggleOpen = useCallback(() => {
+    setIsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        markAllAsRead();
+      }
+      return next;
+    });
+  }, [markAllAsRead]);
+
+  const setOpen = useCallback((open: boolean) => {
+    if (open) {
+      markAllAsRead();
     }
-    setNotifications((prev) => appendNotification(prev, n));
-  }, []);
+    setIsOpen(open);
+  }, [markAllAsRead]);
 
-  // Connect to SSE /api/events and listen for named "payment:created" events.
-  // The SSE endpoint emits: event: payment:created\ndata: {...}\n\n
-  // Using addEventListener with the event name ensures we only receive
-  // payment:created events, not heartbeat or connected events.
+  // Listen to custom window events
   useEffect(() => {
     if (typeof window === "undefined") return;
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource("/api/events");
-    } catch {
-      return;
-    }
 
-    const handler = (e: MessageEvent) => {
-      let payload: SSEPaymentEvent;
-      try {
-        payload = JSON.parse(e.data) as SSEPaymentEvent;
-      } catch {
-        return;
+    const handleCustomEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<PaymentNotification>;
+      if (customEvent.detail) {
+        addNotification(customEvent.detail);
       }
-      if (!payload || payload.event !== "payment:created") return;
-      addNotification("payment:created", {
-        amount: payload.amount,
-        from: payload.payer,
-        to: payload.payee,
-        txHash: payload.txHash,
-      });
     };
 
-    es.addEventListener("payment:created", handler);
-
+    window.addEventListener("ophirpay:notification", handleCustomEvent);
     return () => {
-      es.removeEventListener("payment:created", handler);
-      es.close();
+      window.removeEventListener("ophirpay:notification", handleCustomEvent);
     };
   }, [addNotification]);
 
-  const toggleOpen = useCallback(() => {
-    setIsOpen((prev) => !prev);
-  }, []);
-
-  const setOpen = useCallback((open: boolean) => {
-    setIsOpen(open);
-  }, []);
-
-  const markAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
-
-  const clearAll = useCallback(() => {
-    setNotifications([]);
-  }, []);
-
-  // When the dropdown opens, automatically mark all as read.
+  // Connect to SSE for live events
   useEffect(() => {
-    if (isOpen) {
-      markAllRead();
+    if (typeof window === "undefined" || typeof EventSource === "undefined") {
+      return;
     }
-  }, [isOpen, markAllRead]);
+
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("/api/events");
+      eventSourceRef.current = es;
+
+      es.addEventListener("connected", () => {
+        setIsConnected(true);
+      });
+
+      es.addEventListener("payment:created", (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          addNotification(data);
+        } catch {
+          // ignore parse error
+        }
+      });
+
+      es.onerror = () => {
+        setIsConnected(false);
+      };
+    } catch {
+      setIsConnected(false);
+    }
+
+    return () => {
+      if (es) {
+        es.close();
+      }
+      eventSourceRef.current = null;
+    };
+  }, [addNotification]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   return {
     notifications,
     unreadCount,
+    hasUnread: unreadCount > 0,
     isOpen,
+    isConnected,
     toggleOpen,
     setOpen,
-    markAllRead,
+    markAsRead,
+    markAllAsRead,
     clearAll,
+    addNotification,
   };
 }

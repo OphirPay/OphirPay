@@ -708,7 +708,7 @@ jobs:
   # ────────────────────────────────────────────────────────────
   # 21. SECRETS SCAN — Gitleaks with blocklist policy
   # ────────────────────────────────────────────────────────────
-  secrets-scan:
+  secrets-scan-gitleaks:
     name: "21️⃣ Security — Secrets Scan (Gitleaks)"
     runs-on: ubuntu-latest
     timeout-minutes: 3

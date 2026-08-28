@@ -79,6 +79,7 @@
 - [🛠 Tech Stack](#-tech-stack)
 - [📊 Database Schema](docs/SCHEMA.md)
 - [🚀 Deployment Guide](docs/DEPLOYMENT.md)
+- [🔧 Troubleshooting Guide](docs/troubleshooting.md)
 - [🤝 Contributing](#-contributing)
 - [🗺 Roadmap](#-roadmap)
 - [🔬 Formal Verification](#-formal-verification)

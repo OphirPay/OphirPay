@@ -103,7 +103,7 @@ Common setup and network errors encountered while developing or using OphirPay, 
 **Fix**:
 1. Verify PostgreSQL is running: `pg_isready`
 2. Check connection string format: `postgresql://user:password@host:port/database`
-3. For Docker: `docker-compose up -d postgres`
+3. For Docker: `docker-compose up -d db`
 4. For local: `brew services start postgresql@16`
 
 ---
@@ -117,8 +117,8 @@ Common setup and network errors encountered while developing or using OphirPay, 
 **Cause**: Schema changes not reflected in migrations, or existing data conflicts.
 
 **Fix**:
-1. Reset dev database: `rm prisma/dev.db && npx prisma migrate dev`
-2. For PostgreSQL: `npx prisma migrate reset` (WARNING: deletes all data)
+1. Reset dev database: `npx prisma migrate reset` (WARNING: deletes all data)
+2. Re-apply migrations: `npx prisma migrate dev`
 3. Check migration history: `npx prisma migrate status`
 
 ### Schema/client mismatch
@@ -135,25 +135,26 @@ Common setup and network errors encountered while developing or using OphirPay, 
 
 ### Contract deploy fails
 
-**Symptom**: `soroban contract deploy` fails with error.
+**Symptom**: `stellar contract deploy` fails with error.
 
 **Cause**: Deployer account unfunded, WASM not built, or wrong network.
 
 **Fix**:
-1. Verify WASM exists: `ls target/wasm32-unknown-unknown/release/`
+1. Verify WASM exists: `ls contracts/ophirpay/target/wasm32v1-none/release/`
 2. Fund deployer: `curl -X POST "https://friendbot.stellar.org?addr=<DEPLOYER_PUBKEY>"`
-3. Build WASM: `cargo build --release -p ophirpay --target wasm32-unknown-unknown`
+3. Build WASM: `cargo build --release -p ophirpay-contract --target wasm32v1-none`
 
 ### invoke fails with "HostError"
 
-**Symptom**: `soroban contract invoke` returns HostError.
+**Symptom**: `stellar contract invoke` returns HostError.
 
 **Cause**: Contract not initialized, wrong args, or insufficient XLM for fees.
 
 **Fix**:
-1. Check if initialized: call `get_program_config` — if NotInitialized, run `initialize`
-2. Verify args match the function signature
-3. Ensure caller has >10 XLM for transaction fees
+1. Check if initialized: `stellar contract invoke --id <CONTRACT_ID> --source-account <KEY> --network testnet -- get_owner` — if it errors, run `init`
+2. Initialize: `stellar contract invoke --id <CONTRACT_ID> --source-account <KEY> --network testnet -- init --owner <ADDR>`
+3. Verify args match the function signature
+4. Ensure caller has >10 XLM for transaction fees
 
 ---
 
@@ -185,7 +186,7 @@ Common setup and network errors encountered while developing or using OphirPay, 
 
 ## See Also
 
-- [Dev Environment Guide](./dev-environment.md)
+- [Dev Environment Guide](./DEPLOYMENT.md)
 - [Mainnet Deployment](./deployment-mainnet.md)
 - [Security Policy](../SECURITY.md)
 - [API Cookbook](./API_COOKBOOK.md)

@@ -4,18 +4,18 @@
 
 import { useEffect, useRef } from "react";
 
-import type { AppNotification } from "@/lib/notifications";
+import type { PaymentNotification } from "@/lib/notifications";
 import { trapFocus } from "@/lib/focus-trap";
 import { Z_INDEX } from "@/lib/z-index";
 import { cn, timeAgo } from "@/lib/utils";
 
 interface NotificationDropdownProps {
-  notifications: AppNotification[];
+  notifications: PaymentNotification[];
   onClearAll: () => void;
   onClose: () => void;
 }
 
-function notificationIcon(type: AppNotification["type"]): JSX.Element {
+function notificationIcon(type: PaymentNotification["type"]): JSX.Element {
   const common = "w-5 h-5";
   switch (type) {
     case "payment:sent":

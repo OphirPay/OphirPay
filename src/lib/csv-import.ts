@@ -7,17 +7,45 @@ import type { BatchRecipient } from "@/types";
  * Expected CSV format: address,amount,assetCode,memo
  * First row is treated as a header and skipped.
  */
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++; // skip escaped quote
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+/**
+ * Parse a CSV file into batch payment recipients.
+ * Expected CSV format: address,amount,assetCode,memo
+ * First row is treated as a header and skipped.
+ */
 export async function parseRecipientsCsv(file: File): Promise<{
   recipients: BatchRecipient[];
   errors: { row: number; message: string }[];
 }> {
   const raw = await file.text();
   // Strip UTF-8 BOM (U+FEFF) characters that Excel and similar tools prepend
-  // to the first cell, and normalize Windows CRLF line endings. BOM is never
-  // a legitimate character in this CSV format, so removing every occurrence
-  // is safe and keeps header/data rows parseable.
+  // to the first cell, and normalize Windows CRLF line endings.
   const text = raw.replace(/\uFEFF/g, "").replace(/\r\n/g, "\n").trim();
-  const lines = text.split("\n").filter((l) => l.trim());
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const errors: { row: number; message: string }[] = [];
   const recipients: BatchRecipient[] = [];
 
@@ -28,16 +56,16 @@ export async function parseRecipientsCsv(file: File): Promise<{
 
   for (let i = 1; i < lines.length; i++) {
     const row = i + 1;
-    const cols = lines[i].split(",").map((c) => c.trim());
+    const cols = parseCsvLine(lines[i]);
 
-    if (cols.length < 2) {
-      errors.push({ row, message: "Each row must have at least address and amount." });
+    if (cols.length < 2 || (cols.length === 1 && !cols[0])) {
+      errors.push({ row, message: `Each row must have at least address and amount at row ${row}.` });
       continue;
     }
 
     const [address, amountStr, assetCode = "XLM", memo] = cols;
 
-    if (!/^G[A-Z0-9]{55}$/.test(address)) {
+    if (!address || !/^G[A-Z0-9]{55}$/.test(address)) {
       errors.push({ row, message: `Invalid Stellar address at row ${row}.` });
       continue;
     }
@@ -58,6 +86,7 @@ export async function parseRecipientsCsv(file: File): Promise<{
 
   return { recipients, errors };
 }
+
 
 /**
  * Generate a CSV template for batch payment imports.

@@ -116,4 +116,67 @@ describe("csv-import > parseRecipientsCsv", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain("header row");
   });
+
+  it("handles quoted fields containing commas and escaped quotes", async () => {
+    const { recipients, errors } = await parseRecipientsCsv(
+      csvFile(
+        `address,amount,assetCode,memo\n${VALID_ADDRESS},150,USDC,"invoice, with comma and ""quotes"""\n`
+      )
+    );
+
+    expect(errors).toEqual([]);
+    expect(recipients).toHaveLength(1);
+    expect(recipients[0].amount).toBe(150);
+    expect(recipients[0].memo).toBe('invoice, with comma and "quotes"');
+  });
+
+  it("handles UTF-8 multi-byte characters and international text in memo", async () => {
+    const { recipients, errors } = await parseRecipientsCsv(
+      csvFile(
+        `address,amount,assetCode,memo\n${VALID_ADDRESS},500,EURC,🌟 Paiement spécial / 支払 🌟\n`
+      )
+    );
+
+    expect(errors).toEqual([]);
+    expect(recipients).toHaveLength(1);
+    expect(recipients[0].memo).toBe("🌟 Paiement spécial / 支払 🌟");
+  });
+
+  it("handles extra columns without crashing", async () => {
+    const { recipients, errors } = await parseRecipientsCsv(
+      csvFile(
+        `address,amount,assetCode,memo,extra1,extra2\n${VALID_ADDRESS},300,XLM,test-memo,foo,bar\n`
+      )
+    );
+
+    expect(errors).toEqual([]);
+    expect(recipients).toHaveLength(1);
+    expect(recipients[0].address).toBe(VALID_ADDRESS);
+    expect(recipients[0].amount).toBe(300);
+    expect(recipients[0].memo).toBe("test-memo");
+  });
+
+  it("reports line numbers for invalid amounts (negative, zero, NaN)", async () => {
+    const { recipients, errors } = await parseRecipientsCsv(
+      csvFile(
+        `address,amount,assetCode,memo\n${VALID_ADDRESS},-50,XLM,test\n${VALID_ADDRESS},0,XLM,test\n${VALID_ADDRESS},abc,XLM,test\n`
+      )
+    );
+
+    expect(recipients).toHaveLength(0);
+    expect(errors).toHaveLength(3);
+    expect(errors[0].row).toBe(2);
+    expect(errors[0].message).toContain("Invalid amount at row 2");
+    expect(errors[1].row).toBe(3);
+    expect(errors[1].message).toContain("Invalid amount at row 3");
+    expect(errors[2].row).toBe(4);
+    expect(errors[2].message).toContain("Invalid amount at row 4");
+  });
+
+  it("never throws on completely malformed or corrupted inputs", async () => {
+    const corrupted = "\n\n,,,,,,,\n;;;;;\nnull\nundefined\n\x00\x01\x02\n";
+    await expect(
+      parseRecipientsCsv(csvFile(corrupted))
+    ).resolves.toBeDefined();
+  });
 });

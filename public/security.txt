@@ -1,0 +1,5 @@
+Contact: security@ophirpay.com
+Expires: 2027-12-31T23:59:59Z
+Preferred-Languages: en
+Canonical: https://ophirpay.com/.well-known/security.txt
+Policy: https://github.com/OphirPay/OphirPay/blob/main/SECURITY.md

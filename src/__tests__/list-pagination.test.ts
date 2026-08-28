@@ -123,10 +123,12 @@ describe("GET /api/payments — cursor pagination over 10,050 rows", () => {
     prismaMock.payment.count.mockResolvedValue(ROWS.length);
   });
 
-  it("pages the entire dataset via cursors with zero duplicates and zero deep offsets", async () => {
-    const limit = 50;
-    let cursor: string | null = null;
-    let pages = 0;
+  it(
+    "pages the entire dataset via cursors with zero duplicates and zero deep offsets",
+    async () => {
+      const limit = 50;
+      let cursor: string | null = null;
+      let pages = 0;
     let totalFetched = 0;
     const seen = new Set<string>();
 

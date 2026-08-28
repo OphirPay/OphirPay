@@ -722,30 +722,42 @@ jobs:
         continue-on-error: true
       - name: Check for critical vulnerabilities
         run: |
-          VULNS=$(npm audit --json 2>/dev/null | python3 -c "
+          npm audit --json > /tmp/audit.json 2>/dev/null || true
+          if [ ! -s /tmp/audit.json ]; then
+            echo "::error::npm audit produced no output. Dependency scan cannot be verified."
+            exit 1
+          fi
+          VULNS=$(python3 -c "
 import json, sys
-try:
-    data = json.load(sys.stdin)
-    vulns = data.get('vulnerabilities', {})
-    critical = []
-    high = []
-    for k, v in vulns.items():
-        severity = v.get('severity', '').lower()
-        if severity == 'critical':
-            critical.append(f'{k} ({v.get(\"name\", \"?\")})')
-        elif severity == 'high':
-            high.append(f'{k} ({v.get(\"name\", \"?\")})')
-    print(f'CRITICAL: {len(critical)}, HIGH: {len(high)}')
-    if critical:
-        for c in critical:
-            print(f'  [CRITICAL] {c}')
-    if high:
-        for h in high[:5]:
-            print(f'  [HIGH] {h}')
-    if critical or high:
-        sys.exit(1)
-except: pass
-")
+with open('/tmp/audit.json') as f:
+    data = json.load(f)
+vulns = data.get('vulnerabilities', {})
+critical = []
+high = []
+for k, v in vulns.items():
+    severity = v.get('severity', '').lower()
+    if severity == 'critical':
+        critical.append(f'{k} ({v.get(\"name\", \"?\")})')
+    elif severity == 'high':
+        high.append(f'{k} ({v.get(\"name\", \"?\")})')
+print(f'CRITICAL: {len(critical)}, HIGH: {len(high)}')
+if critical:
+    for c in critical:
+        print(f'  [CRITICAL] {c}')
+if high:
+    for h in high[:5]:
+        print(f'  [HIGH] {h}')
+if critical or high:
+    sys.exit(1)
+") || {
+            echo "::error::Failed to parse npm audit output. Dependency scan cannot be verified."
+            exit 1
+          }
+          echo "$VULNS"
+          if echo "$VULNS" | grep -q "CRITICAL: [1-9]"; then
+            echo "::error::Critical vulnerabilities found! They must be fixed before merging."
+            exit 1
+          fi
           echo "$VULNS"
           if echo "$VULNS" | grep -q "CRITICAL: [1-9]"; then
             echo "::error::Critical vulnerabilities found! They must be fixed before merging."

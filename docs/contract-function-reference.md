@@ -1,6 +1,6 @@
 # Soroban Contract Function Reference
 
-Complete reference for the OphirPay (`ophirpay`) and PaymentEventEmitter (`emitter`) Soroban smart contracts.
+Complete reference for the OphirPay (`ophirpay-contract`) and PaymentEventEmitter (`ophirpay-emitter`) Soroban smart contracts.
 
 ## OphirPay Contract
 
@@ -8,30 +8,32 @@ Complete reference for the OphirPay (`ophirpay`) and PaymentEventEmitter (`emitt
 
 | Function | Args | Access | Returns | Events |
 |----------|------|--------|---------|--------|
-| `initialize` | `admin: Address, gateway: Address, token: Address` | Deployer | `()` | — |
-| `set_ratio` | `program_id: u64, maintainer: Address, reward_per_point: i128` | Maintainer | `()` | `RatioUpdated` |
-| `set_fee_config` | `program_id: u64, maintainer: Address, fee_bps: u32, fee_min: i128` | Maintainer | `()` | `FeeConfigUpdated` |
-| `pause` | `program_id: u64, maintainer: Address` | Maintainer | `()` | `ProgramPaused` |
-| `resume` | `program_id: u64, maintainer: Address` | Maintainer | `()` | `ProgramResumed` |
+| `init` | `owner: Address` | Deployer | `Result<u32, PaymentError>` | — |
+| `set_emitter` | `caller: Address, emitter: Address` | Admin | `Result<(), PaymentError>` | — |
+| `set_fee_config` | `caller: Address, fee_bps: u32, fee_min: i128` | Admin | `()` | `FeeConfigUpdated` |
+| `emergency_pause_all` | `caller: Address` | Admin | `Result<(), PaymentError>` | — |
+| `emergency_unpause_all` | `caller: Address` | Admin | `Result<(), PaymentError>` | — |
 
 ### Payment Functions
 
 | Function | Args | Access | Returns | Events |
 |----------|------|--------|---------|--------|
-| `create_payment` | `payer: Address, payee: Address, amount: i128, memo: Symbol` | Payer | `u64` (payment_id) | `PaymentCreated` |
-| `batch_create_payments` | `payer: Address, payments: Vec<PaymentInput>` | Payer | `Vec<u64>` | `PaymentCreated` (×N) |
-| `cancel_payment` | `payment_id: u64, caller: Address` | Payer/Admin | `()` | `PaymentCancelled` |
-| `refund_payment` | `payment_id: u64, reason: Symbol, admin: Address` | Admin | `()` | `PaymentRefunded` |
+| `record_payment` | `payer: Address, payee: Address, amount: i128, memo: Symbol` | Payer | `Result<u64, PaymentError>` | `PaymentCreated` |
+| `create_batch` | `caller: Address, payments: Vec<PaymentInput>` | Payer | `Result<u64, PaymentError>` | `PaymentCreated` (×N) |
+| `cancel_payment` | `caller: Address, payment_id: u64` | Payer/Admin | `Result<(), PaymentError>` | `PaymentCancelled` |
+| `request_refund` | `caller: Address, payment_id: u64, reason: Symbol` | Payer | `Result<u64, PaymentError>` | `RefundRequested` |
 
 ### Read-Only Functions
 
 | Function | Args | Returns | Description |
 |----------|------|---------|-------------|
-| `get_payment` | `payment_id: u64` | `Payment` | Full payment record |
-| `get_payment_status` | `payment_id: u64` | `PaymentStatus` | `Pending`, `Processing`, `Completed`, `Failed`, `Cancelled`, `Refunded` |
-| `get_payer_payments` | `payer: Address, cursor: u64, limit: u32` | `Vec<Payment>` | Paginated payments by payer |
-| `get_program_config` | `program_id: u64` | `ProgramConfig` | Reward ratio, fee config, escrow |
-| `admin` | — | `Address` | Contract admin address |
+| `get_payment` | `payment_id: u64` | `Result<Payment, PaymentError>` | Full payment record |
+| `get_payment_count` | — | `u64` | Total payments recorded |
+| `get_payments_range` | `start_id: u64, end_id: u64` | `Vec<Payment>` | Paginated payments by range |
+| `get_payments_by_batch` | `batch_id: u64` | `Vec<Payment>` | Payments in a batch |
+| `get_owner` | — | `Result<Address, PaymentError>` | Contract owner address |
+| `get_fee_config` | — | `Option<FeeConfig>` | Current fee configuration |
+| `get_stats` | — | `ContractStats` | Contract statistics |
 
 ---
 
@@ -41,17 +43,17 @@ Complete reference for the OphirPay (`ophirpay`) and PaymentEventEmitter (`emitt
 
 | Function | Args | Access | Returns | Events |
 |----------|------|--------|---------|--------|
-| `initialize` | `admin: Address` | Deployer | `()` | — |
-| `emit_payment_event` | `payer: Address, payee: Address, amount: i128, payment_id: u64, status: Symbol` | OphirPay contract | `u64` (event_id) | `PaymentEventEmitted` |
+| `init` | `owner: Address` | Deployer | `Result<u32, EmitterError>` | — |
+| `emit_payment` | `payer: Address, payee: Address, amount: i128, payment_id: u64, status: Symbol` | OphirPay contract | `Result<u64, EmitterError>` | `PaymentEventEmitted` |
 
 ### Event Queries
 
 | Function | Args | Returns | Description |
 |----------|------|---------|-------------|
-| `get_event` | `event_id: u64` | `PaymentEvent` | Single event by id |
-| `get_events` | `start_id: u64, limit: u32` | `Vec<PaymentEvent>` | Paginated events for SSE |
-| `last_event_id` | — | `u64` | Latest emitted event id |
-| `total_events` | — | `u64` | Total events emitted |
+| `get_event` | `event_id: u64` | `Result<PaymentEvent, EmitterError>` | Single event by id |
+| `get_event_count` | — | `u64` | Total events emitted |
+| `get_owner` | — | `Result<Address, EmitterError>` | Emitter owner address |
+| `is_paused` | — | `bool` | Whether emitter is paused |
 
 ---
 
@@ -133,7 +135,7 @@ OphirPay.create_payment()
            Event Source polls get_events()
                   │
                   ▼
-           SSE / WebSocket → clients
+           SSE / WebSocket → clients (use WSS in production)
 ```
 
 ---

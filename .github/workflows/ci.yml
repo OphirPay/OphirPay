@@ -703,3 +703,28 @@ jobs:
             contracts/ophirpay/target/wasm32v1-none/release/*.wasm
             contracts/emitter/target/wasm32v1-none/release/*.wasm
           retention-days: 7
+
+
+  # ────────────────────────────────────────────────────────────
+  # 21. SECRETS SCAN — Gitleaks with blocklist policy
+  # ────────────────────────────────────────────────────────────
+  secrets-scan:
+    name: "21️⃣ Security — Secrets Scan (Gitleaks)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          config-path: .gitleaks.toml
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      - name: Check for detected secrets
+        if: failure()
+        run: |
+          echo "::error::Secrets detected in the repository! Review the Gitleaks report above."
+          echo "::error::See SECRETS_BLOCKLIST.md for the secrets blocklist policy."
+          exit 1

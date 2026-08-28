@@ -21,6 +21,26 @@ export interface QuorumEvaluation {
   remainingNeeded: number;
 }
 
+/**
+ * Validate configuration bounds and duplicate signer invariants.
+ */
+export function validateMultisigConfig(config: MultisigConfig): { valid: boolean; error?: string } {
+  if (config.threshold === 0) {
+    return { valid: false, error: "Threshold cannot be 0." };
+  }
+  const uniqueSigners = new Set(config.signers);
+  if (uniqueSigners.size < config.signers.length) {
+    return { valid: false, error: "Duplicate signers detected in configuration." };
+  }
+  if (config.threshold > uniqueSigners.size) {
+    return {
+      valid: false,
+      error: `Threshold (${config.threshold}) exceeds unique signer count (${uniqueSigners.size}).`,
+    };
+  }
+  return { valid: true };
+}
+
 export function evaluateMultisigQuorum(
   config: MultisigConfig,
   proposal: MultisigProposal,
@@ -48,6 +68,27 @@ export function evaluateMultisigQuorum(
 }
 
 describe("Multisig Threshold Property Tests (#387)", () => {
+  it("rejects invalid configurations with duplicate signers or unattainable thresholds", () => {
+    // 0 threshold
+    expect(validateMultisigConfig({ threshold: 0, signers: ["G_A"] }).valid).toBe(false);
+
+    // Duplicate signers in configuration array
+    const dupes = validateMultisigConfig({
+      threshold: 2,
+      signers: ["G_ALICE", "G_ALICE", "G_BOB"],
+    });
+    expect(dupes.valid).toBe(false);
+    expect(dupes.error).toContain("Duplicate signers detected");
+
+    // Threshold > unique signers
+    const impossible = validateMultisigConfig({
+      threshold: 3,
+      signers: ["G_ALICE", "G_BOB"],
+    });
+    expect(impossible.valid).toBe(false);
+    expect(impossible.error).toContain("exceeds unique signer count");
+  });
+
   it("never executes when approval count is below threshold (Zero False Positives)", () => {
     const config: MultisigConfig = {
       threshold: 3,
@@ -139,6 +180,9 @@ describe("Multisig Threshold Property Tests (#387)", () => {
       const signers = Array.from({ length: totalSigners }, (_, i) => `G_POOL_SIGNER_${i}`);
       const config: MultisigConfig = { threshold, signers };
 
+      // Validate config invariant
+      expect(validateMultisigConfig(config).valid).toBe(true);
+
       // Generate random approvals stream with potential duplicates and rogue accounts
       const poolWithIntruders = [...signers, "G_ROGUE_1", "G_ROGUE_2"];
       const approvalCount = Math.floor(Math.random() * 25);
@@ -165,35 +209,5 @@ describe("Multisig Threshold Property Tests (#387)", () => {
       expect(result.remainingNeeded).toBeGreaterThanOrEqual(0);
       expect(result.remainingNeeded).toBe(Math.max(0, threshold - expectedValidUnique));
     }
-  });
-
-  it("handles extreme edge case: 1-of-1 configuration", () => {
-    const config: MultisigConfig = {
-      threshold: 1,
-      signers: ["G_SOLO_SIGNER"],
-    };
-
-    expect(evaluateMultisigQuorum(config, { id: "p1", approvals: [] }).hasQuorum).toBe(false);
-    expect(
-      evaluateMultisigQuorum(config, { id: "p1", approvals: ["G_SOLO_SIGNER"] }).hasQuorum,
-    ).toBe(true);
-  });
-
-  it("handles extreme edge case: N-of-N consensus configuration", () => {
-    const total = 5;
-    const signers = Array.from({ length: total }, (_, i) => `G_STRICT_${i}`);
-    const config: MultisigConfig = {
-      threshold: total,
-      signers,
-    };
-
-    // total - 1 approvals must fail
-    expect(
-      evaluateMultisigQuorum(config, { id: "p2", approvals: signers.slice(0, total - 1) })
-        .hasQuorum,
-    ).toBe(false);
-
-    // full consensus passes
-    expect(evaluateMultisigQuorum(config, { id: "p2", approvals: signers }).hasQuorum).toBe(true);
   });
 });

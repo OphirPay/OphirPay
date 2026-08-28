@@ -18,21 +18,21 @@ interface NotificationDropdownProps {
 function notificationIcon(type: PaymentNotification["type"]): JSX.Element {
   const common = "w-5 h-5";
   switch (type) {
-    case "payment:sent":
-    case "payment:created":
+    case "payment.sent":
+    case "payment.created":
       return (
         <svg className={common} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
         </svg>
       );
-    case "payment:received":
+    case "payment.received":
       return (
         <svg className={common} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v10M9.5 9.5h3.75a2.25 2.25 0 010 4.5H9.5" />
         </svg>
       );
-    case "batch:completed":
+    case "payment.batch_completed":
       return (
         <svg className={common} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

@@ -71,9 +71,13 @@ export async function proxy(request: NextRequest) {
   // ── API routes: rate limiting + API headers ─────────────────
   if (pathname.startsWith("/api/")) {
     // Skip rate limiting for health checks and metrics (monitoring endpoints
-    // are hit frequently by orchestrators and should never be throttled)
+    // are hit frequently by orchestrators and should never be throttled),
+    // and during CI / automated test runs.
     const skipRateLimit =
-      pathname === "/api/health" || pathname === "/api/metrics";
+      pathname === "/api/health" ||
+      pathname === "/api/metrics" ||
+      process.env.ALLOW_LOCAL_WEBHOOKS === "true" ||
+      process.env.DISABLE_RATE_LIMIT === "true";
 
     let remaining = RATE_LIMIT_MAX;
     let resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;

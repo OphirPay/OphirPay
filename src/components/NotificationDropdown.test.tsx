@@ -5,16 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { NotificationDropdown } from "./NotificationDropdown";
-import type { AppNotification } from "@/lib/notifications";
+import type { PaymentNotification } from "@/lib/notifications";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeNotification(overrides: Partial<AppNotification> = {}): AppNotification {
+function makeNotification(overrides: Partial<PaymentNotification> = {}): PaymentNotification {
   return {
     id: `n_${Math.random().toString(36).slice(2, 8)}`,
-    type: "payment:received",
+    type: "payment.received",
     title: "Payment received",
     message: "100 USDC received",
     timestamp: new Date().toISOString(),
@@ -67,7 +67,7 @@ describe("NotificationDropdown", () => {
   });
 
   it("renders the list of notifications", () => {
-    const items: AppNotification[] = [
+    const items: PaymentNotification[] = [
       makeNotification({ id: "a", title: "Payment received", message: "100 USDC" }),
       makeNotification({ id: "b", title: "Payment sent", message: "50 USDC", read: true }),
     ];
@@ -86,7 +86,7 @@ describe("NotificationDropdown", () => {
   });
 
   it("shows unread blue dot for unread notifications", () => {
-    const items: AppNotification[] = [
+    const items: PaymentNotification[] = [
       makeNotification({ id: "a", read: false }),
       makeNotification({ id: "b", read: true }),
     ];
@@ -179,11 +179,11 @@ describe("NotificationDropdown", () => {
   });
 
   it("renders notification type icons", () => {
-    const items: AppNotification[] = [
-      makeNotification({ id: "a", type: "payment:sent" }),
-      makeNotification({ id: "b", type: "payment:received" }),
-      makeNotification({ id: "c", type: "batch:completed" }),
-      makeNotification({ id: "d", type: "payment:created" }),
+    const items: PaymentNotification[] = [
+      makeNotification({ id: "a", type: "payment.sent" }),
+      makeNotification({ id: "b", type: "payment.received" }),
+      makeNotification({ id: "c", type: "payment.batch_completed" }),
+      makeNotification({ id: "d", type: "payment.created" }),
     ];
 
     const { container } = render(
@@ -257,7 +257,7 @@ describe("NotificationDropdown", () => {
   });
 
   it("renders unread and read items with distinct visual states", () => {
-    const items: AppNotification[] = [
+    const items: PaymentNotification[] = [
       makeNotification({ id: "x", title: "Unread Item", read: false }),
       makeNotification({ id: "y", title: "Read Item", read: true }),
     ];

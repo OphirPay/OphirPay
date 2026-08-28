@@ -12,6 +12,7 @@ import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { deriveKeyPrefix } from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 
 /**
  * GET /api/keys — list the authenticated user's API keys (no hashes).
@@ -37,6 +38,9 @@ export const GET = withRequestLogging(async function GET(request: Request) {
  * The raw key is returned only once; only the hash is stored.
  */
 export const POST = withRequestLogging(async function POST(request: Request) {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
   try {
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
@@ -70,6 +74,9 @@ export const POST = withRequestLogging(async function POST(request: Request) {
  * DELETE /api/keys?id=... — revoke one of the authenticated user's keys.
  */
 export const DELETE = withRequestLogging(async function DELETE(request: Request) {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
   try {
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");

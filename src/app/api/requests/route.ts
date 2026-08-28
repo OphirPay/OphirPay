@@ -13,6 +13,7 @@ import { getAuthContext } from "@/lib/auth-session";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 
 export const GET = withRequestLogging(async function GET(request: Request) {
   try {
@@ -34,6 +35,9 @@ export const GET = withRequestLogging(async function GET(request: Request) {
 });
 
 export const POST = withRequestLogging(async function POST(request: Request) {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
   try {
     const auth = await getAuthContext(request);
     if (!auth) {

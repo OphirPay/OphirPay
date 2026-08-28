@@ -18,6 +18,7 @@ import {
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
+import { verifyCsrf } from "@/lib/csrf";
 
 // ── GET /api/batches — List batches with pagination ──────────
 
@@ -98,6 +99,9 @@ export const GET = withRequestLogging(async function GET(request: Request) {
 // ── POST /api/batches — Create a new batch ──────────────────
 
 export const POST = withRequestLogging(async function POST(request: Request) {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
   try {
     const auth = await getAuthContext(request);
     if (!auth) {

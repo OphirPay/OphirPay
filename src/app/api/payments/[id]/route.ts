@@ -12,6 +12,7 @@ import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { getAuthContext } from "@/lib/auth-session";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 
 export const GET = withRequestLogging(async function GET(
   request: Request,
@@ -42,6 +43,8 @@ export const PATCH = withRequestLogging(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -122,6 +125,8 @@ export const DELETE = withRequestLogging(async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
   try {
     const auth = await getAuthContext(request);
     if (!auth) {

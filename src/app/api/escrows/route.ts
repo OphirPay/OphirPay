@@ -5,6 +5,7 @@ import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 
 /**
  * GET /api/escrows — list escrows or fetch single by ?id=N
@@ -47,6 +48,9 @@ export const GET = withRequestLogging(async function GET(request: Request) {
  * POST /api/escrows — create escrow (requires wallet signing, delegates to client)
  */
 export const POST = withRequestLogging(async function POST(request: Request) {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
   try {
     const auth = await getAuthContext(request);
     if (!auth) {

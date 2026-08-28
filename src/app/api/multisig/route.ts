@@ -5,6 +5,7 @@ import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { setMultisigConfig } from "@/lib/contract-advanced";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 
 /**
  * GET /api/multisig — current multisig configuration
@@ -46,6 +47,9 @@ export const GET = withRequestLogging(async function GET(request: Request) {
  * POST /api/multisig — configure multisig (owner-only, calls Soroban contract)
  */
 export const POST = withRequestLogging(async function POST(request: Request) {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
   try {
     const auth = await getAuthContext(request);
     if (!auth) {

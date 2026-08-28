@@ -711,7 +711,26 @@ jobs:
   prisma-migration-check:
     name: "23️⃣ Backend — Prisma Migration Check"
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma_shadow
+          POSTGRES_PASSWORD: prisma_shadow
+          POSTGRES_DB: shadow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma_shadow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql://prisma_shadow:prisma_shadow@localhost:5432/shadow"
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -719,4 +738,8 @@ jobs:
       - run: npm ci
       - name: Check Prisma migrations are up to date
         run: |
-          npx prisma migrate diff             --from-schema-datamodel prisma/schema.prisma             --to-migrations prisma/migrations             --shadow-database-url "postgresql://dummy:dummy@localhost:5432/dummy?schema=shadow"             --exit-code
+          npx prisma migrate diff \
+            --from-schema-datamodel prisma/schema.prisma \
+            --to-migrations prisma/migrations \
+            --shadow-database-url "$DATABASE_URL" \
+            --exit-code

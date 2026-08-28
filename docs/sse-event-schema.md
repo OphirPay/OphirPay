@@ -7,9 +7,9 @@ OphirPay streams live payment events via Server-Sent Events (SSE) and WebSocket,
 | Transport | Endpoint | Protocol | Latency |
 |-----------|----------|----------|---------|
 | SSE | `/api/events` | HTTP long-poll | Medium |
-| WebSocket | `ws://host:8787/api/events` | Full-duplex | Low |
+| WebSocket | `wss://host:8787/api/events` | Full-duplex (WSS) | Low |
 
-Both transports deliver the same event stream. The client library (`LiveEventsClient`) auto-negotiates WebSocket first and falls back to SSE.
+Both transports deliver the same event stream. The client library (`LiveEventsClient`) auto-negotiates WebSocket first and falls back to SSE. **Always use WSS (secure WebSocket) in production** — cleartext `ws://` exposes payment data to interception.
 
 ## Event Types
 

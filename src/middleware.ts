@@ -63,7 +63,7 @@ function buildCsp(): string {
   ].join("; ");
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const requestId = generateRequestId();
   const startedAt = performance.now();

@@ -2,9 +2,9 @@
 
 This guide helps you set up a local OphirPay development environment from scratch.
 
-## Quick Start (SQLite)
+## Quick Start (PostgreSQL via Docker)
 
-For rapid prototyping and testing, use SQLite:
+The repo's `prisma/schema.prisma` is configured for PostgreSQL by default. The fastest way to get a local PostgreSQL instance is via Docker Compose:
 
 ```bash
 git clone https://github.com/OphirPay/OphirPay.git
@@ -16,7 +16,13 @@ npm install
 # Copy environment template
 cp .env.example .env.local
 
-# Generate Prisma client (SQLite)
+# Start PostgreSQL + Redis via Docker
+docker-compose up -d db redis
+
+# Set DATABASE_URL to match docker-compose.yml
+export DATABASE_URL="postgresql://ophirpay:ophirpay@localhost:5432/ophirpay"
+
+# Generate Prisma client
 npx prisma generate
 
 # Apply migrations
@@ -33,43 +39,34 @@ Visit `http://localhost:3000` — the app is running!
 
 ## Database Providers
 
-### Option A: SQLite (Recommended for Development)
+### Option A: PostgreSQL via Docker (Default)
 
-| Pros | Cons |
-|------|------|
-| Zero setup | No concurrent writes |
-| Instant startup | Not suitable for production |
-| File-based (easy reset) | Limited to single process |
+The repo's `prisma/schema.prisma` ships with PostgreSQL as the active datasource.
+Use `docker-compose up -d db` for a zero-config local PostgreSQL instance.
 
-Delete `prisma/dev.db` and re-run `npx prisma migrate dev` to reset.
+To reset: `npx prisma migrate reset` (WARNING: deletes all data)
 
-### Option B: PostgreSQL / Neon
+### Option B: PostgreSQL via Neon (Serverless)
 
 For features requiring serverless edge compatibility or production-like behavior:
 
 ```bash
 # Install Neon CLI
 npm install -g neonctl@latest
-
-# Authenticate
 neonctl auth
-
-# Create a project
 neonctl projects create --name ophirpay-dev --region aws-us-east-1
-
-# Get the connection string
 DATABASE_URL=$(neonctl connection-string --database-name ophirpay)
-
-# Update .env.local
 echo "DATABASE_URL=$DATABASE_URL" >> .env.local
-echo "DATABASE_PROVIDER=postgresql" >> .env.local
-
-# Apply migrations
 npx prisma migrate dev
-
-# Seed
 npm run db:seed
 ```
+
+### Option C: SQLite (Experimental)
+
+SQLite is commented out in `prisma/schema.prisma`. To use it, uncomment the SQLite
+datasource block and comment out the PostgreSQL block, then use `npx prisma db push`
+instead of `npx prisma migrate dev`. Note: some features may not work with SQLite
+due to `relationMode = "prisma"` (no foreign keys).
 
 ## Stellar Testnet Wallet Funding
 
@@ -102,8 +99,7 @@ curl "https://horizon-testnet.stellar.org/accounts/$PUBLIC_KEY" | python3 -m jso
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | `file:./dev.db` | Database connection string |
-| `DATABASE_PROVIDER` | No | `sqlite` | `sqlite` or `postgresql` |
+| `DATABASE_URL` | Yes | `postgresql://...` | PostgreSQL connection string |
 | `NEXT_PUBLIC_STELLAR_NETWORK` | No | `TESTNET` | `TESTNET` or `PUBLIC` |
 | `NEXT_PUBLIC_HORIZON_URL` | No | Testnet Horizon | Horizon API URL |
 | `NEXT_PUBLIC_SOROBAN_RPC_URL` | No | Testnet RPC | Soroban RPC URL |

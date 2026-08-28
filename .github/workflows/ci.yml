@@ -714,20 +714,24 @@ jobs:
     timeout-minutes: 10
     strategy:
       matrix:
-        contract: [ophirpay, emitter]
+        include:
+          - contract-dir: contracts/ophirpay
+            wasm-pattern: "*.wasm"
+          - contract-dir: contracts/emitter
+            wasm-pattern: "*.wasm"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
-      - name: Build ${{ matrix.contract }} — first pass
+          targets: wasm32v1-none
+      - name: Build ${{ matrix.contract-dir }} — first pass
         run: |
-          cargo build --release -p ${{ matrix.contract }} --target wasm32-unknown-unknown
-          cp target/wasm32-unknown-unknown/release/${{ matrix.contract }}.wasm /tmp/wasm-pass1.wasm
-      - name: Build ${{ matrix.contract }} — second pass
+          cd ${{ matrix.contract-dir }} && cargo build --target wasm32v1-none --release
+          cp target/wasm32v1-none/release/*.wasm /tmp/wasm-pass1.wasm
+      - name: Build ${{ matrix.contract-dir }} — second pass
         run: |
-          cargo build --release -p ${{ matrix.contract }} --target wasm32-unknown-unknown
-          cp target/wasm32-unknown-unknown/release/${{ matrix.contract }}.wasm /tmp/wasm-pass2.wasm
+          cd ${{ matrix.contract-dir }} && cargo build --target wasm32v1-none --release
+          cp target/wasm32v1-none/release/*.wasm /tmp/wasm-pass2.wasm
       - name: Verify reproducibility
         run: |
           HASH1=$(sha256sum /tmp/wasm-pass1.wasm | cut -d' ' -f1)

@@ -242,10 +242,15 @@ jobs:
   # excludes gitignored paths and `.next/` is gitignored.
   # ══════════════════════════════════════════════════════════════
   e2e-tests:
-    name: "🔟 Frontend — E2E (Playwright)"
+    name: "🔟 Frontend — E2E (Playwright Shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: contract-wasm
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
     services:
       postgres:
         image: postgres:16-alpine
@@ -269,7 +274,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - name: Generate Prisma client
         run: npx prisma generate
@@ -292,15 +297,23 @@ jobs:
             sleep 2
           done
           curl -sf -o /dev/null http://localhost:3000/ || { echo "next start failed to come up"; tail -20 /tmp/next-start.log; exit 1; }
-      - name: Run E2E tests against production build
-        run: npx playwright test --project=chromium
+      - name: Run E2E tests shard
+        run: npx playwright test --project=chromium --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+      - name: Upload blob report for sharding
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.shardIndex }}
+          path: blob-report/
+          retention-days: 1
       - name: Upload E2E report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shardIndex }}
           path: playwright-report/
           retention-days: 7
+
 
   # ══════════════════════════════════════════════════════════════
   # 11. PRISMA VALIDATE — Schema integrity, generate, db push

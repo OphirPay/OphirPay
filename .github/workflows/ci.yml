@@ -703,3 +703,20 @@ jobs:
             contracts/ophirpay/target/wasm32v1-none/release/*.wasm
             contracts/emitter/target/wasm32v1-none/release/*.wasm
           retention-days: 7
+
+
+  # ────────────────────────────────────────────────────────────
+  # 23. PRISMA MIGRATION CHECK — Verify schema and migrations in sync
+  # ────────────────────────────────────────────────────────────
+  prisma-migration-check:
+    name: "23️⃣ Backend — Prisma Migration Check"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Check Prisma migrations are up to date
+        run: |
+          npx prisma migrate diff             --from-schema-datamodel prisma/schema.prisma             --to-migrations prisma/migrations             --shadow-database-url "postgresql://dummy:dummy@localhost:5432/dummy?schema=shadow"             --exit-code

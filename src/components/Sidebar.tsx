@@ -129,6 +129,11 @@ export function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Close mobile sidebar on route change (Next.js client-side navigation).
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   // Keyboard navigation: Ctrl+1..9 for nav items
   const handleKeyDown = (e: KeyboardEvent) => {
     const num = parseInt(e.key);

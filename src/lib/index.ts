@@ -22,6 +22,7 @@ export { cn, shortenAddress, formatAmount, formatDate, timeAgo, getStatusColor }
 export { sanitizeHtml, escapeHtml, sanitizeStellarAddress } from "./sanitize";
 export { cacheControl, CACHE_PRESETS } from "./cache";
 export { getSecurityHeaders, getCorsHeaders } from "./headers";
+export { generateSep7PayUri, parseSep7PayUri, generateQrMatrix, generateQrSvg } from "./qr";
 
 // Contracts
 export { classifyContractError, ContractErrorType, ContractError } from "./contracts";

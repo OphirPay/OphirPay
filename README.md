@@ -102,6 +102,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **Batch payments** (multi-recipient in 1 tx) | ✅ | ❌ |
 | **Recurring payment schedules** | ✅ | ❌ |
 | **Payment requests** (invoice-style, QR codes) | ✅ | ❌ |
+| **Receive payments & SEP-0007 QR generator** | ✅ | ❌ |
 | **Real-time event streaming** (SSE) | ✅ | ❌ |
 | **Webhook delivery** (HMAC signed, retries) | ✅ | ❌ |
 | **Cross-contract communication** | ✅ | ❌ |
@@ -754,6 +755,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 | ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr, Ledger) | **Done** |
 | ✅ Stellar assets (USDC, custom tokens, trustline checks) | **Done** |
 | ✅ Payment request links (shareable invoices, QR codes) | **Done** |
+| ✅ Receive payment page with SEP-0007 QR code generator & copy address | **Done** |
 | ✅ Webhook delivery (HMAC signed, retries) | **Done** |
 | ✅ PostgreSQL support (provider switching, migrations) | **Done** |
 | ✅ PWA / mobile app (offline support, install prompt) | **Done** |

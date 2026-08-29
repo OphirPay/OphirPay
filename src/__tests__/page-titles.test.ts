@@ -11,6 +11,7 @@ import { PAGE_TITLES, PAGE_DESCRIPTIONS } from "@/lib/page-titles";
 const EXPECTED_ROUTE_TITLES: Record<string, string> = {
   "/": PAGE_TITLES.HOME,
   "/send": PAGE_TITLES.SEND,
+  "/receive": PAGE_TITLES.RECEIVE,
   "/payments": PAGE_TITLES.PAYMENTS,
   "/batches": PAGE_TITLES.BATCHES,
   "/batches/new": PAGE_TITLES.NEW_BATCH,

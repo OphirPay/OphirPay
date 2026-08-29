@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   DashboardIcon,
   SendIcon,
+  ReceiveIcon,
   PaymentsIcon,
   BatchesIcon,
   RecurringIcon,
@@ -24,6 +25,7 @@ import {
 const navItems = [
   { href: "/", label: "Treasury", Icon: DashboardIcon },
   { href: "/send", label: "Send", Icon: SendIcon },
+  { href: "/receive", label: "Receive", Icon: ReceiveIcon },
   { href: "/payments", label: "Payments", Icon: PaymentsIcon },
   { href: "/batches", label: "Batches", Icon: BatchesIcon },
   { href: "/recurring", label: "Recurring", Icon: RecurringIcon },

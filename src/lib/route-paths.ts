@@ -4,6 +4,7 @@
 export const ROUTES = {
   HOME: "/",
   SEND: "/send",
+  RECEIVE: "/receive",
   PAYMENTS: "/payments",
   BATCHES: "/batches",
   NEW_BATCH: "/batches/new",

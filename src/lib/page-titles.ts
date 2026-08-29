@@ -13,6 +13,7 @@
 export const PAGE_TITLES = {
   HOME: "Treasury Dashboard",
   SEND: "Send Payment",
+  RECEIVE: "Receive Payment",
   PAYMENTS: "Payments",
   BATCHES: "Batch Payments",
   NEW_BATCH: "New Batch Payment",
@@ -36,6 +37,7 @@ export const PAGE_TITLES = {
 export const PAGE_DESCRIPTIONS = {
   HOME: "Monitor your financial operations and payment activity on Stellar.",
   SEND: "Send XLM on the Stellar network — fast, cheap, and secure.",
+  RECEIVE: "Share your Stellar address or QR code to receive payments.",
   PAYMENTS: "View payment records stored on-chain by the OphirPay Soroban contract.",
   BATCHES: "Process multiple payments in a single Stellar transaction.",
   NEW_BATCH: "Create a new batch of payments to multiple recipients on Stellar.",

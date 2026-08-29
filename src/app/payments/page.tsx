@@ -7,20 +7,28 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { formatAmount, shortenAddress, timeAgo } from "@/lib/utils";
+import { shortenAddress, timeAgo } from "@/lib/utils";
 import {
   fetchOnChainPayments,
   type OnChainPayment,
 } from "@/lib/contracts";
-import { getStellarExplorerUrl, XLM_STROOPS } from "@/lib/stellar";
+import { getStellarExplorerUrl } from "@/lib/stellar";
 import { exportToCsv } from "@/lib/csv";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Pagination } from "@/components/ui/Pagination";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { usePrice } from "@/hooks/usePrice";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import {
+  formatPaymentRowAmount,
+  STORAGE_KEYS,
+  type CurrencyDisplay,
+} from "@/lib/price";
 
 // ── Page ──────────────────────────────────────────────────────
 
@@ -58,6 +66,12 @@ function PaymentsClient() {
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
+
+  const [currency, setCurrency] = useLocalStorage<CurrencyDisplay>(
+    STORAGE_KEYS.currencyDisplay,
+    "XLM"
+  );
+  const { priceRate } = usePrice();
 
   const {
     data,
@@ -223,18 +237,28 @@ function PaymentsClient() {
         </div>
       </div>
 
-      {/* Search bar */}
-      <div className="relative max-w-sm">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-        </svg>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by address, hash, or ID..."
-          className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
-        />
+      {/* Controls row: Search and Currency Toggle */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="relative max-w-sm w-full">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by address, hash, or ID..."
+            className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            priceRate={priceRate}
+          />
+        </div>
       </div>
 
       {/* Chain record count */}
@@ -320,7 +344,7 @@ function PaymentsClient() {
                       </p>
                     </td>
                     <td className="py-3 px-4 text-gray-700 dark:text-gray-300 font-mono">
-                      {formatAmount(payment.amountStroops / XLM_STROOPS, "XLM")}
+                      {formatPaymentRowAmount(payment.amountStroops, currency, priceRate)}
                     </td>
                     <td className="py-3 px-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">

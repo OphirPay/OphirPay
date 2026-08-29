@@ -206,10 +206,13 @@ pub struct ApprovalRequest {
 #[derive(Clone)]
 pub struct SpendingLimit {
     pub daily_limit: i128,
+    pub weekly_limit: i128,
     pub monthly_limit: i128,
     pub current_daily_spend: i128,
+    pub current_weekly_spend: i128,
     pub current_monthly_spend: i128,
     pub last_reset_day: u64,
+    pub last_reset_week: u64,
     pub last_reset_month: u64,
     pub is_active: bool,
     /// Ledger timestamp when this limit self-destructs (0 = never).
@@ -1823,6 +1826,7 @@ impl OphirPayContract {
         caller: Address,
         user: Address,
         daily_limit: i128,
+        weekly_limit: i128,
         monthly_limit: i128,
         expires_at: u64,
         is_active: bool,
@@ -1831,10 +1835,13 @@ impl OphirPayContract {
         require_owner(&env, &caller)?;
         let limit = SpendingLimit {
             daily_limit,
+            weekly_limit,
             monthly_limit,
             current_daily_spend: 0,
+            current_weekly_spend: 0,
             current_monthly_spend: 0,
             last_reset_day: env.ledger().timestamp(),
+            last_reset_week: env.ledger().timestamp(),
             last_reset_month: env.ledger().timestamp(),
             expires_at,
             is_active,
@@ -1920,16 +1927,25 @@ impl OphirPayContract {
 
             let now = env.ledger().timestamp();
             let day_seconds: u64 = 86400;
+            let week_seconds: u64 = 7 * 86400;
             let month_seconds: u64 = 30 * 86400;
 
+            // Check expiry
+            if limit.expires_at > 0 && now >= limit.expires_at {
+                return SpendCheckResult::Rejected;
+            }
+
             // NOTE: this is a read-only check (MEDIUM-1 audit fix). It never
-            // mutates storage — the counters are updated by atomic_spend, which
-            // is the only authorized write path. Previously any address could
-            // call check_spending repeatedly to burn a user's allowance.
+            // mutates storage — the counters are updated by atomic_spend / record_payment.
             let daily_spend = if now.saturating_sub(limit.last_reset_day) >= day_seconds {
                 0
             } else {
                 limit.current_daily_spend
+            };
+            let weekly_spend = if now.saturating_sub(limit.last_reset_week) >= week_seconds {
+                0
+            } else {
+                limit.current_weekly_spend
             };
             let monthly_spend = if now.saturating_sub(limit.last_reset_month) >= month_seconds {
                 0
@@ -1938,10 +1954,13 @@ impl OphirPayContract {
             };
 
             // Check limits
-            if daily_spend.saturating_add(amount) > limit.daily_limit {
+            if limit.daily_limit > 0 && daily_spend.saturating_add(amount) > limit.daily_limit {
                 return SpendCheckResult::Rejected;
             }
-            if monthly_spend.saturating_add(amount) > limit.monthly_limit {
+            if limit.weekly_limit > 0 && weekly_spend.saturating_add(amount) > limit.weekly_limit {
+                return SpendCheckResult::Rejected;
+            }
+            if limit.monthly_limit > 0 && monthly_spend.saturating_add(amount) > limit.monthly_limit {
                 return SpendCheckResult::Rejected;
             }
         }
@@ -1984,22 +2003,31 @@ impl OphirPayContract {
             }
 
             let day_seconds: u64 = 86400;
+            let week_seconds: u64 = 7 * 86400;
             let month_seconds: u64 = 30 * 86400;
             if now.saturating_sub(limit.last_reset_day) >= day_seconds {
                 limit.current_daily_spend = 0;
                 limit.last_reset_day = now;
             }
+            if now.saturating_sub(limit.last_reset_week) >= week_seconds {
+                limit.current_weekly_spend = 0;
+                limit.last_reset_week = now;
+            }
             if now.saturating_sub(limit.last_reset_month) >= month_seconds {
                 limit.current_monthly_spend = 0;
                 limit.last_reset_month = now;
             }
-            if limit.current_daily_spend.saturating_add(amount) > limit.daily_limit {
-                return Err(PaymentError::SpendingLimitExpired);
+            if limit.daily_limit > 0 && limit.current_daily_spend.saturating_add(amount) > limit.daily_limit {
+                return Err(PaymentError::SpendCapExceeded);
             }
-            if limit.current_monthly_spend.saturating_add(amount) > limit.monthly_limit {
-                return Err(PaymentError::SpendingLimitExpired);
+            if limit.weekly_limit > 0 && limit.current_weekly_spend.saturating_add(amount) > limit.weekly_limit {
+                return Err(PaymentError::SpendCapExceeded);
+            }
+            if limit.monthly_limit > 0 && limit.current_monthly_spend.saturating_add(amount) > limit.monthly_limit {
+                return Err(PaymentError::SpendCapExceeded);
             }
             limit.current_daily_spend = limit.current_daily_spend.saturating_add(amount);
+            limit.current_weekly_spend = limit.current_weekly_spend.saturating_add(amount);
             limit.current_monthly_spend = limit.current_monthly_spend.saturating_add(amount);
             env.storage().persistent().set(&key, &limit);
             env.storage().persistent().extend_ttl(&key, 5000, 50000);
@@ -2484,6 +2512,53 @@ impl OphirPayContract {
         require_not_paused(&env)?;
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
+        }
+
+        // Enforce per-wallet spending limits on record_payment
+        let key = (SPEND_LIMIT_KEY, payer.clone());
+        if let Some(mut limit) = env.storage().persistent().get::<_, SpendingLimit>(&key) {
+            if !limit.is_active {
+                return Err(PaymentError::SpendingLimitExpired);
+            }
+
+            // Check expiry
+            let now = env.ledger().timestamp();
+            if limit.expires_at > 0 && now >= limit.expires_at {
+                limit.is_active = false;
+                env.storage().persistent().set(&key, &limit);
+                env.storage().persistent().extend_ttl(&key, 5000, 50000);
+                return Err(PaymentError::SpendingLimitExpired);
+            }
+
+            let day_seconds: u64 = 86400;
+            let week_seconds: u64 = 7 * 86400;
+            let month_seconds: u64 = 30 * 86400;
+            if now.saturating_sub(limit.last_reset_day) >= day_seconds {
+                limit.current_daily_spend = 0;
+                limit.last_reset_day = now;
+            }
+            if now.saturating_sub(limit.last_reset_week) >= week_seconds {
+                limit.current_weekly_spend = 0;
+                limit.last_reset_week = now;
+            }
+            if now.saturating_sub(limit.last_reset_month) >= month_seconds {
+                limit.current_monthly_spend = 0;
+                limit.last_reset_month = now;
+            }
+            if limit.daily_limit > 0 && limit.current_daily_spend.saturating_add(amount) > limit.daily_limit {
+                return Err(PaymentError::SpendCapExceeded);
+            }
+            if limit.weekly_limit > 0 && limit.current_weekly_spend.saturating_add(amount) > limit.weekly_limit {
+                return Err(PaymentError::SpendCapExceeded);
+            }
+            if limit.monthly_limit > 0 && limit.current_monthly_spend.saturating_add(amount) > limit.monthly_limit {
+                return Err(PaymentError::SpendCapExceeded);
+            }
+            limit.current_daily_spend = limit.current_daily_spend.saturating_add(amount);
+            limit.current_weekly_spend = limit.current_weekly_spend.saturating_add(amount);
+            limit.current_monthly_spend = limit.current_monthly_spend.saturating_add(amount);
+            env.storage().persistent().set(&key, &limit);
+            env.storage().persistent().extend_ttl(&key, 5000, 50000);
         }
 
         let mut count: u64 = env.storage().instance().get(&PAYMENT_COUNT).unwrap_or(0);
@@ -4560,6 +4635,7 @@ mod tests {
             &owner,
             &user,
             &1000i128,
+            &3000i128,
             &5000i128,
             &(env.ledger().timestamp() + 86400),
             &true,
@@ -4579,7 +4655,7 @@ mod tests {
         let user = Address::generate(&env);
 
         let _ = client.init(&owner);
-        client.set_spending_limit(&owner, &user, &100i128, &1000i128, &0u64, &true);
+        client.set_spending_limit(&owner, &user, &100i128, &500i128, &1000i128, &0u64, &true);
 
         let result = client.check_spending(&user, &500i128);
         assert!(matches!(result, SpendCheckResult::Rejected));
@@ -5627,7 +5703,7 @@ mod tests {
         let _ = client.init(&owner);
 
         // Set spending limit that expires in 100 seconds
-        client.set_spending_limit(&owner, &payer, &10000i128, &50000i128, &(now + 100), &true);
+        client.set_spending_limit(&owner, &payer, &10000i128, &30000i128, &50000i128, &(now + 100), &true);
 
         let limit = client.get_spending_limit(&payer);
         assert!(limit.is_some());
@@ -5673,7 +5749,7 @@ mod tests {
 
         let _ = client.init(&owner);
 
-        client.set_spending_limit(&owner, &payer, &5000i128, &10000i128, &0, &true);
+        client.set_spending_limit(&owner, &payer, &5000i128, &8000i128, &10000i128, &0, &true);
 
         // Spend 2000
         client.atomic_spend(
@@ -5935,4 +6011,127 @@ mod tests {
         client.claim_escrow(&payee2, &e2);
         assert_eq!(client.get_locked_balance(), 0);
     }
+
+    #[test]
+    fn test_record_payment_enforces_spending_limits_and_weekly_cap() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let asset = Address::generate(&env);
+
+        let _ = client.init(&owner);
+
+        // Configure daily: 1000, weekly: 2500, monthly: 5000
+        client.set_spending_limit(&owner, &payer, &1000i128, &2500i128, &5000i128, &0u64, &true);
+
+        // Record payment of 600 (within daily 1000, weekly 2500) -> OK
+        let p1 = client.record_payment(
+            &payer,
+            &payee,
+            &600i128,
+            &asset,
+            &String::from_str(&env, "tx_1"),
+            &String::from_str(&env, "spend 1"),
+        );
+        assert_eq!(p1, 1);
+
+        // Record payment of 500 on same day -> 600 + 500 = 1100 > 1000 daily limit -> Fails
+        let res_daily_fail = client.try_record_payment(
+            &payer,
+            &payee,
+            &500i128,
+            &asset,
+            &String::from_str(&env, "tx_2"),
+            &String::from_str(&env, "spend 2"),
+        );
+        assert!(res_daily_fail.is_err());
+
+        // Advance 1 day (86400s) -> daily resets, but weekly total remains 600
+        env.ledger().set_timestamp(env.ledger().timestamp() + 86400);
+
+        // Record payment of 900 on day 2 -> daily: 900 <= 1000, weekly: 600 + 900 = 1500 <= 2500 -> OK
+        let p2 = client.record_payment(
+            &payer,
+            &payee,
+            &900i128,
+            &asset,
+            &String::from_str(&env, "tx_3"),
+            &String::from_str(&env, "spend 3"),
+        );
+        assert_eq!(p2, 2);
+
+        // Advance another day
+        env.ledger().set_timestamp(env.ledger().timestamp() + 86400);
+
+        // Record payment of 900 on day 3 -> daily: 900 <= 1000, but weekly: 1500 + 900 = 2400 <= 2500 -> OK
+        let p3 = client.record_payment(
+            &payer,
+            &payee,
+            &900i128,
+            &asset,
+            &String::from_str(&env, "tx_4"),
+            &String::from_str(&env, "spend 4"),
+        );
+        assert_eq!(p3, 3);
+
+        // Try another payment of 200 on day 3 -> weekly: 2400 + 200 = 2600 > 2500 (fails weekly limit) -> Fails
+        let res_weekly_fail = client.try_record_payment(
+            &payer,
+            &payee,
+            &200i128,
+            &asset,
+            &String::from_str(&env, "tx_5"),
+            &String::from_str(&env, "spend 5"),
+        );
+        assert!(res_weekly_fail.is_err());
+    }
+
+    #[test]
+    fn test_record_payment_spending_limit_expiry() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let asset = Address::generate(&env);
+
+        let now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+
+        // Expires in 300s
+        client.set_spending_limit(&owner, &payer, &5000i128, &10000i128, &20000i128, &(now + 300), &true);
+
+        // Pay before expiry -> OK
+        let p1 = client.record_payment(
+            &payer,
+            &payee,
+            &1000i128,
+            &asset,
+            &String::from_str(&env, "tx_exp1"),
+            &String::from_str(&env, "valid"),
+        );
+        assert_eq!(p1, 1);
+
+        // Fast-forward past expiry
+        env.ledger().set_timestamp(now + 400);
+
+        let res_expired = client.try_record_payment(
+            &payer,
+            &payee,
+            &1000i128,
+            &asset,
+            &String::from_str(&env, "tx_exp2"),
+            &String::from_str(&env, "expired"),
+        );
+        assert!(res_expired.is_err());
+    }
 }
+

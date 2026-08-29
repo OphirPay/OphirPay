@@ -129,10 +129,13 @@ export interface ApprovalRequest {
 
 export interface SpendingLimit {
   daily_limit: bigint;
+  weekly_limit: bigint;
   monthly_limit: bigint;
   current_daily_spend: bigint;
+  current_weekly_spend: bigint;
   current_monthly_spend: bigint;
   last_reset_day: number;
+  last_reset_week: number;
   last_reset_month: number;
   is_active: boolean;
   expires_at: number;

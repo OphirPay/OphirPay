@@ -71,6 +71,7 @@
 - [⚡ Quick Start](#-quick-start)
 - [🔐 Wallet Integration](#-wallet-integration)
 - [📡 Real-Time Events](#-real-time-events)
+- [📡 SSE Event Schema](docs/SSE_EVENT_SCHEMA.md)
 - [🧪 Smart Contracts](#-smart-contracts)
 - [🌟 New to Stellar?](docs/STELLAR_101.md)
 - [📊 Testing & Quality](#-testing--quality)

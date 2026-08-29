@@ -9,7 +9,9 @@
 //! 2. Include reentrancy-shaped call sequences asserting ReentrantCall rejection.
 //! 3. Runs in CI with bounded iterations (ProptestConfig::with_cases(64)).
 
-use ophirpay_contract::{OphirPayContract, OphirPayContractClient, PaymentError};
+use ophirpay_contract::{
+    OphirPayContract, OphirPayContractClient, PaymentError, RefundReasonCode, RefundStatus,
+};
 use proptest::prelude::*;
 use proptest::test_runner::Config as ProptestConfig;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -319,7 +321,149 @@ proptest! {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 3. PROPERTY TESTS: Concurrent Operations & Composite Invariants
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. PROPERTY TESTS: Refund Processing Lifecycle & Conservation
+// ═══════════════════════════════════════════════════════════════════════════
+
+proptest! {
+    #![proptest_config(get_proptest_config())]
+
+    #[test]
+    fn prop_refund_lifecycle_conserves_balances(
+        payment_amount in 1_000i128..=100_000_000i128,
+        refund_fraction in 1u32..=100u32,
+        reason_code_idx in 0u32..=5u32,
+    ) {
+        let h = PropHarness::new();
+        let payer = Address::generate(&h.env);
+        let payee = Address::generate(&h.env);
+
+        h.mint(&payer, payment_amount);
+
+        // 1. Record payment
+        let payment_id = h.client.record_payment(
+            &payer,
+            &payee,
+            &payment_amount,
+            &h.token_id,
+            &String::from_str(&h.env, "0x1234"),
+            &String::from_str(&h.env, "payment_for_service"),
+        );
+        prop_assert_eq!(payment_id, 1);
+
+        // 2. Fund contract with refund reserves (unlocked balance)
+        let refund_amount = (payment_amount * (refund_fraction as i128)) / 100i128;
+        if refund_amount > 0 {
+            h.mint(&h.contract_id, refund_amount);
+
+            let initial_locked = h.client.get_locked_balance();
+            let initial_contract_balance = h.token_client.balance(&h.contract_id);
+            let initial_payer_balance = h.token_client.balance(&payer);
+
+            let reason_code = match reason_code_idx {
+                0 => RefundReasonCode::ProductDefect,
+                1 => RefundReasonCode::NonDelivery,
+                2 => RefundReasonCode::DuplicateCharge,
+                3 => RefundReasonCode::Unauthorized,
+                4 => RefundReasonCode::CustomerRequest,
+                _ => RefundReasonCode::Other,
+            };
+
+            // 3. Request refund
+            let refund_id = h.client.request_refund(
+                &payer,
+                &payment_id,
+                &refund_amount,
+                &h.token_id,
+                &String::from_str(&h.env, "refund requested"),
+                &reason_code,
+            );
+            prop_assert_eq!(refund_id, 1);
+
+            let ref_rec = h.client.get_refund(&refund_id);
+            prop_assert_eq!(ref_rec.status, RefundStatus::Requested);
+            prop_assert_eq!(ref_rec.amount, refund_amount);
+            prop_assert_eq!(ref_rec.reason_code, reason_code);
+
+            // Invariant: request does not alter LOCKED_BALANCE
+            prop_assert_eq!(h.client.get_locked_balance(), initial_locked);
+
+            // 4. Approve refund
+            h.client.approve_refund(&h.owner, &refund_id);
+            let ref_rec_approved = h.client.get_refund(&refund_id);
+            prop_assert_eq!(ref_rec_approved.status, RefundStatus::Approved);
+            prop_assert_eq!(h.client.get_locked_balance(), initial_locked);
+
+            // 5. Process refund
+            h.client.process_refund(&h.owner, &refund_id);
+            let ref_rec_processed = h.client.get_refund(&refund_id);
+            prop_assert_eq!(ref_rec_processed.status, RefundStatus::Processed);
+
+            // Invariant: refund tokens transferred from contract to requester, LOCKED_BALANCE preserved
+            prop_assert_eq!(h.client.get_locked_balance(), initial_locked);
+            prop_assert_eq!(
+                h.token_client.balance(&h.contract_id),
+                initial_contract_balance - refund_amount
+            );
+            prop_assert_eq!(
+                h.token_client.balance(&payer),
+                initial_payer_balance + refund_amount
+            );
+        }
+    }
+
+    #[test]
+    fn prop_refund_rejection_conserves_balances(
+        payment_amount in 1_000i128..=50_000_000i128,
+        reason_code_idx in 0u32..=5u32,
+    ) {
+        let h = PropHarness::new();
+        let payer = Address::generate(&h.env);
+        let payee = Address::generate(&h.env);
+
+        h.mint(&payer, payment_amount);
+
+        let payment_id = h.client.record_payment(
+            &payer,
+            &payee,
+            &payment_amount,
+            &h.token_id,
+            &String::from_str(&h.env, "0x5678"),
+            &String::from_str(&h.env, "payment"),
+        );
+
+        let reason_code = match reason_code_idx {
+            0 => RefundReasonCode::ProductDefect,
+            1 => RefundReasonCode::NonDelivery,
+            2 => RefundReasonCode::DuplicateCharge,
+            3 => RefundReasonCode::Unauthorized,
+            4 => RefundReasonCode::CustomerRequest,
+            _ => RefundReasonCode::Other,
+        };
+
+        let refund_id = h.client.request_refund(
+            &payer,
+            &payment_id,
+            &payment_amount,
+            &h.token_id,
+            &String::from_str(&h.env, "request"),
+            &reason_code,
+        );
+
+        h.client.reject_refund(&h.owner, &refund_id);
+        let ref_rec = h.client.get_refund(&refund_id);
+        prop_assert_eq!(ref_rec.status, RefundStatus::Rejected);
+
+        // Cannot process a rejected refund
+        let fail_res = h.client.try_process_refund(&h.owner, &refund_id);
+        prop_assert_eq!(fail_res, Err(Ok(PaymentError::RefundAlreadyProcessed)));
+
+        prop_assert_eq!(h.client.get_locked_balance(), 0);
+    }
+}
+
+// 4. PROPERTY TESTS: Concurrent Operations & Composite Invariants
 // ═══════════════════════════════════════════════════════════════════════════
 
 proptest! {
@@ -475,7 +619,7 @@ proptest! {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 4. REENTRANCY TESTS: Reentrancy Lock Sequences and State Invariants
+// 5. REENTRANCY TESTS: Reentrancy Lock Sequences and State Invariants
 // ═══════════════════════════════════════════════════════════════════════════
 
 #[test]

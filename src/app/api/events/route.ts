@@ -15,17 +15,50 @@ import { withMetrics } from "@/lib/metrics-middleware";
  * WebSocket channel), so both transports deliver the same events.
  */
 
-import { createLiveEventSource } from "@/lib/events/event-source";
+import {
+  createLiveEventSource,
+  type LiveEventSource,
+  type LiveEvent,
+} from "@/lib/events/event-source";
 
 export const dynamic = "force-dynamic";
 
-export const GET = withMetrics("GET /api/events", async function GET() {
+export interface SSERouteOptions {
+  heartbeatIntervalMs?: number;
+  eventSourceFactory?: () => LiveEventSource;
+}
+
+/**
+ * Creates an SSE streaming response with lifecycle management and cleanup.
+ */
+export function createEventsStreamResponse(
+  options: SSERouteOptions = {},
+  req?: Request
+): Response {
   const encoder = new TextEncoder();
+  const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15000;
+  const eventSourceFactory =
+    options.eventSourceFactory ?? createLiveEventSource;
+
+  let closed = false;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let source: LiveEventSource | null = null;
+
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    if (heartbeat) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
+    if (source) {
+      source.stop();
+      source = null;
+    }
+  };
 
   const stream = new ReadableStream({
     start(controller) {
-      let closed = false;
-
       const send = (eventName: string, data: unknown) => {
         if (closed) return;
         try {
@@ -35,30 +68,30 @@ export const GET = withMetrics("GET /api/events", async function GET() {
             )
           );
         } catch {
-          closed = true;
+          cleanup();
         }
       };
 
-      // Heartbeat every 15s to keep connection alive
-      const heartbeat = setInterval(() => {
+      // Heartbeat every 15s (or configured interval) to keep connection alive
+      heartbeat = setInterval(() => {
         send("heartbeat", { timestamp: Date.now() });
-      }, 15000);
+      }, heartbeatIntervalMs);
 
       // Poll the emitter contract and forward normalized events.
-      const source = createLiveEventSource();
-      source.start((event) => send(event.event, event));
+      source = eventSourceFactory();
+      source.start((event: LiveEvent) => send(event.event, event));
 
       // Initial connected event
       send("connected", {
         message: "SSE stream connected to emitter contract",
       });
 
-      // Cleanup on client disconnect
-      return () => {
-        closed = true;
-        clearInterval(heartbeat);
-        source.stop();
-      };
+      if (req?.signal) {
+        req.signal.addEventListener("abort", cleanup);
+      }
+    },
+    cancel() {
+      cleanup();
     },
   });
 
@@ -70,4 +103,8 @@ export const GET = withMetrics("GET /api/events", async function GET() {
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+export const GET = withMetrics("GET /api/events", async function GET(req?: Request) {
+  return createEventsStreamResponse({}, req);
 });

@@ -54,7 +54,7 @@ export function withRequestLogging<T extends RouteHandler>(
   ): Promise<Response> => {
     const startedAt = performance.now();
     const requestId =
-      request.headers.get(REQUEST_ID_HEADER) ?? (await getRequestId());
+      request?.headers?.get(REQUEST_ID_HEADER) ?? (await getRequestId());
 
     try {
       // Concrete handler types are narrower than the internal call signature

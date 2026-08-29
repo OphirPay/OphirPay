@@ -258,6 +258,7 @@ curl -N https://ophirpay.com/api/events | \
 - Client with transport fallback: `src/lib/events/event-client.ts`
 - WebSocket server: `src/lib/events/live-events-ws-server.ts`
 - Live events page: `src/app/events/page.tsx`
+- Load test suite (100 concurrent clients): `src/__tests__/sse-load.test.ts`
 
 ---
 

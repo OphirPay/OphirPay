@@ -9,6 +9,7 @@ import { withRequestLogging } from "@/lib/request-logging";
 
 /** Map of connected SSE clients */
 const clients = new Map<string, ReadableStreamDefaultController>();
+export function getConnectedClientsCount(): number { return clients.size; }
 let clientCounter = 0;
 
 /**
@@ -81,9 +82,11 @@ async function pollContractForAuditEntries(
   return { entries, newLastSeenId: end };
 }
 
-export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(async function GET() {
+export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(async function GET(req?: Request) {
   const clientId = ++clientCounter;
   const contractId = process.env.NEXT_PUBLIC_CONTRACT_ID || DEFAULT_CONTRACT_ID;
+
+  let cleanup: () => void = () => {};
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -103,7 +106,7 @@ export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(asyn
       const encoder = new TextEncoder();
 
       // Cleanup on stream cancel / client disconnect
-      const cleanup = () => {
+      cleanup = () => {
         if (closed) return;
         closed = true;
         if (pollInterval) clearInterval(pollInterval);
@@ -111,9 +114,10 @@ export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(asyn
         clients.delete(String(clientId));
       };
 
-      // Typed cancel hook — runs when the client disconnects.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (controller as any).signal?.addEventListener("abort", cleanup);
+      // Typed cancel hook — runs when the client disconnects via request abort
+      if (req?.signal) {
+        req.signal.addEventListener("abort", cleanup);
+      }
 
       // Safety: auto-cleanup after 10 minutes even without an explicit
       // disconnect (e.g. runtimes that never surface the abort signal).
@@ -160,6 +164,9 @@ export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(asyn
           );
         }
       } catch { /* silent */ }
+    },
+    cancel() {
+      cleanup();
     },
   });
 

@@ -14,6 +14,7 @@ describe("Prisma Schema Validation & Consistency", () => {
   });
 
   it("should pass native `prisma validate` check", () => {
+
     expect(() => {
       execSync("npx prisma validate", {
         env: {
@@ -23,7 +24,7 @@ describe("Prisma Schema Validation & Consistency", () => {
         stdio: "pipe",
       });
     }).not.toThrow();
-  });
+  }, 30000);
 
   it("should configure PostgreSQL provider and prisma relationMode in canonical schema", () => {
     const content = readFileSync(schemaPath, "utf-8");

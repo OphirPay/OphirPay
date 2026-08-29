@@ -80,6 +80,7 @@
 - [📊 Database Schema](docs/SCHEMA.md)
 - [🚀 Deployment Guide](docs/DEPLOYMENT.md)
 - [🤝 Contributing](#-contributing)
+- [🛠 Troubleshooting Guide](docs/TROUBLESHOOTING.md)
 - [📖 Stellar Glossary](GLOSSARY.md)
 - [🗺 Roadmap](#-roadmap)
 - [🔬 Formal Verification](#-formal-verification)

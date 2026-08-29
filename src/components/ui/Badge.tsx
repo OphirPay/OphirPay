@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 
-import { type ReactNode } from "react";
+import { type ReactNode, type HTMLAttributes } from "react";
 import { cn, getStatusColor } from "@/lib/utils";
 
 type BadgeVariant = "default" | "success" | "warning" | "danger" | "info" | "pending";
 
-interface BadgeProps {
+interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   children: ReactNode;
   variant?: BadgeVariant;
   dot?: boolean;
   className?: string;
+  size?: "sm" | "md";
 }
 
 // Light-mode text uses the -800 shade so the badge text meets WCAG AA
@@ -45,11 +46,15 @@ export function Badge({
   variant = "default",
   dot = false,
   className,
+  size = "md",
+  ...props
 }: BadgeProps) {
   return (
     <span
+      {...props}
       className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full font-medium",
+        size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-0.5 text-xs",
         variantClasses[variant],
         className
       )}

@@ -253,6 +253,27 @@ export async function cancelRecurringPayment(
   return signAndSubmit(caller, CONTRACT_ID, "cancel_recurring", args);
 }
 
+export async function executeRecurringPayment(
+  caller: string,
+  recurringId: number,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(recurringId, { type: "u64" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "execute_recurring", args);
+}
+
+export async function simulateExecuteRecurring(
+  sourcePublicKey: string,
+  recurringId: number,
+) {
+  return simulateContractCall(CONTRACT_ID, "execute_recurring", sourcePublicKey, [
+    nativeToScVal(sourcePublicKey, { type: "address" }),
+    nativeToScVal(recurringId, { type: "u64" }),
+  ]);
+}
+
 // ── Utility: Read-Only Simulation Helpers ──────────────────────
 
 /**

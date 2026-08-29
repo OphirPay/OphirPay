@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 
-import { type ReactNode } from "react";
+import { type ReactNode, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-interface CardProps {
+interface CardProps extends HTMLAttributes<HTMLDivElement> {
   title?: string;
   subtitle?: string;
   actions?: ReactNode;
@@ -31,11 +31,13 @@ export function Card({
   padding = "md",
   className,
   children,
+  ...props
 }: CardProps) {
   const hasHeader = Boolean(title || subtitle || actions);
 
   return (
     <div
+      {...props}
       className={cn(
         "bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800",
         className

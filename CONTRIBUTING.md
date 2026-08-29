@@ -98,3 +98,56 @@ artifact — see the `contract-gas-report` job in `.github/workflows/ci.yml`.
 ## Code of Conduct
 
 See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+## Label Legend
+
+We use a small set of labels to communicate issue type, difficulty, and program affiliation.
+
+| Label | Meaning | Used on |
+|---|---|---|
+| `bug` | Something is broken or not behaving as documented. | Issues & PRs |
+| `frontend` | Work primarily in the Next.js app (`src/`). | Issues & PRs |
+| `contracts` | Work in the Soroban Rust contracts (`contracts/`). | Issues & PRs |
+| `documentation` | Docs, README, runbooks, or inline comments. | Issues & PRs |
+| `tests` | Unit, integration, E2E, or property tests. | Issues & PRs |
+| `ci` | CI/CD, build, or deployment automation. | Issues & PRs |
+| `security` | Security hardening, audit fixes, or vulnerability mitigations. | Issues & PRs |
+| `good-first-issue` | Low-risk entry point for new contributors. | Issues |
+| `difficulty: medium` | Self-contained task; usually 2-6 hours of focused work. | Issues |
+| `Stellar Wave` | Part of the Stellar Wave bounty program on Drips. | Issues |
+
+> **Tip:** If an issue has both `Stellar Wave` and a difficulty label, it is eligible for bounty points through the [Drips Wave program](https://www.drips.network/wave/stellar).
+
+## Bounty Claim Flow
+
+OphirPay participates in the Stellar Wave Program. To claim a bounty:
+
+1. **Find an issue** on the [Drips Wave Stellar board](https://www.drips.network/wave/stellar/issues) or in our GitHub issues with the `Stellar Wave` label.
+2. **Apply on Drips** before starting work. Drips Wave uses an application-first model; the first accepted applicant is the one eligible for the reward.
+3. **Wait for acceptance**. You will receive a notification when a maintainer accepts your application and assigns a due date.
+4. **Fork and branch** from `main`. Use a branch name like `feat/issue-123-short-description` or `docs/issue-456-what-changed`.
+5. **Implement and test** locally. Run the full local CI pipeline:
+   ```bash
+   npm run ci
+   cd contracts/ophirpay && cargo test
+   ```
+6. **Open a Pull Request** referencing the issue: `Closes #123`.
+7. **Address review feedback** promptly. Maintainers aim to review within 48 hours during active Waves.
+8. **Get merged**. Once merged and the issue is closed, Drips will automatically assess the contribution for payout.
+
+> ⚠️ **Important:** Submitting a PR without first being accepted on Drips does not guarantee the bounty. Always apply through Drips first.
+
+## Definition of Done
+
+A PR is considered ready for review when all of the following are true:
+
+- [ ] The PR description explains **what** changed and **why**, and references the issue it closes.
+- [ ] The branch is up to date with `main` and has no unresolved merge conflicts.
+- [ ] All required CI checks pass (see the 15-job pipeline table above).
+- [ ] New behavior is covered by tests when applicable.
+- [ ] Existing tests continue to pass.
+- [ ] TypeScript types are correct (`npm run typecheck`).
+- [ ] Code follows the existing style (`npm run lint`).
+- [ ] Documentation is updated if the change affects user-facing behavior, APIs, or deployment steps.
+- [ ] Commit messages follow [Conventional Commits](https://www.conventionalcommits.org).
+- [ ] Review feedback has been resolved and the PR has at least one approving review.

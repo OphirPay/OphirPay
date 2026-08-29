@@ -64,7 +64,7 @@ async function uploadCsv(content: string) {
 }
 
 function submitButton(): HTMLButtonElement {
-  return screen.getByRole("button", { name: /send batch payment/i });
+  return screen.getByRole("button", { name: /send batch payment/i }) as HTMLButtonElement;
 }
 
 describe("NewBatchPage CSV upload flow", () => {

@@ -71,9 +71,14 @@ export function NotificationCenter() {
     clearAll,
   } = useNotifications();
 
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close dropdown on outside click
   useOnClickOutside(containerRef, () => {
@@ -105,7 +110,12 @@ export function NotificationCenter() {
       : notifications;
 
   return (
-    <div ref={containerRef} className="relative">
+    <div
+      ref={containerRef}
+      className="relative"
+      data-mounted={mounted ? "true" : "false"}
+      data-testid="notification-center-container"
+    >
       {/* Bell Button */}
       <button
         ref={buttonRef}

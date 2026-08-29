@@ -5,18 +5,22 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   type PaymentNotification,
   type RawPaymentEventPayload,
+  INITIAL_NOTIFICATIONS,
   getStoredNotifications,
   saveStoredNotifications,
   normalizePaymentEvent,
 } from "@/lib/notifications";
 
 export function useNotifications() {
-  const [notifications, setNotifications] = useState<PaymentNotification[]>(() => {
-    return getStoredNotifications();
-  });
+  const [notifications, setNotifications] = useState<PaymentNotification[]>(INITIAL_NOTIFICATIONS);
   const [isOpen, setIsOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Sync stored notifications on client mount to ensure reload consistency
+  useEffect(() => {
+    setNotifications(getStoredNotifications());
+  }, []);
 
   // Sync to session storage on notification updates
   const updateNotifications = useCallback((updater: (prev: PaymentNotification[]) => PaymentNotification[]) => {
@@ -60,14 +64,11 @@ export function useNotifications() {
 
   // Toggle open and mark all as read on open (per acceptance criteria)
   const toggleOpen = useCallback(() => {
-    setIsOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        markAllAsRead();
-      }
-      return next;
-    });
-  }, [markAllAsRead]);
+    setIsOpen((prev) => !prev);
+    if (!isOpen) {
+      markAllAsRead();
+    }
+  }, [isOpen, markAllAsRead]);
 
   const setOpen = useCallback((open: boolean) => {
     if (open) {

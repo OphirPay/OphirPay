@@ -14,6 +14,7 @@ import type { MultiWalletState, WalletId } from "@/lib/wallets";
 import { getWalletConnector, getAvailableWallets, setActiveWalletId } from "@/lib/wallets";
 import { fetchXlmBalance } from "@/lib/stellar";
 import { establishSession, revokeSession } from "@/lib/client-auth";
+import { saveWalletSession, loadWalletSession, clearWalletSession } from "@/lib/session";
 
 // ── Context ───────────────────────────────────────────────────
 
@@ -67,37 +68,70 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
   const loadBalanceRef = useRef(loadBalance);
   loadBalanceRef.current = loadBalance;
 
-  // Try to auto-reconnect on mount (check all available wallets)
+  // Try to auto-reconnect on mount if an active session exists
   useEffect(() => {
     const autoReconnect = async () => {
+      const savedSession = loadWalletSession();
+      const isConnectedFlag =
+        typeof window !== "undefined" &&
+        localStorage.getItem("ophirpay-wallet-connected") === "true";
+
+      if (!savedSession && !isConnectedFlag) {
+        return;
+      }
+
+      const walletCandidates: WalletId[] = [];
+      if (savedSession?.walletId) {
+        walletCandidates.push(savedSession.walletId);
+      }
       for (const walletId of ["freighter", "albedo", "xbull"] as WalletId[]) {
+        if (!walletCandidates.includes(walletId)) {
+          walletCandidates.push(walletId);
+        }
+      }
+
+      for (const walletId of walletCandidates) {
         try {
           const connector = getWalletConnector(walletId);
-          if (!connector.isAvailable()) continue;
+          if (!connector || !connector.isAvailable()) continue;
           const connected = await connector.isConnected();
           if (connected) {
-            const publicKey = await connector.getAddress();
-            const network = await connector.getNetwork();
+            const publicKey = (await connector.getAddress()) || savedSession?.publicKey;
+            const network = (await connector.getNetwork()) || savedSession?.network || "TESTNET";
             if (publicKey) {
               setWallet({
                 connected: true,
                 publicKey,
                 network,
-            balance: null,
-            balanceLoading: true,
-            activeWalletId: walletId,
-          });
-          setActiveWalletId(walletId);
-          loadBalanceRef.current(publicKey);
+                balance: null,
+                balanceLoading: true,
+                activeWalletId: walletId,
+              });
+              setActiveWalletId(walletId);
+              loadBalanceRef.current(publicKey);
+
+              saveWalletSession({
+                publicKey,
+                network,
+                walletId,
+                lastConnected: Date.now(),
+              });
+              if (typeof window !== "undefined") {
+                localStorage.setItem("ophirpay-wallet-connected", "true");
+              }
+
               // Restore the server-side session for API authorization
               await establishSession(publicKey, network || "TESTNET");
-              return; // Connected to first available wallet
+              return; // Connected to active wallet
             }
           }
         } catch {
           // Try next wallet
         }
       }
+
+      // If auto-reconnect was unsuccessful, clean up stale session
+      clearWalletSession();
     };
 
     autoReconnect();
@@ -120,7 +154,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
 
         // Warn if wallet network doesn't match configured network
         const configuredNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK || "TESTNET";
-        const walletNet = network.toUpperCase();
+        const walletNet = network ? network.toUpperCase() : configuredNetwork;
         if (walletNet !== configuredNetwork) {
           console.warn(
             `[OphirPay] Wallet network (${walletNet}) doesn't match app config (${configuredNetwork}). ` +
@@ -137,6 +171,16 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
           activeWalletId: walletId,
         });
         setActiveWalletId(walletId);
+
+        saveWalletSession({
+          publicKey,
+          network: network || "TESTNET",
+          walletId,
+          lastConnected: Date.now(),
+        });
+        if (typeof window !== "undefined") {
+          localStorage.setItem("ophirpay-wallet-connected", "true");
+        }
 
         if (publicKey) {
           loadBalance(publicKey);
@@ -157,6 +201,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
           // "connected" state with no server session behind it.
           setWallet(initialWalletState);
           setActiveWalletId(null);
+          clearWalletSession();
           setError(
             "Wallet connected, but the server rejected the session. You may have declined the signature request — reconnect and approve it to use API features."
           );
@@ -190,6 +235,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
         // Best effort
       }
     }
+    clearWalletSession();
     // Revoke the server-side session cookie
     await revokeSession();
     setWallet(initialWalletState);

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 
+import type { WalletId } from "./wallets/types";
+
 /**
  * Client-side session store for persisting wallet connection state.
- * Survives page refreshes without reconnecting to Freighter.
+ * Survives page refreshes without reconnecting.
  */
 
-interface WalletSession {
+export interface WalletSession {
   publicKey: string;
   network: string;
+  walletId?: WalletId;
   lastConnected: number;
 }
 
@@ -53,6 +56,7 @@ export function loadWalletSession(): WalletSession | null {
 export function clearWalletSession(): void {
   try {
     localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem("ophirpay-wallet-connected");
   } catch {
     // Ignore
   }

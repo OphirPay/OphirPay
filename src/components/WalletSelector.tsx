@@ -40,6 +40,7 @@ export function WalletSelector({
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div
+          data-testid="wallet-selector-modal"
           className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl w-full max-w-sm animate-fade-in-up"
           onClick={(e) => e.stopPropagation()}
         >
@@ -81,6 +82,7 @@ export function WalletSelector({
               return (
                 <button
                   key={wallet.id}
+                  data-testid={`wallet-option-${wallet.id}`}
                   onClick={() => isAvailable && onSelect(wallet.id)}
                   disabled={!isAvailable || isConnecting}
                   onMouseEnter={() => setHovered(wallet.id)}

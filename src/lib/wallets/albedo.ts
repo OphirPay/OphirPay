@@ -16,13 +16,16 @@ import type { WalletConnector, SignOptions } from "./types";
  */
 
 interface AlbedoAPI {
-  publicKey: () => Promise<{ pubkey: string }>;
+  publicKey: (options?: { network?: string }) => Promise<{ pubkey: string; network?: string }>;
   tx: (xdr: string, opts?: { network?: string; submit?: boolean }) => Promise<{
     xdr: string;
     tx_hash: string;
     signed_envelope_xdr: string;
   }>;
   signMessage: (params: { message: string; pubkey: string }) => Promise<{ signature: string }>;
+  isConnected?: () => Promise<boolean>;
+  getAddress?: () => Promise<string | null>;
+  getNetwork?: () => Promise<string | null>;
 }
 
 function getAlbedoApi(): AlbedoAPI | undefined {
@@ -37,7 +40,7 @@ export const albedoConnector: WalletConnector = {
   icon: "☀️",
 
   isAvailable(): boolean {
-    // Albedo is always "available" since it's web-based
+    // Albedo is available when in browser
     return typeof window !== "undefined";
   },
 
@@ -49,8 +52,11 @@ export const albedoConnector: WalletConnector = {
       );
     }
     const result = await albedo.publicKey();
-    const network = process.env.NEXT_PUBLIC_STELLAR_NETWORK === "TESTNET" ? "TESTNET" : "PUBLIC";
-    return { publicKey: result.pubkey, network };
+    const network =
+      result.network ||
+      (typeof albedo.getNetwork === "function" ? await albedo.getNetwork() : null) ||
+      (process.env.NEXT_PUBLIC_STELLAR_NETWORK === "TESTNET" ? "TESTNET" : "PUBLIC");
+    return { publicKey: result.pubkey, network: network || "TESTNET" };
   },
 
   async disconnect() {
@@ -78,6 +84,9 @@ export const albedoConnector: WalletConnector = {
     const albedo = getAlbedoApi();
     if (!albedo) return null;
     try {
+      if (typeof albedo.getAddress === "function") {
+        return await albedo.getAddress();
+      }
       const result = await albedo.publicKey();
       return result.pubkey;
     } catch {
@@ -86,14 +95,26 @@ export const albedoConnector: WalletConnector = {
   },
 
   async getNetwork() {
-    return process.env.NEXT_PUBLIC_STELLAR_NETWORK === "TESTNET" ? "TESTNET" : "PUBLIC";
+    const albedo = getAlbedoApi();
+    if (!albedo) return process.env.NEXT_PUBLIC_STELLAR_NETWORK === "TESTNET" ? "TESTNET" : "PUBLIC";
+    try {
+      if (typeof albedo.getNetwork === "function") {
+        const net = await albedo.getNetwork();
+        if (net) return net;
+      }
+      return process.env.NEXT_PUBLIC_STELLAR_NETWORK === "TESTNET" ? "TESTNET" : "PUBLIC";
+    } catch {
+      return process.env.NEXT_PUBLIC_STELLAR_NETWORK === "TESTNET" ? "TESTNET" : "PUBLIC";
+    }
   },
 
   async isConnected() {
     const albedo = getAlbedoApi();
     if (!albedo) return false;
     try {
-      await albedo.publicKey();
+      if (typeof albedo.isConnected === "function") {
+        return await albedo.isConnected();
+      }
       return true;
     } catch {
       return false;

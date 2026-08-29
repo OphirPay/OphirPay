@@ -34,9 +34,9 @@ export function WalletButton() {
 
   if (wallet.connected && wallet.publicKey) {
     return (
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3" data-testid="wallet-connected-container">
         {/* Balance */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
+        <div data-testid="wallet-balance" className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
           {wallet.balanceLoading ? (
             <span className="text-sm text-green-700 dark:text-green-400 animate-pulse">
               Loading...
@@ -55,6 +55,7 @@ export function WalletButton() {
                 }}
                 className="text-green-500 hover:text-green-700 dark:hover:text-green-300 transition-colors"
                 title="Refresh balance"
+                aria-label="Refresh balance"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -76,7 +77,7 @@ export function WalletButton() {
         </div>
 
         {/* Network badge */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+        <div data-testid="wallet-network-badge" className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
@@ -87,8 +88,8 @@ export function WalletButton() {
         </div>
 
         {/* Address + wallet icon */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-          <span className="text-sm" title={activeWalletInfo?.name}>
+        <div data-testid="wallet-address-badge" className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+          <span className="text-sm" title={activeWalletInfo?.name} data-testid="active-wallet-icon">
             {activeWalletInfo?.icon || "🔑"}
           </span>
           <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
@@ -100,6 +101,7 @@ export function WalletButton() {
         <button
           onClick={disconnect}
           aria-label="Disconnect wallet"
+          data-testid="disconnect-wallet-btn"
           className="text-sm text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors duration-200"
           title="Disconnect wallet"
         >
@@ -128,6 +130,7 @@ export function WalletButton() {
         <Button
           onClick={() => setShowSelector(true)}
           loading={isConnecting}
+          data-testid="connect-wallet-btn"
           leftIcon={
             <svg
               xmlns="http://www.w3.org/2000/svg"

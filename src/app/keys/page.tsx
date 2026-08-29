@@ -14,7 +14,8 @@ interface ApiKeyRecord {
   name: string;
   prefix: string;
   scopes: string[];
-  lastUsed: string | null;
+  lastUsed?: string | null;
+  lastUsedAt?: string | null;
   createdAt: string;
   expiresAt: string | null;
 }
@@ -264,8 +265,8 @@ export default function ApiKeysPage() {
                     <p className="text-xs font-mono text-gray-500 dark:text-gray-400">
                       {key.prefix}… · created{" "}
                       {new Date(key.createdAt).toLocaleDateString()}
-                      {key.lastUsed
-                        ? ` · last used ${new Date(key.lastUsed).toLocaleDateString()}`
+                      {key.lastUsedAt || key.lastUsed
+                        ? ` · last used ${new Date(key.lastUsedAt || key.lastUsed!).toLocaleDateString()}`
                         : ""}
                     </p>
                     <div className="flex flex-wrap gap-1.5 mt-2">

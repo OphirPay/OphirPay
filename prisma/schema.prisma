@@ -559,7 +559,7 @@ model ApiKey {
   prefix    String   // First 8 chars for display
   scopes    String[] @default([]) // e.g. ["read:payments","write:payments","admin"]
   /// Last time the key was used to authenticate a request.
-  lastUsed  DateTime?
+  lastUsedAt DateTime? @map("lastUsed")
   /// When the key was created.
   createdAt DateTime @default(now())
   /// Optional expiry — the key stops working after this time.

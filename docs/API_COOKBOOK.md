@@ -913,6 +913,7 @@ curl "$BASE/api/keys" -H "X-API-Key: $KEY"
       "name": "production",
       "prefix": "oph_a1b2",
       "lastUsed": "2026-08-25T22:10:00.000Z",
+      "lastUsedAt": "2026-08-25T22:10:00.000Z",
       "createdAt": "2026-07-01T08:00:00.000Z",
       "expiresAt": null
     }

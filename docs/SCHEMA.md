@@ -126,7 +126,7 @@ erDiagram
         string name "Key label"
         string keyHash UK "SHA-256 hash of the key"
         string prefix "First 8 chars for display"
-        datetime lastUsed "Last usage timestamp"
+        datetime lastUsedAt "Last usage timestamp (mapped to lastUsed)"
         datetime createdAt "Auto-set on create"
         datetime expiresAt "Optional expiration"
     }

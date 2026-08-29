@@ -112,9 +112,9 @@ export async function authenticateRequest(
     // Check expiration
     if (apiKey.expiresAt && apiKey.expiresAt < new Date()) return null;
 
-    // Update lastUsed — fire-and-forget so auth latency is not gated on this write
+    // Update lastUsedAt on successful auth — fire-and-forget so auth latency is not gated on this write
     prisma.apiKey
-      .update({ where: { id: apiKey.id }, data: { lastUsed: new Date() } })
+      .update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } })
       .catch(() => {});
 
     return {

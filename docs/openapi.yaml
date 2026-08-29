@@ -656,7 +656,7 @@ paths:
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       responses:
         "200":
-          description: API key list (id, name, prefix, scopes, timestamps)
+          description: API key list (id, name, prefix, scopes, lastUsedAt, timestamps)
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:

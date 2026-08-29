@@ -5,7 +5,7 @@
  * In production, write to a dedicated audit log table or external service.
  */
 
-interface AuditEntry {
+export interface AuditEntry {
   action: string;
   actor?: string;
   target?: string;
@@ -14,23 +14,57 @@ interface AuditEntry {
   ip?: string;
 }
 
+const inMemoryAuditLog: AuditEntry[] = [];
+let auditListeners: Array<(entry: AuditEntry) => void> = [];
+
 /**
- * Record an audit event. In development, logs to console.
- * In production, this should write to a database or external audit service.
+ * Register a listener for recorded audit events (useful for real-time streaming or testing).
  */
-export function recordAudit(entry: Omit<AuditEntry, "timestamp">): void {
+export function addAuditListener(listener: (entry: AuditEntry) => void): () => void {
+  auditListeners.push(listener);
+  return () => {
+    auditListeners = auditListeners.filter((l) => l !== listener);
+  };
+}
+
+/**
+ * Retrieve recorded audit entries from the in-memory buffer.
+ */
+export function getAuditLogs(): AuditEntry[] {
+  return [...inMemoryAuditLog];
+}
+
+/**
+ * Clear the in-memory audit log buffer.
+ */
+export function clearAuditLogs(): void {
+  inMemoryAuditLog.length = 0;
+}
+
+/**
+ * Record an audit event. Logs to console in development and notifies registered listeners.
+ * In production, this can also write to a persistent store or external audit service.
+ */
+export function recordAudit(entry: Omit<AuditEntry, "timestamp">): AuditEntry {
   const audit: AuditEntry = {
     ...entry,
     timestamp: new Date().toISOString(),
   };
 
-  if (process.env.NODE_ENV === "development") {
-    console.log(`[Audit] ${entry.action}`, audit);
-    return;
+  inMemoryAuditLog.push(audit);
+  for (const listener of auditListeners) {
+    try {
+      listener(audit);
+    } catch {
+      // Non-blocking listener failure
+    }
   }
 
-  // Production: store in database
-  // await prisma.auditLog.create({ data: audit });
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[Audit] ${entry.action}`, audit);
+  }
+
+  return audit;
 }
 
 /**

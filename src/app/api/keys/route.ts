@@ -13,6 +13,7 @@ import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { deriveKeyPrefix, API_SCOPES } from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
+import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit";
 
 /** Validate an array of scopes against the known set. */
 function parseScopes(input: unknown): {
@@ -54,12 +55,19 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
         name: true,
         prefix: true,
         scopes: true,
-        lastUsed: true,
+        lastUsedAt: true,
         createdAt: true,
         expiresAt: true,
       },
     });
-    return successResponse(keys);
+
+    const formattedKeys = keys.map((key) => ({
+      ...key,
+      lastUsed: key.lastUsedAt,
+      lastUsedAt: key.lastUsedAt,
+    }));
+
+    return successResponse(formattedKeys);
   } catch (err) {
     return handleApiError(err, "GET /api/keys");
   }
@@ -107,6 +115,18 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
       id: apiKey.id,
       name,
       scopes: parsed.scopes,
+    });
+
+    recordAudit({
+      action: AUDIT_ACTIONS.API_KEY_CREATE,
+      actor: auth.userId,
+      target: apiKey.id,
+      details: {
+        keyId: apiKey.id,
+        name: apiKey.name,
+        scopes: parsed.scopes,
+        publicKey: auth.publicKey,
+      },
     });
 
     return successResponse(
@@ -179,6 +199,18 @@ export const DELETE = withMetrics("DELETE /api/keys", withRequestLogging(async f
       where: { id, userId: auth.userId },
     });
     if (result.count === 0) return badRequestError("Key not found");
+
+    // Key revocation writes an audit-log entry (who/when/which key)
+    recordAudit({
+      action: AUDIT_ACTIONS.API_KEY_REVOKE,
+      actor: auth.userId,
+      target: id,
+      details: {
+        keyId: id,
+        userId: auth.userId,
+        publicKey: auth.publicKey,
+      },
+    });
 
     return successResponse({ deleted: true });
   } catch (err) {

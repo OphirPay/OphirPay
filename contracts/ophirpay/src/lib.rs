@@ -2576,6 +2576,12 @@ impl OphirPayContract {
             .persistent()
             .extend_ttl(&(PAYMENT_KEY, payment_id), 5000, 50000);
 
+        // Native event emission for payment lifecycle cancellation
+        env.events().publish(
+            (Symbol::new(&env, "payment"), Symbol::new(&env, "cancelled")),
+            (payment_id, caller.clone()),
+        );
+
         record_audit(
             &env,
             "payment_cancelled",
@@ -5935,4 +5941,57 @@ mod tests {
         client.claim_escrow(&payee2, &e2);
         assert_eq!(client.get_locked_balance(), 0);
     }
+
+    #[test]
+    fn test_native_lifecycle_events_cancel_approve_execute() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let signer1 = Address::generate(&env);
+        let signer2 = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+
+        // 1. Record payment & cancel -> emits (payment, cancelled)
+        let pid = client.record_payment(
+            &payer,
+            &payee,
+            &1000i128,
+            &sac,
+            &String::from_str(&env, "tx_cancel"),
+            &String::from_str(&env, "meta"),
+        );
+        assert_eq!(pid, 1);
+
+        let cancel_res = client.cancel_payment(&owner, &pid);
+        assert!(cancel_res.is_ok());
+
+        // 2. Setup Multisig & propose payment
+        let signers = vec![&env, signer1.clone(), signer2.clone()];
+        client.set_multisig_config(&owner, &2u32, &signers, &true);
+
+        let req_id = client.propose_payment(
+            &signer1,
+            &payee,
+            &2500i128,
+            &sac,
+            &String::from_str(&env, "tx_prop"),
+        );
+        assert_eq!(req_id, 1);
+
+        // 3. Approve payment -> emits (approval, approved)
+        let approved = client.approve_payment(&signer2, &req_id);
+        assert!(approved);
+
+        // 4. Execute approved payment -> emits (approval, executed)
+        let executed_pay_id = client.execute_approved_payment(&signer1, &req_id);
+        assert_eq!(executed_pay_id, 2);
+    }
 }
+

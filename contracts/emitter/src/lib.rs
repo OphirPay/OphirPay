@@ -19,8 +19,30 @@ const OWNER_PROPOSED_AT: Symbol = symbol_short!("OWN_PAT");
 // emit_payment only accepts events from this address — preventing any
 // account from fabricating PaymentEvents (MEDIUM-3 audit fix).
 const ALLOWED_SOURCE: Symbol = symbol_short!("ALW_SRC");
+const LIFECYCLE_COUNT: Symbol = symbol_short!("LFC_CNT");
+const LIFECYCLE_PREFIX: Symbol = symbol_short!("LFC_EVT");
 
 // ── Data Types ─────────────────────────────────────────────────
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum PaymentLifecycleEventType {
+    Created = 1,
+    Cancelled = 2,
+    Approved = 3,
+    Executed = 4,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct LifecycleEvent {
+    pub id: u64,
+    pub event_type: PaymentLifecycleEventType,
+    pub target_id: u64,
+    pub actor: Address,
+    pub timestamp: u64,
+}
 
 #[contracttype]
 #[derive(Clone)]
@@ -135,6 +157,83 @@ impl PaymentEventEmitter {
         );
 
         Ok(count)
+    }
+
+    /// Record a payment lifecycle event (e.g. cancelled, approved, executed).
+    /// Caller must authorize AND be the allow-listed source (or contract owner).
+    pub fn emit_lifecycle_event(
+        env: Env,
+        caller: Address,
+        event_type: PaymentLifecycleEventType,
+        target_id: u64,
+        actor: Address,
+    ) -> Result<u64, EmitterError> {
+        caller.require_auth();
+
+        if let Some(allowed) = env.storage().instance().get::<_, Address>(&ALLOWED_SOURCE) {
+            let owner: Address = env
+                .storage()
+                .instance()
+                .get(&EMITTER_OWNER)
+                .ok_or(EmitterError::NotInitialized)?;
+            if caller != allowed && caller != owner {
+                return Err(EmitterError::Unauthorized);
+            }
+        }
+
+        let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
+        if paused {
+            return Err(EmitterError::ContractPaused);
+        }
+
+        let mut count: u64 = env.storage().instance().get(&LIFECYCLE_COUNT).unwrap_or(0);
+        count += 1;
+
+        let event = LifecycleEvent {
+            id: count,
+            event_type: event_type.clone(),
+            target_id,
+            actor: actor.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+
+        env.storage()
+            .persistent()
+            .set(&(LIFECYCLE_PREFIX, count), &event);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(LIFECYCLE_PREFIX, count), 5000, 50000);
+
+        env.storage().instance().set(&LIFECYCLE_COUNT, &count);
+        env.storage().instance().extend_ttl(5000, 50000);
+
+        // Native event emission with topics
+        let event_type_sym = match event_type {
+            PaymentLifecycleEventType::Created => Symbol::new(&env, "created"),
+            PaymentLifecycleEventType::Cancelled => Symbol::new(&env, "cancelled"),
+            PaymentLifecycleEventType::Approved => Symbol::new(&env, "approved"),
+            PaymentLifecycleEventType::Executed => Symbol::new(&env, "executed"),
+        };
+
+        env.events().publish(
+            (Symbol::new(&env, "lifecycle"), event_type_sym, actor),
+            (count, target_id),
+        );
+
+        Ok(count)
+    }
+
+    /// Get lifecycle event by ID
+    pub fn get_lifecycle_event(env: Env, id: u64) -> Result<LifecycleEvent, EmitterError> {
+        env.storage()
+            .persistent()
+            .get(&(LIFECYCLE_PREFIX, id))
+            .ok_or(EmitterError::EventNotFound)
+    }
+
+    /// Get total lifecycle event count
+    pub fn get_lifecycle_count(env: Env) -> u64 {
+        env.storage().instance().get(&LIFECYCLE_COUNT).unwrap_or(0)
     }
 
     /// Get event by ID
@@ -518,4 +617,52 @@ mod tests {
         client.accept_ownership(&new_owner);
         assert_eq!(client.get_owner(), new_owner);
     }
+
+    #[test]
+    fn test_lifecycle_event_emission() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+        let owner = Address::generate(&env);
+        let actor = Address::generate(&env);
+
+        let _ = client.init(&owner);
+
+        // Emit Cancelled event
+        let id1 = client.emit_lifecycle_event(
+            &owner,
+            &PaymentLifecycleEventType::Cancelled,
+            &101u64,
+            &actor,
+        );
+        assert_eq!(id1, 1);
+        assert_eq!(client.get_lifecycle_count(), 1);
+
+        let evt1 = client.get_lifecycle_event(&1).unwrap();
+        assert_eq!(evt1.event_type, PaymentLifecycleEventType::Cancelled);
+        assert_eq!(evt1.target_id, 101);
+        assert_eq!(evt1.actor, actor);
+
+        // Emit Approved event
+        let id2 = client.emit_lifecycle_event(
+            &owner,
+            &PaymentLifecycleEventType::Approved,
+            &102u64,
+            &actor,
+        );
+        assert_eq!(id2, 2);
+        assert_eq!(client.get_lifecycle_count(), 2);
+
+        // Emit Executed event
+        let id3 = client.emit_lifecycle_event(
+            &owner,
+            &PaymentLifecycleEventType::Executed,
+            &103u64,
+            &actor,
+        );
+        assert_eq!(id3, 3);
+        assert_eq!(client.get_lifecycle_count(), 3);
+    }
 }
+

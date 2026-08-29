@@ -704,6 +704,15 @@ jobs:
           else
             echo "✅ Combined WASM under 100 KB"
           fi
+      - name: Gas-diff regression guard (#212)
+        shell: bash
+        run: |
+          set -e
+          OPHIR_WASM=$(find contracts/ophirpay/target/wasm32v1-none/release -name '*.wasm' -not -name '*.wasm.gz' | head -1)
+          EMIT_WASM=$(find contracts/emitter/target/wasm32v1-none/release -name '*.wasm' -not -name '*.wasm.gz' | head -1)
+          echo "OPHIR_WASM=$OPHIR_WASM"
+          echo "EMIT_WASM=$EMIT_WASM"
+          contracts/gas-diff/check-wasm-sizes.sh "$OPHIR_WASM" "$EMIT_WASM"
       - name: Stellar contract info (OphirPay)
         run: |
           OPHIR_WASM=$(find contracts/ophirpay/target/wasm32v1-none/release -name '*.wasm' -not -name '*.wasm.gz' | head -1)

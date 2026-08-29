@@ -1,0 +1,23 @@
+{
+  "description": "WASM binary size baseline for OphirPay #212 gas-diff regression guard.",
+  "captured_at": "2026-08-29",
+  "captured_from_commit": "main@2026-08-29 (rebuilt locally with CI-identical toolchain)",
+  "toolchain_note": "RUSTFLAGS='-C link-arg=-s'; cargo build --target wasm32v1-none --release; wasm-strip (emulated with --strip-debug on binaryen 108); wasm-opt -Oz",
+  "baselines": {
+    "ophirpay_contract.wasm": {
+      "raw_bytes": 142871,
+      "optimized_bytes": 110820,
+      "sha256_optimized": "fa9e71ddb191d9e04814e1539948b91ab6ac50cff8a014986a4088e611a03709"
+    },
+    "ophirpay_emitter.wasm": {
+      "raw_bytes": 22565,
+      "optimized_bytes": 16201,
+      "sha256_optimized": "fcd74c4c649069b138021919ec259bd38bf0cd4df4b360a65dea3f3012c2f3eb"
+    }
+  },
+  "policy": {
+    "alert_growth_pct": 5,
+    "blocker_growth_pct": 10,
+    "hard_protocol_limit_bytes": 131072
+  }
+}

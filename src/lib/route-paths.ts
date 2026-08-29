@@ -48,4 +48,5 @@ export const API_ROUTES = {
   GOVERNANCE_PROPOSALS: "/api/governance/proposals",
   GOVERNANCE_VOTE: "/api/governance/vote",
   GOVERNANCE_EXECUTE: "/api/governance/execute",
+  TREASURY_BALANCES: "/api/treasury/balances",
 } as const;

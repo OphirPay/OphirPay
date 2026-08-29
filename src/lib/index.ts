@@ -26,9 +26,14 @@ export { getSecurityHeaders, getCorsHeaders } from "./headers";
 // Contracts
 export { classifyContractError, ContractErrorType, ContractError } from "./contracts";
 
+// Treasury & Balances
+export { getTreasuryBalances, addStellarAmounts, parseAmountToStroops, stroopsToAmountString, TREASURY_CACHE_TTL_MS } from "./treasury-balances";
+export { getAssetInfo, formatAssetIdentifier, parseAssetIdentifier, getKnownAssets } from "./assets";
+
 // Constants
 export { APP, STELLAR, UI, API } from "./constants";
 export { ROUTES, API_ROUTES } from "./route-paths";
 export { STORAGE_KEYS } from "./storage-keys";
 export { ERROR_CODES } from "./error-codes";
 export { ERRORS } from "./error-messages";
+

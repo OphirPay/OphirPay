@@ -200,3 +200,72 @@ export interface TreasuryOverview {
   pendingPayments: number;
   monthlyVolume: number;
 }
+
+export interface WalletAssetBalance {
+  assetCode: string;
+  assetIssuer?: string;
+  assetType: "native" | "credit_alphanum4" | "credit_alphanum12";
+  displayName: string;
+  decimals: number;
+  balance: string;
+  balanceFormatted: string;
+  hasTrustline: boolean;
+  trustlineLimit?: string | null;
+  isAuthorized?: boolean;
+  error?: string | null;
+}
+
+export interface TreasuryWalletDetail {
+  accountId?: string;
+  accountName: string;
+  publicKey: string;
+  isFunded: boolean;
+  balances: WalletAssetBalance[];
+  untrustedAssetsCount: number;
+  error?: string | null;
+}
+
+export interface TreasuryAssetAggregation {
+  assetCode: string;
+  assetIssuer?: string;
+  assetType: "native" | "credit_alphanum4" | "credit_alphanum12";
+  displayName: string;
+  decimals: number;
+  totalBalance: string;
+  totalBalanceFormatted: string;
+  walletsHoldingCount: number;
+  untrustedWalletsCount: number;
+  walletBreakdown: {
+    accountId?: string;
+    accountName: string;
+    publicKey: string;
+    balance: string;
+    balanceFormatted: string;
+    hasTrustline: boolean;
+    trustlineLimit?: string | null;
+    isAuthorized?: boolean;
+    error?: string | null;
+  }[];
+  error?: string | null;
+}
+
+export interface TreasuryBalanceSummary {
+  totalWallets: number;
+  activeWallets: number;
+  unfundedWallets: number;
+  totalDistinctAssets: number;
+  xlmTotal: string;
+  xlmTotalFormatted: string;
+}
+
+export interface TreasuryMultiAssetBalancesResponse {
+  summary: TreasuryBalanceSummary;
+  assets: TreasuryAssetAggregation[];
+  wallets: TreasuryWalletDetail[];
+  cached: boolean;
+  cachedAt?: string;
+  expiresAt?: string;
+  ttlSeconds: number;
+  refreshedAt?: string;
+}
+

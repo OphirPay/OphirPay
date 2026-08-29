@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { TreasuryBalancesCard } from "@/components/TreasuryBalancesCard";
 import Link from "next/link";
 
 // ── Page ───────────────────────────────────────────────────────
@@ -171,6 +172,9 @@ export default function TreasuryDashboard() {
           />
         </div>
       )}
+
+      {/* ── Multi-Asset Treasury Balances ──────────────────── */}
+      <TreasuryBalancesCard />
 
       {/* ── Accounts & Activity ────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

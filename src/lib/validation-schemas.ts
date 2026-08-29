@@ -212,6 +212,30 @@ export const updateHookSchema = z.object({
   active: z.boolean(),
 });
 
+// ── Treasury Schemas ──────────────────────────────────────────
+
+export const treasuryBalancesQuerySchema = z.object({
+  wallets: z.string().optional(),
+  assets: z.string().optional(),
+  refresh: z
+    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .optional()
+    .transform((v) => {
+      if (typeof v === "boolean") return v;
+      if (v === "true" || v === "1") return true;
+      return false;
+    }),
+  includeAllDiscovered: z
+    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .optional()
+    .transform((v) => {
+      if (typeof v === "boolean") return v;
+      if (v === undefined) return true;
+      return v === "true" || v === "1";
+    }),
+});
+
+
 // ─── Generic validation helper ────────────────────────────────
 
 /**

@@ -41,6 +41,8 @@ export default function WebhooksPage() {
   const [formEvents, setFormEvents] = useState<WebhookEventType[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ id: string; message: string; delivered: boolean } | null>(null);
 
   const {
     data: rawWebhooks,
@@ -57,6 +59,11 @@ export default function WebhooksPage() {
     (body) => `/api/webhooks?id=${body.id}`,
     { method: "DELETE", invalidateKeys: [["webhooks"]] }
   );
+
+  const testMutation = useApiMutation<
+    { id: string; event: WebhookEventType },
+    { delivered: boolean; event: string; timestamp: string; message: string }
+  >("/api/webhooks/test", { invalidateKeys: [] });
 
   const toggleEvent = (event: WebhookEventType) => {
     setFormEvents((prev) =>
@@ -104,6 +111,26 @@ export default function WebhooksPage() {
       toast.error(apiErr.message || "Failed to delete webhook");
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleTest = async (id: string, event: WebhookEventType) => {
+    setTesting(id);
+    setTestResult(null);
+    try {
+      const result = await testMutation.mutateAsync({ id, event });
+      setTestResult({ id, message: result.message, delivered: result.delivered });
+      if (result.delivered) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setTestResult({ id, message: apiErr.message || "Test failed", delivered: false });
+      toast.error(apiErr.message || "Could not send test event");
+    } finally {
+      setTesting(null);
     }
   };
 
@@ -222,7 +249,21 @@ export default function WebhooksPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {testResult?.id === wh.id && (
+                        <div className={`text-xs text-right max-w-[200px] ${testResult.delivered ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                          {testResult.delivered ? "✓ " : "✗ "}{testResult.message}
+                        </div>
+                      )}
+                      {events.length > 0 && (
+                        <button
+                          onClick={() => handleTest(wh.id, events[0])}
+                          disabled={testing === wh.id || !wh.isActive}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-ophir-600 dark:text-ophir-400 hover:bg-ophir-50 dark:hover:bg-ophir-950/30 border border-ophir-200 dark:border-ophir-800 transition-colors disabled:opacity-50"
+                        >
+                          {testing === wh.id ? "Sending..." : "Send test"}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDelete(wh.id)}
                         disabled={deleting === wh.id}

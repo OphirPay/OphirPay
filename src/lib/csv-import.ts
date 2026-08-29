@@ -15,9 +15,10 @@ export const MAX_BATCH_RECIPIENTS = 100;
  * Parse CSV text into a matrix of cells. Handles quoted fields, escaped
  * quotes (`""` inside a quoted field), commas and newlines inside quotes,
  * and CRLF/CR line endings. A leading UTF-8 BOM is stripped, and rows that
- * are entirely blank are dropped.
+ * are entirely blank are dropped. Never throws on malformed or non-string input.
  */
 export function parseCsvText(text: string): string[][] {
+  if (typeof text !== "string") return [];
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -85,11 +86,14 @@ export function parseCsvText(text: string): string[][] {
   row.push(field);
   rows.push(row);
 
-  // Drop rows that are entirely blank.
-  return rows.filter((r) => r.some((cell) => cell !== ""));
+  // Drop rows that are entirely blank or whitespace-only.
+  return rows.filter((r) => r.some((cell) => cell.trim() !== ""));
 }
 
 // ── Field-level validation ────────────────────────────────────
+
+/** Control characters (C0/C1) — never legitimate memo content. */
+const MEMO_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/;
 
 export interface RecipientFieldErrors {
   address?: string;
@@ -109,7 +113,7 @@ export function validateRecipientFields(
 ): RecipientFieldErrors {
   const errors: RecipientFieldErrors = {};
 
-  const addr = address.trim();
+  const addr = (address ?? "").trim();
   if (!addr) {
     errors.address = "Address is required.";
   } else if (!isValidStellarAddress(addr)) {
@@ -118,19 +122,25 @@ export function validateRecipientFields(
     errors.address = "Cannot send to your own address.";
   }
 
-  const amt = amount.trim();
+  const amt = (amount ?? "").trim();
   if (!amt) {
     errors.amount = "Amount is required.";
   } else {
     const n = parseFloat(amt);
-    if (isNaN(n) || n <= 0) {
+    if (isNaN(n) || n <= 0 || !Number.isFinite(n)) {
       errors.amount = "Amount must be a number greater than 0.";
     }
   }
 
-  const mem = memo.trim();
-  if (mem.length > 28) {
-    errors.memo = "Memo must be 28 characters or fewer.";
+  const mem = (memo ?? "").trim();
+  if (mem) {
+    if (MEMO_CONTROL_CHARS.test(mem)) {
+      errors.memo = "Memo must not contain control or invisible characters.";
+    } else if (mem.length > 28) {
+      errors.memo = "Memo must be 28 characters or fewer.";
+    } else if (new TextEncoder().encode(mem).length > 28) {
+      errors.memo = "Memo must be 28 bytes or fewer.";
+    }
   }
 
   return errors;
@@ -176,7 +186,31 @@ export async function parseRecipientsCsvToRows(
   file: File,
   opts: { selfAddress?: string | null } = {}
 ): Promise<{ rows: CsvImportRow[]; fileErrors: string[] }> {
-  const parsed = parseCsvText(await file.text());
+  if (!file || typeof file.text !== "function") {
+    return {
+      rows: [],
+      fileErrors: ["CSV must have a header row and at least one data row."],
+    };
+  }
+
+  let text = "";
+  try {
+    text = await file.text();
+  } catch {
+    return {
+      rows: [],
+      fileErrors: ["CSV must have a header row and at least one data row."],
+    };
+  }
+
+  if (typeof text !== "string") {
+    return {
+      rows: [],
+      fileErrors: ["CSV must have a header row and at least one data row."],
+    };
+  }
+
+  const parsed = parseCsvText(text);
   const fileErrors: string[] = [];
 
   if (parsed.length < 2) {
@@ -188,9 +222,18 @@ export async function parseRecipientsCsvToRows(
   const addressIdx = header.indexOf("address");
   const amountIdx = header.indexOf("amount");
   const memoIdx = header.indexOf("memo");
+  const hasNamedHeader = addressIdx >= 0 || amountIdx >= 0;
+
   const addrI = addressIdx >= 0 ? addressIdx : 0;
   const amtI = amountIdx >= 0 ? amountIdx : 1;
-  const memoI = memoIdx >= 0 ? memoIdx : 2;
+  const memoI =
+    memoIdx >= 0
+      ? memoIdx
+      : header.length >= 4 && !hasNamedHeader
+      ? 3
+      : header.length === 3 && !hasNamedHeader
+      ? 2
+      : 2;
 
   const dataRows = parsed.slice(1);
   if (dataRows.length > MAX_BATCH_RECIPIENTS) {
@@ -204,7 +247,7 @@ export async function parseRecipientsCsvToRows(
     const values = {
       address: get(addrI),
       amount: get(amtI),
-      memo: get(memoI),
+      memo: memoI >= 0 ? get(memoI) : "",
     };
     return {
       id: idx + 1,
@@ -225,45 +268,96 @@ export async function parseRecipientsCsvToRows(
 
 // ── Legacy parse (kept for API compatibility) ─────────────────
 
-/** Control characters (C0/C1) — never legitimate memo content. */
-const MEMO_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/;
-
 /**
  * Parse a CSV file into batch payment recipients.
- * Expected CSV format: address,amount,assetCode,memo
+ * Expected CSV format: address,amount,assetCode,memo or address,amount,memo
  * First row is treated as a header and skipped.
  */
 export async function parseRecipientsCsv(file: File): Promise<{
   recipients: BatchRecipient[];
   errors: { row: number; message: string }[];
 }> {
-  const parsed = parseCsvText(await file.text());
   const errors: { row: number; message: string }[] = [];
   const recipients: BatchRecipient[] = [];
+
+  if (!file || typeof file.text !== "function") {
+    errors.push({ row: 0, message: "CSV must have a header row and at least one data row." });
+    return { recipients, errors };
+  }
+
+  let text = "";
+  try {
+    text = await file.text();
+  } catch {
+    errors.push({ row: 0, message: "CSV must have a header row and at least one data row." });
+    return { recipients, errors };
+  }
+
+  if (typeof text !== "string") {
+    errors.push({ row: 0, message: "CSV must have a header row and at least one data row." });
+    return { recipients, errors };
+  }
+
+  const parsed = parseCsvText(text);
 
   if (parsed.length < 2) {
     errors.push({ row: 0, message: "CSV must have a header row and at least one data row." });
     return { recipients, errors };
   }
 
+  const header = parsed[0].map((h) => h.trim().toLowerCase());
+  const addressIdx = header.indexOf("address");
+  const amountIdx = header.indexOf("amount");
+  const memoIdx = header.indexOf("memo");
+  const assetIdx =
+    header.indexOf("assetcode") >= 0
+      ? header.indexOf("assetcode")
+      : header.indexOf("asset");
+
+  const hasNamedHeader = addressIdx >= 0 || amountIdx >= 0;
+  const addrI = addressIdx >= 0 ? addressIdx : 0;
+  const amtI = amountIdx >= 0 ? amountIdx : 1;
+  const memoI =
+    memoIdx >= 0
+      ? memoIdx
+      : header.length >= 4 && !hasNamedHeader
+      ? 3
+      : header.length === 3 && !hasNamedHeader
+      ? 2
+      : -1;
+  const assetI =
+    assetIdx >= 0
+      ? assetIdx
+      : header.length >= 4 && !hasNamedHeader
+      ? 2
+      : -1;
+
   for (let i = 1; i < parsed.length; i++) {
     const row = i + 1;
-    const cols = parsed[i].map((c) => c.trim());
+    const cols = parsed[i].map((c) => (c ?? "").trim());
 
     if (cols.length < 2) {
       errors.push({ row, message: "Each row must have at least address and amount." });
       continue;
     }
 
-    const [address, amountStr, assetCode = "XLM", memo] = cols;
+    const address = addrI >= 0 && addrI < cols.length ? cols[addrI] : "";
+    const amountStr = amtI >= 0 && amtI < cols.length ? cols[amtI] : "";
+    const assetCode = assetI >= 0 && assetI < cols.length ? cols[assetI] : "XLM";
+    const memo = memoI >= 0 && memoI < cols.length && cols[memoI] ? cols[memoI] : undefined;
 
-    if (!/^G[A-Z0-9]{55}$/.test(address)) {
+    if (!address || !amountStr) {
+      errors.push({ row, message: "Each row must have at least address and amount." });
+      continue;
+    }
+
+    if (!isValidStellarAddress(address)) {
       errors.push({ row, message: `Invalid Stellar address at row ${row}.` });
       continue;
     }
 
     const amount = parseFloat(amountStr);
-    if (isNaN(amount) || amount <= 0) {
+    if (isNaN(amount) || amount <= 0 || !Number.isFinite(amount)) {
       errors.push({ row, message: `Invalid amount at row ${row}.` });
       continue;
     }

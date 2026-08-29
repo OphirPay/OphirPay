@@ -13,6 +13,7 @@ import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { deriveKeyPrefix, API_SCOPES } from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
+import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit";
 
 /** Validate an array of scopes against the known set. */
 function parseScopes(input: unknown): {
@@ -174,11 +175,21 @@ export const DELETE = withMetrics("DELETE /api/keys", withRequestLogging(async f
     const id = searchParams.get("id");
     if (!id) return badRequestError("Key ID is required");
 
-    // Scoped delete — a user can only revoke their own key
-    const result = await prisma.apiKey.deleteMany({
+    // Scoped lookup — a user can only revoke their own key
+    const existing = await prisma.apiKey.findFirst({
       where: { id, userId: auth.userId },
+      select: { id: true, name: true, prefix: true },
     });
-    if (result.count === 0) return badRequestError("Key not found");
+    if (!existing) return badRequestError("Key not found");
+
+    await prisma.apiKey.delete({ where: { id: existing.id } });
+
+    recordAudit({
+      action: AUDIT_ACTIONS.API_KEY_REVOKE,
+      actor: auth.userId,
+      target: existing.id,
+      details: { name: existing.name, prefix: existing.prefix },
+    });
 
     return successResponse({ deleted: true });
   } catch (err) {

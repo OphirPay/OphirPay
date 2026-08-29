@@ -22,6 +22,8 @@ export { cn, shortenAddress, formatAmount, formatDate, timeAgo, getStatusColor }
 export { sanitizeHtml, escapeHtml, sanitizeStellarAddress } from "./sanitize";
 export { cacheControl, CACHE_PRESETS } from "./cache";
 export { getSecurityHeaders, getCorsHeaders } from "./headers";
+export { usePrefersReducedMotion, isReducedMotion, getMotionSafeDuration, REDUCED_MOTION_QUERY } from "./reduced-motion";
+export { DURATIONS, EASING, getStaggerDelay, waitForAnimation } from "./animation";
 
 // Contracts
 export { classifyContractError, ContractErrorType, ContractError } from "./contracts";

@@ -148,7 +148,7 @@ export function AssetSelector({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in">
+          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in motion-reduce:animate-none">
             {KNOWN_ASSETS.map((asset) => {
               const bal = findAssetBalance(balances, asset);
               const key = `${asset.code}:${asset.issuer}`;

@@ -170,7 +170,7 @@ export function Sidebar() {
     <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800">
       <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
         <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-stellar opacity-75" />
+          <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-stellar opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-stellar" />
         </span>
         Stellar Testnet

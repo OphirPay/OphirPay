@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import { isReducedMotion } from "./reduced-motion";
+
 /**
  * Animation constants and helper utilities for consistent motion design.
  */
@@ -25,14 +27,34 @@ export const EASING = {
 } as const;
 
 /**
- * Wait for a CSS animation to complete before executing a callback.
- * Useful for exit animations before unmounting.
+ * Wait for a CSS animation or transition to complete before executing a callback.
+ * If reduced motion is active, resolves immediately without waiting.
  */
-export function waitForAnimation(element: HTMLElement): Promise<void> {
+export function waitForAnimation(
+  element: HTMLElement,
+  options?: { prefersReduced?: boolean }
+): Promise<void> {
+  const reduced =
+    options?.prefersReduced !== undefined
+      ? options.prefersReduced
+      : isReducedMotion();
+
+  if (reduced) {
+    return Promise.resolve();
+  }
+
   return new Promise((resolve) => {
-    element.addEventListener("animationend", () => resolve(), { once: true });
-    element.addEventListener("transitionend", () => resolve(), { once: true });
+    let resolved = false;
+    const finish = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
+
+    element.addEventListener("animationend", finish, { once: true });
+    element.addEventListener("transitionend", finish, { once: true });
     // Fallback timeout in case the event doesn't fire
-    setTimeout(resolve, DURATIONS.extraSlow + 100);
+    setTimeout(finish, DURATIONS.extraSlow + 100);
   });
 }

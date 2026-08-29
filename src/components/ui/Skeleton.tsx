@@ -20,7 +20,7 @@ export function Skeleton({ className, width, height = "1rem" }: SkeletonProps) {
   return (
     <div
       aria-hidden="true"
-      className={cn("animate-pulse rounded bg-gray-200 dark:bg-gray-700", className)}
+      className={cn("animate-pulse motion-reduce:animate-none rounded bg-gray-200 dark:bg-gray-700", className)}
       style={{ width, height }}
     />
   );

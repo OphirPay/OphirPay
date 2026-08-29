@@ -40,7 +40,7 @@ export function ProgressBar({
           aria-valuemin={0}
           aria-valuemax={100}
           className={cn(
-            "h-full rounded-full transition-all duration-500 ease-out",
+            "h-full rounded-full transition-all duration-500 ease-out motion-reduce:transition-none",
             variantClasses[variant]
           )}
           style={{ width: `${pct}%` }}

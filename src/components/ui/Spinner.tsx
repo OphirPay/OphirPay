@@ -24,7 +24,7 @@ export function Spinner({ size = "md", className }: SpinnerProps) {
     <svg
       role="status"
       aria-label="Loading"
-      className={cn("animate-spin", sizeClasses[size], className)}
+      className={cn("animate-spin motion-reduce:animate-none", sizeClasses[size], className)}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"

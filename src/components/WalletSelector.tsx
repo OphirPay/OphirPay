@@ -33,14 +33,14 @@ export function WalletSelector({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm animate-fade-in"
+        className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm animate-fade-in motion-reduce:animate-none"
         onClick={onClose}
       />
 
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div
-          className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl w-full max-w-sm animate-fade-in-up"
+          className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl w-full max-w-sm animate-fade-in-up motion-reduce:animate-none"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -112,7 +112,7 @@ export function WalletSelector({
                   <span className="shrink-0">
                     {isConnectingWallet ? (
                       <svg
-                        className="animate-spin h-5 w-5 text-ophir-600"
+                        className="animate-spin motion-reduce:animate-none h-5 w-5 text-ophir-600"
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
                         viewBox="0 0 24 24"

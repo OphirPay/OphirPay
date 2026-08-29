@@ -122,7 +122,7 @@ function ToastViewport({
           <div
             key={t.id}
             role="status"
-            className="pointer-events-auto bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl p-4 flex items-start gap-3 animate-fade-in-up"
+            className="pointer-events-auto bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl p-4 flex items-start gap-3 animate-fade-in-up motion-reduce:animate-none"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

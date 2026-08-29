@@ -13,7 +13,7 @@ interface SkeletonProps {
 export function LoadingSkeleton({ className, lines = 3, variant = "text" }: SkeletonProps) {
   if (variant === "stats") {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse motion-reduce:animate-none">
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
@@ -33,7 +33,7 @@ export function LoadingSkeleton({ className, lines = 3, variant = "text" }: Skel
 
   if (variant === "card") {
     return (
-      <div className={cn("bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 animate-pulse", className)}>
+      <div className={cn("bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 animate-pulse motion-reduce:animate-none", className)}>
         <div className="h-5 w-32 rounded bg-gray-200 dark:bg-gray-700 mb-4" />
         <div className="space-y-3">
           {Array.from({ length: lines }).map((_, i) => (
@@ -46,7 +46,7 @@ export function LoadingSkeleton({ className, lines = 3, variant = "text" }: Skel
 
   if (variant === "table") {
     return (
-      <div className={cn("bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 animate-pulse", className)}>
+      <div className={cn("bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 animate-pulse motion-reduce:animate-none", className)}>
         <div className="flex justify-between mb-4">
           <div className="h-5 w-32 rounded bg-gray-200 dark:bg-gray-700" />
           <div className="h-4 w-20 rounded bg-gray-200 dark:bg-gray-700" />
@@ -63,7 +63,7 @@ export function LoadingSkeleton({ className, lines = 3, variant = "text" }: Skel
   }
 
   return (
-    <div className={cn("space-y-2 animate-pulse", className)}>
+    <div className={cn("space-y-2 animate-pulse motion-reduce:animate-none", className)}>
       {Array.from({ length: lines }).map((_, i) => (
         <div
           key={i}

@@ -126,7 +126,7 @@ export default function AnalyticsPage() {
                       </span>
                       <div className="flex-1 h-6 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-ophir-500 to-stellar rounded-full transition-all duration-500"
+                          className="h-full bg-gradient-to-r from-ophir-500 to-stellar rounded-full transition-all duration-500 motion-reduce:transition-none"
                           style={{ width: `${(d.volume / maxVolume) * 100}%`, minWidth: "4px" }}
                         />
                       </div>

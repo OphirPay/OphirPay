@@ -104,6 +104,42 @@ body {
   background-size: 200% 100%;
 }
 
+/* ── Reduced Motion Accessibility ────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-pulse,
+  .animate-ping,
+  .animate-spin {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .animate-shimmer {
+    animation: none !important;
+    background: #f3f4f6 !important;
+  }
+
+  .dark .animate-shimmer {
+    background: #1f2937 !important;
+  }
+}
+
 /* ── Focus visible ──────────────────────────────────────────── */
 
 *:focus-visible {

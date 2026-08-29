@@ -122,7 +122,7 @@ export function NotificationCenter() {
           <span
             data-testid="notification-badge"
             aria-hidden="true"
-            className="absolute -top-0.5 -right-0.5 min-w-[1.25rem] h-5 px-1 flex items-center justify-center text-[10px] font-bold text-white bg-ophir-600 rounded-full border-2 border-white dark:border-gray-950 shadow-sm animate-pulse"
+            className="absolute -top-0.5 -right-0.5 min-w-[1.25rem] h-5 px-1 flex items-center justify-center text-[10px] font-bold text-white bg-ophir-600 rounded-full border-2 border-white dark:border-gray-950 shadow-sm animate-pulse motion-reduce:animate-none"
           >
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
@@ -135,7 +135,7 @@ export function NotificationCenter() {
           role="region"
           aria-label="Payment Notifications"
           data-testid="notification-dropdown"
-          className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in duration-150"
+          className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl z-50 overflow-hidden flex flex-col animate-in fade-in duration-150 motion-reduce:animate-none"
         >
           {/* Header */}
           <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 flex items-center justify-between">
@@ -153,7 +153,7 @@ export function NotificationCenter() {
               >
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${
-                    isConnected ? "bg-green-500 animate-pulse" : "bg-gray-400"
+                    isConnected ? "bg-green-500 animate-pulse motion-reduce:animate-none" : "bg-gray-400"
                   }`}
                 />
                 {isConnected ? "Live" : "Polling"}

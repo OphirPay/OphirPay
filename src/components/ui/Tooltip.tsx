@@ -50,7 +50,7 @@ export function Tooltip({ content, children, position = "top", delay = 400 }: To
           className={cn(
             "absolute z-50 px-2.5 py-1.5 rounded-lg text-xs font-medium pointer-events-none whitespace-nowrap",
             "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 shadow-lg",
-            "animate-fade-in",
+            "animate-fade-in motion-reduce:animate-none",
             positionClasses[position]
           )}
         >

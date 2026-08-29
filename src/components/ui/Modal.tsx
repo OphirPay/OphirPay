@@ -130,7 +130,7 @@ export function Modal({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in motion-reduce:animate-none"
         onClick={onClose}
       />
 
@@ -141,7 +141,7 @@ export function Modal({
         className={cn(
           "relative w-full bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-xl",
           "border border-gray-200 dark:border-gray-800 shadow-2xl",
-          "outline-none animate-fade-in-up",
+          "outline-none animate-fade-in-up motion-reduce:animate-none",
           sizeClasses[size],
           "max-h-[90vh] overflow-y-auto"
         )}

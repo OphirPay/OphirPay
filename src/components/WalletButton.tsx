@@ -38,7 +38,7 @@ export function WalletButton() {
         {/* Balance */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
           {wallet.balanceLoading ? (
-            <span className="text-sm text-green-700 dark:text-green-400 animate-pulse">
+            <span className="text-sm text-green-700 dark:text-green-400 animate-pulse motion-reduce:animate-none">
               Loading...
             </span>
           ) : (
@@ -78,7 +78,7 @@ export function WalletButton() {
         {/* Network badge */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
           </span>
           <span className="text-sm font-medium text-blue-700 dark:text-blue-400">

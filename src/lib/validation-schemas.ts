@@ -12,6 +12,17 @@ export const apiKeyId = z.string().min(1, "API key ID is required");
 
 // ── Payment Schemas ───────────────────────────────────────────
 
+export const sanitizeMemo = (val?: string): string | undefined => {
+  if (!val) return undefined;
+  return val.replace(/[<>"'&\x00-\x1F\x7F]/g, "").trim();
+};
+
+export const memoSanitizedSchema = z
+  .string()
+  .max(28, "Memo must not exceed 28 characters")
+  .refine((v) => !/[<>"'&\x00-\x1F\x7F]/.test(v), "Memo contains disallowed HTML/XSS control characters")
+  .optional();
+
 export const createPaymentSchema = z.object({
   amount: z.number().positive("Amount must be greater than zero"),
   sourceAccountId: z.string().min(1, "Source account is required"),
@@ -19,7 +30,7 @@ export const createPaymentSchema = z.object({
   assetCode: z.string().default("XLM"),
   assetIssuer: z.string().optional(),
   description: z.string().max(200).optional(),
-  memo: z.string().max(28).optional(),
+  memo: memoSanitizedSchema,
 });
 
 /** Body for POST /api/payments/retry — which failed payment to retry. */

@@ -3,6 +3,7 @@
 import { withApiAuth } from "@/lib/api-auth";
 import { successResponse, handleApiError, badRequestError } from "@/lib/api-response";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
+import { nativeToScVal } from "@stellar/stellar-sdk";
 import { z } from "zod";
 import { withRequestLogging } from "@/lib/request-logging";
 
@@ -12,6 +13,11 @@ const auditLogQuerySchema = z.object({
   actor: z.string().optional(),
   action: z.string().optional(),
   since: z.coerce.number().int().positive().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  search: z.string().optional(),
 });
 
 export type AuditLogEntry = {
@@ -23,12 +29,25 @@ export type AuditLogEntry = {
   details: string;
 };
 
+function parseDateParam(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const num = Number(value);
+  if (!isNaN(num) && num > 0) {
+    return num > 1e11 ? Math.floor(num / 1000) : num;
+  }
+  const parsed = Date.parse(value);
+  if (!isNaN(parsed)) {
+    return Math.floor(parsed / 1000);
+  }
+  return undefined;
+}
+
 /**
  * GET /api/audit-log
  *
  * Returns contract audit log entries. Requires API-key authentication.
  * Queries the OphirPayContract's persistent audit ledger on-chain.
- * Supports pagination and filtering by actor, action, and timestamp.
+ * Supports pagination and filtering by actor, action, date range, and search.
  */
 async function _GET(request: Request) {
   try {
@@ -41,7 +60,17 @@ async function _GET(request: Request) {
       );
     }
 
-    const { page, limit } = parsed.data;
+    const { page, limit, actor, action, since, from, to, dateFrom, dateTo, search } = parsed.data;
+
+    // Parse date filters
+    const fromTs = since ?? parseDateParam(dateFrom ?? from);
+    let toTs = parseDateParam(dateTo ?? to);
+    if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+      const endOfDay = Date.parse(`${dateTo}T23:59:59.999Z`);
+      if (!isNaN(endOfDay)) {
+        toTs = Math.floor(endOfDay / 1000);
+      }
+    }
 
     // Get total count from contract
     const countResult = await simulateContractCall(
@@ -63,28 +92,83 @@ async function _GET(request: Request) {
       return successResponse([], { page, limit, total: 0 });
     }
 
-    // Fetch entries from the contract (most recent first, capped at limit)
+    // Fetch entries from contract
     const entries: AuditLogEntry[] = [];
-    const startId = Math.max(1, totalCount - (page - 1) * limit);
-    const endId = Math.max(1, startId - limit + 1);
+    const maxEntriesToFetch = Math.min(totalCount, 500);
+    const startId = totalCount;
+    const endId = Math.max(1, totalCount - maxEntriesToFetch + 1);
 
     for (let id = startId; id >= endId; id--) {
       try {
         const entryResult = await simulateContractCall(
           DEFAULT_CONTRACT_ID,
           "get_audit_entry",
-          CHAIN_READ_SOURCE
+          CHAIN_READ_SOURCE,
+          [nativeToScVal(id, { type: "u64" })]
         );
         if (entryResult.status !== "SIMULATION_FAILED" && entryResult.returnValue) {
-          const entry = entryResult.returnValue as AuditLogEntry;
+          const rawEntry = entryResult.returnValue as Record<string, unknown>;
+          const entry: AuditLogEntry = {
+            id: Number(rawEntry.id ?? id),
+            timestamp: Number(rawEntry.timestamp ?? 0),
+            action: String(rawEntry.action ?? ""),
+            actor: String(rawEntry.actor ?? ""),
+            target_id: Number(rawEntry.target_id ?? 0),
+            details: String(rawEntry.details ?? ""),
+          };
           entries.push(entry);
         }
       } catch {
-        // Skip entries we can't read
+        // Skip unreadable entries
       }
     }
 
-    return successResponse(entries, { page, limit, total: totalCount });
+    // Apply filtering
+    let filtered = entries;
+
+    if (actor) {
+      const qActor = actor.trim().toLowerCase();
+      filtered = filtered.filter((e) => e.actor.toLowerCase().includes(qActor));
+    }
+
+    if (action) {
+      const qAction = action.trim().toLowerCase();
+      filtered = filtered.filter(
+        (e) => e.action.toLowerCase() === qAction || e.action.toLowerCase().includes(qAction)
+      );
+    }
+
+    if (fromTs !== undefined) {
+      filtered = filtered.filter((e) => {
+        const ts = e.timestamp > 1e11 ? Math.floor(e.timestamp / 1000) : e.timestamp;
+        return ts >= fromTs;
+      });
+    }
+
+    if (toTs !== undefined) {
+      filtered = filtered.filter((e) => {
+        const ts = e.timestamp > 1e11 ? Math.floor(e.timestamp / 1000) : e.timestamp;
+        return ts <= toTs;
+      });
+    }
+
+    if (search) {
+      const qSearch = search.trim().toLowerCase();
+      filtered = filtered.filter(
+        (e) =>
+          e.details.toLowerCase().includes(qSearch) ||
+          e.actor.toLowerCase().includes(qSearch) ||
+          e.action.toLowerCase().includes(qSearch) ||
+          String(e.id).includes(qSearch) ||
+          String(e.target_id).includes(qSearch)
+      );
+    }
+
+    const totalMatching = filtered.length;
+    const startIndex = (page - 1) * limit;
+    const paginated = filtered.slice(startIndex, startIndex + limit);
+
+    return successResponse(paginated, { page, limit, total: totalMatching });
   } catch (error) {
     return handleApiError(error);
   }

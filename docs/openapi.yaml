@@ -1201,6 +1201,26 @@ paths:
           in: query
           schema: { type: integer }
           description: Unix timestamp filter
+        - name: dateFrom
+          in: query
+          schema: { type: string }
+          description: Start date filter (ISO string or YYYY-MM-DD)
+        - name: dateTo
+          in: query
+          schema: { type: string }
+          description: End date filter (ISO string or YYYY-MM-DD)
+        - name: from
+          in: query
+          schema: { type: string }
+          description: Start timestamp or date filter
+        - name: to
+          in: query
+          schema: { type: string }
+          description: End timestamp or date filter
+        - name: search
+          in: query
+          schema: { type: string }
+          description: Keyword search across actor, action, and details
       responses:
         "200":
           description: Paginated audit log entries

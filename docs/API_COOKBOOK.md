@@ -1537,8 +1537,7 @@ curl -X PATCH "$BASE/api/hooks/cm0hk0000000000000000001" \
 
 ### Query the audit log — `GET /api/audit-log`
 
-Auth: **required**. Filters: `actor` (Stellar address), `action`, `since`
-(unix timestamp).
+Auth: **required**. Filters: `actor` (Stellar address), `action`, `since` (unix timestamp), `from` / `dateFrom` (start timestamp or YYYY-MM-DD), `to` / `dateTo` (end timestamp or YYYY-MM-DD), `search` (keyword query), `page`, `limit`.
 
 ```bash
 curl -G "$BASE/api/audit-log" \

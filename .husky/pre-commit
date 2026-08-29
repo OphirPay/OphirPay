@@ -1,0 +1,8 @@
+#!/bin/sh
+# Pre-commit hook: validate Prisma schema before allowing a commit.
+# Install with: npx husky install
+
+if git diff --cached --name-only | grep -qE '^prisma/(schema\.prisma|migrations/)'; then
+  echo "🔍 Prisma changes detected. Running validation..."
+  npx prisma validate || exit 1
+fi

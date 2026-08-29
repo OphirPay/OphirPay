@@ -17,7 +17,7 @@ function makeNotification(overrides: Partial<PaymentNotification> = {}): Payment
     type: "payment.received",
     title: "Payment received",
     message: "100 USDC received",
-    timestamp: new Date().toISOString(),
+    timestamp: Date.now(),
     read: false,
     ...overrides,
   };

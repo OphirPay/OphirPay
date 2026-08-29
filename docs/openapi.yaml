@@ -760,7 +760,8 @@ paths:
       tags: [Session]
       summary: Issue a signed session cookie for a connected wallet
       description: |
-        Called by the UI after a successful wallet connect. Sets an HttpOnly
+        Called by the UI after a successful wallet connect. Sets an HttpOnly,
+        SameSite=Lax, Secure (in production / HTTPS), Max-Age=604800 (7-day TTL)
         HMAC-signed session cookie carrying the wallet public key.
       requestBody:
         required: true

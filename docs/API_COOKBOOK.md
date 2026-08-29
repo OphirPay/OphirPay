@@ -968,6 +968,7 @@ curl -X DELETE "$BASE/api/keys?id=cm0ak0000000000000000002" -H "X-API-Key: $KEY"
 ### Issue a session — `POST /api/auth/session`
 
 No API key needed — called by the UI after a wallet connect. Sets an HttpOnly,
+SameSite=Lax, Secure (in production / HTTPS), Max-Age=604800 (7-day TTL)
 HMAC-signed session cookie (`ophirpay_session`) on success. Cookie-based
 requests must include cookies, not `X-API-Key`.
 
@@ -991,7 +992,7 @@ curl -X POST "$BASE/api/auth/session" \
 
 ### Revoke a session — `DELETE /api/auth/session`
 
-Clears the session cookie.
+Clears the session cookie (sets `Max-Age=0` with matching HttpOnly/SameSite/Secure attributes).
 
 ```bash
 curl -X DELETE "$BASE/api/auth/session" -b cookies.txt

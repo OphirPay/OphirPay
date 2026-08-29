@@ -78,13 +78,16 @@ export const POST = withMetrics("POST /api/auth/session", withRequestLogging(asy
     }
   }
 
+  const secure = request.url.startsWith("https:") || process.env.NODE_ENV === "production";
   const response = successResponse({ authenticated: true, publicKey, network });
-  response.headers.set("Set-Cookie", buildSessionCookie(publicKey, network));
+  response.headers.set("Set-Cookie", buildSessionCookie(publicKey, network, { secure }));
   return response;
 }));
 
-export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging(async function DELETE() {
+export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging(async function DELETE(request?: Request) {
+  const secure = request?.url ? request.url.startsWith("https:") : process.env.NODE_ENV === "production";
   const response = successResponse({ authenticated: false });
-  response.headers.set("Set-Cookie", buildLogoutCookie());
+  response.headers.set("Set-Cookie", buildLogoutCookie({ secure }));
   return response;
 }));
+

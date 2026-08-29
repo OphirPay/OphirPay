@@ -92,6 +92,13 @@ export async function deliverWebhook(
       }
 
       logger.warn("Webhook delivery failed", { url, status: response.status, attempt });
+
+      if (
+        (response.status >= 300 && response.status < 400) ||
+        (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429)
+      ) {
+        break;
+      }
     } catch (err) {
       logger.warn("Webhook delivery error", { url, error: String(err), attempt });
     }

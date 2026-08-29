@@ -97,7 +97,7 @@ describe("deliverWebhook", () => {
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 1);
+    const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 3);
     expect(ok).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

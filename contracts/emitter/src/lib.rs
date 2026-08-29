@@ -9,6 +9,14 @@ use soroban_sdk::{
 
 // ── Storage Keys ───────────────────────────────────────────────
 const EVENT_COUNT: Symbol = symbol_short!("EVT_CNT");
+const CANCEL_COUNT: Symbol = symbol_short!("CAN_CNT");
+const APPROVE_COUNT: Symbol = symbol_short!("APP_CNT");
+const EXEC_COUNT: Symbol = symbol_short!("EXE_CNT");
+
+const CANCEL_KEY: Symbol = symbol_short!("CAN_EVT");
+const APPROVE_KEY: Symbol = symbol_short!("APP_EVT");
+const EXEC_KEY: Symbol = symbol_short!("EXE_EVT");
+
 const EMITTER_OWNER: Symbol = symbol_short!("EM_OWNR");
 const UPGRADE_HASH: Symbol = symbol_short!("UPG_HASH");
 const UPGRADE_TIMELOCK: Symbol = symbol_short!("UPG_LOCK");
@@ -23,7 +31,7 @@ const ALLOWED_SOURCE: Symbol = symbol_short!("ALW_SRC");
 // ── Data Types ─────────────────────────────────────────────────
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PaymentEvent {
     pub id: u64,
     pub source: String,
@@ -31,6 +39,37 @@ pub struct PaymentEvent {
     pub payee: Address,
     pub amount: i128,
     pub tx_hash: String,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaymentCancelledEvent {
+    pub id: u64,
+    pub source: String,
+    pub payment_id: u64,
+    pub actor: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ApprovalEvent {
+    pub id: u64,
+    pub source: String,
+    pub request_id: u64,
+    pub actor: Address,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExecutionEvent {
+    pub id: u64,
+    pub source: String,
+    pub request_id: u64,
+    pub payment_id: u64,
+    pub actor: Address,
     pub timestamp: u64,
 }
 
@@ -60,6 +99,35 @@ pub enum EmitterError {
 #[contract]
 pub struct PaymentEventEmitter;
 
+impl PaymentEventEmitter {
+    fn check_auth_and_pause(env: &Env, caller: &Address) -> Result<(), EmitterError> {
+        caller.require_auth();
+
+        // Allow-list check (MEDIUM-3 audit fix): if an allowed source has been
+        // configured, only it may emit. The owner may always emit (owner is
+        // implicitly trusted, e.g. during bootstrap before the source is set).
+        if let Some(allowed) = env.storage().instance().get::<_, Address>(&ALLOWED_SOURCE) {
+            let owner: Address = env
+                .storage()
+                .instance()
+                .get(&EMITTER_OWNER)
+                .ok_or(EmitterError::NotInitialized)?;
+            if caller != &allowed && caller != &owner {
+                return Err(EmitterError::Unauthorized);
+            }
+        }
+
+        // Reject emits while paused — return EmitterError so cross-contract
+        // callers receive a proper error instead of panicking the whole TX.
+        let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
+        if paused {
+            return Err(EmitterError::ContractPaused);
+        }
+
+        Ok(())
+    }
+}
+
 #[contractimpl]
 impl PaymentEventEmitter {
     /// Initialize the emitter
@@ -70,6 +138,9 @@ impl PaymentEventEmitter {
         owner.require_auth();
         env.storage().instance().set(&EMITTER_OWNER, &owner);
         env.storage().instance().set(&EVENT_COUNT, &0u64);
+        env.storage().instance().set(&CANCEL_COUNT, &0u64);
+        env.storage().instance().set(&APPROVE_COUNT, &0u64);
+        env.storage().instance().set(&EXEC_COUNT, &0u64);
         env.storage().instance().extend_ttl(5000, 50000);
         Ok(0)
     }
@@ -86,28 +157,7 @@ impl PaymentEventEmitter {
         amount: i128,
         tx_hash: String,
     ) -> Result<u64, EmitterError> {
-        caller.require_auth();
-
-        // Allow-list check (MEDIUM-3 audit fix): if an allowed source has been
-        // configured, only it may emit. The owner may always emit (owner is
-        // implicitly trusted, e.g. during bootstrap before the source is set).
-        if let Some(allowed) = env.storage().instance().get::<_, Address>(&ALLOWED_SOURCE) {
-            let owner: Address = env
-                .storage()
-                .instance()
-                .get(&EMITTER_OWNER)
-                .ok_or(EmitterError::NotInitialized)?;
-            if caller != allowed && caller != owner {
-                return Err(EmitterError::Unauthorized);
-            }
-        }
-
-        // Reject emits while paused — return EmitterError so cross-contract
-        // callers receive a proper error instead of panicking the whole TX.
-        let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
-        if paused {
-            return Err(EmitterError::ContractPaused);
-        }
+        Self::check_auth_and_pause(&env, &caller)?;
 
         let mut count: u64 = env.storage().instance().get(&EVENT_COUNT).unwrap_or(0);
         count += 1;
@@ -137,7 +187,123 @@ impl PaymentEventEmitter {
         Ok(count)
     }
 
-    /// Get event by ID
+    /// Record a payment cancellation event in the emitter index.
+    pub fn emit_payment_cancelled(
+        env: Env,
+        caller: Address,
+        source: String,
+        payment_id: u64,
+        actor: Address,
+    ) -> Result<u64, EmitterError> {
+        Self::check_auth_and_pause(&env, &caller)?;
+
+        let mut count: u64 = env.storage().instance().get(&CANCEL_COUNT).unwrap_or(0);
+        count += 1;
+
+        let event = PaymentCancelledEvent {
+            id: count,
+            source,
+            payment_id,
+            actor: actor.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+
+        env.storage().persistent().set(&(CANCEL_KEY, count), &event);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(CANCEL_KEY, count), 5000, 50000);
+
+        env.storage().instance().set(&CANCEL_COUNT, &count);
+        env.storage().instance().extend_ttl(5000, 50000);
+
+        // Native event emission
+        env.events().publish(
+            (Symbol::new(&env, "payment_cancelled"), actor),
+            payment_id,
+        );
+
+        Ok(count)
+    }
+
+    /// Record a multisig / payment approval event in the emitter index.
+    pub fn emit_approval(
+        env: Env,
+        caller: Address,
+        source: String,
+        request_id: u64,
+        actor: Address,
+    ) -> Result<u64, EmitterError> {
+        Self::check_auth_and_pause(&env, &caller)?;
+
+        let mut count: u64 = env.storage().instance().get(&APPROVE_COUNT).unwrap_or(0);
+        count += 1;
+
+        let event = ApprovalEvent {
+            id: count,
+            source,
+            request_id,
+            actor: actor.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+
+        env.storage().persistent().set(&(APPROVE_KEY, count), &event);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(APPROVE_KEY, count), 5000, 50000);
+
+        env.storage().instance().set(&APPROVE_COUNT, &count);
+        env.storage().instance().extend_ttl(5000, 50000);
+
+        // Native event emission
+        env.events().publish(
+            (Symbol::new(&env, "approval_event"), actor),
+            request_id,
+        );
+
+        Ok(count)
+    }
+
+    /// Record a multisig / payment execution event in the emitter index.
+    pub fn emit_execution(
+        env: Env,
+        caller: Address,
+        source: String,
+        request_id: u64,
+        payment_id: u64,
+        actor: Address,
+    ) -> Result<u64, EmitterError> {
+        Self::check_auth_and_pause(&env, &caller)?;
+
+        let mut count: u64 = env.storage().instance().get(&EXEC_COUNT).unwrap_or(0);
+        count += 1;
+
+        let event = ExecutionEvent {
+            id: count,
+            source,
+            request_id,
+            payment_id,
+            actor: actor.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+
+        env.storage().persistent().set(&(EXEC_KEY, count), &event);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(EXEC_KEY, count), 5000, 50000);
+
+        env.storage().instance().set(&EXEC_COUNT, &count);
+        env.storage().instance().extend_ttl(5000, 50000);
+
+        // Native event emission
+        env.events().publish(
+            (Symbol::new(&env, "execution_event"), actor),
+            (request_id, payment_id),
+        );
+
+        Ok(count)
+    }
+
+    /// Get payment event by ID
     pub fn get_event(env: Env, event_id: u64) -> Result<PaymentEvent, EmitterError> {
         env.storage()
             .persistent()
@@ -145,9 +311,51 @@ impl PaymentEventEmitter {
             .ok_or(EmitterError::EventNotFound)
     }
 
-    /// Get total event count
+    /// Get payment cancellation event by ID
+    pub fn get_payment_cancelled_event(
+        env: Env,
+        event_id: u64,
+    ) -> Result<PaymentCancelledEvent, EmitterError> {
+        env.storage()
+            .persistent()
+            .get(&(CANCEL_KEY, event_id))
+            .ok_or(EmitterError::EventNotFound)
+    }
+
+    /// Get approval event by ID
+    pub fn get_approval_event(env: Env, event_id: u64) -> Result<ApprovalEvent, EmitterError> {
+        env.storage()
+            .persistent()
+            .get(&(APPROVE_KEY, event_id))
+            .ok_or(EmitterError::EventNotFound)
+    }
+
+    /// Get execution event by ID
+    pub fn get_execution_event(env: Env, event_id: u64) -> Result<ExecutionEvent, EmitterError> {
+        env.storage()
+            .persistent()
+            .get(&(EXEC_KEY, event_id))
+            .ok_or(EmitterError::EventNotFound)
+    }
+
+    /// Get total payment event count
     pub fn get_event_count(env: Env) -> u64 {
         env.storage().instance().get(&EVENT_COUNT).unwrap_or(0)
+    }
+
+    /// Get total cancellation event count
+    pub fn get_cancelled_event_count(env: Env) -> u64 {
+        env.storage().instance().get(&CANCEL_COUNT).unwrap_or(0)
+    }
+
+    /// Get total approval event count
+    pub fn get_approval_event_count(env: Env) -> u64 {
+        env.storage().instance().get(&APPROVE_COUNT).unwrap_or(0)
+    }
+
+    /// Get total execution event count
+    pub fn get_execution_event_count(env: Env) -> u64 {
+        env.storage().instance().get(&EXEC_COUNT).unwrap_or(0)
     }
 
     /// Get owner
@@ -496,6 +704,95 @@ mod tests {
         // Clearing the allow-list re-opens emission
         client.set_allowed_source(&owner, &None);
         assert_eq!(client.get_allowed_source(), None);
+    }
+
+    #[test]
+    fn test_emit_payment_cancelled() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(2000);
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+        let owner = Address::generate(&env);
+        let actor = Address::generate(&env);
+
+        let _ = client.init(&owner);
+
+        let id = client.emit_payment_cancelled(
+            &owner,
+            &String::from_str(&env, "OphirPay"),
+            &42u64,
+            &actor,
+        );
+        assert_eq!(id, 1);
+        assert_eq!(client.get_cancelled_event_count(), 1);
+
+        let event = client.get_payment_cancelled_event(&1);
+        assert_eq!(event.id, 1);
+        assert_eq!(event.source, String::from_str(&env, "OphirPay"));
+        assert_eq!(event.payment_id, 42);
+        assert_eq!(event.actor, actor);
+        assert_eq!(event.timestamp, 2000);
+    }
+
+    #[test]
+    fn test_emit_approval() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(3000);
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+        let owner = Address::generate(&env);
+        let signer = Address::generate(&env);
+
+        let _ = client.init(&owner);
+
+        let id = client.emit_approval(
+            &owner,
+            &String::from_str(&env, "OphirPay"),
+            &101u64,
+            &signer,
+        );
+        assert_eq!(id, 1);
+        assert_eq!(client.get_approval_event_count(), 1);
+
+        let event = client.get_approval_event(&1);
+        assert_eq!(event.id, 1);
+        assert_eq!(event.source, String::from_str(&env, "OphirPay"));
+        assert_eq!(event.request_id, 101);
+        assert_eq!(event.actor, signer);
+        assert_eq!(event.timestamp, 3000);
+    }
+
+    #[test]
+    fn test_emit_execution() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(4000);
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+        let owner = Address::generate(&env);
+        let executor = Address::generate(&env);
+
+        let _ = client.init(&owner);
+
+        let id = client.emit_execution(
+            &owner,
+            &String::from_str(&env, "OphirPay"),
+            &101u64,
+            &55u64,
+            &executor,
+        );
+        assert_eq!(id, 1);
+        assert_eq!(client.get_execution_event_count(), 1);
+
+        let event = client.get_execution_event(&1);
+        assert_eq!(event.id, 1);
+        assert_eq!(event.source, String::from_str(&env, "OphirPay"));
+        assert_eq!(event.request_id, 101);
+        assert_eq!(event.payment_id, 55);
+        assert_eq!(event.actor, executor);
+        assert_eq!(event.timestamp, 4000);
     }
 
     #[test]

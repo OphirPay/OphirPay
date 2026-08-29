@@ -218,6 +218,44 @@ changes, only the latest 100 are returned.
 
 ---
 
+## Event Topics & Payloads Specification
+
+Downstream consumers (SSE streams, indexers, webhook relayers) track on-chain lifecycle changes via native Soroban events emitted by both contracts.
+
+### OphirPay Contract Native Events
+
+| Event Category | Action | Topics | Data Payload | Description |
+|---|---|---|---|---|
+| `payment` | creation | `("payment", payer, payee)` | `amount: i128` | Direct payment or atomic spend recorded |
+| `payment` | cancellation | `("payment", "cancelled")` | `(payment_id: u64, actor: Address)` | Payment record cancelled by owner |
+| `escrow` | creation | `("escrow", depositor, beneficiary)` | `amount: i128` | Escrow created with locked tokens |
+| `stream` | creation | `("stream", creator, recipient)` | `amount: i128` | Vesting payment stream initiated |
+| `approval` | proposal | `("approval", "proposed")` | `request_id: u64` | Multisig payment proposal submitted |
+| `approval` | approval | `("approval", "approved")` | `(request_id: u64, signer: Address)` | Signer approved multisig payment proposal |
+| `approval` | execution | `("approval", "executed")` | `(request_id: u64, actor: Address, pay_count: u64)` | Fully-approved proposal executed into payment |
+| `refund` | requested | `("refund", "requested")` | `refund_id: u64` | Buyer requested payment refund |
+| `refund` | processed | `("refund", "processed")` | `refund_id: u64` | Approved refund executed & tokens transferred |
+| `timelock` | proposal | `("timelock", "proposed")` | `action_id: u64` | Timelocked admin action proposed (24h delay) |
+| `timelock` | execution | `("timelock", "executed")` | `action_id: u64` | Timelocked action executed after delay |
+| `governance` | proposal | `("governance", "proposed")` | `proposal_id: u64` | DAO proposal created with deposit |
+| `governance` | vote | `("governance", "vote")` | `(proposal_id: u64, voter: Address)` | Voter cast yes/no vote on proposal |
+| `governance` | execution | `("governance", "executed")` | `(proposal_id: u64, passed: bool)` | Proposal executed & deposit refunded |
+| `hook` | registered | `("hook", "registered")` | `(hook_id: u64, event_type: String)` | Webhook listener subscribed to event |
+| `hook` | unregistered | `("hook", "unregistered")` | `hook_id: u64` | Webhook listener unsubscribed |
+
+### PaymentEventEmitter Indexed Events
+
+The `PaymentEventEmitter` contract indexes lifecycle records for querying via SSE stream `/api/events` and off-chain relayers:
+
+| Event Type | Emitter Method | Emitted Native Topics | Native Data Payload | Persistent Storage Struct |
+|---|---|---|---|---|
+| Payment | `emit_payment` | `("payment_event", payer, payee)` | `(amount: i128, tx_hash: String)` | `PaymentEvent` |
+| Cancellation | `emit_payment_cancelled` | `("payment_cancelled", actor)` | `payment_id: u64` | `PaymentCancelledEvent` |
+| Approval | `emit_approval` | `("approval_event", actor)` | `request_id: u64` | `ApprovalEvent` |
+| Execution | `emit_execution` | `("execution_event", actor)` | `(request_id: u64, payment_id: u64)` | `ExecutionEvent` |
+
+---
+
 ## Testing Strategy
 
 Each invariant is verified by unit tests, property-based proptests, and integration harnesses:
@@ -238,3 +276,4 @@ cd contracts/emitter && cargo test                              # emitter unit t
 - [ ] Bounded model checking with `kani` for the 5 highest-risk invariants
 - [ ] Formal verification of the `compute_vested()` function (overflow safety)
 - [ ] Third-party security audit before mainnet deployment
+

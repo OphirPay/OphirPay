@@ -277,7 +277,7 @@ export interface Refund {
   resolved_at: number;
 }
 
-// ── Payment Event (Emitter Contract) ────────────────────────
+// ── Lifecycle & Emitter Events ──────────────────────────────
 
 export interface PaymentEvent {
   id: number;
@@ -286,6 +286,31 @@ export interface PaymentEvent {
   payee: string;
   amount: bigint;
   tx_hash: string;
+  timestamp: number;
+}
+
+export interface PaymentCancelledEvent {
+  id: number;
+  source: string;
+  payment_id: number;
+  actor: string;
+  timestamp: number;
+}
+
+export interface ApprovalEvent {
+  id: number;
+  source: string;
+  request_id: number;
+  actor: string;
+  timestamp: number;
+}
+
+export interface ExecutionEvent {
+  id: number;
+  source: string;
+  request_id: number;
+  payment_id: number;
+  actor: string;
   timestamp: number;
 }
 

@@ -1254,7 +1254,7 @@ impl OphirPayContract {
 
         env.events().publish(
             (Symbol::new(&env, "approval"), Symbol::new(&env, "executed")),
-            (request_id, pay_count),
+            (request_id, caller.clone(), pay_count),
         );
 
         record_audit(
@@ -2575,6 +2575,11 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .extend_ttl(&(PAYMENT_KEY, payment_id), 5000, 50000);
+
+        env.events().publish(
+            (Symbol::new(&env, "payment"), Symbol::new(&env, "cancelled")),
+            (payment_id, caller.clone()),
+        );
 
         record_audit(
             &env,

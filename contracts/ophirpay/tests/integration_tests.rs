@@ -753,3 +753,50 @@ fn test_cross_contract_emergency_pause_orchestration() {
         emitter_client.emit_payment(&fix.owner, &source, &payer, &payee, &100i128, &tx_hash);
     assert_eq!(evt_id, 1);
 }
+
+#[test]
+fn test_cross_contract_lifecycle_events_indexing() {
+    let fix = TestFixture::new();
+    let (emitter_id, emitter_client) = fix.setup_emitter();
+
+    fix.client.set_emitter(&fix.owner, &emitter_id);
+    emitter_client.set_allowed_source(&fix.owner, &Some(fix.contract_id.clone()));
+
+    let actor = Address::generate(&fix.env);
+    let source = String::from_str(&fix.env, "OphirPay");
+
+    // 1. Payment Cancellation indexing
+    let cancel_evt_id =
+        emitter_client.emit_payment_cancelled(&fix.owner, &source, &42u64, &actor);
+    assert_eq!(cancel_evt_id, 1);
+    assert_eq!(emitter_client.get_cancelled_event_count(), 1);
+
+    let cancel_evt = emitter_client.get_payment_cancelled_event(&1);
+    assert_eq!(cancel_evt.id, 1);
+    assert_eq!(cancel_evt.payment_id, 42);
+    assert_eq!(cancel_evt.actor, actor);
+
+    // 2. Multisig Approval indexing
+    let signer = Address::generate(&fix.env);
+    let app_evt_id = emitter_client.emit_approval(&fix.owner, &source, &100u64, &signer);
+    assert_eq!(app_evt_id, 1);
+    assert_eq!(emitter_client.get_approval_event_count(), 1);
+
+    let app_evt = emitter_client.get_approval_event(&1);
+    assert_eq!(app_evt.id, 1);
+    assert_eq!(app_evt.request_id, 100);
+    assert_eq!(app_evt.actor, signer);
+
+    // 3. Multisig Execution indexing
+    let exec_evt_id =
+        emitter_client.emit_execution(&fix.owner, &source, &100u64, &77u64, &actor);
+    assert_eq!(exec_evt_id, 1);
+    assert_eq!(emitter_client.get_execution_event_count(), 1);
+
+    let exec_evt = emitter_client.get_execution_event(&1);
+    assert_eq!(exec_evt.id, 1);
+    assert_eq!(exec_evt.request_id, 100);
+    assert_eq!(exec_evt.payment_id, 77);
+    assert_eq!(exec_evt.actor, actor);
+}
+

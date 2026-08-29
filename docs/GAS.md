@@ -38,11 +38,13 @@ Estimates based on the Soroban resource model (~100 gas/byte write, ~50 gas/byte
 |---|---|---|---|---|---|
 | `init` | 2 instance | 1 instance | 0 | ~3,000 | **-60%** (was 8 writes for counter pre-init) |
 | `record_payment` | 1 persistent + 2 instance | 1 instance | 1 | ~12,000 | **-35%** (was ContractStats monolith read/write) |
+| `cancel_payment` | 1 persistent | 1 persistent + 1 instance | 1 | ~15,000 | Native event emitted with (id, actor) |
 | `create_escrow` | 1 persistent + 2 instance | 1 instance | 1 | ~14,000 | **-35%** |
 | `create_stream` | 1 persistent + 2 instance | 1 instance | 1 | ~14,000 | **-35%** |
 | `create_batch` (10 items) | 10 persistent + 3 instance | 1 instance | 1 | ~80,000 | **-33%** |
 | `atomic_spend` | 1 persistent + 2 instance | 2 persistent + 1 instance | 1 | ~35,000 | **-35%** |
-| `approve_payment` | 1 persistent | 2 persistent + 1 instance | 1 | ~22,000 | N/A |
+| `approve_payment` | 1 persistent | 2 persistent + 1 instance | 1 | ~22,000 | Emits approval event with (request_id, signer) |
+| `execute_approved_payment` | 2 persistent + 2 instance | 2 persistent + 2 instance | 1 | ~30,000 | Emits execution event with (request_id, caller, payment_id) |
 | `vote_on_proposal` | 1 persistent | 1 persistent | 1 | ~18,000 | N/A |
 | `request_refund` | 1 persistent + 1 instance | 1 instance | 1 | ~25,000 | **-35%** |
 | `get_payment` | 0 | 1 persistent | 0 | ~500 | N/A (read-only, already minimal) |
@@ -53,9 +55,15 @@ Estimates based on the Soroban resource model (~100 gas/byte write, ~50 gas/byte
 
 | Operation | Storage Writes | Storage Reads | Events | Est. Gas |
 |---|---|---|---|---|
-| `init` | 2 instance | 1 instance | 0 | ~3,000 |
+| `init` | 5 instance | 1 instance | 0 | ~4,000 |
 | `emit_payment` | 1 persistent + 1 instance | 1 instance | 1 | ~10,000 |
+| `emit_payment_cancelled` | 1 persistent + 1 instance | 1 instance | 1 | ~10,000 |
+| `emit_approval` | 1 persistent + 1 instance | 1 instance | 1 | ~10,000 |
+| `emit_execution` | 1 persistent + 1 instance | 1 instance | 1 | ~10,000 |
 | `get_event` | 0 | 1 persistent | 0 | ~500 |
+| `get_payment_cancelled_event` | 0 | 1 persistent | 0 | ~500 |
+| `get_approval_event` | 0 | 1 persistent | 0 | ~500 |
+| `get_execution_event` | 0 | 1 persistent | 0 | ~500 |
 | `pause` / `unpause` | 1 instance | 1 instance | 0 | ~2,000 |
 
 ### Cross-Contract Operations

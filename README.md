@@ -80,6 +80,7 @@
 - [📊 Database Schema](docs/SCHEMA.md)
 - [🚀 Deployment Guide](docs/DEPLOYMENT.md)
 - [📡 SSE Event Stream](docs/SSE.md)
+- [📖 Contract Function Reference](docs/CONTRACT_FUNCTION_REFERENCE.md)
 - [🤝 Contributing](#-contributing)
 - [📖 Stellar Glossary](GLOSSARY.md)
 - [🗺 Roadmap](#-roadmap)
@@ -361,6 +362,8 @@ Visit **`/events`** in the app to see the live feed with connection status indic
 ## 🧪 Smart Contracts
 
 OphirPay deploys **two Soroban contracts**. The main `OphirPayContract` handles all payment logic and publishes native on-chain events, while the `PaymentEventEmitter` stores payment-event records that the app's SSE stream queries — keeping payment logic and event emission separate for cleaner architecture and independent queryability. The contracts are also wired for cross-contract orchestration: `emergency_pause_all` / `emergency_unpause_all` atomically propagate the circuit breaker to the emitter.
+
+> 📖 **Full Function Reference**: For the complete technical specification of all 109 public functions across both contracts, argument types, authorization rules, 314 error codes, and CLI/SDK invocation snippets, see **[`docs/CONTRACT_FUNCTION_REFERENCE.md`](docs/CONTRACT_FUNCTION_REFERENCE.md)**.
 
 ### 🔗 Inter-Contract Flow
 

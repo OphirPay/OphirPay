@@ -8,6 +8,7 @@ import type { Payment } from "@/types";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { PaymentLifecycleTimeline } from "@/components/PaymentLifecycleTimeline";
 import {
   formatAmount,
   formatDate,
@@ -44,7 +45,11 @@ export default function PaymentDetailView({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 animate-fade-in" role="status" aria-label="Loading payment">
+      <div
+        className="space-y-6 animate-fade-in"
+        role="status"
+        aria-label="Loading payment"
+      >
         <Breadcrumb
           items={[
             { label: "Payments", href: "/payments" },
@@ -108,13 +113,24 @@ export default function PaymentDetailView({ id }: { id: string }) {
         </Link>
       </div>
 
-      {/* Details */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      {/* Visual Lifecycle Timeline */}
+      <PaymentLifecycleTimeline payment={payment} />
+
+      {/* Payment Field Details */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+            Payment Details
+          </h2>
+        </div>
         <dl className="divide-y divide-gray-100 dark:divide-gray-800/50 text-sm">
           <DetailRow label="Payment ID">
-            <span className="font-mono text-xs text-gray-700 dark:text-gray-300 break-all">
-              {payment.id}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs text-gray-700 dark:text-gray-300 break-all">
+                {payment.id}
+              </span>
+              <CopyButton value={payment.id} label="ID" />
+            </div>
           </DetailRow>
           <DetailRow label="Amount">
             <span className="font-mono font-medium text-gray-900 dark:text-white">
@@ -146,9 +162,23 @@ export default function PaymentDetailView({ id }: { id: string }) {
                   href={getStellarExplorerUrl(payment.transactionHash)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-mono text-xs text-ophir-600 dark:text-ophir-400 hover:underline"
+                  className="font-mono text-xs text-ophir-600 dark:text-ophir-400 hover:underline inline-flex items-center gap-1"
                 >
-                  {shortenAddress(payment.transactionHash)}
+                  <span>{shortenAddress(payment.transactionHash)}</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className="w-3 h-3 opacity-60"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                    />
+                  </svg>
                 </a>
                 <CopyButton value={payment.transactionHash} label="Hash" />
               </div>
@@ -156,6 +186,20 @@ export default function PaymentDetailView({ id }: { id: string }) {
               <span className="text-gray-400 dark:text-gray-500">—</span>
             )}
           </DetailRow>
+          {payment.sourceAccountId && (
+            <DetailRow label="Source Account">
+              <span className="font-mono text-xs text-gray-700 dark:text-gray-300">
+                {shortenAddress(payment.sourceAccountId, 8)}
+              </span>
+            </DetailRow>
+          )}
+          {payment.destAccountId && (
+            <DetailRow label="Destination Account">
+              <span className="font-mono text-xs text-gray-700 dark:text-gray-300">
+                {shortenAddress(payment.destAccountId, 8)}
+              </span>
+            </DetailRow>
+          )}
           {payment.batchId && (
             <DetailRow label="Batch">
               <span className="font-mono text-xs text-gray-700 dark:text-gray-300">
@@ -165,9 +209,14 @@ export default function PaymentDetailView({ id }: { id: string }) {
           )}
           <DetailRow label="Created">{formatDate(payment.createdAt)}</DetailRow>
           <DetailRow label="Updated">{formatDate(payment.updatedAt)}</DetailRow>
+          {payment.completedAt && (
+            <DetailRow label="Completed">
+              {formatDate(payment.completedAt)}
+            </DetailRow>
+          )}
           {payment.errorMessage && (
             <DetailRow label="Error">
-              <span className="text-red-600 dark:text-red-400">
+              <span className="text-red-600 dark:text-red-400 font-medium">
                 {payment.errorMessage}
               </span>
             </DetailRow>
@@ -188,7 +237,7 @@ function DetailRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-3 px-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-3 px-5">
       <dt className="text-gray-500 dark:text-gray-400 font-medium">
         {label}
       </dt>

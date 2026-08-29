@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => "/payments",
+  useSearchParams: () => new URLSearchParams(""),
   notFound: () => {
     mocks.notFound();
     // The real notFound() throws to short-circuit rendering; replicate that
@@ -80,7 +83,12 @@ function renderPage(
   onError: (error: Error) => void = () => {}
 ) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: 0,
+      },
+    },
   });
   return render(
     <QueryClientProvider client={queryClient}>

@@ -17,10 +17,17 @@ export const apiKeyId = z.string().min(1, "API key ID is required");
 // memos are rejected with a user-facing validation error before they reach
 // persistence or transaction building.
 //
-// Charset: C0/C1 control characters (NUL, newlines, tabs, ESC, …) are
-// rejected outright — they are never legitimate memo content and rejecting
-// them keeps memos safe to render, log, and export.
-const MEMO_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/;
+// Charset: C0/C1 control characters (NUL, newlines, tabs, ESC, …) and Unicode
+// bidi-override / zero-width characters are rejected outright — they are never
+// legitimate memo content and rejecting them keeps memos safe to render, log,
+// and export (issue #397).
+export const MEMO_MAX_BYTES = 28;
+
+// Control chars (C0/C1), zero-width and bidi isolates/overrides/embeddings.
+// Covers: \u0000-\u001F \u007F-\u009F, ZWSP/ZWNJ/ZWJ/LRM/RLM (200B-200F),
+// LRE/RLE/PDF/LRO/RLO (202A-202E), LRI/RLI/FSI/PDI (2066-2069).
+const MEMO_CONTROL_CHARS =
+  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/;
 
 /** Error messages shown to users when a memo fails validation. */
 export const MEMO_ERROR_MESSAGES = {
@@ -41,10 +48,10 @@ export const memoField = z
   .refine((v) => !MEMO_CONTROL_CHARS.test(v), {
     message: MEMO_ERROR_MESSAGES.controlChars,
   })
-  .refine((v) => v.length <= 28, {
+  .refine((v) => v.length <= MEMO_MAX_BYTES, {
     message: MEMO_ERROR_MESSAGES.tooLong,
   })
-  .refine((v) => new TextEncoder().encode(v).length <= 28, {
+  .refine((v) => new TextEncoder().encode(v).length <= MEMO_MAX_BYTES, {
     message: MEMO_ERROR_MESSAGES.tooManyBytes,
   })
   .optional();

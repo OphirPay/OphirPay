@@ -144,6 +144,10 @@ export default function MultisigPage() {
   const handleApprove = async (requestId: number) => {
     if (!wallet.publicKey) { toast.error("Connect your wallet first"); return; }
     try {
+      if (config?.signers && config.signers.length > 0 && !config.signers.includes(wallet.publicKey)) {
+        toast.error("Not an authorized signer for this multisig");
+        return;
+      }
       const result = await approveMultisigPayment(wallet.publicKey, requestId);
       if (result.success) {
         toast.success("Approval submitted on-chain");
@@ -166,6 +170,10 @@ export default function MultisigPage() {
   const handleExecute = async (requestId: number) => {
     if (!wallet.publicKey) { toast.error("Connect your wallet first"); return; }
     try {
+      if (config?.signers && config.signers.length > 0 && !config.signers.includes(wallet.publicKey)) {
+        toast.error("Not an authorized signer for this multisig");
+        return;
+      }
       const result = await executeApprovedPayment(wallet.publicKey, requestId);
       if (result.success) {
         toast.success("Payment executed on-chain");
@@ -173,6 +181,7 @@ export default function MultisigPage() {
           r.id === requestId ? { ...r, executed: true } : r
         ));
         queryClient.invalidateQueries({ queryKey: ["multisig"] });
+        queryClient.invalidateQueries({ queryKey: ["payments"] });
       } else {
         toast.error(result.error || "Execution failed — threshold may not be met");
       }
@@ -308,12 +317,12 @@ export default function MultisigPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {!req.executed && !req.threshold_met && (
+                  {!req.executed && !(req.threshold_met || ((req.approvals_count ?? 0) >= threshold && threshold > 0)) && (
                     <Button size="sm" onClick={() => handleApprove(req.id)}>
                       ✓ Approve
                     </Button>
                   )}
-                  {!req.executed && req.threshold_met && (
+                  {!req.executed && (req.threshold_met || ((req.approvals_count ?? 0) >= threshold && threshold > 0)) && (
                     <Button size="sm" variant="primary" onClick={() => handleExecute(req.id)}>
                       Execute
                     </Button>

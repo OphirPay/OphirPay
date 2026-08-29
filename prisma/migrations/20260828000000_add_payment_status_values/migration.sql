@@ -1,0 +1,4 @@
+-- AlterEnum
+ALTER TYPE "PaymentStatus" ADD VALUE 'SIGNED';
+ALTER TYPE "PaymentStatus" ADD VALUE 'SUBMITTED';
+ALTER TYPE "PaymentStatus" ADD VALUE 'CONFIRMED';

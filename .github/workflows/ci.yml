@@ -1,4 +1,4 @@
-name: OphirPay CI/CD — 22 Jobs
+name: OphirPay CI/CD — 23 Jobs
 
 on:
   push:
@@ -367,21 +367,7 @@ jobs:
           DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
       - name: Check for drift (schema vs migrations)
         run: |
-          if [ -d prisma/migrations ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null 2>&1
-            PGPASSWORD=prisma psql -h 127.0.0.1 -U prisma -d postgres \
-              -c 'CREATE DATABASE ophirpay_ci_shadow;' >/dev/null 2>&1 || true
-            npx prisma migrate diff \
-              --from-migrations prisma/migrations \
-              --to-schema-datamodel prisma/schema.prisma \
-              --shadow-database-url "postgresql://prisma:prisma@127.0.0.1:5432/ophirpay_ci_shadow"
-            echo "✅ No schema drift detected"
-          else
-            echo "ℹ️  No migrations directory yet — skipping drift check"
-          fi
-        env:
-          DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
-          DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+          node scripts/verify-prisma-migrations.mjs
 
   # ══════════════════════════════════════════════════════════════
   # 12. SECRETS SCAN — Gitleaks on full repo
@@ -762,4 +748,20 @@ jobs:
         run: cd contracts/ophirpay && cargo test --test integration_tests
       - name: Run Live RPC Testnet Integration Tests
         run: node scripts/testnet-integration.mjs
+
+  # ══════════════════════════════════════════════════════════════
+  # 23. PRISMA MIGRATIONS SYNC — Verify schema & migrations (No DB)
+  # ══════════════════════════════════════════════════════════════
+  prisma-migrations-check:
+    name: "2️⃣3️⃣ Backend — Prisma Migrations Sync (No DB)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Verify Prisma schema and migrations are in sync
+        run: node scripts/verify-prisma-migrations.mjs
+
 

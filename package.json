@@ -46,6 +46,8 @@
     "db:seed": "npx tsx prisma/seed.ts",
     "db:push": "prisma db push",
     "db:validate": "prisma validate && prisma generate",
+    "db:verify-migrations": "node scripts/verify-prisma-migrations.mjs",
+    "db:check-drift": "node scripts/verify-prisma-migrations.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

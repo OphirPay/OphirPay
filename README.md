@@ -352,6 +352,8 @@ Browser ←── SSE stream (GET /api/events) ──polls──→ PaymentEvent
         │                                             │
         └─ payment:created event                       └─ get_event_count() / get_event(id)
 
+> 📚 See [docs/CONTRACT_SSE_REFERENCE.md](docs/CONTRACT_SSE_REFERENCE.md) for full event signatures, topics, and error codes.
+
 Emergency orchestration (cross-contract):
 OphirPayContract.emergency_pause_all() / emergency_unpause_all()
   └─ env.invoke_contract(emitter, "pause"/"unpause")  →  PaymentEventEmitter

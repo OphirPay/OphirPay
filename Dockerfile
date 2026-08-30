@@ -15,7 +15,8 @@ COPY package.json package-lock.json* ./
 # postinstall; skip it — it isn't needed to build or run the server and the
 # download is a flaky network dependency in Docker.
 ENV PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+  npm ci
 
 # Stage 2: Builder
 FROM node:24-slim AS builder
@@ -27,7 +28,9 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # Generate the Prisma client before building (required at runtime)
 RUN npx prisma generate
-RUN npm run build
+RUN --mount=type=cache,target=/root/.npm \
+  --mount=type=cache,target=/app/.next/cache \
+  npm run build
 
 # Stage 3: Runner (distroless for minimal attack surface)
 FROM gcr.io/distroless/nodejs20-debian12:nonroot AS runner

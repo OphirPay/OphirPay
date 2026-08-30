@@ -868,6 +868,16 @@ jobs:
           targets: wasm32v1-none
       - name: Install build deps
         run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/ophirpay/target
+            contracts/emitter/target
+          key: cargo-testnet-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
+          restore-keys: cargo-testnet-${{ runner.os }}-
       - uses: actions/setup-node@v4
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci

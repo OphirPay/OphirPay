@@ -16,6 +16,10 @@ const samplePayload = {
   data: { id: "p_123", amount: 100 },
 };
 
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: "192.0.2.1", family: 4 }])
+}));
+
 describe("signWebhookPayload", () => {
   it("computes an HMAC-SHA256 over the JSON body", () => {
     const sig = signWebhookPayload(samplePayload, SECRET);

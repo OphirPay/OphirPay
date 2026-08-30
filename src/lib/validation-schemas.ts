@@ -117,11 +117,24 @@ export const batchRecipientSchema = z.object({
   memo: memoField,
 });
 
+/**
+ * Idempotency key used to deduplicate batch submissions (issue #170).
+ * Accepts either the `Idempotency-Key` header or an optional `idempotencyKey`
+ * body field. `.trim()` runs before the length checks so a wrapped key is
+ * normalized consistently and a whitespace-only value is rejected.
+ */
+export const idempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(8, "Idempotency key must be at least 8 characters")
+  .max(255, "Idempotency key must be at most 255 characters");
+
 export const createBatchSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   recipients: z.array(batchRecipientSchema).min(1).max(100),
   sourceAccountId: z.string().min(1),
+  idempotencyKey: idempotencyKeySchema.optional(),
 });
 
 // ── Multisig Schemas ──────────────────────────────────────────
@@ -186,7 +199,7 @@ export const createRecurringSchema = z.object({
 
 export const createWebhookSchema = z.object({
   url: z.string().url("Invalid webhook URL"),
-  events: z.array(z.string()).min(1, "At least one event is required"),
+  events: z.array(z.string()).default([]),
   isActive: z.boolean().default(true),
 });
 

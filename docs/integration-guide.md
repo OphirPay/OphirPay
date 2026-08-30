@@ -156,6 +156,7 @@ Payments emit lifecycle events as they progress through their lifecycle:
 Batches, recurrences, and payment requests emit their own events
 (`batch.*`, `recurrence.*`, `request.*`). Subscribe to any subset of these
 event types when registering a webhook.
+receive every event type
 
 ## Available Contract Functions
 

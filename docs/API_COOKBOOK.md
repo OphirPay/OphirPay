@@ -370,10 +370,20 @@ curl -G "$BASE/api/batches" \
 Auth: **required**. Validates up to 100 recipients, creates the batch and its
 child payments.
 
+The `Idempotency-Key` header (optional) is scoped per user and makes
+submission idempotent: re-sending the same key returns the already-created
+batch (HTTP 200 with `"deduplicated": true`) instead of double-sending. If the
+first attempt crashed before inserting child payments, a retry with the same
+key resumes only the missing payments (`"resumed": true`). The key must be
+8–255 characters; a present-but-invalid header is a `400` error. An equivalent
+`idempotencyKey` body field is accepted when no header is sent, but the header
+takes precedence.
+
 ```bash
 curl -X POST "$BASE/api/batches" \
   -H "X-API-Key: $KEY" \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: payroll-aug-2026" \
   -d '{
     "name": "August payroll",
     "description": "Monthly contractor payouts",

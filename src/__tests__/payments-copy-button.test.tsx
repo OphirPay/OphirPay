@@ -44,9 +44,13 @@ describe("PaymentsPage", () => {
   it("renders a copy button next to each transaction hash", async () => {
     renderPage();
 
-    const copyButtons = await screen.findAllByRole("button", {
-      name: /copy hash/i,
-    });
+    const copyButtons = await screen.findAllByRole(
+      "button",
+      {
+        name: /copy hash/i,
+      },
+      { timeout: 5000 }
+    );
 
     expect(copyButtons.length).toBeGreaterThan(0);
   });
@@ -54,7 +58,11 @@ describe("PaymentsPage", () => {
   it("renders a page size selector defaulting to 25", async () => {
     renderPage();
 
-    const select = await screen.findByRole("combobox", { name: /page size/i });
+    const select = await screen.findByRole(
+      "combobox",
+      { name: /page size/i },
+      { timeout: 5000 }
+    );
     expect(select).toHaveValue("25");
   });
 

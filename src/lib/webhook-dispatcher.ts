@@ -8,6 +8,7 @@ import {
   getCurrentRequestId,
   requestIdContext,
 } from "@/lib/request-context";
+import { isSubscribedToEvent } from "./webhook-filter";
 
 /**
  * Fire-and-forget webhook dispatch for a given event type.
@@ -45,13 +46,16 @@ export async function dispatchWebhookEvent(
 
   await run(async () => {
     try {
-      const webhooks = await prisma.webhook.findMany({
+      const activeWebhooks = await prisma.webhook.findMany({
         where: {
           isActive: true,
-          events: { contains: event },
           ...(scopedUserId ? { userId: scopedUserId } : {}),
         },
       });
+      const webhooks = activeWebhooks.filter(
+        (wh: Awaited<ReturnType<typeof prisma.webhook.findMany>>[number]) =>
+          isSubscribedToEvent(wh.events, event),
+      );
 
       if (webhooks.length === 0) return;
 

@@ -272,6 +272,12 @@ model Batch {
   name        String
   /// Optional longer description of the batch.
   description String?
+
+  // Idempotency (issue #170): a client-supplied key lets a retry of a batch
+  // submission be recognized as a duplicate. Deduplication is scoped per
+  // user, so two different users can safely reuse the same key.
+  idempotencyKey String?
+
   /// Lifecycle status (see BatchStatus enum).
   status      BatchStatus @default(CREATED)
   /// When the batch was created.
@@ -288,6 +294,7 @@ model Batch {
   @@index([userId])
   /// Speeds up status-filtered batch lists.
   @@index([status])
+  @@unique([userId, idempotencyKey])
 }
 
 /// Lifecycle of a Batch. CREATED → PROCESSING → COMPLETED; a batch that

@@ -47,7 +47,7 @@ describe("dispatchWebhookEvent — request id propagation", () => {
   it("carries the originating request id through dispatch and delivery logs end to end", async () => {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     mocks.findMany.mockResolvedValue([
-      { url: "https://example.com/hook", secret: "s" },
+      { url: "https://example.com/hook", secret: "s", events: "[]" },
     ]);
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 }) as unknown as typeof fetch;
 
@@ -69,7 +69,7 @@ describe("dispatchWebhookEvent — request id propagation", () => {
   it("logs without a request id when dispatched outside a request context", async () => {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     mocks.findMany.mockResolvedValue([
-      { url: "https://example.com/hook", secret: "s" },
+      { url: "https://example.com/hook", secret: "s", events: "[]" },
     ]);
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 }) as unknown as typeof fetch;
 

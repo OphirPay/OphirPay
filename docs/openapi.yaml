@@ -504,8 +504,20 @@ paths:
           $ref: "#/components/responses/Unauthorized"
     post:
       tags: [Batches]
-      summary: Create a batch payment
+      summary: Create a batch payment (idempotent)
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, minLength: 8, maxLength: 255 }
+          description: >-
+            Per-user key that makes submission idempotent. Re-sending the same
+            key returns the already-created batch (200) instead of double
+            sending; if the first attempt crashed before inserting child
+            payments, a retry resumes only the missing ones. An equivalent
+            `idempotencyKey` body field is accepted when no header is sent, but
+            the header takes precedence.
       requestBody:
         required: true
         content:
@@ -513,12 +525,16 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateBatchRequest"
       responses:
+        "200":
+          description: Already-processed batch returned for a replayed idempotency key (meta.deduplicated is true)
         "201":
           description: Batch created with child payments
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/batches/{id}:
     get:
@@ -1455,6 +1471,13 @@ components:
                 maxLength: 28
         sourceAccountId:
           type: string
+        idempotencyKey:
+          type: string
+          minLength: 8
+          maxLength: 255
+          description: >-
+            Optional body-form idempotency key. The Idempotency-Key header
+            takes precedence when both are provided.
 
     CreateRecurrenceRequest:
       type: object

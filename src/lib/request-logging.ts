@@ -1,22 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "@/lib/logger";
 import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
+import {
+  requestIdContext,
+  getCurrentRequestId,
+} from "@/lib/request-context";
 
-/**
- * Async context carrying the current request's id. The proxy (`src/proxy.ts`)
- * mints the id and returns it in the `X-Request-Id` response header; route
- * handlers read the same value back off the incoming request headers, so any
- * deep call site (e.g. `handleApiError`) can attach it to error logs without
- * threading it through every function signature.
- */
-export const requestIdContext = new AsyncLocalStorage<string>();
-
-/** Read the current request's id (undefined outside a handled request). */
-export function getCurrentRequestId(): string | undefined {
-  return requestIdContext.getStore();
-}
+// Re-export so existing imports from `@/lib/request-logging` keep working.
+// The context itself lives in the leaf `request-context` module so the
+// logger can read it without forming an import cycle with this file.
+export { requestIdContext, getCurrentRequestId };
 
 /**
  * Loose constraint accepted by every App Router handler shape — zero, one, or

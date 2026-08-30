@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import { getCurrentRequestId } from "@/lib/request-context";
+
 /**
  * Structured logger for API requests and application events.
  * In production, replace console.log with a proper logger (e.g., pino, winston).
@@ -14,6 +16,29 @@ interface LogEntry {
   context?: Record<string, unknown>;
 }
 
+/**
+ * Attach the current request id (from the async request context) to a log
+ * entry's context when the caller did not already provide one. This is what
+ * makes "every log entry for one request shares an id end to end" true
+ * without requiring every call site to thread the id through manually — the
+ * request-logging middleware sets the context once, and the logger reads it
+ * for every subsequent line in that request.
+ *
+ * A caller-provided `requestId` (e.g. `logger.request()` or `handleApiError`)
+ * always wins, so explicit ids are preserved verbatim. The caller's object is
+ * never mutated; a new context is returned when an id is attached.
+ */
+function withRequestId(
+  context: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  const id = getCurrentRequestId();
+  if (!id) return context;
+  if (context && Object.prototype.hasOwnProperty.call(context, "requestId")) {
+    return context;
+  }
+  return { ...(context ?? {}), requestId: id };
+}
+
 function formatEntry(entry: LogEntry): string {
   return JSON.stringify(entry);
 }
@@ -23,7 +48,7 @@ function log(level: LogLevel, message: string, context?: Record<string, unknown>
     timestamp: new Date().toISOString(),
     level,
     message,
-    context,
+    context: withRequestId(context),
   };
 
   const line = formatEntry(entry);

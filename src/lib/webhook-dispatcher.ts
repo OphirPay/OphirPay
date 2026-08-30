@@ -4,6 +4,10 @@ import prisma from "@/lib/prisma";
 import { deliverWebhook } from "@/lib/webhook-deliver";
 import { logger } from "@/lib/logger";
 import type { WebhookEventType } from "@/app/api/webhooks/event-types";
+import {
+  getCurrentRequestId,
+  requestIdContext,
+} from "@/lib/request-context";
 
 /**
  * Fire-and-forget webhook dispatch for a given event type.
@@ -28,40 +32,53 @@ export async function dispatchWebhookEvent(
   // Guard: only run on server (Prisma needs Node runtime)
   if (typeof window !== "undefined") return;
 
-  try {
-    const webhooks = await prisma.webhook.findMany({
-      where: {
-        isActive: true,
-        events: { contains: event },
-        ...(scopedUserId ? { userId: scopedUserId } : {}),
-      },
-    });
+  // Capture the originating request id and re-enter the request context for
+  // the whole dispatch + delivery. Webhook dispatch is frequently scheduled
+  // fire-and-forget (dispatchWebhookEventAsync) and the delivery retries use
+  // setTimeout backoffs; re-entering the context explicitly guarantees every
+  // log line emitted along the way (this function, deliverWebhook, and the
+  // retry loop) carries the same request id end to end, independent of
+  // AsyncLocalStorage surviving the unawaited `void` boundary.
+  const requestId = getCurrentRequestId();
+  const run = <T>(fn: () => Promise<T>): Promise<T> =>
+    requestId ? (requestIdContext.run(requestId, fn) as Promise<T>) : fn();
 
-    if (webhooks.length === 0) return;
+  await run(async () => {
+    try {
+      const webhooks = await prisma.webhook.findMany({
+        where: {
+          isActive: true,
+          events: { contains: event },
+          ...(scopedUserId ? { userId: scopedUserId } : {}),
+        },
+      });
 
-    const payload = {
-      event,
-      timestamp: new Date().toISOString(),
-      data,
-    };
+      if (webhooks.length === 0) return;
 
-    logger.info("Dispatching webhooks", { event, count: webhooks.length });
+      const payload = {
+        event,
+        timestamp: new Date().toISOString(),
+        data,
+      };
 
-    // Fire all webhook deliveries in parallel (non-blocking)
-    const results = await Promise.allSettled(
-      webhooks.map((wh) => deliverWebhook(wh.url, wh.secret, payload)),
-    );
+      logger.info("Dispatching webhooks", { event, count: webhooks.length });
 
-    const succeeded = results.filter((r) => r.status === "fulfilled" && r.value).length;
-    const failed = results.length - succeeded;
+      // Fire all webhook deliveries in parallel (non-blocking)
+      const results = await Promise.allSettled(
+        webhooks.map((wh) => deliverWebhook(wh.url, wh.secret, payload)),
+      );
 
-    if (failed > 0) {
-      logger.warn("Some webhook deliveries failed", { event, succeeded, failed });
+      const succeeded = results.filter((r) => r.status === "fulfilled" && r.value).length;
+      const failed = results.length - succeeded;
+
+      if (failed > 0) {
+        logger.warn("Some webhook deliveries failed", { event, succeeded, failed });
+      }
+    } catch (err) {
+      // Never throw — webhook delivery is best-effort and must not break the caller
+      logger.error("Webhook dispatch error", { event, error: String(err) });
     }
-  } catch (err) {
-    // Never throw — webhook delivery is best-effort and must not break the caller
-    logger.error("Webhook dispatch error", { event, error: String(err) });
-  }
+  });
 }
 
 /**

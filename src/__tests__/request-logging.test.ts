@@ -186,3 +186,81 @@ describe("request id in error logs", () => {
     expect(context.requestId).toBeUndefined();
   });
 });
+
+describe("request id in every log line", () => {
+  it("attaches the current request id to logger.info via async context", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    return requestIdContext
+      .run("req_e2e", async () => {
+        logger.info("doing work", { foo: 1 });
+      })
+      .then(() => {
+        expect(spy).toHaveBeenCalledTimes(1);
+        const line = JSON.parse(spy.mock.calls[0][0]);
+        expect(line.level).toBe("info");
+        expect(line.context).toMatchObject({ foo: 1, requestId: "req_e2e" });
+        spy.mockRestore();
+      });
+  });
+
+  it("attaches the current request id to logger.warn", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    return requestIdContext
+      .run("req_warn_id", async () => {
+        logger.warn("careful");
+      })
+      .then(() => {
+        const line = JSON.parse(spy.mock.calls[0][0]);
+        expect(line.context).toMatchObject({ requestId: "req_warn_id" });
+        spy.mockRestore();
+      });
+  });
+
+  it("lets a caller-provided requestId win over the async context", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    return requestIdContext
+      .run("req_ctx", async () => {
+        logger.info("x", { requestId: "explicit_id" });
+      })
+      .then(() => {
+        const line = JSON.parse(spy.mock.calls[0][0]);
+        expect(line.context.requestId).toBe("explicit_id");
+        spy.mockRestore();
+      });
+  });
+
+  it("does not attach a request id outside a request context", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    logger.info("no context here", { foo: 2 });
+
+    const line = JSON.parse(spy.mock.calls[0][0]);
+    expect(line.context).toMatchObject({ foo: 2 });
+    expect(line.context).not.toHaveProperty("requestId");
+    spy.mockRestore();
+  });
+
+  it("an arbitrary logger.info inside withRequestLogging shares the request id returned on the response", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    let loggedId: string | undefined;
+
+    const handler = withRequestLogging(async () => {
+      logger.info("handler working");
+      loggedId = getCurrentRequestId();
+      return new Response("ok", { status: 200 });
+    });
+
+    const response = await handler(new Request("https://example.com/api/x"));
+
+    // Find the info line (the request() summary also uses console.log/info).
+    const infoLine = spy.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.message === "handler working");
+    expect(infoLine).toBeDefined();
+    expect(infoLine.context.requestId).toBe(loggedId);
+    expect(response.headers.get(REQUEST_ID_HEADER)).toBe(loggedId);
+    spy.mockRestore();
+  });
+});

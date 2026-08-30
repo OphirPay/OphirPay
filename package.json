@@ -65,6 +65,7 @@
     "@stellar/stellar-sdk": "^13.2.0",
     "@tanstack/react-query": "^5.101.4",
     "next": "^16.3.0",
+    "next-themes": "^0.4.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^4.4.3"
@@ -79,6 +80,7 @@
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/jest-axe": "^3.5.9",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
@@ -86,6 +88,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.26.0",
     "eslint-config-next": "^16.3.0",
+    "jest-axe": "^11.0.0",
     "jsdom": "^29.1.1",
     "prisma": "^6.5.0",
     "puppeteer": "^25.4.0",

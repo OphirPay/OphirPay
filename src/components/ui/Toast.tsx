@@ -95,7 +95,37 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <ToastViewport toasts={toasts} onDismiss={dismiss} />
+      <ToastAnnouncer toasts={toasts} />
     </ToastContext.Provider>
+  );
+}
+
+// ── Announcer ──────────────────────────────────────────────────
+
+function ToastAnnouncer({ toasts }: { toasts: ToastItem[] }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="sr-only">
+      <div role="status" aria-live="polite" aria-atomic="false">
+        {toasts
+          .filter((t) => t.variant !== "error")
+          .map((t) => (
+            <div key={t.id}>
+              {t.title} {t.description}
+            </div>
+          ))}
+      </div>
+      <div role="alert" aria-live="assertive" aria-atomic="false">
+        {toasts
+          .filter((t) => t.variant === "error")
+          .map((t) => (
+            <div key={t.id}>
+              {t.title} {t.description}
+            </div>
+          ))}
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -112,16 +142,15 @@ function ToastViewport({
 
   return createPortal(
     <div
-      aria-live="polite"
-      aria-atomic="false"
       className="fixed bottom-4 right-4 z-[60] flex flex-col gap-2 w-full max-w-sm pointer-events-none"
     >
       {toasts.map((t) => {
         const styles = variantStyles[t.variant];
+        
         return (
           <div
             key={t.id}
-            role="status"
+            aria-hidden="true"
             className="pointer-events-auto bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl p-4 flex items-start gap-3 animate-fade-in-up"
           >
             <svg

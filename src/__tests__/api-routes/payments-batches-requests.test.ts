@@ -25,6 +25,21 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
       create: vi.fn(),
     },
+    $transaction: vi.fn(async (cb: (tx: unknown) => unknown) =>
+      cb({
+        batch: {
+          create: vi.fn().mockResolvedValue({ id: "batch_123", name: "Payroll Jan" }),
+          findUnique: vi.fn().mockResolvedValue({
+            id: "batch_123",
+            name: "Payroll Jan",
+            payments: [{ id: "p1" }, { id: "p2" }],
+          }),
+        },
+        payment: {
+          createMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+    ),
   },
 }));
 

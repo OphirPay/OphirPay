@@ -20,7 +20,7 @@ const BATCH_STATUSES: BatchStatus[] = [
 ];
 
 /** Terminal statuses that count as "failed" for progress reporting. */
-const FAILED_STATUSES = new Set<PaymentStatus>(["FAILED", "CANCELLED"]);
+const FAILED_STATUSES = new Set<string>(["FAILED", "CANCELLED"]);
 
 /**
  * GET /api/batches/summary — roll up batch statuses into counts

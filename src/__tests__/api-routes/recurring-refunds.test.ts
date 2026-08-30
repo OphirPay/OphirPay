@@ -12,8 +12,12 @@ vi.mock("@/lib/prisma", () => ({
     },
     refund: {
       findMany: vi.fn(),
+      findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn(),
       updateMany: vi.fn(),
+    },
+    auditLog: {
+      create: vi.fn().mockResolvedValue({ id: "audit_1" }),
     },
   },
 }));

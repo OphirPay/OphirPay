@@ -115,7 +115,7 @@ export function NotificationCenter() {
         aria-haspopup="true"
         title="Payment Notifications"
         data-testid="notification-bell-btn"
-        className="relative p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-ophir-500"
+        className="relative p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-ophir-500"
       >
         <BellIcon className="w-5 h-5" />
         {hasUnread && (
@@ -148,7 +148,7 @@ export function NotificationCenter() {
                 className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
                   isConnected
                     ? "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-300"
                 }`}
               >
                 <span
@@ -181,7 +181,7 @@ export function NotificationCenter() {
               className={`pb-2 border-b-2 transition-colors ${
                 activeTab === "all"
                   ? "border-ophir-600 text-ophir-600 dark:border-ophir-400 dark:text-ophir-400 font-semibold"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200"
               }`}
             >
               All ({notifications.length})
@@ -192,7 +192,7 @@ export function NotificationCenter() {
               className={`pb-2 border-b-2 transition-colors ${
                 activeTab === "unread"
                   ? "border-ophir-600 text-ophir-600 dark:border-ophir-400 dark:text-ophir-400 font-semibold"
-                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-200"
               }`}
             >
               Unread ({unreadCount})
@@ -212,7 +212,7 @@ export function NotificationCenter() {
                 <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
                   No notifications yet
                 </p>
-                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                <p className="text-[11px] text-gray-400 dark:text-gray-400 mt-0.5">
                   Payment events and transfers will show up here in real time.
                 </p>
               </div>
@@ -244,7 +244,7 @@ export function NotificationCenter() {
                           />
                         )}
                       </div>
-                      <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0 whitespace-nowrap">
+                      <span className="text-[10px] text-gray-400 dark:text-gray-400 shrink-0 whitespace-nowrap">
                         {timeAgo(new Date(item.timestamp).toISOString())}
                       </span>
                     </div>
@@ -262,7 +262,7 @@ export function NotificationCenter() {
                       )}
 
                       {item.counterparty && (
-                        <span className="font-mono text-gray-500 dark:text-gray-400">
+                        <span className="font-mono text-gray-500 dark:text-gray-300">
                           {shortenAddress(item.counterparty, 4)}
                         </span>
                       )}
@@ -298,7 +298,7 @@ export function NotificationCenter() {
               <button
                 onClick={clearAll}
                 data-testid="clear-all-btn"
-                className="text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors"
+                className="text-gray-500 hover:text-red-600 dark:text-gray-300 dark:hover:text-red-400 transition-colors"
               >
                 Clear all
               </button>

@@ -182,7 +182,7 @@ export default function GovernancePage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">🏛 Governance</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             DAO-ready proposal → vote → execute workflow
           </p>
         </div>
@@ -249,7 +249,7 @@ export default function GovernancePage() {
                                   : "Closed"}
                             </Badge>
                           </div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                          <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
                             {p.description}
                           </p>
                           <span className="text-xs text-gray-400 mt-1 block">

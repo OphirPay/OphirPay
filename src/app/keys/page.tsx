@@ -151,7 +151,7 @@ export default function ApiKeysPage() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           API Keys
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-gray-500 dark:text-gray-300 mt-1">
           Create keys with scoped permissions. Each key only grants the scopes
           you select.
         </p>
@@ -200,7 +200,7 @@ export default function ApiKeysPage() {
                     <span className="font-mono font-medium text-gray-800 dark:text-gray-200">
                       {scope}
                     </span>
-                    <span className="block text-gray-500 dark:text-gray-400">
+                    <span className="block text-gray-500 dark:text-gray-300">
                       {SCOPE_DESCRIPTIONS[scope]}
                     </span>
                   </span>
@@ -208,7 +208,7 @@ export default function ApiKeysPage() {
               );
             })}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+          <p className="text-xs text-gray-500 dark:text-gray-300 mt-2">
             No scopes selected means the key cannot call any scoped endpoint.
             The <span className="font-mono">admin</span> scope grants everything.
           </p>
@@ -244,9 +244,9 @@ export default function ApiKeysPage() {
         </h2>
 
         {loading ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          <p className="text-sm text-gray-500 dark:text-gray-300">Loading…</p>
         ) : keys.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-gray-500 dark:text-gray-300">
             You have no API keys yet.
           </p>
         ) : (
@@ -261,7 +261,7 @@ export default function ApiKeysPage() {
                     <p className="font-medium text-gray-900 dark:text-white">
                       {key.name}
                     </p>
-                    <p className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                    <p className="text-xs font-mono text-gray-500 dark:text-gray-300">
                       {key.prefix}… · created{" "}
                       {new Date(key.createdAt).toLocaleDateString()}
                       {key.lastUsed
@@ -270,7 +270,7 @@ export default function ApiKeysPage() {
                     </p>
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {key.scopes.length === 0 ? (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                           no scopes
                         </span>
                       ) : (

@@ -72,7 +72,7 @@ export default function AnalyticsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Analytics</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             On-chain payment metrics from the OphirPay Soroban contract
           </p>
         </div>
@@ -112,13 +112,13 @@ export default function AnalyticsPage() {
             <Card title="Daily Volume" className="lg:col-span-2" padding="md">
               {metrics.chartData.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">No timestamped data yet</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-300">No timestamped data yet</p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {metrics.chartData.slice(-14).map((d) => (
                     <div key={d.date} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-500 dark:text-gray-400 w-24 shrink-0">
+                      <span className="text-xs text-gray-500 dark:text-gray-300 w-24 shrink-0">
                         {new Date(d.date + "T00:00:00").toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
@@ -143,26 +143,26 @@ export default function AnalyticsPage() {
             <Card title="Summary" padding="md">
               <div className="space-y-4">
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Unique Payees</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-300">Unique Payees</span>
                   <span className="text-sm font-mono font-medium text-gray-900 dark:text-white">
                     {metrics.uniquePayees}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Largest Payment</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-300">Largest Payment</span>
                   <span className="text-sm font-mono font-medium text-gray-900 dark:text-white">
                     {formatAmount(metrics.maxAmount, "XLM")}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Network</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-300">Network</span>
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/30 text-xs font-medium text-blue-700 dark:text-blue-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                     TESTNET
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Wallet</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-300">Wallet</span>
                   <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
                     {wallet.connected ? "Connected" : "—"}
                   </span>
@@ -191,7 +191,7 @@ function MetricCard({
         <span className="text-2xl">{icon}</span>
       </div>
       <p className="text-xl font-bold text-gray-900 dark:text-white truncate">{value}</p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{label}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">{label}</p>
     </Card>
   );
 }

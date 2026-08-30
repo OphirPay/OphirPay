@@ -135,7 +135,7 @@ export default function RequestsPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Payment Requests
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             {requests.length > 0
               ? `${requests.length} request${requests.length !== 1 ? "s" : ""}`
               : "Create and share payment request links with your payers"}
@@ -185,7 +185,7 @@ export default function RequestsPage() {
                     <StatusBadge status={req.status} />
                   </div>
                   {req.description && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
                       {req.description}
                     </p>
                   )}
@@ -220,7 +220,7 @@ export default function RequestsPage() {
                       setSelectedRequest(req);
                       setShowQR(true);
                     }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-colors"
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-colors"
                   >
                     QR Code
                   </button>
@@ -370,13 +370,13 @@ export default function RequestsPage() {
                 {formatAmount(selectedRequest.amount, selectedRequest.assetCode)}
               </p>
               {selectedRequest.description && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
                   {selectedRequest.description}
                 </p>
               )}
             </div>
             <div className="flex items-center justify-center gap-2">
-              <code className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate max-w-[240px]">
+              <code className="text-xs font-mono text-gray-500 dark:text-gray-300 truncate max-w-[240px]">
                 {getPaymentLink(selectedRequest)}
               </code>
               <CopyButton value={getPaymentLink(selectedRequest)} />

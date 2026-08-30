@@ -221,7 +221,7 @@ export default function RefundsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">↩️ Refunds</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             Structured refund lifecycle — Request → Approve → Process
           </p>
         </div>
@@ -234,7 +234,7 @@ export default function RefundsPage() {
               className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                 activeTab === "list"
                   ? "bg-blue-600 text-white"
-                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               }`}
             >
               List
@@ -246,7 +246,7 @@ export default function RefundsPage() {
               className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                 activeTab === "analytics"
                   ? "bg-blue-600 text-white"
-                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               }`}
             >
               Analytics
@@ -267,7 +267,7 @@ export default function RefundsPage() {
             <div className="space-y-2">
               {analytics.map((entry) => (
                 <div key={entry.code} className="flex items-center gap-3">
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400 w-32">
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-300 w-32">
                     {reasonLabel(entry.code)}
                   </span>
                   <div className="flex-1 h-5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -316,7 +316,7 @@ export default function RefundsPage() {
                     </Badge>
                     <Badge variant="default">{reasonLabel(r.reasonCode)}</Badge>
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{r.reason}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{r.reason}</p>
                   <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
                     <span>Amount: {r.amount} {r.asset || "native"}</span>
                     <span>Requested: {new Date(r.requestedAt).toLocaleDateString()}</span>

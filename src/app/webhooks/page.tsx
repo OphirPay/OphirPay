@@ -141,7 +141,7 @@ export default function WebhooksPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Webhooks</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             {webhooks.length > 0
               ? `${webhooks.length} endpoint${webhooks.length !== 1 ? "s" : ""} configured`
               : "Configure webhook endpoints for real-time payment event notifications"}
@@ -343,7 +343,7 @@ export default function WebhooksPage() {
               </div>
             </div>
             <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4">
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+              <p className="text-xs text-gray-600 dark:text-gray-300 mb-2">
                 Verify your endpoint with curl:
               </p>
               <pre className="text-xs bg-gray-900 text-green-400 rounded-lg p-3 overflow-x-auto">
@@ -381,7 +381,7 @@ export default function WebhooksPage() {
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
                       formEvents.includes(evt)
                         ? "bg-ophir-50 dark:bg-ophir-950/30 border-ophir-300 dark:border-ophir-700 text-ophir-700 dark:text-ophir-300 ring-1 ring-ophir-500"
-                        : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600"
+                        : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
                     }`}
                   >
                     <input

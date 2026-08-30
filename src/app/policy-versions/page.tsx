@@ -80,7 +80,7 @@ export default function PolicyVersionsPage() {
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Policy Version History</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-gray-500 dark:text-gray-300 mt-1">
           Immutable on-chain record of all configuration changes — capped at 100 versions
         </p>
       </div>
@@ -94,7 +94,7 @@ export default function PolicyVersionsPage() {
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === tab.key
                 ? "bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                : "text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-300"
             }`}
           >
             {tab.label}

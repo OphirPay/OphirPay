@@ -15,7 +15,7 @@ export function Header() {
       <div className="flex items-center justify-between h-full px-4 md:px-6">
         {/* Left: Page title / breadcrumb area */}
         <div className="flex items-center gap-4">
-          <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 hidden md:block">
+          <h2 className="text-sm font-medium text-gray-500 dark:text-gray-300 hidden md:block">
             Financial Operations Platform
           </h2>
         </div>
@@ -28,7 +28,7 @@ export function Header() {
             onClick={toggle}
             aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            className="p-2 rounded-lg text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
           >
             {isDark ? (
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">

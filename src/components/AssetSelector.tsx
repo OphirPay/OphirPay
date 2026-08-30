@@ -180,7 +180,7 @@ export function AssetSelector({
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="text-xs text-gray-500 dark:text-gray-300">
                       {bal}
                     </span>
                     {asset.type !== "native" && (

@@ -156,7 +156,7 @@ export function Modal({
                 </h2>
               )}
               {description && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">
                   {description}
                 </p>
               )}

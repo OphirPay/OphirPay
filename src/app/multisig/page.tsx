@@ -217,7 +217,7 @@ export default function MultisigPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Multisig Approvals
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             N-of-M signer approval workflow for high-value payments
           </p>
         </div>
@@ -283,11 +283,11 @@ export default function MultisigPage() {
                     <Badge variant={req.executed ? "success" : "info"}>
                       {req.executed ? "Executed" : "Pending"}
                     </Badge>
-                    <span className="text-sm font-mono text-gray-600 dark:text-gray-400">
+                    <span className="text-sm font-mono text-gray-600 dark:text-gray-300">
                       ID: {req.id}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
                     To: <code className="text-xs">{req.payee?.slice(0, 12)}...</code>
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">

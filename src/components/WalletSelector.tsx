@@ -49,7 +49,7 @@ export function WalletSelector({
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">
                 Connect Wallet
               </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              <p className="text-sm text-gray-500 dark:text-gray-300 mt-0.5">
                 Choose your Stellar wallet
               </p>
             </div>
@@ -103,7 +103,7 @@ export function WalletSelector({
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">
                       {wallet.name}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-xs text-gray-500 dark:text-gray-300">
                       {wallet.description}
                     </p>
                   </div>
@@ -136,7 +136,7 @@ export function WalletSelector({
                         Installed
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-300">
                         Not found
                       </span>
                     )}

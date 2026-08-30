@@ -26,7 +26,7 @@ export default function ErrorPage({
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
           Something went wrong
         </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+        <p className="text-sm text-gray-500 dark:text-gray-300 mb-6">
           {error.message || "An unexpected error occurred. Please try again."}
         </p>
         <button

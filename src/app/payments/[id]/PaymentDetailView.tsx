@@ -96,7 +96,7 @@ export default function PaymentDetailView({ id }: { id: string }) {
               {shortenAddress(payment.id, 8)}
             </span>
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             Details for payment record {payment.id}
           </p>
         </div>
@@ -153,7 +153,7 @@ export default function PaymentDetailView({ id }: { id: string }) {
                 <CopyButton value={payment.transactionHash} label="Hash" />
               </div>
             ) : (
-              <span className="text-gray-400 dark:text-gray-500">—</span>
+              <span className="text-gray-400 dark:text-gray-400">—</span>
             )}
           </DetailRow>
           {payment.batchId && (
@@ -189,7 +189,7 @@ function DetailRow({
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-3 px-4">
-      <dt className="text-gray-500 dark:text-gray-400 font-medium">
+      <dt className="text-gray-500 dark:text-gray-300 font-medium">
         {label}
       </dt>
       <dd className="sm:col-span-2 text-gray-700 dark:text-gray-300">

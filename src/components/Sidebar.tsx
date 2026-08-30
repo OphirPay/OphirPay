@@ -154,10 +154,10 @@ export function Sidebar() {
           "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
           isActive
             ? "bg-ophir-50 dark:bg-ophir-950/30 text-ophir-700 dark:text-ophir-400"
-            : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-gray-900 dark:hover:text-white"
+            : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-gray-900 dark:hover:text-white"
         )}
       >
-        <span className={cn("transition-colors duration-200", isActive ? "text-ophir-600 dark:text-ophir-400" : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300")}>
+        <span className={cn("transition-colors duration-200", isActive ? "text-ophir-600 dark:text-ophir-400" : "text-gray-400 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300")}>
           <item.Icon className="w-5 h-5" />
         </span>
         {item.label}
@@ -168,14 +168,14 @@ export function Sidebar() {
 
   const footer = (
     <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800">
-      <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+      <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-400">
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-stellar opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-stellar" />
         </span>
         Stellar Testnet
       </div>
-      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">OphirPay v1.0.0-rc1</p>
+      <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">OphirPay v1.0.0-rc1</p>
     </div>
   );
 
@@ -205,7 +205,7 @@ export function Sidebar() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Stellar Payments</p>
+            <p className="text-xs text-gray-500 dark:text-gray-300">Stellar Payments</p>
           </div>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>

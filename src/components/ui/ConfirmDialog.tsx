@@ -31,7 +31,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Modal open={open} onClose={onClose} title={title} size="sm">
-      <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
+      <p className="text-sm text-gray-600 dark:text-gray-300">{description}</p>
       <div className="flex justify-end gap-3 mt-4">
         <Button variant="outline" onClick={onClose}>
           {cancelLabel}

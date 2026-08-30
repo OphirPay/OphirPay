@@ -454,7 +454,7 @@ function SendPageClient() {
           <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
             Connect Your Wallet
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+          <p className="text-sm text-gray-500 dark:text-gray-300 mb-2">
             You need to connect a Stellar wallet to send payments.
           </p>
           <Link
@@ -495,14 +495,14 @@ function SendPageClient() {
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
             {result.isCrossAsset ? "Path Payment Completed!" : "Payment Sent!"}
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-6">
+          <p className="text-gray-500 dark:text-gray-300 mb-6">
             Your transaction has been confirmed on the Stellar network.
           </p>
 
           {/* Transaction details */}
           <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 text-left space-y-3 mb-6">
             <div className="flex justify-between">
-              <span className="text-sm text-gray-500 dark:text-gray-400">
+              <span className="text-sm text-gray-500 dark:text-gray-300">
                 {result.isCrossAsset ? "You Sent" : "Amount"}
               </span>
               <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
@@ -513,7 +513,7 @@ function SendPageClient() {
             {result.isCrossAsset && result.destAsset && (
               <>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                  <span className="text-sm text-gray-500 dark:text-gray-300">
                     Recipient Receives (est.)
                   </span>
                   <span className="text-sm font-mono font-semibold text-green-600 dark:text-green-400">
@@ -523,7 +523,7 @@ function SendPageClient() {
 
                 {result.exchangeRate !== undefined && (
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                    <span className="text-sm text-gray-500 dark:text-gray-300">
                       Exchange Rate
                     </span>
                     <span className="text-xs font-mono text-gray-700 dark:text-gray-300">
@@ -535,14 +535,14 @@ function SendPageClient() {
             )}
 
             <div className="flex justify-between">
-              <span className="text-sm text-gray-500 dark:text-gray-400">To</span>
+              <span className="text-sm text-gray-500 dark:text-gray-300">To</span>
               <span className="text-sm font-mono text-gray-900 dark:text-white">
                 {shortenAddress(result.destination, 6)}
               </span>
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500 dark:text-gray-400">TX Hash</span>
+              <span className="text-sm text-gray-500 dark:text-gray-300">TX Hash</span>
               <span className="flex items-center gap-2">
                 <a
                   href={getStellarExplorerUrl(result.txHash)}
@@ -557,7 +557,7 @@ function SendPageClient() {
             </div>
 
             <div className="flex justify-between">
-              <span className="text-sm text-gray-500 dark:text-gray-400">On-chain record</span>
+              <span className="text-sm text-gray-500 dark:text-gray-300">On-chain record</span>
               {result.onChain?.status === "RECORDED" ? (
                 <a
                   href={
@@ -670,7 +670,7 @@ function SendPageClient() {
       <div className="mb-6">
         <Link
           href="/"
-          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          className="text-sm text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
         >
           ← Dashboard
         </Link>
@@ -687,7 +687,7 @@ function SendPageClient() {
             </span>
           )}
         </div>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-gray-500 dark:text-gray-300 mt-1">
           {isCrossAsset
             ? `Cross-asset transfer: Pay in ${selectedAsset.code}, recipient receives ${destAsset.code}`
             : `Send ${selectedAsset.code} on the Stellar Testnet`}
@@ -698,13 +698,13 @@ function SendPageClient() {
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">From</p>
+            <p className="text-sm text-gray-500 dark:text-gray-300">From</p>
             <p className="text-sm font-mono font-medium text-gray-900 dark:text-white">
               {shortenAddress(wallet.publicKey!, 6)}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Balance</p>
+            <p className="text-sm text-gray-500 dark:text-gray-300">Balance</p>
             <p className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
               {wallet.balance !== null
                 ? formatAmount(parseFloat(wallet.balance), "XLM")
@@ -794,7 +794,7 @@ function SendPageClient() {
 
           {feeEstimate && (
             <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className="text-gray-500 dark:text-gray-300">
                 Network fee: ~{feeEstimate.baseFee} stroops
               </span>
               <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
@@ -828,7 +828,7 @@ function SendPageClient() {
             {pathEstimate && !isEstimating && (
               <div className="space-y-2 text-xs pt-1">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500 dark:text-gray-400">Exchange Rate:</span>
+                  <span className="text-gray-500 dark:text-gray-300">Exchange Rate:</span>
                   <span
                     data-testid="exchange-rate-display"
                     className="font-mono font-medium text-gray-900 dark:text-white"
@@ -838,7 +838,7 @@ function SendPageClient() {
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500 dark:text-gray-400">Estimated Receipt:</span>
+                  <span className="text-gray-500 dark:text-gray-300">Estimated Receipt:</span>
                   <span
                     data-testid="estimated-dest-amount"
                     className="font-mono font-semibold text-green-600 dark:text-green-400 text-sm"
@@ -904,7 +904,7 @@ function SendPageClient() {
                 <span className="font-medium text-gray-800 dark:text-gray-200">
                   Fund new account (sponsor)
                 </span>
-                <span className="block text-gray-500 dark:text-gray-400 mt-0.5">
+                <span className="block text-gray-500 dark:text-gray-300 mt-0.5">
                   This address isn’t funded yet. Sponsor its creation by sending a{" "}
                   {SPONSOR_MIN_STARTING_BALANCE} XLM reserve in the same transaction
                   (total debited: {SPONSOR_MIN_STARTING_BALANCE} XLM + your amount + fee).
@@ -986,7 +986,7 @@ function SendPageClient() {
         </button>
 
         {isSubmitting && (
-          <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">
+          <p className="text-xs text-center text-gray-500 dark:text-gray-300 mt-2">
             {step === "signing"
               ? "Check your wallet to approve the transaction..."
               : step === "submitting"

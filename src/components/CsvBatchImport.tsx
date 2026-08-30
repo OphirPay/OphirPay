@@ -163,7 +163,7 @@ export function CsvBatchImport({
             "w-10 h-10 mx-auto mb-3",
             isDragActive
               ? "text-ophir-600 dark:text-ophir-400"
-              : "text-gray-400 dark:text-gray-500"
+              : "text-gray-400 dark:text-gray-400"
           )}
         >
           <path
@@ -177,7 +177,7 @@ export function CsvBatchImport({
             ? "Drop your CSV here"
             : "Drag & drop your CSV file here, or click to browse"}
         </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-xs text-gray-500 dark:text-gray-300 mt-1">
           Columns: <span className="font-mono">address,amount,memo</span> — up
           to {MAX_BATCH_RECIPIENTS} recipients
         </p>
@@ -251,7 +251,7 @@ export function CsvBatchImport({
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="csv-preview-table">
               <thead>
-                <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
+                <tr className="text-left text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50">
                   <th className="py-2.5 px-3 font-medium w-12">#</th>
                   <th className="py-2.5 px-3 font-medium min-w-[240px]">
                     Address
@@ -274,7 +274,7 @@ export function CsvBatchImport({
                           "bg-red-50/50 dark:bg-red-950/20"
                       )}
                     >
-                      <td className="py-3 px-3 text-xs text-gray-500 dark:text-gray-400 font-medium">
+                      <td className="py-3 px-3 text-xs text-gray-500 dark:text-gray-300 font-medium">
                         {r.sourceRow}
                       </td>
                       <td className="py-3 px-3">

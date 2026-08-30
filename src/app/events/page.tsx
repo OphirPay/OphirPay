@@ -72,7 +72,7 @@ export default function EventsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Event Streaming</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             Real-time payment events from the Stellar blockchain
           </p>
         </div>
@@ -84,7 +84,7 @@ export default function EventsPage() {
               className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                 viewMode === "live"
                   ? "bg-ophir-600 text-white"
-                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               }`}
             >
               {transport === "ws" ? "WS Live" : "SSE Live"}
@@ -94,7 +94,7 @@ export default function EventsPage() {
               className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                 viewMode === "onchain"
                   ? "bg-ophir-600 text-white"
-                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               }`}
             >
               On-Chain
@@ -107,7 +107,7 @@ export default function EventsPage() {
                 connected ? "bg-green-500 animate-pulse" : "bg-red-400"
               }`}
             />
-            <span className="text-sm text-gray-500 dark:text-gray-400">
+            <span className="text-sm text-gray-500 dark:text-gray-300">
               {connected ? "Live" : "Disconnected"}
             </span>
           </div>
@@ -138,10 +138,10 @@ export default function EventsPage() {
                 <div className="h-12 w-12 mx-auto rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3">
                   <span className="text-2xl">📡</span>
                 </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm text-gray-500 dark:text-gray-300">
                   Listening for payment events...
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">
                   Send a payment to see it appear here in real-time
                 </p>
               </div>
@@ -162,7 +162,7 @@ export default function EventsPage() {
                         {timeAgo(new Date().toISOString())}
                       </span>
                     </div>
-                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-300">
                       {evt.payer && (
                         <span>Payer: <span className="font-mono">{shortenAddress(evt.payer, 6)}</span></span>
                       )}
@@ -193,7 +193,7 @@ export default function EventsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
+                <tr className="text-left text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50">
                   <th className="py-3 px-4 font-medium">#</th>
                   <th className="py-3 px-4 font-medium">From → To</th>
                   <th className="py-3 px-4 font-medium">Amount</th>
@@ -205,7 +205,7 @@ export default function EventsPage() {
                 {onChainPayments.length === 0 && (
                   <tr>
                     <td colSpan={5} className="py-12 text-center">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">No on-chain records yet</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-300">No on-chain records yet</p>
                     </td>
                   </tr>
                 )}

@@ -185,7 +185,7 @@ export default function ContractsPage() {
       <div>
         <Link href="/" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">← Dashboard</Link>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">Soroban Contracts</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">Interact with the OphirPay smart contract on Stellar Testnet</p>
+        <p className="text-gray-500 dark:text-gray-300 mt-1">Interact with the OphirPay smart contract on Stellar Testnet</p>
       </div>
 
       {/* Contract Info */}
@@ -211,7 +211,7 @@ export default function ContractsPage() {
               className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                 functionName === fn.name
                   ? "bg-ophir-50 dark:bg-ophir-950/30 text-ophir-700 dark:text-ophir-400 border border-ophir-200"
-                  : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 hover:border-gray-300"
+                  : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 hover:border-gray-300"
               }`}
             >
               {fn.label}
@@ -237,7 +237,7 @@ export default function ContractsPage() {
           </button>
         </div>
         {selectedFn.readOnly && (
-          <p className="text-xs text-gray-400 dark:text-gray-500">
+          <p className="text-xs text-gray-400 dark:text-gray-400">
             ℹ️ <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{functionName}()</code> is read-only — no transaction signature required.
           </p>
         )}

@@ -47,13 +47,13 @@ function FieldShell({
       )}
       <div className="relative">
         {leftIcon && (
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400">
             {leftIcon}
           </span>
         )}
         {children}
         {rightIcon && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400">
             {rightIcon}
           </span>
         )}
@@ -67,7 +67,7 @@ function FieldShell({
           {error}
         </p>
       ) : hint ? (
-        <p id={id ? `${id}-hint` : undefined} className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+        <p id={id ? `${id}-hint` : undefined} className="mt-1.5 text-xs text-gray-500 dark:text-gray-300">
           {hint}
         </p>
       ) : null}

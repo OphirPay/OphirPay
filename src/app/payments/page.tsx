@@ -179,7 +179,7 @@ function PaymentsClient() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Payments
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             Payment records stored on-chain by the OphirPay Soroban contract
           </p>
         </div>
@@ -244,7 +244,7 @@ function PaymentsClient() {
           {total} on-chain {total === 1 ? "record" : "records"}
         </span>
         {!loading && filtered.length !== payments.length && (
-          <span className="text-xs text-gray-400 dark:text-gray-500">
+          <span className="text-xs text-gray-400 dark:text-gray-400">
             filtered: {filtered.length} of {payments.length}
           </span>
         )}
@@ -267,7 +267,7 @@ function PaymentsClient() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm" aria-busy={loading}>
             <thead>
-              <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
+              <tr className="text-left text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50">
                 <th className="py-3 px-4 font-medium">Payment</th>
                 <th className="py-3 px-4 font-medium">Amount</th>
                 <th className="py-3 px-4 font-medium">Status</th>
@@ -300,7 +300,7 @@ function PaymentsClient() {
               {!loading && filtered.length === 0 && !error && (
                 <tr>
                   <td colSpan={5} className="py-12 text-center">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm text-gray-500 dark:text-gray-300">
                       {search ? "No payments match your search." : "No on-chain payments yet — send one from the Send page."}
                     </p>
                   </td>
@@ -328,7 +328,7 @@ function PaymentsClient() {
                         {payment.metadata === "CANCELLED" ? "CANCELLED" : "RECORDED"}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs">
+                    <td className="py-3 px-4 text-gray-500 dark:text-gray-300 text-xs">
                       {payment.timestamp
                         ? timeAgo(new Date(payment.timestamp * 1000).toISOString())
                         : "—"}
@@ -359,7 +359,7 @@ function PaymentsClient() {
         {!loading && !error && filtered.length > 0 && (
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-800">
             <div className="flex items-center gap-3">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 Showing{" "}
                 <span className="font-medium">
                   {startIndex + 1}–

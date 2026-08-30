@@ -143,7 +143,7 @@ export default function BatchesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Batch Payments</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             Process multiple payments in a single transaction
           </p>
         </div>
@@ -174,7 +174,7 @@ export default function BatchesPage() {
             >
               <div className="flex items-center gap-2">
                 <span className={`h-2 w-2 rounded-full ${card.color.dot}`} />
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wide">
                   {card.status.replace(/_/g, " ")}
                 </span>
               </div>
@@ -190,7 +190,7 @@ export default function BatchesPage() {
       <Card title="Batch Progress" subtitle={`${totalPayments} payments across ${totalBatches} batch${totalBatches !== 1 ? "es" : ""}`} padding="md">
         <div className="space-y-3">
           <ProgressBar value={completedPct} max={100} variant="success" showLabel />
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-300">
             <span><span className="font-semibold text-green-600 dark:text-green-400">{progress?.completed ?? 0}</span> completed</span>
             <span><span className="font-semibold text-red-600 dark:text-red-400">{progress?.failed ?? 0}</span> failed</span>
             <span><span className="font-semibold text-blue-600 dark:text-blue-400">{progress?.pending ?? 0}</span> pending</span>
@@ -224,7 +224,7 @@ export default function BatchesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
+                <tr className="text-left text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50">
                   <th className="py-3 px-4 font-medium">Name</th>
                   <th className="py-3 px-4 font-medium">Payments</th>
                   <th className="py-3 px-4 font-medium">Progress</th>
@@ -265,7 +265,7 @@ export default function BatchesPage() {
                         {paymentCount > 0 ? (
                           <>
                             <ProgressBar value={pct} max={100} variant={completed === paymentCount ? "success" : failed > 0 ? "warning" : "default"} />
-                            <div className="mt-1 flex gap-x-3 text-xs text-gray-500 dark:text-gray-400">
+                            <div className="mt-1 flex gap-x-3 text-xs text-gray-500 dark:text-gray-300">
                               <span className="text-green-600 dark:text-green-400">{completed} ok</span>
                               {failed > 0 && <span className="text-red-600 dark:text-red-400">{failed} failed</span>}
                               {pending > 0 && <span className="text-blue-600 dark:text-blue-400">{pending} pending</span>}
@@ -281,7 +281,7 @@ export default function BatchesPage() {
                           {batch.status.replace(/_/g, " ")}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs">
+                      <td className="py-3 px-4 text-gray-500 dark:text-gray-300 text-xs">
                         {timeAgo(batch.createdAt)}
                       </td>
                     </tr>
@@ -294,7 +294,7 @@ export default function BatchesPage() {
           {/* Cursor pagination */}
           {batches.length > 0 && (
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-800">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 {meta?.total !== undefined
                   ? `${batches.length} of ${meta.total} batch${meta.total !== 1 ? "es" : ""}`
                   : `${batches.length} batches`}

@@ -20,7 +20,7 @@ export function Kbd({ children, className }: KbdProps) {
       className={cn(
         "inline-flex items-center justify-center h-5 min-w-[20px] px-1.5",
         "rounded text-[11px] font-mono font-medium leading-none",
-        "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400",
+        "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300",
         "border border-gray-300 dark:border-gray-700",
         "shadow-[0_1px_0_rgba(0,0,0,0.1)]",
         className

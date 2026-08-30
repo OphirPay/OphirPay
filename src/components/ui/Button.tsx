@@ -33,7 +33,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   outline:
     "bg-transparent text-ophir-700 dark:text-ophir-400 border border-ophir-300 dark:border-ophir-700 hover:bg-ophir-50 dark:hover:bg-ophir-950/30",
   ghost:
-    "bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white",
+    "bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white",
   danger:
     "bg-red-600 text-white shadow-lg shadow-red-500/25 hover:bg-red-700 active:shadow-red-500/40",
   success:

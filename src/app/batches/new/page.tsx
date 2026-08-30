@@ -283,7 +283,7 @@ export default function NewBatchPage() {
           <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
             Connect Your Wallet
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+          <p className="text-sm text-gray-500 dark:text-gray-300 mb-2">
             Connect your Stellar wallet to create batch payments.
           </p>
           <Link
@@ -323,7 +323,7 @@ export default function NewBatchPage() {
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">
               Batch Payment Sent!
             </h2>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-gray-500 dark:text-gray-300 mt-1">
               {result.items?.length} payments processed in a single transaction
             </p>
           </div>
@@ -331,7 +331,7 @@ export default function NewBatchPage() {
           {result.txHash && (
             <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 mb-6 flex items-center justify-between">
               <div>
-                <span className="text-sm text-gray-500 dark:text-gray-400">TX Hash</span>
+                <span className="text-sm text-gray-500 dark:text-gray-300">TX Hash</span>
                 <div className="flex items-center gap-2 mt-0.5">
                   <p className="text-sm font-mono text-gray-900 dark:text-white">
                     {shortenAddress(result.txHash, 10)}
@@ -351,7 +351,7 @@ export default function NewBatchPage() {
           )}
 
           <div className="space-y-2 mb-6">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wide">
               Recipients
             </h3>
             <div className="divide-y divide-gray-100 dark:divide-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -467,14 +467,14 @@ export default function NewBatchPage() {
       <div className="mb-6">
         <Link
           href="/batches"
-          className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          className="text-sm text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
         >
           ← All Batches
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">
           New Batch Payment
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-gray-500 dark:text-gray-300 mt-1">
           Send XLM to multiple recipients in a single transaction
         </p>
       </div>
@@ -483,13 +483,13 @@ export default function NewBatchPage() {
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">From</p>
+            <p className="text-sm text-gray-500 dark:text-gray-300">From</p>
             <p className="text-sm font-mono font-medium text-gray-900 dark:text-white">
               {shortenAddress(wallet.publicKey!, 6)}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Balance</p>
+            <p className="text-sm text-gray-500 dark:text-gray-300">Balance</p>
             <p className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
               {wallet.balance !== null
                 ? formatAmount(parseFloat(wallet.balance), "XLM")
@@ -519,7 +519,7 @@ export default function NewBatchPage() {
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 mode === "manual"
                   ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
-                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                  : "text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-300"
               }`}
             >
               Manual entry
@@ -532,7 +532,7 @@ export default function NewBatchPage() {
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 mode === "csv"
                   ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
-                  : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                  : "text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-300"
               }`}
             >
               Upload CSV
@@ -549,7 +549,7 @@ export default function NewBatchPage() {
         ) : (
           <>
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 Enter recipients manually
               </p>
               <button
@@ -662,7 +662,7 @@ export default function NewBatchPage() {
         </button>
 
         {isSubmitting && (
-          <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">
+          <p className="text-xs text-center text-gray-500 dark:text-gray-300 mt-2">
             {step === "signing"
               ? "Check your wallet to approve..."
               : step === "submitting"
@@ -708,7 +708,7 @@ function RecipientRow({
   return (
     <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+        <span className="text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">
           Recipient #{index + 1}
         </span>
         {canRemove && (

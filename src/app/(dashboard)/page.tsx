@@ -68,7 +68,7 @@ export default function TreasuryDashboard() {
             Treasury Dashboard
           </h1>
           <div className="flex items-center gap-2 mt-1">
-            <p className="text-gray-500 dark:text-gray-400">
+            <p className="text-gray-500 dark:text-gray-300">
               Monitor your financial operations and payment activity
             </p>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-[10px] font-medium text-blue-700 dark:text-blue-400">
@@ -192,11 +192,11 @@ export default function TreasuryDashboard() {
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
                   </span>
                 </div>
-                <p className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                <p className="text-xs font-mono text-gray-500 dark:text-gray-300">
                   {shortenAddress(wallet.publicKey, 6)}
                 </p>
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                  <span className="text-xs text-gray-500 dark:text-gray-300">
                     XLM Balance
                   </span>
                   <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
@@ -232,10 +232,10 @@ export default function TreasuryDashboard() {
                     />
                   </svg>
                 </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm text-gray-500 dark:text-gray-300">
                   Connect your Stellar wallet
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">
                   to view accounts and balances
                 </p>
               </div>
@@ -275,7 +275,7 @@ export default function TreasuryDashboard() {
             <LoadingSkeleton variant="table" lines={5} />
           ) : payments.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-300">
                 No on-chain payments yet — send one from the Send page.
               </p>
             </div>
@@ -283,7 +283,7 @@ export default function TreasuryDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">
+                  <tr className="text-left text-gray-500 dark:text-gray-300 border-b border-gray-200 dark:border-gray-800">
                     <th className="pb-3 font-medium">Payment</th>
                     <th className="pb-3 font-medium">Amount</th>
                     <th className="pb-3 font-medium">Status</th>
@@ -318,7 +318,7 @@ export default function TreasuryDashboard() {
                           {payment.metadata === "CANCELLED" ? "CANCELLED" : "RECORDED"}
                         </Badge>
                       </td>
-                      <td className="py-3 text-gray-500 dark:text-gray-400 text-xs">
+                      <td className="py-3 text-gray-500 dark:text-gray-300 text-xs">
                         {payment.timestamp
                           ? timeAgo(new Date(payment.timestamp * 1000).toISOString())
                           : "—"}
@@ -438,7 +438,7 @@ function StatCard({
             className={`text-xs font-medium ${
               trendUp
                 ? "text-green-600 dark:text-green-400"
-                : "text-gray-500 dark:text-gray-400"
+                : "text-gray-500 dark:text-gray-300"
             }`}
           >
             {trend}
@@ -450,7 +450,7 @@ function StatCard({
       <p className="text-2xl font-bold text-gray-900 dark:text-white truncate">
         {value}
       </p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{title}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-300 mt-1">{title}</p>
     </Card>
   );
 }

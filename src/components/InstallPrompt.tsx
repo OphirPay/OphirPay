@@ -85,7 +85,7 @@ export function InstallPrompt() {
             <p className="text-sm font-semibold text-gray-900 dark:text-white">
               Install OphirPay
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            <p className="text-xs text-gray-500 dark:text-gray-300 mt-0.5">
               Add to your home screen for quick access and offline support.
             </p>
           </div>

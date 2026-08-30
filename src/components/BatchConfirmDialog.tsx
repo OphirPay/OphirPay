@@ -39,15 +39,15 @@ export function BatchConfirmDialog({
         {/* Summary */}
         <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4 space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500 dark:text-gray-400">Recipients</span>
+            <span className="text-gray-500 dark:text-gray-300">Recipients</span>
             <span className="font-medium text-gray-900 dark:text-white">{recipients.length}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500 dark:text-gray-400">Total Amount</span>
+            <span className="text-gray-500 dark:text-gray-300">Total Amount</span>
             <span className="font-semibold text-gray-900 dark:text-white">{formatAmount(totalAmount, "XLM")}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500 dark:text-gray-400">Estimated Fee</span>
+            <span className="text-gray-500 dark:text-gray-300">Estimated Fee</span>
             <span className="font-medium text-gray-900 dark:text-white">{feeXlm}</span>
           </div>
         </div>
@@ -71,7 +71,7 @@ export function BatchConfirmDialog({
             ))}
           </div>
           {remainingCount > 0 && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+            <p className="text-xs text-gray-500 dark:text-gray-300 mt-2 text-center">
               …and {remainingCount} more
             </p>
           )}

@@ -131,7 +131,7 @@ export default function RecurringPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Recurring Payments
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             Schedule automated Daily, Weekly, or Monthly payments
           </p>
         </div>
@@ -163,7 +163,7 @@ export default function RecurringPage() {
                     </Badge>
                     <Badge variant="info">{rp.schedule}</Badge>
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
                     To: <code className="text-xs">{rp.payee?.slice?.(0, 12)}...</code>
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">

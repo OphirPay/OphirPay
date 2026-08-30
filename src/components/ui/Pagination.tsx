@@ -65,7 +65,7 @@ export function Pagination({
                 "w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors",
                 p === page
                   ? "bg-ophir-600 text-white"
-                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               )}
             >
               {p}

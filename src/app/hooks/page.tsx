@@ -153,7 +153,7 @@ export default function HooksPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">🔔 Notification Hooks</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             On-chain webhook subscriptions — queryable by off-chain relayers
           </p>
         </div>
@@ -186,7 +186,7 @@ export default function HooksPage() {
                     <Badge variant="info">{hook.eventType}</Badge>
                   </div>
                   <div className="mt-2 space-y-1">
-                    <p className="text-sm font-mono text-gray-600 dark:text-gray-400 break-all">
+                    <p className="text-sm font-mono text-gray-600 dark:text-gray-300 break-all">
                       {hook.webhookUrl}
                     </p>
                     <p className="text-xs text-gray-400">

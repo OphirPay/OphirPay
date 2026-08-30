@@ -151,7 +151,7 @@ export default function AuditLogPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             📋 Audit Log
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             Immutable on-chain trail of every contract state change
           </p>
         </div>

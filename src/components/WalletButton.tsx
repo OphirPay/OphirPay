@@ -100,7 +100,7 @@ export function WalletButton() {
         <button
           onClick={disconnect}
           aria-label="Disconnect wallet"
-          className="text-sm text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors duration-200"
+          className="text-sm text-gray-500 hover:text-red-500 dark:text-gray-300 dark:hover:text-red-400 transition-colors duration-200"
           title="Disconnect wallet"
         >
           <svg

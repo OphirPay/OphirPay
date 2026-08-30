@@ -154,7 +154,7 @@ export default function RBACPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Role-Based Access Control
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             Admin &gt; Operator &gt; Auditor — on-chain role management
           </p>
         </div>
@@ -237,7 +237,7 @@ export default function RBACPage() {
                   className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
                     grantRoleVal === r
                       ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                      : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300"
+                      : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300"
                   }`}
                 >
                   {ROLE_LABELS[r].label}

@@ -33,7 +33,7 @@ export function EmptyState({
       <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
         {title}
       </h2>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
+      <p className="text-sm text-gray-500 dark:text-gray-300 mb-6 max-w-md mx-auto">
         {description}
       </p>
       {onAction && (

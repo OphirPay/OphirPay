@@ -139,7 +139,7 @@ function ToastViewport({
                 {t.title}
               </p>
               {t.description && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words">
+                <p className="text-xs text-gray-500 dark:text-gray-300 mt-0.5 break-words">
                   {t.description}
                 </p>
               )}

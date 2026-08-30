@@ -38,7 +38,7 @@ export function CopyButton({ value, label = "Copy", className }: CopyButtonProps
         "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-200",
         copied
           ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-          : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white",
+          : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white",
         className
       )}
     >

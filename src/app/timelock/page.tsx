@@ -152,7 +152,7 @@ export default function TimelockPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Timelocked Actions
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-300 mt-1">
             24-hour delay on sensitive admin operations — transparency by design
           </p>
         </div>
@@ -189,11 +189,11 @@ export default function TimelockPage() {
                       <span className="text-sm font-mono text-gray-500">#{action.id}</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-                      <p className="text-gray-600 dark:text-gray-400">
+                      <p className="text-gray-600 dark:text-gray-300">
                         Target: <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">{action.target || "(none)"}</code>
                       </p>
                       {action.data && (
-                        <p className="text-gray-600 dark:text-gray-400 truncate">
+                        <p className="text-gray-600 dark:text-gray-300 truncate">
                           Data: <code className="text-xs">{action.data.slice(0, 40)}{action.data.length > 40 ? "..." : ""}</code>
                         </p>
                       )}
@@ -244,7 +244,7 @@ export default function TimelockPage() {
                   className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
                     formActionType === t
                       ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                      : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300"
+                      : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300"
                   }`}
                 >
                   {t.replace(/_/g, " ")}
@@ -275,7 +275,7 @@ export default function TimelockPage() {
               placeholder='{"payment_fee_bps": 10, ...}'
             />
           </div>
-          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-sm text-gray-600 dark:text-gray-400">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-sm text-gray-600 dark:text-gray-300">
             <p>⏳ <strong>24-hour delay</strong> before this action can be executed.</p>
             <p className="mt-1 text-xs">This gives the community time to review and react.</p>
           </div>

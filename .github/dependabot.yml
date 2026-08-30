@@ -1,0 +1,54 @@
+version: 2
+updates:
+  # Maintain dependencies for npm (Node.js/Next.js frontend & backend)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    target-branch: "main"
+    labels:
+      - "dependencies"
+      - "security"
+    # Documented bump policy: focus on security and non-breaking updates
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    
+  # Maintain dependencies for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    target-branch: "main"
+    labels:
+      - "ci"
+      - "dependencies"
+
+  # Maintain dependencies for Cargo (Soroban smart contracts)
+  - package-ecosystem: "cargo"
+    directory: "/contracts/ophirpay"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    target-branch: "main"
+    labels:
+      - "dependencies"
+      - "rust"
+      
+  - package-ecosystem: "cargo"
+    directory: "/contracts/emitter"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    target-branch: "main"
+    labels:
+      - "dependencies"
+      - "rust"

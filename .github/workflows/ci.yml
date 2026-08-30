@@ -83,11 +83,23 @@ jobs:
           retention-days: 7
 
   # ══════════════════════════════════════════════════════════════
+  # 4b. SMOKE GATE — Fast sanity checks gate (Lint, TypeCheck, Unit Tests)
+  # ══════════════════════════════════════════════════════════════
+  smoke-gate:
+    name: "⚡ Smoke Checks Gate (Fail-Fast Barrier)"
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, unit-tests]
+    steps:
+      - name: Verify smoke checks passed
+        run: echo "✅ Fast smoke checks (lint, typecheck, unit-tests) passed. Proceeding to heavy suites."
+
+  # ══════════════════════════════════════════════════════════════
   # 5. CONTRACT WASM BUILD — Build both Soroban contracts
   # ══════════════════════════════════════════════════════════════
   contract-wasm:
     name: "5️⃣ Backend — Contracts (WASM + Tests)"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -156,6 +168,7 @@ jobs:
   wasm-repro:
     name: "6️⃣ Contracts — WASM Reproducibility Check"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -192,6 +205,7 @@ jobs:
   rust-clippy:
     name: "7️⃣ Backend — Clippy (Rust Lint)"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -222,6 +236,7 @@ jobs:
   rust-fmt:
     name: "8️⃣ Backend — Format (rustfmt)"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -239,6 +254,7 @@ jobs:
   next-build:
     name: "9️⃣ Frontend — Build (Next.js)"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -291,25 +307,12 @@ jobs:
   # ══════════════════════════════════════════════════════════════
   # 10. E2E TESTS — Playwright against a self-hosted production build,
   # sharded across 4 parallel workers (issue #406).
-  #
-  # The E2E suite is deterministic by design (auth-gate 401s, wallet-gated
-  # page states, health 200|503), so it runs against a production build +
-  # Postgres — NOT the live Vercel deployment, which races deploys and
-  # depends on a working production DATABASE_URL. The build happens in this
-  # job rather than reusing the next-build artifact: upload-artifact@v4
-  # excludes gitignored paths and `.next/` is gitignored.
-  #
-  # The suite is split into 4 equal shards by spec file (Playwright's
-  # --shard flag balances by test file). Each shard uploads its blob report;
-  # the e2e-report job below downloads every blob and merges them into one
-  # combined HTML report. On a shard failure, the same runner immediately
-  # reruns only the failed tests (--last-failed) for flaky triage.
   # ══════════════════════════════════════════════════════════════
   e2e-tests:
     name: "🔟 Frontend — E2E (Playwright ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})"
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: contract-wasm
+    needs: [smoke-gate, contract-wasm]
     strategy:
       fail-fast: false
       matrix:
@@ -439,6 +442,7 @@ jobs:
   prisma-validate:
     name: "1️⃣1️⃣ Backend — Prisma (Validate + DB)"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 5
     services:
       postgres:
@@ -496,6 +500,7 @@ jobs:
   secrets-scan:
     name: "1️⃣2️⃣ Security — Secrets (Gitleaks)"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
@@ -514,6 +519,7 @@ jobs:
   docker-build:
     name: "1️⃣3️⃣ Infra — Docker Build"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -692,6 +698,7 @@ jobs:
   k8s-validate:
     name: "1️⃣8️⃣ Infra — K8s (kubeconform)"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -716,6 +723,7 @@ jobs:
   helm-lint:
     name: "1️⃣9️⃣ Infra — Helm (Lint)"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -748,6 +756,7 @@ jobs:
   dependency-scan:
     name: "2️⃣0️⃣ Security — Dependency Scan (fail on high/critical)"
     runs-on: ubuntu-latest
+    needs: smoke-gate
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

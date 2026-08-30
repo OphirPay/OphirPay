@@ -22,27 +22,41 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org)
 - **Before submitting**: Run `npm run ci` (typecheck → lint → test → build)
 
-## 15-Job CI/CD Pipeline
+## CI/CD Pipeline & Fail-Fast Architecture
 
-Every PR triggers 15 independent CI/CD checks across quality, testing, security, and DevOps:
+The CI pipeline runs in a 2-tier structure to fail fast on trivial regressions before starting heavy compute runners:
 
-| # | Job | Runs on PR | Blocks merge |
-|---|---|---|---|
-| 1 | Lint — ESLint | ✅ | ✅ Required |
-| 2 | TypeCheck — tsc | ✅ | ✅ Required |
-| 3 | Unit Tests — Vitest | ✅ | ✅ Required |
-| 4 | Coverage — Vitest | ✅ | ⚠️ Informational |
-| 5 | Contract WASM Build | ✅ | ✅ Required |
-| 6 | Next.js Build | ✅ | ✅ Required |
-| 7 | E2E — Chromium | ✅ | ✅ Required |
-| 8 | E2E — Firefox | ✅ | ✅ Required |
-| 9 | Prisma Validate | ✅ | ✅ Required |
-| 10 | Docker Build | ✅ | ⚠️ Informational |
-| 11 | K8s Validate | ✅ | ✅ Required |
-| 12 | Helm Lint | ✅ | ✅ Required |
-| 13 | Secret Scan — Gitleaks | ✅ | ✅ Required |
-| 14 | npm Audit | ✅ | ⚠️ Advisory |
-| 15 | PR Auto-Label | ✅ | ℹ️ No block |
+### Tier 1: Fast Smoke Checks (< 2 minutes)
+- **Lint (ESLint)**: Style, syntax, and import rules.
+- **TypeCheck (tsc)**: TypeScript strict compile verification.
+- **Unit Tests (Vitest)**: Core fast unit tests suite.
+- **Smoke Gate**: Verifies all sanity checks pass before gating heavy integration jobs.
+
+### Tier 2: Full Integration, Contract & E2E Suites
+- **Contracts (Soroban WASM + Tests)**
+- **WASM Reproducibility Check**
+- **Next.js Production Build**
+- **E2E Tests (Playwright 4-way sharded)**
+- **Prisma Schema & DB Migration Validation**
+- **Docker Build & Infrastructure Linting (K8s, Helm)**
+- **Security Scans (Gitleaks, Dependency Vulnerabilities)**
+
+| # | Job | Tier | Runs on PR | Blocks merge |
+|---|---|---|---|---|
+| 1 | Lint — ESLint | Tier 1 (Smoke) | ✅ | ✅ Required |
+| 2 | TypeCheck — tsc | Tier 1 (Smoke) | ✅ | ✅ Required |
+| 3 | Unit Tests — Vitest | Tier 1 (Smoke) | ✅ | ✅ Required |
+| 4 | Coverage — Vitest | Tier 1 (Smoke) | ✅ | ⚠️ Informational |
+| 5 | Contract WASM Build | Tier 2 (Full) | ✅ | ✅ Required |
+| 6 | Next.js Build | Tier 2 (Full) | ✅ | ✅ Required |
+| 7 | E2E Tests (Playwright) | Tier 2 (Full) | ✅ | ✅ Required |
+| 8 | Prisma Validate | Tier 2 (Full) | ✅ | ✅ Required |
+| 9 | Docker Build | Tier 2 (Full) | ✅ | ⚠️ Informational |
+| 10 | K8s Validate | Tier 2 (Full) | ✅ | ✅ Required |
+| 11 | Helm Lint | Tier 2 (Full) | ✅ | ✅ Required |
+| 12 | Secret Scan — Gitleaks | Tier 2 (Full) | ✅ | ✅ Required |
+| 13 | Dependency Scan | Tier 2 (Full) | ✅ | ✅ Required |
+| 14 | PR Auto-Label | Auxiliary | ✅ | ℹ️ No block |
 
 ### Branch Protection Rules (recommended)
 

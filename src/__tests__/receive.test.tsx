@@ -1,10 +1,12 @@
+// SPDX-License-Identifier: MIT
+
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { buildSep7PayUri, generateQrDataUri } from "@/lib/qr";
 import ReceivePage from "@/app/receive/page";
 
 // Mock useWallet
-let mockWallet = {
+const mockWallet = {
   connected: false,
   publicKey: null as string | null,
   network: null as string | null,

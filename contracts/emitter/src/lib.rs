@@ -5,6 +5,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
+    Vec,
 };
 
 // ── Storage Keys ───────────────────────────────────────────────
@@ -23,7 +24,7 @@ const ALLOWED_SOURCE: Symbol = symbol_short!("ALW_SRC");
 // ── Data Types ─────────────────────────────────────────────────
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PaymentEvent {
     pub id: u64,
     pub source: String,
@@ -760,12 +761,46 @@ mod tests {
         assert_eq!(p3.len(), 5);
 
         // All events accounted for
-        let mut all_ids = Vec::new(&env);
-        for page in [p1, p2, p3] {
+        let mut all_ids: Vec<u64> = Vec::new(&env);
+        for page in [&p1, &p2, &p3] {
             for i in 0..page.len() {
                 all_ids.push_back(page.get(i).unwrap().id);
             }
         }
         assert_eq!(all_ids.len(), 25);
+    }
+
+    #[test]
+    fn test_get_events_start_zero_returns_empty() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+
+        emit_n_events(&env, &client, 5);
+
+        // start=0 is invalid 1-indexed start ID, should return empty Vec
+        let events = client.get_events(&0, &5);
+        assert_eq!(events.len(), 0);
+    }
+
+    #[test]
+    fn test_get_events_while_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+
+        let owner = emit_n_events(&env, &client, 5);
+
+        // Pause contract
+        client.pause(&owner);
+        assert!(client.is_paused());
+
+        // Reads must still succeed while paused
+        let events = client.get_events(&1, &5);
+        assert_eq!(events.len(), 5);
+        assert_eq!(events.get(0).unwrap().id, 1);
+        assert_eq!(events.get(4).unwrap().id, 5);
     }
 }

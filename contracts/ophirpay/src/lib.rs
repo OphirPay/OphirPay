@@ -875,7 +875,7 @@ fn collect_fee(
     payment_amount: i128,
 ) -> Result<i128, PaymentError> {
     // Read fee config; if disabled or no collector, skip fee collection.
-    let config: FeeConfig = match env.storage().instance().get(&FEE_KEY) {
+    let config: FeeConfig = match env.storage().instance().get::<_, FeeConfig>(&FEE_KEY) {
         Some(c) if c.enabled => c,
         _ => return Ok(0),
     };
@@ -884,7 +884,7 @@ fn collect_fee(
         None => return Ok(0),
     };
 
-    let fee = calculate_fee(payment_amount, config.payment_fee_bps);
+    let fee = OphirPayContract::calculate_fee(payment_amount, config.payment_fee_bps);
     if fee <= 0 {
         return Ok(0);
     }

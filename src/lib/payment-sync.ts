@@ -125,11 +125,13 @@ export async function runPaymentStatusSync(
   });
 
   const counters = { confirmed: 0, failed: 0, notFound: 0, errors: 0 };
+  let pendingCount = 0;
 
   try {
     // Only SUBMITTED payments that carry a tx hash — submissions that still
     // await confirmation. Nothing in any other state is ever read or written.
     const pending = await prisma.payment.findMany({
+    
       where: {
         status: AWAITING_STATUS,
         // Effectively `IS NOT NULL`, and paired with the SUBMITTED filter
@@ -146,6 +148,7 @@ export async function runPaymentStatusSync(
       },
     });
 
+    pendingCount = pending.length;
     logger.info("payment-sync: started", {
       trigger,
       runId: run.id,

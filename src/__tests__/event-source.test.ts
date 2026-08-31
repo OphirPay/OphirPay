@@ -15,6 +15,7 @@ describe("normalizeEvent", () => {
     };
     const event = normalizeEvent(raw, 7);
     expect(event.id).toBe(7);
+    expect(event.version).toBe(1);
     expect(event.event).toBe("payment:created");
     expect(event.paymentId).toBe("evt_7");
     expect(event.status).toBe("COMPLETED");
@@ -33,9 +34,16 @@ describe("normalizeEvent", () => {
   it("defaults missing optional fields", () => {
     const event = normalizeEvent({}, 1);
     expect(event.emitter).toBe("OphirPay");
+    expect(event.version).toBe(1);
     expect(event.payer).toBe("");
     expect(event.payee).toBe("");
     expect(event.amount).toBe("0");
     expect(event.txHash).toBe("");
+  });
+
+  it("preserves explicit schema version field", () => {
+    const event = normalizeEvent({ id: 9, version: 2 }, 9);
+    expect(event.id).toBe(9);
+    expect(event.version).toBe(2);
   });
 });

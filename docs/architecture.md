@@ -79,7 +79,7 @@ OphirPay is a payment orchestration layer built on the Stellar blockchain. It co
 | Contract | Purpose | Key Functions |
 |---|---|---|
 | **OphirPayContract** | Core payment logic | `record_payment`, `create_escrow`, `create_stream`, `create_batch`, `request_refund`, `propose_payment`, `create_proposal`, `emergency_pause_all` |
-| **PaymentEventEmitter** | Event broadcasting | `emit_payment`, `pause`, `unpause` |
+| **PaymentEventEmitter** | Versioned event broadcasting | `emit_payment`, `pause`, `unpause`, `get_schema_version` |
 
 **Cross-contract communication**: OphirPayContract calls `env.invoke_contract()` on Emitter for `emergency_pause_all`/`emergency_unpause_all`, pausing both contracts atomically. For a deep-dive of the invocation pattern — the typed argument passing, error propagation, and how to extend it to new contracts — see [CONTRACT_ARCHITECTURE.md](CONTRACT_ARCHITECTURE.md).
 

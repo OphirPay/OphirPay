@@ -57,6 +57,15 @@ describe("notifications library", () => {
       expect(normalized.read).toBe(false);
     });
 
+    it("preserves version when present", () => {
+      const normalized = normalizePaymentEvent({
+        event: "payment:created",
+        version: 1,
+        amount: "100",
+      });
+      expect(normalized.version).toBe(1);
+    });
+
     it("normalizes a payment.batch_completed event", () => {
       const normalized = normalizePaymentEvent({
         type: "payment.batch_completed",

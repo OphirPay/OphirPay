@@ -712,6 +712,7 @@ fn test_cross_contract_emitter_linking_and_events() {
     assert_eq!(emitter_client.get_event_count(), 1);
 
     let evt = emitter_client.get_event(&1);
+    assert_eq!(evt.version, 1);
     assert_eq!(evt.payer, payer);
     assert_eq!(evt.payee, payee);
     assert_eq!(evt.amount, 500_000);

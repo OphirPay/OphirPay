@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // SPDX-License-Identifier: MIT
 
 import { test, expect } from "@playwright/test";

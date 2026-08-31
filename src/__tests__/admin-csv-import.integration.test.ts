@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";

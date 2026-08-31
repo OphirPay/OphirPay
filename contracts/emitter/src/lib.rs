@@ -5,6 +5,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
+    Vec,
 };
 
 // ── Storage Keys ───────────────────────────────────────────────
@@ -20,11 +21,15 @@ const OWNER_PROPOSED_AT: Symbol = symbol_short!("OWN_PAT");
 // account from fabricating PaymentEvents (MEDIUM-3 audit fix).
 const ALLOWED_SOURCE: Symbol = symbol_short!("ALW_SRC");
 
+// ── Schema Versioning ──────────────────────────────────────────
+pub const EVENT_SCHEMA_VERSION: u32 = 1;
+
 // ── Data Types ─────────────────────────────────────────────────
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PaymentEvent {
+    pub version: u32,
     pub id: u64,
     pub source: String,
     pub payer: Address,
@@ -115,6 +120,7 @@ impl PaymentEventEmitter {
         count += 1;
 
         let event = PaymentEvent {
+            version: EVENT_SCHEMA_VERSION,
             id: count,
             source,
             payer: payer.clone(),
@@ -130,9 +136,14 @@ impl PaymentEventEmitter {
         env.storage().instance().set(&EVENT_COUNT, &count);
         env.storage().instance().extend_ttl(5000, 50000);
 
-        // Native event emission
+        // Native event emission with schema version in topic
         env.events().publish(
-            (Symbol::new(&env, "payment_event"), payer, payee),
+            (
+                Symbol::new(&env, "payment_event"),
+                EVENT_SCHEMA_VERSION,
+                payer,
+                payee,
+            ),
             (amount, tx_hash),
         );
 
@@ -150,6 +161,11 @@ impl PaymentEventEmitter {
     /// Maximum number of events returned per `get_events` call.
     /// Prevents unbounded storage iteration that could exceed gas limits.
     pub const MAX_PAGE_LIMIT: u32 = 100;
+
+    /// Get the current event schema version
+    pub fn get_schema_version(_env: Env) -> u32 {
+        EVENT_SCHEMA_VERSION
+    }
 
     /// Get total event count
     pub fn get_event_count(env: Env) -> u64 {
@@ -447,6 +463,7 @@ mod tests {
         assert_eq!(client.get_event_count(), 1);
 
         let event = client.get_event(&1);
+        assert_eq!(event.version, 1);
         assert_eq!(event.id, 1);
         assert_eq!(event.payer, payer);
         assert_eq!(event.payee, payee);
@@ -760,12 +777,48 @@ mod tests {
         assert_eq!(p3.len(), 5);
 
         // All events accounted for
-        let mut all_ids = Vec::new(&env);
-        for page in [p1, p2, p3] {
+        let mut all_ids: Vec<u64> = Vec::new(&env);
+        for page in [&p1, &p2, &p3] {
             for i in 0..page.len() {
                 all_ids.push_back(page.get(i).unwrap().id);
             }
         }
         assert_eq!(all_ids.len(), 25);
+    }
+
+    #[test]
+    fn test_schema_version() {
+        let env = Env::default();
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+        assert_eq!(client.get_schema_version(), 1);
+        assert_eq!(EVENT_SCHEMA_VERSION, 1);
+    }
+
+    #[test]
+    fn test_emitted_events_contain_version_field() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+
+        let _ = client.init(&owner);
+
+        let id = client.emit_payment(
+            &owner,
+            &String::from_str(&env, "OphirPay"),
+            &payer,
+            &payee,
+            &1000i128,
+            &String::from_str(&env, "tx_v1"),
+        );
+        assert_eq!(id, 1);
+
+        let event = client.get_event(&1);
+        assert_eq!(event.version, EVENT_SCHEMA_VERSION);
+        assert_eq!(event.version, 1);
     }
 }

@@ -26,6 +26,7 @@ export interface PaymentNotification {
   message: string;
   timestamp: number; // Unix timestamp in milliseconds
   read: boolean;
+  version?: number;
   amount?: string;
   symbol?: string;
   payer?: string;
@@ -41,6 +42,7 @@ export interface PaymentNotification {
 
 export interface RawPaymentEventPayload {
   id?: string | number;
+  version?: number;
   paymentId?: string;
   event?: string;
   type?: string;
@@ -241,6 +243,7 @@ export function normalizePaymentEvent(raw: RawPaymentEventPayload): PaymentNotif
     message,
     timestamp,
     read: Boolean(raw.read),
+    version: typeof raw.version === "number" ? raw.version : undefined,
     amount,
     symbol: "XLM",
     payer,

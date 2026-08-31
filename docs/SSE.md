@@ -87,6 +87,7 @@ shape — identical across SSE and WebSocket transports.
 | Field | Type | Description |
 |---|---|---|
 | `id` | `number` | Emitter contract event id — **stable dedup key** across reconnects |
+| `version` | `number` | Event schema version (currently `1`) |
 | `event` | `string` | Always `"payment:created"` for this event |
 | `timestamp` | `string` | ISO 8601 UTC (`new Date().toISOString()`) — time of delivery, not on-chain time |
 | `paymentId` | `string` | Application payment id, formatted `evt_<id>` |
@@ -100,6 +101,7 @@ shape — identical across SSE and WebSocket transports.
 ```json
 {
   "id": 42,
+  "version": 1,
   "event": "payment:created",
   "timestamp": "2026-08-29T09:00:00.000Z",
   "paymentId": "evt_42",
@@ -111,6 +113,15 @@ shape — identical across SSE and WebSocket transports.
   "txHash": "cafebabe..."
 }
 ```
+
+### Event schema versioning
+
+The `PaymentEventEmitter` contract introduces an explicit schema versioning contract (`EVENT_SCHEMA_VERSION = 1`).
+
+- **On-chain topics:** Emitted Soroban event topics are published as `(payment_event, version, payer, payee)` where `version: u32 = 1`.
+- **Payload records:** The stored `PaymentEvent` struct includes `pub version: u32`.
+- **Contract query:** Integrations can query `get_schema_version()` on the emitter contract.
+- **Consumer migration:** Off-chain and client consumers check `event.version` to handle future payload upgrades smoothly without schema drift.
 
 > **Integrator rule:** deduplicate by `id`, not by `txHash` or `paymentId` —
 > `id` is the only field guaranteed stable across reconnects.
@@ -197,7 +208,7 @@ function handleEvent(e) {
         // keep-alive — ignore
         break;
       case "payment:created":
-        renderPayment(event); // { id, paymentId, payer, payee, amount, txHash, ... }
+        renderPayment(event); // { id, version, paymentId, payer, payee, amount, txHash, ... }
         break;
     }
   } catch {

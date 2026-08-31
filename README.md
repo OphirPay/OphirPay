@@ -449,8 +449,9 @@ OphirPayContract.emergency_pause_all() / emergency_unpause_all()
 | Function | Access | Description |
 |---|---|---|
 | `init(owner)` | Admin | Initialize emitter |
-| `emit_payment(emitter, payer, payee, amount, tx_hash)` | Public | Store a PaymentEvent record |
+| `emit_payment(emitter, payer, payee, amount, tx_hash)` | Public | Store a PaymentEvent record (versioned schema) |
 | `get_event(event_id)` | Read | Retrieve event by ID |
+| `get_schema_version()` | Read | Current event schema version (v1) |
 | `get_event_count()` | Read | Total events emitted |
 | `get_owner()` | Read | Query emitter owner |
 | `pause()` / `unpause()` | Admin | Circuit breaker |

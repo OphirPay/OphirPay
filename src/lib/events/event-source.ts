@@ -21,6 +21,8 @@ import { SOROBAN_RPC_URL, NETWORK_PASSPHRASE } from "@/lib/stellar";
 export interface LiveEvent {
   /** Emitter contract event id — stable dedup key across reconnects. */
   id: number;
+  /** Schema version of the event format. */
+  version?: number;
   event: string;
   timestamp: string;
   paymentId: string;
@@ -132,8 +134,10 @@ export function normalizeEvent(
   id: number
 ): LiveEvent {
   const rawId = typeof raw.id === "number" ? raw.id : id;
+  const version = typeof raw.version === "number" ? raw.version : 1;
   return {
     id: rawId,
+    version,
     event: "payment:created",
     timestamp: new Date().toISOString(),
     paymentId: `evt_${rawId}`,

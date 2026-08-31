@@ -279,7 +279,10 @@ export interface Refund {
 
 // ── Payment Event (Emitter Contract) ────────────────────────
 
+export const EVENT_SCHEMA_VERSION = 1;
+
 export interface PaymentEvent {
+  version: number;
   id: number;
   source: string;
   payer: string;

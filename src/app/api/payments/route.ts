@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import prisma from "@/lib/prisma";
-import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
+import { createPaymentSchema } from "@/lib/validation-schemas";
 import {
   successResponse,
   validationError,
@@ -43,7 +43,8 @@ export async function GET(request: Request) {
       ];
     }
 
-    let payments: any[];
+    type PaymentItem = Awaited<ReturnType<typeof prisma.payment.findMany>>[number];
+    let payments: PaymentItem[];
     let nextCursor: string | null = null;
     let hasMore = false;
     let total: number | undefined;

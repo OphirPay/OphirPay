@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET } from "@/app/api/payments/route";
 import prisma from "@/lib/prisma";
@@ -15,6 +17,8 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+type PaymentList = Awaited<ReturnType<typeof prisma.payment.findMany>>;
+
 describe("Payments API Cursor Pagination", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -25,10 +29,9 @@ describe("Payments API Cursor Pagination", () => {
       { id: "pay_1", createdAt: new Date("2026-08-26T12:00:00Z"), amount: "100" },
       { id: "pay_2", createdAt: new Date("2026-08-26T11:00:00Z"), amount: "200" },
       { id: "pay_3", createdAt: new Date("2026-08-26T10:00:00Z"), amount: "300" },
-    ];
+    ] as unknown as PaymentList;
 
-    // take: 3 (limit 2 + 1)
-    (prisma.payment.findMany as any).mockResolvedValue(mockPayments);
+    vi.mocked(prisma.payment.findMany).mockResolvedValue(mockPayments);
 
     const req = new Request("http://localhost:3000/api/payments?limit=2");
     const res = await GET(req);
@@ -43,9 +46,9 @@ describe("Payments API Cursor Pagination", () => {
   it("fetches the next page using cursor without hasMore on final page", async () => {
     const mockPayments = [
       { id: "pay_3", createdAt: new Date("2026-08-26T10:00:00Z"), amount: "300" },
-    ];
+    ] as unknown as PaymentList;
 
-    (prisma.payment.findMany as any).mockResolvedValue(mockPayments);
+    vi.mocked(prisma.payment.findMany).mockResolvedValue(mockPayments);
 
     const req = new Request("http://localhost:3000/api/payments?limit=2&cursor=pay_2");
     const res = await GET(req);
@@ -58,7 +61,7 @@ describe("Payments API Cursor Pagination", () => {
   });
 
   it("handles empty pages gracefully", async () => {
-    (prisma.payment.findMany as any).mockResolvedValue([]);
+    vi.mocked(prisma.payment.findMany).mockResolvedValue([] as unknown as PaymentList);
 
     const req = new Request("http://localhost:3000/api/payments?limit=10");
     const res = await GET(req);

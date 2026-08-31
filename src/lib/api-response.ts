@@ -15,6 +15,9 @@ interface ApiSuccess<T> {
     page?: number;
     limit?: number;
     total?: number;
+    cursor?: string | null;
+    nextCursor?: string | null;
+    hasMore?: boolean;
     timestamp?: string;
   };
 }

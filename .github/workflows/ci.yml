@@ -1,4 +1,4 @@
-name: OphirPay CI/CD — 22 Jobs
+name: OphirPay CI/CD — 23 Jobs
 
 on:
   push:
@@ -762,4 +762,50 @@ jobs:
         run: cd contracts/ophirpay && cargo test --test integration_tests
       - name: Run Live RPC Testnet Integration Tests
         run: node scripts/testnet-integration.mjs
+
+  # ══════════════════════════════════════════════════════════════
+  # 23. CONTRACT REPRODUCIBILITY — Verify deterministic WASM byte builds against committed hashes
+  # ══════════════════════════════════════════════════════════════
+  contract-reproducibility:
+    name: "2️⃣3️⃣ Backend — Reproducibility (WASM Hash Check)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          targets: wasm32v1-none
+          components: rustfmt, clippy
+      - name: Install build deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/ophirpay/target
+            contracts/emitter/target
+          key: cargo-reproducibility-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
+          restore-keys: cargo-reproducibility-${{ runner.os }}-
+      - name: Build OphirPay contract WASM
+        env:
+          RUSTFLAGS: "-C link-arg=-s"
+        run: cd contracts/ophirpay && cargo build --target wasm32v1-none --release
+      - name: Build Emitter contract WASM
+        env:
+          RUSTFLAGS: "-C link-arg=-s"
+        run: cd contracts/emitter && cargo build --target wasm32v1-none --release
+      - name: Run Reproducibility Verification Unit Tests
+        run: bash scripts/__tests__/verify-wasm-reproducibility.test.sh
+      - name: Verify WASM artifact reproducibility against committed hashes
+        run: bash scripts/verify-wasm-reproducibility.sh
+      - name: Upload verified WASM checksums
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-wasm-checksums
+          path: contracts/checksums.sha256
+          retention-days: 7
+
 

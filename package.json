@@ -53,7 +53,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:testnet": "node scripts/testnet-integration.mjs",
-    "test:contract:integration": "node scripts/testnet-integration.mjs"
+    "test:contract:integration": "node scripts/testnet-integration.mjs",
+    "test:contracts:reproducible": "bash scripts/verify-wasm-reproducibility.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

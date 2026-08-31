@@ -28,6 +28,7 @@ SKIP_PRISMA="${SKIP_PRISMA:-0}"
 SKIP_TESTS="${SKIP_TESTS:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 SKIP_CONTRACTS="${SKIP_CONTRACTS:-0}"
+SKIP_REPRODUCIBILITY="${SKIP_REPRODUCIBILITY:-0}"
 
 # prisma validate only parses the schema; it never connects to the DB,
 # so a placeholder URL is enough when DATABASE_URL is not exported.
@@ -103,6 +104,16 @@ elif ! command -v cargo >/dev/null 2>&1; then
 else
   run_step "Contract tests (ophirpay)" bash -c "cd contracts/ophirpay && cargo test --quiet"
   run_step "Contract tests (emitter)" bash -c "cd contracts/emitter && cargo test --quiet"
+fi
+
+# ── 7. WASM reproducibility ────────────────────────────────────
+if [ "$SKIP_REPRODUCIBILITY" = "1" ]; then
+  echo "ℹ️  Skipping contract WASM reproducibility check"
+else
+  run_step "Reproducibility unit tests" bash scripts/__tests__/verify-wasm-reproducibility.test.sh
+  if [ -f "contracts/checksums.sha256" ]; then
+    run_step "WASM reproducibility check" bash scripts/verify-wasm-reproducibility.sh || true
+  fi
 fi
 
 # ── Summary ────────────────────────────────────────────────────

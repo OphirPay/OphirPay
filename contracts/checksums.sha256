@@ -1,0 +1,10 @@
+# OphirPay Smart Contract WASM SHA-256 Checksums
+# Pinned Toolchain: Rust 1.91.0 (dtolnay/rust-toolchain@1.91.0)
+# Pinned Target: wasm32v1-none
+#
+# Generated & verified for deterministic bytecode reproducibility.
+# To verify locally: bash scripts/verify-wasm-reproducibility.sh
+# To update hashes: bash scripts/verify-wasm-reproducibility.sh --update
+
+470d4f88b6273236cf824d572c54d4b0f2aeb911cfb279f7c80b139f42a9de0a  contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm
+7e7f6d2b512e038eb9f315db81ea3c241517eb2327772719a795f50ef7483120  contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm

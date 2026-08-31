@@ -82,6 +82,7 @@ function SendPageClient() {
   const [amount, setAmount] = useState("");
   const [feeEstimate, setFeeEstimate] = useState<{ baseFee: string; congestion: string } | null>(null);
   const [memo, setMemo] = useState("");
+  const [requestId, setRequestId] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<AssetInfo>(XLM_ASSET);
   const [destAsset, setDestAsset] = useState<AssetInfo>(XLM_ASSET);
   const [step, setStep] = useState<TxStep>("idle");
@@ -111,6 +112,7 @@ function SendPageClient() {
       memo?: string;
       sourceAccountId: string;
       destAddress: string;
+      requestId?: string;
     },
     { id: string }
   >("/api/payments", {
@@ -145,6 +147,8 @@ function SendPageClient() {
     if (assetParam) {
       setSelectedAsset(getAssetInfo(assetParam));
     }
+    const requestIdParam = searchParams?.get("requestId");
+    if (requestIdParam) setRequestId(requestIdParam);
   }, [searchParams]);
 
   // Detect whether the recipient account is funded. A 404 means the account
@@ -373,6 +377,7 @@ function SendPageClient() {
           memo: memo.trim() || undefined,
           sourceAccountId: wallet.publicKey,
           destAddress: destination.trim(),
+          requestId: requestId || undefined,
         });
       } catch {
         // Best-effort: payment already settled on-chain

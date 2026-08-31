@@ -181,6 +181,8 @@ model Payment {
   batchId           String?
   /// Parent recurrence (see Recurrence) when created by a schedule.
   recurrenceId      String?
+  /// Parent payment request (see PaymentRequest) when this payment fulfills one.
+  requestId         String?
 
   // Metadata
   /// Free-form JSON string for flexible metadata (e.g. on-chain event info).
@@ -215,6 +217,8 @@ model Payment {
   batch             Batch?    @relation(fields: [batchId], references: [id])
   /// Parent recurrence, if any (see Recurrence).
   recurrence        Recurrence? @relation(fields: [recurrenceId], references: [id])
+  /// Parent payment request, if any (see PaymentRequest).
+  request           PaymentRequest? @relation(fields: [requestId], references: [id])
   /// Refund ledger rows attached to this payment (see Refund).
   refunds           Refund[]
 
@@ -226,6 +230,8 @@ model Payment {
   @@index([batchId])
   /// Speeds up "all payments from a recurrence".
   @@index([recurrenceId])
+  /// Speeds up "all payments for a request".
+  @@index([requestId])
   /// Speeds up account-centric queries.
   @@index([sourceAccountId])
   /// Speeds up account-centric queries.
@@ -397,6 +403,8 @@ model PaymentRequest {
   description   String?
   /// Optional recipient address the request is addressed to.
   recipientAddress String?
+  /// Optional due date — after this time the request is considered EXPIRED.
+  dueDate       DateTime?
   /// Lifecycle status (see RequestStatus enum).
   status        RequestStatus @default(PENDING)
   /// Transaction hash once the request is paid.
@@ -409,8 +417,13 @@ model PaymentRequest {
   /// Owner of this request (see User).
   user          User     @relation(fields: [userId], references: [id])
 
+  /// Payments that fulfilled this request (see Payment).
+  payments      Payment[]
+
   /// Speeds up "all requests for a user".
   @@index([userId])
+  /// Speeds up due-date / expiry queries.
+  @@index([dueDate])
 }
 
 /// Lifecycle of a PaymentRequest.

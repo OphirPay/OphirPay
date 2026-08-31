@@ -68,6 +68,17 @@ describe("createPaymentSchema", () => {
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.assetCode).toBe("XLM");
   });
+
+  it("accepts an optional requestId", () => {
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      requestId: "req_abc123",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.requestId).toBe("req_abc123");
+  });
 });
 
 // ─── createBatchSchema ──────────────────────────────────────────
@@ -173,6 +184,26 @@ describe("createPaymentRequestSchema", () => {
       assetCode: "USDC",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("accepts an optional ISO dueDate", () => {
+    const result = createPaymentRequestSchema.safeParse({
+      amount: 250,
+      assetCode: "USDC",
+      dueDate: "2026-09-30T23:59:59.000Z",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.dueDate).toBe("2026-09-30T23:59:59.000Z");
+    }
+  });
+
+  it("rejects a malformed dueDate", () => {
+    const result = createPaymentRequestSchema.safeParse({
+      amount: 250,
+      dueDate: "not-a-date",
+    });
+    expect(result.success).toBe(false);
   });
 });
 

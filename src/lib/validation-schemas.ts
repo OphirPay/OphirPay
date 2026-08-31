@@ -59,6 +59,7 @@ export const createPaymentSchema = z.object({
   assetIssuer: z.string().optional(),
   description: z.string().max(200).optional(),
   memo: memoField,
+  requestId: z.string().max(64).optional(),
 });
 
 /** Body for POST /api/payments/retry — which failed payment to retry. */
@@ -218,6 +219,7 @@ export const createPaymentRequestSchema = z.object({
   assetIssuer: z.string().optional(),
   description: z.string().max(500).optional(),
   recipientAddress: stellarAddress.optional(),
+  dueDate: z.string().datetime().optional(),
 });
 
 // ── Pagination (moved from validations.ts) ────────────────────
@@ -233,6 +235,7 @@ export const paginationSchema = z.object({
 
 export type PaginationParams = z.infer<typeof paginationSchema>;
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
+export type CreatePaymentRequestInput = z.infer<typeof createPaymentRequestSchema>;
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
 
 // ── Recurrence alias ───────────────────────────────────────────

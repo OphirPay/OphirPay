@@ -12,7 +12,6 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { StatusBadge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
-import { generatePaymentLink } from "@/lib/payment-link";
 import { formatAmount } from "@/lib/utils";
 import { useWallet } from "@/hooks/useMultiWallet";
 
@@ -24,6 +23,7 @@ interface RequestData {
   description?: string;
   recipientAddress?: string;
   transactionHash?: string;
+  dueDate?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +33,7 @@ interface CreateRequestBody {
   assetCode: string;
   description?: string;
   recipientAddress?: string;
+  dueDate?: string | null;
 }
 
 const QR_API = "https://api.qrserver.com/v1/create-qr-code";
@@ -49,6 +50,7 @@ export default function RequestsPage() {
   const [formAsset, setFormAsset] = useState("XLM");
   const [formDescription, setFormDescription] = useState("");
   const [formAddress, setFormAddress] = useState("");
+  const [formDueDate, setFormDueDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -78,6 +80,7 @@ export default function RequestsPage() {
         assetCode: formAsset,
         description: formDescription || undefined,
         recipientAddress: formAddress || wallet.publicKey || undefined,
+        dueDate: formDueDate ? new Date(formDueDate).toISOString() : null,
       });
       setShowCreate(false);
       resetForm();
@@ -95,17 +98,21 @@ export default function RequestsPage() {
     setFormAsset("XLM");
     setFormDescription("");
     setFormAddress("");
+    setFormDueDate("");
     setFormError(null);
   };
 
-  const getPaymentLink = (req: RequestData): string => {
-    return generatePaymentLink({
-      destination: req.recipientAddress || wallet.publicKey || "",
-      amount: req.amount.toString(),
-      assetCode: req.assetCode,
-      message: req.description,
-    });
-  };
+const getPaymentLink = (req: RequestData): string => {
+  // Public request page (shows invoice details; payer can pay from there).
+  const base = process.env.NEXT_PUBLIC_APP_URL || "https://ophirpay.vercel.app";
+  return `${base.replace(/\/$/, "")}/r/${req.id}`;
+};
+
+const isExpired = (req: RequestData): boolean => {
+  if (req.status === "EXPIRED") return true;
+  if (!req.dueDate) return false;
+  return new Date(req.dueDate).getTime() < Date.now();
+};
 
   const getQRUrl = (req: RequestData): string => {
     const link = getPaymentLink(req);
@@ -197,6 +204,15 @@ export default function RequestsPage() {
                         year: "numeric",
                       })}
                     </span>
+                    {req.dueDate && (
+                      <span className={isExpired(req) ? "text-red-500 dark:text-red-400" : ""}>
+                        Due {new Date(req.dueDate).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                    )}
                     {req.transactionHash && (
                       <span className="font-mono text-green-600 dark:text-green-400">
                         Paid
@@ -322,6 +338,18 @@ export default function RequestsPage() {
               onChange={(e) => setFormAddress(e.target.value)}
               placeholder={wallet.publicKey || "G..."}
               className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Due Date <span className="text-gray-400 font-normal">(optional — request expires after this time)</span>
+            </label>
+            <input
+              type="datetime-local"
+              value={formDueDate}
+              onChange={(e) => setFormDueDate(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
             />
           </div>
 

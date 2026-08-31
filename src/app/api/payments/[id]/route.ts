@@ -111,6 +111,55 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
         transactionHash: payment.transactionHash,
         completedAt: payment.completedAt?.toISOString() ?? new Date().toISOString(),
       });
+
+      // If this payment fulfills a payment request (created via a shareable
+      // /r/[id] request link), mark the request PAID and fire request.paid
+      // so the requester is notified.
+      if (payment.requestId) {
+        try {
+          const updatedReq = await prisma.paymentRequest.updateMany({
+            where: { id: payment.requestId, status: { in: ["PENDING", "EXPIRED"] } },
+            data: {
+              status: "PAID",
+              transactionHash: payment.transactionHash,
+              updatedAt: new Date(),
+            },
+          });
+          if (updatedReq.count > 0) {
+            const req = await prisma.paymentRequest.findUnique({
+              where: { id: payment.requestId },
+              select: { userId: true, amount: true, assetCode: true },
+            });
+            // webhook scoped to the requester so their endpoints see it
+            dispatchWebhookEventAsync(
+              WEBHOOK_EVENTS.REQUEST_PAID,
+              {
+                requestId: payment.requestId,
+                paymentId: payment.id,
+                amount: payment.amount,
+                assetCode: payment.assetCode,
+                transactionHash: payment.transactionHash,
+                paidAt: new Date().toISOString(),
+              },
+              req?.userId
+            );
+            if (req) {
+              logger.info("Payment request fulfilled", {
+                requestId: payment.requestId,
+                paymentId: payment.id,
+              });
+            }
+          }
+        } catch (err) {
+          // Never fail the payment PATCH because request-bookkeeping failed;
+          // the payment itself already succeeded on-chain.
+          logger.error("Failed to mark payment request paid", {
+            requestId: payment.requestId,
+            paymentId: payment.id,
+            error: String(err),
+          });
+        }
+      }
     } else if (body.status === "FAILED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_FAILED, {
         paymentId: payment.id,

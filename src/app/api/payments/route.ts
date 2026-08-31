@@ -137,6 +137,8 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
         // wrote a Stellar address into userId, breaking the relation).
         userId: auth.userId,
         sourceAccountId: parsed.data.sourceAccountId,
+        // Optional link back to the payment request this fulfills.
+        requestId: parsed.data.requestId || null,
       },
     });
 

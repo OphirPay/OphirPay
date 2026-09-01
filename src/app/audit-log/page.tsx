@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import { distinctActions, filterEntries, serverExportParams } from "@/lib/audit-filters";
 
 interface AuditEntry {
   id: number;
@@ -61,6 +62,9 @@ const ACTION_COLORS: Record<string, "success" | "danger" | "warning" | "info"> =
 export default function AuditLogPage() {
   usePageTitle(PAGE_TITLES.AUDIT_LOG);
   const [filter, setFilter] = useState("");
+  const [actionFilter, setActionFilter] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [connected, setConnected] = useState(false);
   const [liveMode, setLiveMode] = useState(false);
   // Live SSE entries are kept OUT of the query cache so window-focus refetches
@@ -122,9 +126,26 @@ export default function AuditLogPage() {
     }
   };
 
-  const filtered = filter
-    ? entries.filter((e) => e.action.includes(filter) || e.details.toLowerCase().includes(filter.toLowerCase()))
-    : entries;
+  const filtered = useMemo(
+    () => filterEntries(entries, { text: filter, action: actionFilter, from, to }),
+    [entries, filter, actionFilter, from, to],
+  );
+
+  const actions = useMemo(() => distinctActions(entries), [entries]);
+
+  const hasAdvancedFilters = Boolean(actionFilter || from || to);
+  const clearAllFilters = () => {
+    setFilter("");
+    setActionFilter("");
+    setFrom("");
+    setTo("");
+  };
+  // Wire the export button to the streaming server-side CSV endpoint
+  // (same filters as the table: action/since/until server-side, free-text client-side).
+  const exportCsv = () => {
+    const params = serverExportParams({ text: filter, action: actionFilter, from, to });
+    window.open(`/api/audit-log/export${params.size ? `?${params}` : ""}`, "_blank");
+  };
 
   const formatTime = (ts: number) => {
     const d = new Date(ts * 1000);
@@ -170,6 +191,33 @@ export default function AuditLogPage() {
               "▶ Live"
             )}
           </Button>
+          <select
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+            aria-label="Filter by event type"
+            className="px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm"
+          >
+            <option value="">All event types</option>
+            {actions.map((a) => (
+              <option key={a} value={a}>
+                {a.replace(/_/g, " ")}
+              </option>
+            ))}
+          </select>
+          <input
+            type="datetime-local"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            aria-label="From date"
+            className="px-2 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm"
+          />
+          <input
+            type="datetime-local"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            aria-label="To date"
+            className="px-2 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm"
+          />
           <input
             type="text"
             value={filter}
@@ -177,6 +225,20 @@ export default function AuditLogPage() {
             placeholder="Filter by action or details..."
             className="px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm w-full sm:w-64"
           />
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={exportCsv}
+            disabled={filtered.length === 0}
+            aria-label="Export filtered entries as CSV"
+          >
+            ⬇ CSV
+          </Button>
+          {hasAdvancedFilters && (
+            <Button size="sm" variant="secondary" onClick={clearAllFilters}>
+              Clear
+            </Button>
+          )}
         </div>
       </div>
 
@@ -187,16 +249,16 @@ export default function AuditLogPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
             </svg>
           }
-          title={filter ? "No Matching Entries" : "No Audit Entries"}
+          title={filtered.length === 0 && entries.length > 0 ? "No Matching Entries" : "No Audit Entries"}
           description={
-            filter
-              ? "Try a different filter term."
+            filtered.length === 0 && entries.length > 0
+              ? "Try different filter criteria."
               : liveMode
                 ? "Listening for contract activity — new entries will stream in here in real-time."
                 : "Contract activity will appear here as state changes occur. Enable live to watch entries stream in."
           }
           actionLabel={
-            filter ? "Clear Filter" : liveMode ? undefined : "Enable Live"
+            filtered.length === 0 && entries.length > 0 ? "Clear Filters" : liveMode ? undefined : "Enable Live"
           }
           actionIcon={
             filter ? (
@@ -232,7 +294,7 @@ export default function AuditLogPage() {
             )
           }
           onAction={
-            filter ? () => setFilter("") : liveMode ? undefined : toggleLive
+            filtered.length === 0 && entries.length > 0 ? clearAllFilters : liveMode ? undefined : toggleLive
           }
         />
       ) : (

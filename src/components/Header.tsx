@@ -26,6 +26,8 @@ export function Header() {
           {/* Dark mode toggle */}
           <button
             onClick={toggle}
+            role="switch"
+            aria-checked={isDark}
             aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
             className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"

@@ -3,8 +3,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock dependencies
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  const mockPrisma: Record<string, any> = {
     payment: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -25,8 +25,12 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
       create: vi.fn(),
     },
-  },
-}));
+  };
+  mockPrisma.$transaction = vi.fn(async (cb: any) =>
+    typeof cb === "function" ? cb(mockPrisma) : cb
+  );
+  return { default: mockPrisma };
+});
 
 vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(),

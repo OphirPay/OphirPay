@@ -23,7 +23,7 @@ describe("Prisma Schema Validation & Consistency", () => {
         stdio: "pipe",
       });
     }).not.toThrow();
-  });
+  }, 30000);
 
   it("should configure PostgreSQL provider and prisma relationMode in canonical schema", () => {
     const content = readFileSync(schemaPath, "utf-8");

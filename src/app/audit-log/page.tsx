@@ -1,15 +1,11 @@
 "use client";
-// SPDX-License-Identifier: MIT
-
-
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
-import { EmptyState } from "@/components/EmptyState";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { usePageTitle, PAGE_TITLES } from "@/hooks/usePageTitle";
 
 interface AuditEntry {
   id: number;
@@ -20,31 +16,13 @@ interface AuditEntry {
   details: string;
 }
 
-const ACTION_COLORS: Record<string, "success" | "danger" | "warning" | "info"> = {
-  payment_recorded: "success",
-  payment_cancelled: "danger",
-  escrow_created: "info",
-  escrow_released_owner: "success",
-  escrow_released_arbiter: "warning",
-  escrow_claimed: "success",
-  stream_created: "info",
-  stream_claimed: "success",
-  stream_cancelled: "danger",
-  batch_created: "info",
-  contract_paused: "danger",
-  contract_unpaused: "success",
-  role_granted: "info",
-  role_revoked: "warning",
-  multisig_configured: "info",
-  multisig_proposed: "info",
-  multisig_executed: "success",
-  fee_config_set: "info",
-  upgrade_proposed: "warning",
-  upgrade_executed: "success",
-  upgrade_cancelled: "danger",
-  emergency_withdraw: "danger",
-  ownership_transferred: "warning",
-  timelock_proposed: "info",
+const ACTION_COLORS: Record<string, "info" | "success" | "warning" | "danger" | "default"> = {
+  payment_sent: "success",
+  payment_received: "success",
+  batch_executed: "info",
+  refund_issued: "warning",
+  contract_upgraded: "danger",
+  timelock_created: "info",
   timelock_executed: "success",
   timelock_cancelled: "danger",
   proposal_created: "info",
@@ -60,204 +38,141 @@ const ACTION_COLORS: Record<string, "success" | "danger" | "warning" | "info"> =
 
 export default function AuditLogPage() {
   usePageTitle(PAGE_TITLES.AUDIT_LOG);
-  const [filter, setFilter] = useState("");
-  const [connected, setConnected] = useState(false);
-  const [liveMode, setLiveMode] = useState(false);
-  // Live SSE entries are kept OUT of the query cache so window-focus refetches
-  // (React Query default) don't wipe entries that streamed in after the last
-  // fetch. They're merged with the fetched list at render time, deduped by id.
-  const [liveEntries, setLiveEntries] = useState<AuditEntry[]>([]);
-  const sseRef = useRef<EventSource | null>(null);
 
-  const {
-    data: rawEntries,
-    isLoading: loading,
-  } = useApiQuery<AuditEntry[]>(["audit-log"], "/api/audit-log");
+  const [page, setPage] = useState(1);
+  const [actorFilter, setActorFilter] = useState("");
+  const [actionFilter, setActionFilter] = useState("");
+  const [dateSince, setDateSince] = useState("");
+  const [dateUntil, setDateUntil] = useState("");
 
-  // Close the EventSource when the page unmounts — otherwise the stream keeps
-  // polling and the connection leaks until the tab is closed.
-  useEffect(() => {
-    return () => {
-      sseRef.current?.close();
-    };
-  }, []);
+  const limit = 20;
 
-  const entries = useMemo(() => {
-    const fetchedEntries = Array.isArray(rawEntries) ? rawEntries : [];
-    const seen = new Set<number>();
-    const merged: AuditEntry[] = [];
-    for (const e of [...liveEntries, ...fetchedEntries]) {
-      if (seen.has(e.id)) continue;
-      seen.add(e.id);
-      merged.push(e);
-    }
-    return merged.slice(0, 100);
-  }, [liveEntries, rawEntries]);
+  // Build query params
+  const queryParams = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  });
+  if (actorFilter) queryParams.set("actor", actorFilter);
+  if (actionFilter) queryParams.set("action", actionFilter);
+  if (dateSince) queryParams.set("since", Math.floor(new Date(dateSince).getTime() / 1000).toString());
+  if (dateUntil) queryParams.set("until", Math.floor(new Date(dateUntil).getTime() / 1000).toString());
 
-  // SSE live streaming — prepend incoming entries into local state (survives refetches)
-  const connectSSE = useCallback(() => {
-    if (sseRef.current) sseRef.current.close();
-    const es = new EventSource("/api/audit-log/sse");
-    sseRef.current = es;
-    es.addEventListener("connected", () => setConnected(true));
-    es.addEventListener("audit:entry", (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        setLiveEntries((prev) => [data, ...prev].slice(0, 100));
-      } catch {}
-    });
-    es.onerror = () => setConnected(false);
-    return es;
-  }, []);
+  const { data: rawData, isLoading } = useApiQuery<any>(
+    ["audit-log", page.toString(), actorFilter, actionFilter, dateSince, dateUntil],
+    `/api/audit-log?${queryParams.toString()}`
+  );
 
-  const toggleLive = () => {
-    if (!liveMode) {
-      connectSSE(); // stored in sseRef internally
-      setLiveMode(true);
-    } else {
-      sseRef.current?.close();
-      setConnected(false);
-      setLiveMode(false);
-      setLiveEntries([]);
+  const entries: AuditEntry[] = rawData?.data || rawData || [];
+  const total = rawData?.meta?.total || 0;
+  const hasMore = page * limit < total;
+
+  const handleExportCSV = async () => {
+    // Export honors the active filters
+    const exportParams = new URLSearchParams(queryParams);
+    exportParams.delete("page");
+    exportParams.set("limit", "1000"); // Fetch a lot for CSV
+    
+    try {
+      const res = await fetch(`/api/audit-log?${exportParams.toString()}`);
+      const json = await res.json();
+      const exportData: AuditEntry[] = json.data || [];
+      
+      if (exportData.length === 0) return;
+      
+      const headers = ["ID", "Timestamp", "Date", "Action", "Actor", "Target ID", "Details"];
+      const csvRows = [headers.join(",")];
+      
+      for (const row of exportData) {
+        const d = new Date(row.timestamp * 1000).toLocaleString().replace(/,/g, "");
+        const escapedDetails = row.details ? `"${row.details.replace(/"/g, '""')}"` : "";
+        csvRows.push(`${row.id},${row.timestamp},${d},${row.action},${row.actor},${row.target_id},${escapedDetails}`);
+      }
+      
+      const blob = new Blob([csvRows.join("\\n")], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.setAttribute("href", url);
+      a.setAttribute("download", "audit_log.csv");
+      a.click();
+    } catch (e) {
+      console.error("Export failed", e);
     }
   };
 
-  const filtered = filter
-    ? entries.filter((e) => e.action.includes(filter) || e.details.toLowerCase().includes(filter.toLowerCase()))
-    : entries;
-
-  const formatTime = (ts: number) => {
-    const d = new Date(ts * 1000);
-    return d.toLocaleString();
-  };
-
-  if (loading) {
-    return (
-      <div className="animate-fade-in space-y-6">
-        <div className="h-8 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const formatTime = (ts: number) => new Date(ts * 1000).toLocaleString();
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            📋 Audit Log
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Immutable on-chain trail of every contract state change
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📋 Audit Log</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Immutable on-chain trail of every contract state change</p>
         </div>
-        <div className="flex gap-2 items-center">
-          <Button
-            size="sm"
-            variant={liveMode ? "primary" : "secondary"}
-            onClick={toggleLive}
-          >
-            {liveMode ? (
-              <span className="flex items-center gap-1">
-                <span className={`h-2 w-2 rounded-full ${connected ? "bg-green-500" : "bg-red-500"} animate-pulse`} />
-                Live {connected ? "●" : "✕"}
-              </span>
-            ) : (
-              "▶ Live"
-            )}
-          </Button>
-          <input
-            type="text"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter by action or details..."
-            className="px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 text-sm w-full sm:w-64"
-          />
-        </div>
+        <Button onClick={handleExportCSV} variant="secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+          Export CSV
+        </Button>
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-gray-400">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-          }
-          title={filter ? "No Matching Entries" : "No Audit Entries"}
-          description={
-            filter
-              ? "Try a different filter term."
-              : liveMode
-                ? "Listening for contract activity — new entries will stream in here in real-time."
-                : "Contract activity will appear here as state changes occur. Enable live to watch entries stream in."
-          }
-          actionLabel={
-            filter ? "Clear Filter" : liveMode ? undefined : "Enable Live"
-          }
-          actionIcon={
-            filter ? (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-4 h-4"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-4 h-4"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"
-                />
-              </svg>
-            )
-          }
-          onAction={
-            filter ? () => setFilter("") : liveMode ? undefined : toggleLive
-          }
-        />
+      <div className="flex flex-wrap gap-4 items-end bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800">
+        <label className="text-sm">
+          <span className="block text-gray-500 mb-1">Actor</span>
+          <input type="text" value={actorFilter} onChange={(e) => { setActorFilter(e.target.value); setPage(1); }} placeholder="Address..." className="border p-2 rounded dark:bg-gray-800 dark:border-gray-700" />
+        </label>
+        <label className="text-sm">
+          <span className="block text-gray-500 mb-1">Action</span>
+          <input type="text" value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setPage(1); }} placeholder="Action..." className="border p-2 rounded dark:bg-gray-800 dark:border-gray-700" />
+        </label>
+        <label className="text-sm">
+          <span className="block text-gray-500 mb-1">Since</span>
+          <input type="date" value={dateSince} onChange={(e) => { setDateSince(e.target.value); setPage(1); }} className="border p-2 rounded dark:bg-gray-800 dark:border-gray-700" />
+        </label>
+        <label className="text-sm">
+          <span className="block text-gray-500 mb-1">Until</span>
+          <input type="date" value={dateUntil} onChange={(e) => { setDateUntil(e.target.value); setPage(1); }} className="border p-2 rounded dark:bg-gray-800 dark:border-gray-700" />
+        </label>
+        <Button onClick={() => { setActorFilter(""); setActionFilter(""); setDateSince(""); setDateUntil(""); setPage(1); }} variant="outline">Clear</Button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 animate-pulse rounded" />)}
+        </div>
+      ) : entries.length === 0 ? (
+        <EmptyState title="No Audit Entries" description="No matching events found." />
       ) : (
-        <div className="space-y-2">
-          {filtered.map((entry) => (
-            <Card key={entry.id} className="p-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-              <Badge variant={ACTION_COLORS[entry.action] ?? "info"}>
-                {entry.action.replace(/_/g, " ")}
-              </Badge>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-700 dark:text-gray-300 truncate">{entry.details}</p>
-                <p className="text-xs text-gray-400 truncate">
-                  Actor: {entry.actor?.slice?.(0, 8)}...{entry.actor?.slice?.(-4)}
-                  {entry.target_id > 0 ? ` · Target ID: ${entry.target_id}` : ""}
-                </p>
-              </div>
-              <span className="text-xs text-gray-400 whitespace-nowrap">{formatTime(entry.timestamp)}</span>
-            </Card>
-          ))}
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-500 uppercase tracking-wider">
+                  <th className="p-4 font-medium">Action</th>
+                  <th className="p-4 font-medium">Actor</th>
+                  <th className="p-4 font-medium">Details</th>
+                  <th className="p-4 font-medium">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                {entries.map(entry => (
+                  <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <td className="p-4"><Badge variant={ACTION_COLORS[entry.action] ?? "default"}>{entry.action}</Badge></td>
+                    <td className="p-4 font-mono text-xs">{entry.actor}</td>
+                    <td className="p-4 text-sm">{entry.details}</td>
+                    <td className="p-4 text-sm whitespace-nowrap text-gray-500">{formatTime(entry.timestamp)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center text-sm">
+            <span>Showing {entries.length} {total ? `of ${total}` : ""} entries</span>
+            <div className="flex gap-2">
+              <Button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} size="sm" variant="outline">Previous</Button>
+              <Button onClick={() => setPage(p => p + 1)} disabled={!hasMore} size="sm" variant="outline">Next</Button>
+            </div>
+          </div>
         </div>
       )}
-
-      <p className="text-xs text-gray-400 text-center">
-        Showing {filtered.length} of {entries.length} entries · All entries are stored immutably on-chain
-      </p>
     </div>
   );
 }

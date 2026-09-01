@@ -5,6 +5,7 @@ All notable changes to OphirPay will be documented in this file.
 ## [Unreleased] — 2026-08-26
 
 ### Added
+- **Donor history export (issue #571)**: new `GET /api/donations/export` returns the calling donor's own donations (the payments they sent) as a dated CSV attachment (default) or JSON (`?format=json` or `Accept: application/json`) for tax/finance record keeping. The query is hard-scoped to the authenticated user — there is no parameter that selects another donor. Soft-deleted payments are hidden, rows are capped at 10,000 with `X-Export-Truncated: true` when the cap is hit, and CSV fields are RFC 4180-escaped with the formula-injection guard. The Payments page gains an "Export my donations" button.
 - **Request-id + duration structured request logging**: every API request now emits a single structured log line with the request id, HTTP method, path, response status, and duration in ms. `withRequestLogging()` wraps every route handler (the proxy cannot observe a handler's final status/duration), the proxy threads the `X-Request-Id` it mints into the downstream request headers so handlers and error logs correlate with the response header, and `logger.request()`/`handleApiError()` now include the request id in their structured context. Rate-limited (429) rejections are logged from the proxy with the same request id.
 
 ## [Unreleased] — 2026-08-12 (submission hardening pass)

@@ -227,6 +227,32 @@ function PaymentsClient() {
     ], { filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv` });
   };
 
+  const handleDonationExport = async () => {
+    // Issue #571: donors download their own donation history for
+    // tax/finance. GET /api/donations/export is scoped to the session's
+    // donor — there is no way to request someone else's history. Without a
+    // session the endpoint answers 401 and the button no-ops (the donor is
+    // not connected, so there is no history to export).
+    try {
+      const res = await fetch("/api/donations/export", {
+        credentials: "same-origin",
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `ophirpay-donations-${new Date().toISOString().split("T")[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    } catch {
+      // Network failure or missing session — nothing to download.
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Breadcrumb */}
@@ -269,6 +295,16 @@ function PaymentsClient() {
               />
             </svg>
             CSV
+          </button>
+          <button
+            onClick={handleDonationExport}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            title="Export my donations"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Export my donations
           </button>
           <button
             type="button"

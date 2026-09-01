@@ -399,6 +399,8 @@ model PaymentRequest {
   recipientAddress String?
   /// Lifecycle status (see RequestStatus enum).
   status        RequestStatus @default(PENDING)
+  dueDate       DateTime?
+
   /// Transaction hash once the request is paid.
   transactionHash String?
   /// When the request was created.

@@ -5,6 +5,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
+    Vec,
 };
 
 // ── Storage Keys ───────────────────────────────────────────────
@@ -23,7 +24,7 @@ const ALLOWED_SOURCE: Symbol = symbol_short!("ALW_SRC");
 // ── Data Types ─────────────────────────────────────────────────
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PaymentEvent {
     pub id: u64,
     pub source: String,

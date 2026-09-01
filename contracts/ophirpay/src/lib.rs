@@ -408,9 +408,9 @@ pub struct AuditEntry {
 /// A pending two-step role revocation.  Created by `propose_revoke_role`,
 /// executable after a 24-hour timelock via `execute_revoke_role`.
 /// The target account retains its role until execution — giving them
-/// time to wind down operations and转移 assets.
+/// time to wind down operations and transfer assets.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PendingRevocation {
     pub target: Address,
     pub role: Role,
@@ -875,16 +875,16 @@ fn collect_fee(
     payment_amount: i128,
 ) -> Result<i128, PaymentError> {
     // Read fee config; if disabled or no collector, skip fee collection.
-    let config: FeeConfig = match env.storage().instance().get(&FEE_KEY) {
+    let config: FeeConfig = match env.storage().instance().get::<_, FeeConfig>(&FEE_KEY) {
         Some(c) if c.enabled => c,
         _ => return Ok(0),
     };
-    let collector: Address = match env.storage().instance().get(&FEE_COLL) {
+    let collector: Address = match env.storage().instance().get::<_, Address>(&FEE_COLL) {
         Some(c) => c,
         None => return Ok(0),
     };
 
-    let fee = calculate_fee(payment_amount, config.payment_fee_bps);
+    let fee = OphirPayContract::calculate_fee(payment_amount, config.payment_fee_bps);
     if fee <= 0 {
         return Ok(0);
     }
@@ -5042,6 +5042,119 @@ mod tests {
         assert!(role.is_none());
     }
 
+    #[test]
+    fn test_two_step_admin_revocation_lifecycle() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let admin_to_revoke = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        // Grant admin role
+        client.grant_role(&owner, &admin_to_revoke, &Role::Admin);
+        assert_eq!(client.get_role(&admin_to_revoke), Some(Role::Admin));
+
+        // 1. Propose revocation
+        let unlock_time = client.propose_revoke_role(&owner, &admin_to_revoke);
+        assert_eq!(unlock_time, 1_000_000 + 86400);
+
+        // Verify pending revocation state
+        let pending = client.get_pending_revocation(&admin_to_revoke).unwrap();
+        assert_eq!(pending.target, admin_to_revoke);
+        assert_eq!(pending.role, Role::Admin);
+        assert_eq!(pending.proposed_by, owner);
+        assert_eq!(pending.proposed_at, 1_000_000);
+        assert_eq!(pending.unlocks_at, 1_000_000 + 86400);
+        assert_eq!(pending.executed, false);
+
+        // Verify target still retains role before timelock expiry
+        assert_eq!(client.get_role(&admin_to_revoke), Some(Role::Admin));
+
+        // Attempt execution before timelock (at +12h) -> should fail
+        env.ledger().set_timestamp(1_000_000 + 43200);
+        let early_exec = client.try_execute_revoke_role(&admin_to_revoke);
+        assert_eq!(early_exec, Err(Ok(PaymentError::RevocationNotDue)));
+
+        // Advance ledger past 24-hour timelock (+24h + 1s)
+        env.ledger().set_timestamp(1_000_000 + 86401);
+        let exec_res = client.try_execute_revoke_role(&admin_to_revoke);
+        assert!(exec_res.is_ok());
+
+        // Role must now be revoked
+        assert_eq!(client.get_role(&admin_to_revoke), None);
+
+        // Pending revocation should now be marked executed
+        let pending_after = client.get_pending_revocation(&admin_to_revoke).unwrap();
+        assert_eq!(pending_after.executed, true);
+
+        // Re-executing must fail with RevocationAlreadyExecuted
+        let double_exec = client.try_execute_revoke_role(&admin_to_revoke);
+        assert_eq!(double_exec, Err(Ok(PaymentError::RevocationAlreadyExecuted)));
+    }
+
+    #[test]
+    fn test_two_step_admin_revocation_cancel() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let auditor = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        client.grant_role(&owner, &auditor, &Role::Auditor);
+        assert_eq!(client.get_role(&auditor), Some(Role::Auditor));
+
+        // Propose revocation
+        client.propose_revoke_role(&owner, &auditor);
+
+        // Cancel revocation
+        let cancel_res = client.try_cancel_revoke_role(&owner, &auditor);
+        assert!(cancel_res.is_ok());
+
+        // Target should retain role
+        assert_eq!(client.get_role(&auditor), Some(Role::Auditor));
+
+        // Even past timelock, execution must fail because proposal is executed/cancelled
+        env.ledger().set_timestamp(1_000_000 + 86401);
+        let exec_res = client.try_execute_revoke_role(&auditor);
+        assert_eq!(exec_res, Err(Ok(PaymentError::RevocationAlreadyExecuted)));
+    }
+
+    #[test]
+    fn test_two_step_admin_revocation_guards() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let non_holder = Address::generate(&env);
+
+        let _ = client.init(&owner);
+
+        // 1. Self-revocation proposal should fail
+        let self_rev = client.try_propose_revoke_role(&owner, &owner);
+        assert_eq!(self_rev, Err(Ok(PaymentError::CannotRevokeSelf)));
+
+        // 2. Revocation of non-role-holder should fail
+        let non_holder_rev = client.try_propose_revoke_role(&owner, &non_holder);
+        assert_eq!(non_holder_rev, Err(Ok(PaymentError::NotARoleHolder)));
+
+        // 3. Duplicate proposal check
+        let operator = Address::generate(&env);
+        client.grant_role(&owner, &operator, &Role::Operator);
+        client.propose_revoke_role(&owner, &operator);
+
+        // Second propose on same target before execution fails
+        let dup_rev = client.try_propose_revoke_role(&owner, &operator);
+        assert_eq!(dup_rev, Err(Ok(PaymentError::RevocationAlreadyExecuted)));
+    }
+
     // ── Audit Log Test ─────────────────────────────────────
 
     #[test]
@@ -6360,6 +6473,7 @@ mod tests {
     #[test]
     fn test_get_bump_policy_returns_constants() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
@@ -6374,6 +6488,7 @@ mod tests {
     #[test]
     fn test_bump_storage_noop_on_empty_ranges() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
@@ -6437,6 +6552,7 @@ mod tests {
         // The actual gas cost is bounded by the number of entries scanned;
         // an empty range should cost ~5 000 instructions (instance bump only).
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         let owner = Address::generate(&env);

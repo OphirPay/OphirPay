@@ -108,6 +108,11 @@ export const paymentExportParamsSchema = z.object({
   search: z.string().optional(),
 });
 
+/** Query params for GET /api/donations/export (issue #571). */
+export const donationExportParamsSchema = z.object({
+  format: z.enum(["csv", "json"]).optional(),
+});
+
 // ── Batch Schemas ─────────────────────────────────────────────
 
 /**

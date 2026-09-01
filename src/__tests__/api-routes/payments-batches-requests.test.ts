@@ -5,6 +5,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock dependencies
 vi.mock("@/lib/prisma", () => ({
   default: {
+    $transaction: vi.fn(async (cb: any) => {
+      const fakeTx: any = {
+        batch: {
+          create: async (args: any) => ({ id: "batch_123", ...args.data }),
+          findUnique: async () => ({ id: "batch_123", name: "Payroll Jan", payments: [{ id: "p1" }, { id: "p2" }] }),
+        },
+        payment: {
+          createMany: async () => ({ count: 2 }),
+        },
+      };
+      return typeof cb === "function" ? await cb(fakeTx) : cb;
+    }),
     payment: {
       findMany: vi.fn(),
       findFirst: vi.fn(),

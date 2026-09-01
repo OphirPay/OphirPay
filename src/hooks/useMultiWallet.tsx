@@ -54,63 +54,79 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     setAvailableWallets(wallets.map((w) => w.id));
   }, []);
 
-  const loadBalance = useCallback(async (publicKey: string) => {
+  const loadBalance = useCallback(async (publicKey: string, retryCount = 0) => {
     setWallet((prev) => ({ ...prev, balanceLoading: true }));
     try {
       const balance = await fetchXlmBalance(publicKey);
-      // Ignore stale responses: a balance fetch that resolves after a
-      // disconnect (or an account switch) must not repopulate the cache.
       setWallet((prev) =>
         prev.connected && prev.publicKey === publicKey
           ? { ...prev, balance, balanceLoading: false }
           : prev,
       );
     } catch {
-      setWallet((prev) =>
-        prev.connected && prev.publicKey === publicKey
-          ? { ...prev, balanceLoading: false }
-          : prev,
-      );
+      if (retryCount < 3) {
+        setTimeout(() => loadBalance(publicKey, retryCount + 1), Math.pow(2, retryCount) * 1000);
+      } else {
+        setWallet((prev) =>
+          prev.connected && prev.publicKey === publicKey
+            ? { ...prev, balanceLoading: false }
+            : prev,
+        );
+      }
     }
   }, []);
 
   const loadBalanceRef = useRef(loadBalance);
   loadBalanceRef.current = loadBalance;
 
-  // Try to auto-reconnect on mount (check all available wallets)
   useEffect(() => {
+    let unmounted = false;
     const autoReconnect = async () => {
-      for (const walletId of ["freighter", "albedo", "xbull"] as WalletId[]) {
+      const savedWalletId = localStorage.getItem("ophirpay-active-wallet") as WalletId | null;
+      if (!savedWalletId) return;
+      
+      let attempts = 0;
+      while (attempts < 10 && !unmounted) {
         try {
-          const connector = getWalletConnector(walletId);
-          if (!connector.isAvailable()) continue;
+          const connector = getWalletConnector(savedWalletId);
+          if (!connector.isAvailable()) {
+            setError(`Waiting for ${connector.name} extension...`);
+            await new Promise(r => setTimeout(r, 500));
+            attempts++;
+            continue;
+          }
+          setError(null);
           const connected = await connector.isConnected();
           if (connected) {
             const publicKey = await connector.getAddress();
             const network = await connector.getNetwork();
-            if (publicKey) {
+            if (publicKey && !unmounted) {
               setWallet({
                 connected: true,
                 publicKey,
                 network,
-            balance: null,
-            balanceLoading: true,
-            activeWalletId: walletId,
-          });
-          setActiveWalletId(walletId);
-          loadBalanceRef.current(publicKey);
-              // Restore the server-side session for API authorization
+                balance: null,
+                balanceLoading: true,
+                activeWalletId: savedWalletId,
+              });
+              setActiveWalletId(savedWalletId);
+              loadBalanceRef.current(publicKey);
               await establishSession(publicKey, network || "TESTNET");
-              return; // Connected to first available wallet
+              return;
             }
           }
+          break;
         } catch {
-          // Try next wallet
+          break;
         }
+      }
+      if (attempts >= 10 && !unmounted) {
+        setError("Wallet provider is missing. Please make sure the extension is enabled.");
       }
     };
 
     autoReconnect();
+    return () => { unmounted = true; };
   }, []);
 
   const connect = useCallback(
@@ -147,6 +163,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
           activeWalletId: walletId,
         });
         setActiveWalletId(walletId);
+        localStorage.setItem("ophirpay-active-wallet", walletId);
 
         if (publicKey) {
           loadBalance(publicKey);
@@ -167,6 +184,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
           // "connected" state with no server session behind it.
           setWallet(initialWalletState);
           setActiveWalletId(null);
+          localStorage.removeItem("ophirpay-active-wallet");
           setError(
             "Wallet connected, but the server rejected the session. You may have declined the signature request — reconnect and approve it to use API features."
           );
@@ -199,6 +217,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     // balance/account data the moment disconnect is requested.
     setWallet(initialWalletState);
     setActiveWalletId(null);
+    localStorage.removeItem("ophirpay-active-wallet");
     setError(null);
 
     if (walletId) {

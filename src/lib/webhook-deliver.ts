@@ -65,7 +65,7 @@ export async function deliverWebhook(
   secret: string,
   payload: WebhookPayload,
   maxRetries = 3
-): Promise<{ success: boolean; statusCode?: number }> {
+): Promise<WebhookDeliveryResult> {
   const { body, signature } = buildSignedPayload(payload, secret);
   const totalAttempts = Number.isFinite(maxRetries)
     ? Math.max(1, Math.floor(maxRetries))
@@ -75,19 +75,18 @@ export async function deliverWebhook(
   if (!(await isSafeWebhookUrlAtDelivery(url))) {
     logger.error("Webhook delivery blocked — URL resolved to a private/internal address", { url });
     incMetric("webhooks_failed_total");
-    return { success: false };
+    return { success: false, attempts: 0, latencyMs: 0, errorMessage: "Blocked: private/internal URL" };
   }
 
   let lastStatusCode: number | undefined;
+  let lastError: string | undefined;
+  const startTime = Date.now();
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    try {
       // `redirect: "manual"` closes the SSRF redirect bypass: without it the
       // default fetch behavior follows 3xx hops to internal addresses (e.g.
       // http://169.254.169.254) even after the initial URL passed the guard.
@@ -103,13 +102,12 @@ export async function deliverWebhook(
         redirect: "manual",
       });
 
-      clearTimeout(timeout);
       lastStatusCode = response.status;
 
       if (response.ok) {
         logger.info("Webhook delivered", { url, event: payload.event, attempt });
         incMetric("webhooks_delivered_total");
-        return { success: true, statusCode: response.status };
+        return { success: true, statusCode: response.status, attempts: attempt, latencyMs: Date.now() - startTime };
       }
 
       lastError = `HTTP ${response.status}`;
@@ -128,5 +126,5 @@ export async function deliverWebhook(
 
   logger.error("Webhook delivery exhausted retries", { url, event: payload.event });
   incMetric("webhooks_failed_total");
-  return { success: false, statusCode: lastStatusCode };
+  return { success: false, statusCode: lastStatusCode, attempts: totalAttempts, latencyMs: Date.now() - startTime, errorMessage: lastError };
 }

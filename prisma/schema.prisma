@@ -89,10 +89,12 @@ model User {
   payments        Payment[]
   /// Every batch the user has created (see Batch).
   batches         Batch[]
-  /// Recurring-payment schedules owned by the user (see Recurrence).
-  recurrences     Recurrence[]
-  /// Shareable payment requests / links created by the user (see PaymentRequest).
-  paymentRequests PaymentRequest[]
+    /// Recurring-payment schedules owned by the user (see Recurrence).
+    recurrences     Recurrence[]
+    /// One-off scheduled payments owned by the user (see ScheduledPayment).
+    scheduledPayments ScheduledPayment[]
+    /// Shareable payment requests / links created by the user (see PaymentRequest).
+    paymentRequests PaymentRequest[]
   /// Outgoing webhook subscriptions owned by the user (see Webhook).
   webhooks        Webhook[]
   /// API keys issued for programmatic access (see ApiKey).

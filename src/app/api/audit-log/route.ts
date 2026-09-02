@@ -157,47 +157,7 @@ async function _GET(request: Request) {
       );
     }
 
-    const parsed = auditLogQuerySchema.safeParse({
-      page: param("page"),
-      limit: param("limit"),
-      actor: param("actor"),
-      action: param("action"),
-      resource: param("resource"),
-      since: param("since"),
-      until: param("until"),
-      order: param("order"),
-    });
-    if (!parsed.success) return validationError(parsed.error);
 
-    if (countResult.status === "SIMULATION_FAILED") {
-      return successResponse(dbEntries, {
-        page,
-        limit,
-        total: 0,
-
-      });
-    }
-
-    const totalCount = Number(countResult.returnValue ?? 0);
-    if (totalCount === 0) {
-      return successResponse(dbEntries, { page, limit, total: 0 });
-    }
-
-    // Which entries to read (ids are 1-indexed, most recent = highest id):
-    // - No filters: only the page window, so unfiltered reads stay cheap.
-    // - Filters: scan the whole ledger so the filtered `total` (and therefore
-    //   pagination) is exact regardless of where matches fall.
-    const ids: number[] = [];
-    if (hasFilters) {
-      for (let id = totalCount; id >= 1; id--) ids.push(id);
-    } else {
-      const startId = Math.max(1, totalCount - (page - 1) * limit);
-      const endId = Math.max(1, startId - limit + 1);
-      for (let id = startId; id >= endId; id--) ids.push(id);
-    // Fetch entries from the contract (most recent first, capped at limit)
-    const entries: AuditLogEntry[] = [];
-    const startId = Math.max(1, totalCount - (page - 1) * limit);
-    const endId = Math.max(1, startId - limit + 1);
 
     // Collect the filtered set (bounded by the on-chain ledger) to compute the
     // total for offset pagination.
@@ -237,26 +197,7 @@ async function _GET(request: Request) {
           ]
         : items;
 
-    const entries = await readAuditEntries(ids);
 
-    // Apply filters (mirrors the UI's client-side live-entry predicate):
-    // actor substring (case-insensitive), action exact match, inclusive
-    // since/until timestamp range.
-    const actorQuery = actor?.toLowerCase();
-    const filtered = entries.filter((e) => {
-      if (actorQuery && !(e.actor ?? "").toLowerCase().includes(actorQuery)) {
-        return false;
-      }
-      if (action && e.action !== action) return false;
-      if (since !== undefined && e.timestamp < since) return false;
-      if (until !== undefined && e.timestamp > until) return false;
-      return true;
-    });
-
-    const start = (page - 1) * limit;
-    const paged = filtered.slice(start, start + limit);
-
-    return successResponse(entries, {
     return successResponse(combined, {
       page,
       limit,

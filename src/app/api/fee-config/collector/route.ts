@@ -5,6 +5,7 @@ import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-re
 import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { withRequestLogging } from "@/lib/request-logging";
+import { enforceLookupRateLimit } from "@/lib/lookup-rate-limit";
 
 /**
  * GET /api/fee-config/collector — current fee collector address
@@ -16,6 +17,10 @@ export const GET = withMetrics("GET /api/fee-config/collector", withRequestLoggi
     if (!auth) {
       return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
     }
+
+    // Rate-limit address lookups to prevent automated RPC hammering
+    const rateLimited = await enforceLookupRateLimit(request);
+    if (rateLimited) return rateLimited;
 
     const result = await simulateContractCall(
       DEFAULT_CONTRACT_ID,

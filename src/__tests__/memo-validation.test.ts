@@ -87,7 +87,10 @@ describe("memoField (server-side validation)", () => {
     ["NUL", "a\u0000b"],
     ["ESC", "\u001b[31m"],
     ["C1 control", "a\u0085b"],
-  ])("rejects %s control characters in a memo", (_name, memo) => {
+    ["bidi override", "pay\u202Enow"],
+    ["bidi isolate", "\u2066visa\u2069"],
+    ["zero-width", "pay\u200Bnow"],
+  ])("rejects %s characters in a memo", (_name, memo) => {
     const result = createPaymentSchema.safeParse({ ...paymentBase, memo });
     expect(result.success).toBe(false);
     if (!result.success) {

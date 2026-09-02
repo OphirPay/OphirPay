@@ -7,7 +7,6 @@ import {
 } from "../src/lib/db/shard-router";
 import {
   ShardedTestFixtureManager,
-  ShardedPaymentRecord,
 } from "../src/lib/db/sharded-test-fixture";
 
 test.describe("E2E: Sharded Database Infrastructure & Lifecycle", () => {

@@ -2,6 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { isValidStellarAddress } from "@/lib/stellar";
+import { generateMetadata as baseGenerateMetadata } from "@/lib/metadata-helpers";
+import type { Metadata } from "next";
 
 interface PayPageProps {
   params: Promise<{ address: string }>;
@@ -14,6 +16,33 @@ interface PayPageProps {
  * any optional amount/memo/asset query params. Invalid addresses show a
  * clear error instead of crashing.
  */
+export async function generateMetadata({ params, searchParams }: PayPageProps): Promise<Metadata> {
+  const { address } = await params;
+  const { amount, asset } = await searchParams;
+  
+  if (!isValidStellarAddress(address)) {
+    return baseGenerateMetadata({
+      title: "Invalid Payment Link | OphirPay",
+      description: "This payment link is invalid or expired.",
+      noIndex: true,
+    });
+  }
+
+  const title = amount 
+    ? `Pay ${amount} ${asset || "XLM"} to ${address.slice(0, 4)}...${address.slice(-4)} | OphirPay`
+    : `Pay ${address.slice(0, 4)}...${address.slice(-4)} | OphirPay`;
+
+  const description = amount
+    ? `Securely send ${amount} ${asset || "XLM"} to this Stellar address using OphirPay.`
+    : `Securely send funds to this Stellar address using OphirPay.`;
+
+  return baseGenerateMetadata({
+    title,
+    description,
+    path: `/pay/${address}`,
+  });
+}
+
 export default async function PayPage({ params, searchParams }: PayPageProps) {
   const { address } = await params;
   const { amount, memo, asset } = await searchParams;

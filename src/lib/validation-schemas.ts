@@ -117,6 +117,12 @@ export const batchRecipientSchema = z.object({
   memo: memoField,
 });
 
+export const idempotencyKeySchema = z
+  .string("Idempotency key must be a string")
+  .trim()
+  .min(8, "Idempotency key must be at least 8 characters")
+  .max(255, "Idempotency key must be at most 255 characters");
+
 export const createBatchSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),

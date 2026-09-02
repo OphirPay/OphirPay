@@ -224,11 +224,35 @@ correct security/gas tradeoff per the Stellar Drips Wave Bot review.
 - **WASM size:** OphirPay contract is 92 KB (94,096 bytes) with `opt-level="z"`.
   The Soroban mainnet upload limit is ~128 KB (131,072 bytes). Headroom: ~36 KB for future features.
 
+## Storage-Bump Strategy
+
+Soroban persistent storage entries have a TTL (time-to-live) measured in
+ledgers.  Without periodic bumps, entries expire and data is lost
+permanently.  OphirPay implements a two-tier bump strategy:
+
+| Tier | When | TTL ceiling | Scope |
+|---|---|---|---|
+| **On-write bump** | Every persistent write | `BUMP_MAX_TTL` (50K ledgers ≈ 35 days) | All record types |
+| **Maintenance bump** | Periodic off-chain cron | `BUMP_MAINTENANCE_TTL` (100K ledgers ≈ 70 days) | All record types + instance |
+
+**Constants** (defined in `contracts/ophirpay/src/lib.rs`):
+- `BUMP_MIN_TTL = 5,000` (≈ 3.5 days) — minimum TTL applied
+- `BUMP_MAX_TTL = 50,000` (≈ 35 days) — ceiling on every write
+- `BUMP_MAINTENANCE_TTL = 100,000` (≈ 70 days) — ceiling for maintenance calls
+
+**Maintenance function:** `bump_storage()` accepts per-type ID ranges and
+bumps every existing entry in those ranges.  Returns the count of entries
+bumped.  Gas cost: ~5K–15K instructions per batch (varies by entry count).
+
+**Gas impact:** Each `extend_ttl` call costs ~1,500 WASM instructions
+(~300 gas).  On-write bumps add ~600 gas to `record_payment` and similar
+operations — well under 1% of total operation cost.
+
 ## Future Optimizations (Not Yet Implemented)
 
 | Optimization | Est. Savings | Priority | Effort |
 |---|---|---|---|
-| TTL batching per function | 15–20% per op | Medium | Low |
+| ~~TTL batching per function~~ | ~~15–20% per op~~ | ~~Medium~~ | ~~Low~~ ✅ Implemented |
 | Audit action names as `Symbol` instead of `String` | ~2K CPU/audit | Low | Medium |
 | Reduce event payload sizes | ~1K/event | Low | Low |
 | Lazy audit (event-only, skip persistent storage) | ~5K/audit (optional) | Low | High |

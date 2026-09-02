@@ -69,7 +69,13 @@ contracts/**/spec/target/
 # Soroban test snapshot artifacts (generated on test failure)
 **/test_snapshots/
 
+# Proptest regression persistence (generated after a shrinking run)
+**/*.proptest-regressions
+
 # Playwright
 playwright-report/
 playwright-visual-report/
 test-results/
+
+# Load-test raw results (regenerated locally; baselines live in docs/PERFORMANCE.md)
+tests/load/results/

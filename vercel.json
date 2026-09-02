@@ -5,6 +5,12 @@
   "framework": "nextjs",
   "outputDirectory": ".next",
   "regions": ["iad1"],
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -59,5 +65,11 @@
     "autoAlias": true,
     "silent": false,
     "productionBranch": "main"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/scheduled/run",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

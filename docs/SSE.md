@@ -251,6 +251,36 @@ curl -N https://ophirpay.com/api/events | \
 | `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | testnet default | `PaymentEventEmitter` the stream polls |
 | `NEXT_PUBLIC_CHAIN_READ_SOURCE` | — | Public key used for read-only contract simulations |
 
+## Load testing (issue #391)
+
+`scripts/sse-load-test.mjs` opens **100 concurrent SSE connections** to
+`GET /api/events` and verifies the endpoint holds up under load:
+
+- every client receives the `connected` event;
+- every client receives **heartbeats within the expected interval**
+  (server interval is 15s; the test asserts the first heartbeat arrives
+  within `15s + 10s` tolerance and reports the observed min/max);
+- **no connection leak** after clients disconnect — the server's
+  `ophirpay_sse_open_connections` gauge (exposed on `/api/metrics`) returns
+  to `0` and fresh connections still work afterwards;
+- **memory stays bounded** — server heap/RSS deltas sampled from
+  `/api/metrics` during the run, and the harness's own heap, must stay under
+  generous limits.
+
+```bash
+# Requires a running OphirPay server (dev or production build)
+npm run start            # in one terminal (or: npm run dev)
+npm run test:sse:load    # in another
+
+# Customise the run
+BASE_URL=https://staging.example.com CONCURRENCY=250 DURATION_MS=20000 \
+  npm run test:sse:load
+```
+
+The exit code is `0` on success and `1` if any acceptance check fails. It
+runs automatically on every PR in CI (shard 1 of the `e2e-tests` job, after
+the production build is served).
+
 ## Reference implementation
 
 - Route: `src/app/api/events/route.ts`

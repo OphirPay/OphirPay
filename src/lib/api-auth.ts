@@ -116,6 +116,9 @@ export async function authenticateRequest(
     prisma.apiKey
       .update({ where: { id: apiKey.id }, data: { lastUsed: new Date() } })
       .catch(() => {});
+    prisma.apiKeyRequestLog
+      .create({ data: { keyId: apiKey.id } })
+      .catch(() => {});
 
     return {
       userId: apiKey.userId,

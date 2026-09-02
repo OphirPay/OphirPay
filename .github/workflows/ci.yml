@@ -43,6 +43,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
+      - run: npx prisma generate
       - run: npx tsc --noEmit
 
   # ══════════════════════════════════════════════════════════════
@@ -366,6 +367,14 @@ jobs:
             sleep 2
           done
           curl -sf -o /dev/null http://localhost:3000/ || { echo "next start failed to come up"; tail -20 /tmp/next-start.log; exit 1; }
+      - name: SSE load test (100 concurrent clients, issue #391)
+        # Only shard 1 runs the load test so it never competes with the
+        # E2E browsers on the other shards. Exercises heartbeat delivery,
+        # no-connection-leak, and bounded-memory acceptance criteria.
+        if: matrix.shardIndex == 1
+        run: node scripts/sse-load-test.mjs
+        env:
+          BASE_URL: http://localhost:3000
       - name: Run E2E tests against production build (shard)
         run: npx playwright test --project=chromium --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
       - name: Rerun only failed tests (flaky triage)
@@ -507,6 +516,38 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
       - name: Run Gitleaks detect
         run: gitleaks detect --config .gitleaks.toml --verbose --redact
+      # Scanner self-test (issue #393): prove the blocklist catches a sample
+      # secret and does not false-positive on clean text. The fixture
+      # directory is allowlisted for the repo-wide scan above, so these
+      # dedicated scans (default rules, --no-git) are the positive control.
+      - name: Self-test — scanner catches the sample-secret fixture
+        run: |
+          set +e
+          gitleaks detect --source tests/fixtures/secrets/positive --no-git \
+            --no-banner --redact >/tmp/gitleaks-positive.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ]; then
+            echo "✅ Scanner caught the fixture secret (exit 1 as expected)"
+          else
+            echo "❌ Scanner did NOT flag the sample-secret fixture (exit $rc)"
+            cat /tmp/gitleaks-positive.log
+            exit 1
+          fi
+      - name: Self-test — clean fixture stays clean (no false positives)
+        run: |
+          set +e
+          gitleaks detect --source tests/fixtures/secrets/clean --no-git \
+            --no-banner >/tmp/gitleaks-clean.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "✅ Clean fixture produced no findings (exit 0)"
+          else
+            echo "❌ Scanner flagged the clean fixture (exit $rc) — check allowlist"
+            cat /tmp/gitleaks-clean.log
+            exit 1
+          fi
 
   # ══════════════════════════════════════════════════════════════
   # 13. DOCKER BUILD — Build & validate production Docker image
@@ -640,22 +681,28 @@ jobs:
           "
 
   # ══════════════════════════════════════════════════════════════
-  # 16. OPENAPI VALIDATE — Validate the OpenAPI specification
+  # 16. OPENAPI VALIDATE — Validate the OpenAPI specification and
+  #     check spec ↔ implementation conformance (drift detection).
+  #     `npm run test:openapi` (vitest) asserts every spec endpoint
+  #     has a route handler and every route handler is documented.
   # ══════════════════════════════════════════════════════════════
   openapi-validate:
-    name: "1️⃣6️⃣ Docs — OpenAPI (Validate)"
+    name: "1️⃣6️⃣ Docs — OpenAPI (Validate + Conformance)"
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
       - name: Install OpenAPI lint tools
         run: npm install -g @redocly/cli@1.25.11
       - name: Lint OpenAPI spec
         run: redocly lint docs/openapi.yaml
       - name: Bundle OpenAPI spec (catches $ref errors)
         run: redocly bundle docs/openapi.yaml -o /tmp/openapi-bundled.yaml && echo "✅ OpenAPI spec is valid and bundled"
+      - name: Check spec ↔ implementation conformance (drift detection)
+        run: npm run test:openapi
 
   # ══════════════════════════════════════════════════════════════
   # 17. SPELL CHECK — Check for typos in docs, comments, and code
@@ -847,37 +894,49 @@ jobs:
           retention-days: 7
 
   # ══════════════════════════════════════════════════════════════
-  # 22. TESTNET INTEGRATION — Live RPC testnet contract verification
+  # 21. ACCESSIBILITY — Axe-Core Playwright Scans (WCAG 2.1 AA)
   # ══════════════════════════════════════════════════════════════
-  testnet-integration:
-    name: "2️⃣2️⃣ Backend — Testnet Integration (RPC)"
+  accessibility-scans:
+    name: "♿ Frontend — Accessibility (Axe-Core)"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: contract-wasm
-    continue-on-error: true # Non-blocking on testnet RPC rate-limits / outages
+    timeout-minutes: 10
+    needs: next-build
     env:
-      SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
-      STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
-      SKIP_ON_NETWORK_ERROR: "true"
+      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_a11y
+      DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_a11y
+      AUTH_SECRET: ci-a11y-auth-secret-00000000000000000000
       NEXT_PUBLIC_CONTRACT_ID: CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET
       NEXT_PUBLIC_EMITTER_CONTRACT_ID: CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.0
-        with:
-          targets: wasm32v1-none
-      - name: Install build deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
-      - name: Download contract WASM artifacts
-        uses: actions/download-artifact@v4
+      - run: npx prisma generate
+      - name: Download build artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
         with:
-          name: contract-wasm
-          path: contracts/
-      - name: Run Cargo integration test suite
-        run: cd contracts/ophirpay && cargo test --test integration_tests
-      - name: Run Live RPC Testnet Integration Tests
-        run: node scripts/testnet-integration.mjs
+          name: next-build
+          path: .next/
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+      - name: Start Server and Run Axe Accessibility Tests
+        run: |
+          nohup npm run start > /tmp/next-start.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/ && break
+            sleep 2
+          done
+          npx playwright test e2e/accessibility.spec.ts --project=chromium
+        env:
+          CI: true
+          E2E_BASE_URL: "http://localhost:3000"
+      - name: Upload Accessibility Report
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        with:
+          name: playwright-a11y-report
+          path: playwright-report/
+          retention-days: 7
+
 

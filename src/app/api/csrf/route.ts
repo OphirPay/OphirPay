@@ -1,15 +1,23 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
+import { NextResponse } from "next/server";
 import { generateCsrfToken, csrfCookieHeader } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
 
 /**
- * GET /api/csrf — mint a CSRF token for this session.
- *
- * Sets the HttpOnly `__Host-csrf` cookie AND returns the token in the body
- * so client-side code can echo it back via the `x-csrf-token` header on
- * mutation requests (double-submit cookie pattern, see lib/csrf.ts).
+ * GET /api/csrf
+ * 
+ * Mints a new CSRF token and sets it as an HttpOnly cookie.
+ * The token is also returned in the response body for the client
+ * to store in memory and send as the x-csrf-token header on
+ * mutating requests.
+ * 
+ * Security:
+ * - Token is cryptographically random (256 bits)
+ * - Cookie is HttpOnly, Secure (prod), SameSite=Strict
+ * - Cookie uses __Host- prefix in production (host-only)
+ * - Token rotates on each mint (invalidates previous token)
  */
 export const GET = withMetrics("GET /api/csrf", withRequestLogging(async function GET(request: Request) {
   const token = generateCsrfToken();

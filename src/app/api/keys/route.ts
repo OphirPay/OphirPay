@@ -13,6 +13,7 @@ import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { deriveKeyPrefix, API_SCOPES } from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 
 /** Validate an array of scopes against the known set. */
 function parseScopes(input: unknown): {
@@ -72,6 +73,9 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
  */
 export const POST = withMetrics("POST /api/keys", withRequestLogging(async function POST(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
 
@@ -133,6 +137,9 @@ export const PATCH = withMetrics("PATCH /api/keys", __ophir_PATCH);
 
 async function __ophir_PATCH(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
 
@@ -167,6 +174,9 @@ async function __ophir_PATCH(request: Request) {
  */
 export const DELETE = withMetrics("DELETE /api/keys", withRequestLogging(async function DELETE(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
 

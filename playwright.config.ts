@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
   // In CI the suite is sharded across parallel runners; each shard emits a
   // blob report that the `e2e-report` job merges into a single combined
@@ -18,6 +18,10 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    // The PWA service worker intercepts `/api/` fetches with its own client
+    // fetch(), so Playwright's page.route() (used by the SSE mock) never sees
+    // the request. Block it for E2E so network interception is deterministic.
+    serviceWorkers: "block",
   },
   projects: [
     {

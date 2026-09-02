@@ -14,6 +14,7 @@ import { logger } from "@/lib/logger";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
 
 export const GET = withMetrics("GET /api/payments/[id]", withRequestLogging(async function GET(
@@ -46,6 +47,9 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) {
       return unauthorizedError(
@@ -86,7 +90,7 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
         assetCode: payment.assetCode,
         status: payment.status,
         signedAt: new Date().toISOString(),
-      });
+      }, auth.userId);
     } else if (body.status === "SUBMITTED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_SUBMITTED, {
         paymentId: payment.id,
@@ -94,7 +98,7 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
         assetCode: payment.assetCode,
         transactionHash: payment.transactionHash,
         submittedAt: new Date().toISOString(),
-      });
+      }, auth.userId);
     } else if (body.status === "CONFIRMED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_CONFIRMED, {
         paymentId: payment.id,
@@ -102,7 +106,7 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
         assetCode: payment.assetCode,
         transactionHash: payment.transactionHash,
         confirmedAt: new Date().toISOString(),
-      });
+      }, auth.userId);
     } else if (body.status === "COMPLETED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_COMPLETED, {
         paymentId: payment.id,
@@ -110,7 +114,7 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
         assetCode: payment.assetCode,
         transactionHash: payment.transactionHash,
         completedAt: payment.completedAt?.toISOString() ?? new Date().toISOString(),
-      });
+      }, auth.userId);
     } else if (body.status === "FAILED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_FAILED, {
         paymentId: payment.id,
@@ -118,7 +122,7 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
         assetCode: payment.assetCode,
         errorMessage: payment.errorMessage,
         failedAt: new Date().toISOString(),
-      });
+      }, auth.userId);
     }
 
     return successResponse(payment);
@@ -132,6 +136,9 @@ export const DELETE = withMetrics("DELETE /api/payments/[id]", withRequestLoggin
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) {
       return unauthorizedError(

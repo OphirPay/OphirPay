@@ -22,6 +22,10 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org)
 - **Before submitting**: Run `npm run ci` (typecheck → lint → test → build)
 
+### Adding or changing an API endpoint
+
+Before adding or modifying an API endpoint, read the [API Endpoint Guide](docs/API_GUIDE.md). It documents the mandatory conventions: file structure, Zod validation, the error-handling pattern, auth middleware usage, the response envelope, rate-limit integration, a copy-pasteable worked example, and a pre-merge checklist.
+
 ## 15-Job CI/CD Pipeline
 
 Every PR triggers 15 independent CI/CD checks across quality, testing, security, and DevOps:
@@ -70,6 +74,7 @@ npm run test:watch    # Watch mode
 npm run coverage      # Coverage report
 npm run typecheck     # TypeScript check
 npm run lint          # ESLint
+npm run test:openapi  # OpenAPI spec ↔ implementation conformance (drift)
 ```
 
 ## Changelog

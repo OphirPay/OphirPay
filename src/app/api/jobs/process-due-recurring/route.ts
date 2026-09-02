@@ -4,6 +4,7 @@ import { withMetrics } from "@/lib/metrics-middleware";
 import prisma from "@/lib/prisma";
 import { unauthorizedError, successResponse, handleApiError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
 import { claimDueRecurrences, createRunPayment } from "@/lib/recurring-scheduler";
 
@@ -21,6 +22,9 @@ export const POST = withMetrics(
   "POST /api/jobs/process-due-recurring",
   withRequestLogging(async function POST(request: Request) {
     try {
+      const csrfError = verifyCsrf(request);
+      if (csrfError) return csrfError;
+
       const auth = await getAuthContext(request);
       if (!auth) return unauthorizedError("Authentication required.");
 

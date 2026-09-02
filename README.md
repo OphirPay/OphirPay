@@ -132,6 +132,8 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **In-app notification center** (bell, unread count, live SSE updates, session persistence) | ✅ | ❌ |
 
 > All features above have dashboard UI pages. See [roadmap](#-roadmap) for details.
+>
+> 📄 **Batch payments CSV import** — see [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md) for the exact CSV format, validation rules, and error messages.
 
 | **Full CI/CD + 970 tests (806 app + 67 contracts + 97 e2e)** | ✅ | ⚠️ |
 
@@ -746,6 +748,10 @@ We welcome contributions! Here's how to get started:
 4. **Push** to your fork: `git push origin feat/amazing-feature`
 5. **Open** a Pull Request against `main`
 
+> 🛠️ **Setup trouble?** See the [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+> for fixes to common issues (Freighter detection, Rust/wasm32 target,
+> Prisma migrations, WASM builds, Node version, port conflicts).
+
 ### Development Scripts
 
 ```bash
@@ -882,7 +888,7 @@ OphirPay is designed with defense-in-depth across the contract, API, and web lay
 - **Session security** — HMAC-SHA256 signed session cookies with expiry, `HttpOnly; SameSite=Lax`, fail-closed on DB errors
 - **API keys** — SHA-256 hashed at rest, indexed prefix lookup, expiry support, `lastUsed` tracking
 - **SSRF guard for webhooks** — blocks loopback/link-local/private IPs and hostnames, with DNS-rebinding re-validation at delivery time
-- **HMAC-signed webhook payloads** — receivers verify `X-OphirPay-Signature` (HMAC-SHA256)
+- **HMAC-signed webhook payloads** — receivers verify `X-OphirPay-Signature` (HMAC-SHA256); see [Webhook Signature Verification](docs/webhook-verification.md) for the canonical form, replay protection, and Node/Python reference implementations
 - **Input validation** — Zod schemas on all mutation routes; Stellar address regex, amount bounds, memo length limits
 - **Rate limiting** — per-IP sliding window (120 RPM default, Redis backend for multi-instance)
 - **Security headers** — CSP with Stellar-only connect-src, HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, Referrer-Policy

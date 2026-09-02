@@ -43,6 +43,14 @@ vi.mock("@/lib/fee-estimator", () => ({
   }),
 }));
 
+vi.mock("@/lib/transaction-simulator", () => ({
+  simulatePayment: vi.fn().mockResolvedValue({
+    success: true,
+    fee: "100",
+    operations: 1,
+  }),
+}));
+
 // Mock contracts
 vi.mock("@/lib/contracts", () => ({
   recordPaymentOnChain: vi.fn().mockResolvedValue({

@@ -90,6 +90,25 @@ export interface CreatePaymentInput {
 
 // ── Batch ─────────────────────────────────────────────────────
 
+export type BatchItemStatus = "pending" | "sent" | "failed";
+
+export interface BatchItem {
+  id: string;
+  amount: number;
+  assetCode: string;
+  status: BatchItemStatus;
+  memo?: string;
+  errorMessage?: string;
+}
+
+export interface BatchProgress {
+  total: number;
+  pending: number;
+  sent: number;
+  failed: number;
+  percentComplete: number;
+}
+
 export interface Batch {
   id: string;
   userId: string;
@@ -99,6 +118,11 @@ export interface Batch {
   updatedAt: string;
   description?: string;
   payments?: Payment[];
+}
+
+export interface BatchWithProgress extends Batch {
+  items: BatchItem[];
+  progress: BatchProgress;
 }
 
 export interface BatchRecipient {

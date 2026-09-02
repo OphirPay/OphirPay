@@ -8,6 +8,7 @@ import {
   Operation,
   Asset,
   Memo,
+  Keypair,
 } from "@stellar/stellar-sdk";
 import { getStellarErrorMessage } from "./stellar-error";
 
@@ -643,4 +644,74 @@ export function getAccountExplorerUrl(publicKey: string): string {
 
 export function isValidStellarAddress(address: string): boolean {
   return /^G[A-Z0-9]{55}$/.test(address);
+}
+
+// ── Memo Validation ─────────────────────────────────────────
+
+/** Maximum memo size in bytes (Stellar protocol limit). */
+export const MEMO_MAX_BYTES = 28;
+
+/** Allowed Stellar memo types. */
+export type StellarMemoType = "text" | "id" | "hash" | "return";
+
+export interface MemoValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+/**
+ * Validate a Stellar memo before building a transaction.
+ *
+ * Stellar memos are limited to 28 bytes. The current implementation
+ * only supports text memos (Memo.text()). Multi-byte UTF-8 characters
+ * (e.g. é, ñ, emojis) consume more than 1 byte each, so we must check
+ * the actual byte length rather than the string character count.
+ *
+ * @param memo - The memo string to validate (optional)
+ * @returns MemoValidationResult with valid flag and optional error message
+ */
+export function validateMemo(memo?: string): MemoValidationResult {
+  if (!memo || memo.trim() === "") {
+    return { valid: true };
+  }
+
+  const trimmed = memo.trim();
+  const byteLength = new TextEncoder().encode(trimmed).byteLength;
+
+  if (byteLength > MEMO_MAX_BYTES) {
+    return {
+      valid: false,
+      error: `Memo exceeds the ${MEMO_MAX_BYTES}-byte limit (${byteLength} bytes). ` +
+        "Use shorter text or remove multi-byte characters (emojis, accented letters).",
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Map a Horizon or contract error message to a user-friendly memo error.
+ * Returns null if the error is not memo-related.
+ */
+export function getMemoErrorMessage(error: string): string | null {
+  const lower = error.toLowerCase();
+
+  // Most specific: the Horizon tx_memo_required result code
+  if (lower.includes("tx_memo_required")) {
+    return "This account requires a memo to receive payments. Please add a memo.";
+  }
+  if (lower.includes("memo") && (lower.includes("too long") || lower.includes("exceeds"))) {
+    return "Memo is too long. Stellar memos are limited to 28 bytes.";
+  }
+  if (lower.includes("memo") && lower.includes("invalid")) {
+    return "Invalid memo format. Use plain text, numbers, or hex.";
+  }
+  if (lower.includes("tx_bad") && lower.includes("memo")) {
+    return "Transaction rejected due to an invalid memo. Check the memo format and try again.";
+  }
+  if (lower.includes("op_bad") && lower.includes("memo")) {
+    return "Operation failed: memo format is invalid for this transaction type.";
+  }
+
+  return null;
 }

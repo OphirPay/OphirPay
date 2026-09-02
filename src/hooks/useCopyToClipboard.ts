@@ -11,7 +11,23 @@ interface CopyState {
 
 /**
  * Copy text to clipboard with feedback state.
- * Returns a function to trigger copy and the current state.
+ * Returns a function to trigger copy and the current state
+ * ({ copied, error }) that automatically clears after `resetDelay` ms.
+ *
+ * @example
+ * Add a copy button for a Stellar transaction hash with a visual cue:
+ *
+ * ```tsx
+ * function CopyHashButton({ txHash }: { txHash: string }) {
+ *   const { copy, state } = useCopyToClipboard();
+ *
+ *   return (
+ *     <button onClick={() => copy(txHash)} aria-label="Copy transaction hash">
+ *       {state.copied ? "Copied!" : "Copy hash"}
+ *     </button>
+ *   );
+ * }
+ * ```
  */
 export function useCopyToClipboard(resetDelay = 2000): {
   copy: (text: string) => Promise<boolean>;

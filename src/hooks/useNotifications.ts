@@ -11,9 +11,18 @@ import {
 } from "@/lib/notifications";
 
 export function useNotifications() {
-  const [notifications, setNotifications] = useState<PaymentNotification[]>(() => {
-    return getStoredNotifications();
-  });
+  // Start from an empty list so the server-rendered HTML and the client's
+  // first render always agree (sessionStorage does not exist during SSR, so
+  // reading it here would render the seed badge on the server but the stored
+  // state on the client — a hydration mismatch that leaves a stale unread
+  // badge that never reconciles). The stored notifications are loaded in an
+  // effect after mount instead.
+  const [notifications, setNotifications] = useState<PaymentNotification[]>([]);
+
+  // Load persisted notifications once the client has hydrated.
+  useEffect(() => {
+    setNotifications(getStoredNotifications());
+  }, []);
   const [isOpen, setIsOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);

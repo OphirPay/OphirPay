@@ -280,11 +280,12 @@ export interface Refund {
 // ── Payment Event (Emitter Contract) ────────────────────────
 
 export interface PaymentEvent {
+  version: number;
   id: number;
   source: string;
   payer: string;
   payee: string;
-  amount: bigint;
+  amount: string;
   tx_hash: string;
   timestamp: number;
 }

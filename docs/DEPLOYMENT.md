@@ -73,6 +73,8 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_DEMO_MODE` | `false` | Enable demo mode |
 | `NEXT_PUBLIC_FEATURE_MULTI_ASSET` | `false` | Enable multi-asset support |
 | `NEXT_PUBLIC_FEATURE_WEBHOOKS` | `false` | Enable webhook features |
+| `CRON_SECRET` | — | Shared secret protecting `/api/cron`. Required to run the scheduled-payment cron — see [Scheduled Payment Cron](scheduled-payment-cron.md) |
+| `SCHEDULED_PAYMENTS_SOURCE_SECRET` | — | Stellar secret key of the funded operator account that signs due scheduled payments |
 
 ### Testnet vs Mainnet
 
@@ -115,6 +117,7 @@ Push to main → Vercel builds → Preview/Production URL
 - `npx prisma generate` runs automatically during build (configured in `vercel.json` → `buildCommand`)
 - The `installCommand` is `npm ci` for deterministic installs
 - Region is set to `iad1` (US East) — change in `vercel.json` if you need a different region
+- A cron job runs `/api/cron` every 5 minutes to execute due scheduled payments (`vercel.json` → `crons`). Set `CRON_SECRET` and `SCHEDULED_PAYMENTS_SOURCE_SECRET` or the endpoint returns `503` and does nothing — see [Scheduled Payment Cron](scheduled-payment-cron.md)
 
 ### CLI Deploy (Alternative)
 

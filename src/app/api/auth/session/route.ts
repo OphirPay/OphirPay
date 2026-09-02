@@ -91,6 +91,9 @@ export const POST = withMetrics("POST /api/auth/session", withRequestLogging(asy
 }));
 
 export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging(async function DELETE(request: Request) {
+  const csrfError = verifyCsrf(request);
+  if (csrfError) return csrfError;
+
   // Logout is cheap, but still bounded per IP to stop cookie-flooding.
   const rateLimited = await enforceAuthRateLimit(request);
   if (rateLimited) return rateLimited;

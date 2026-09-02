@@ -9,7 +9,11 @@ All notable changes to OphirPay will be documented in this file.
 
 ## [Unreleased] — 2026-08-12 (submission hardening pass)
 
+### Added
+- **Keyboard navigation for the payments table**: rows use a roving tabindex (the active row is the only one in the tab order) and ArrowUp/ArrowDown/Home/End move between rows — from the row itself or from its action buttons. The active row gets a theme-matched highlight, headers declare `scope="col"`, and an axe scan + keyboard-flow tests (unit and Playwright) cover the table
+
 ### Fixed
+- **Stale wallet balance after disconnect**: `MultiWalletProvider`/`WalletProvider` now reset wallet state synchronously on disconnect (before async wallet/session cleanup) and ignore balance fetches that resolve after a disconnect, so the dashboard and header render the connect placeholder instead of a stale cached balance
 - **Governance list renders real proposals**: `GET /api/governance/proposals` now enumerates proposals on-chain (count + by-id, capped at 100, each read cached 30s) and returns an array; the page previously received a bare count number and always showed the empty state
 - **Governance create flow works end-to-end**: the modal now accepts a deposit amount (XLM → stroops) and optional asset; empty asset resolves to native XLM's SAC address instead of the proposer address (which was never a token contract)
 - **Empty-caller tx bugs**: `processRefund` and `executeGovernanceProposal` signed with an empty source account, which can never simulate or submit; both now require the caller's public key

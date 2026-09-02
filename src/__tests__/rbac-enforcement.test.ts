@@ -52,7 +52,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/auth/session",
     authRequired: false,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Logout — clears session cookie",
   },
 
@@ -62,15 +62,23 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/keys",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Generate API key (user-scoped)",
+  },
+  {
+    method: "PATCH",
+    path: "/api/keys",
+    authRequired: true,
+    requiredRole: null,
+    csrfProtected: true,
+    description: "Update API key scopes (user-scoped)",
   },
   {
     method: "DELETE",
     path: "/api/keys",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Revoke API key (user-scoped)",
   },
 
@@ -80,7 +88,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/payments",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Create payment (user-scoped)",
   },
   {
@@ -88,7 +96,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/payments/[id]",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Update payment status (user-scoped)",
   },
   {
@@ -96,7 +104,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/payments/[id]",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Soft-delete payment (user-scoped)",
   },
   {
@@ -104,7 +112,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/payments/retry",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Retry failed payment (user-scoped)",
   },
 
@@ -114,7 +122,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/escrows",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Create escrow (client-side signing)",
   },
 
@@ -124,7 +132,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/streams",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Create payment stream (client-side signing)",
   },
 
@@ -134,8 +142,16 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/batches",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Create batch payment (client-side signing)",
+  },
+  {
+    method: "POST",
+    path: "/api/batches/[id]",
+    authRequired: true,
+    requiredRole: null,
+    csrfProtected: false,
+    description: "Bulk-cancel a batch's pending payments (user-scoped)",
   },
 
   // ── Recurring ───────────────────────────────────────────────
@@ -144,7 +160,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/recurring",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Create recurring payment (client-side signing)",
   },
 
@@ -154,7 +170,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/requests",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Create payment request (user-scoped)",
   },
 
@@ -192,6 +208,22 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     requiredRole: null,
     csrfProtected: true,
     description: "Revoke webhook (user-scoped)",
+  },
+  {
+    method: "POST",
+    path: "/api/webhooks/[id]/replay",
+    authRequired: true,
+    requiredRole: null,
+    csrfProtected: true,
+    description: "Replay stored webhook events (user-scoped)",
+  },
+  {
+    method: "POST",
+    path: "/api/webhooks/[id]/deliveries/[deliveryId]/redeliver",
+    authRequired: true,
+    requiredRole: null,
+    csrfProtected: true,
+    description: "Redeliver a webhook payload (user-scoped)",
   },
 
   // ── Notification Hooks ──────────────────────────────────────
@@ -244,7 +276,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/multisig",
     authRequired: true,
     requiredRole: "Admin",
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Configure multisig (Admin-only, contract-enforced)",
   },
   {
@@ -363,29 +395,10 @@ describe("RBAC Enforcement Audit", () => {
   });
 
   describe("CSRF protection", () => {
-    it("has CSRF protection on critical mutation routes", () => {
-      // Routes that modify on-chain state or sensitive data should have CSRF
-      const criticalRoutes = STATE_CHANGING_ROUTES.filter(
-        (r) =>
-          r.authRequired &&
-          (r.path.includes("/webhooks") ||
-            r.path.includes("/hooks") ||
-            r.path.includes("/refunds") ||
-            r.path.includes("/governance") ||
-            r.path.includes("/multisig/propose") ||
-            r.path.includes("/multisig/approve") ||
-            r.path.includes("/multisig/execute")),
-      );
-      for (const route of criticalRoutes) {
+    it("every state-changing route is CSRF-protected", () => {
+      for (const route of STATE_CHANGING_ROUTES) {
         expect(route.csrfProtected).toBe(true);
       }
-    });
-
-    it("at least 10 authenticated routes have CSRF protection", () => {
-      const csrfProtected = STATE_CHANGING_ROUTES.filter(
-        (r) => r.authRequired && r.csrfProtected,
-      );
-      expect(csrfProtected.length).toBeGreaterThanOrEqual(10);
     });
 
     it("login endpoint has CSRF protection", () => {

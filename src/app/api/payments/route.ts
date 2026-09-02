@@ -8,7 +8,6 @@ import {
   validationError,
   badRequestError,
   unauthorizedError,
-  badRequestError,
   handleApiError,
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";

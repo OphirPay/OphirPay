@@ -137,7 +137,6 @@ export default function AuditLogPage() {
   const [filter, setFilter] = useState("");
   const [connected, setConnected] = useState(false);
   const [liveMode, setLiveMode] = useState(false);
-  const [connected, setConnected] = useState(false);
   const [liveEntries, setLiveEntries] = useState<AuditEntry[]>([]);
   const sseRef = useRef<EventSource | null>(null);
 

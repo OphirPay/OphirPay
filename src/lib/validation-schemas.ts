@@ -131,18 +131,6 @@ export const batchRecipientSchema = z.object({
   memo: memoField,
 });
 
-/**
- * Idempotency key used to deduplicate batch submissions (issue #170).
- * Accepts either the `Idempotency-Key` header or an optional `idempotencyKey`
- * body field. `.trim()` runs before the length checks so a wrapped key is
- * normalized consistently and a whitespace-only value is rejected.
- */
-export const idempotencyKeySchema = z
-  .string()
-  .trim()
-  .min(8, "Idempotency key must be at least 8 characters")
-  .max(255, "Idempotency key must be at most 255 characters");
-
 export const createBatchSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
@@ -245,16 +233,6 @@ export const createPaymentRequestSchema = z.object({
 });
 
 // ── Pagination (moved from validations.ts) ────────────────────
-
-export const paymentStatuses = [
-  "CREATED",
-  "PENDING",
-  "COMPLETED",
-  "FAILED",
-  "CANCELLED",
-] as const;
-
-export const paymentStatusSchema = z.enum(paymentStatuses);
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),

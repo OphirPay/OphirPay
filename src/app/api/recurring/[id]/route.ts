@@ -89,7 +89,7 @@ export const PATCH = withMetrics("PATCH /api/recurring/[id]", withRequestLogging
     // Prepare the unsigned contract invocation for the client wallet to
     // sign and submit (see submitContractInvocation). There is no
     // server-side result value to return.
-    const result = await invokeContractFunction(
+    const invocationResult = await invokeContractFunction(
       DEFAULT_CONTRACT_ID,
       "set_recurring_paused",
       auth.publicKey,
@@ -97,7 +97,7 @@ export const PATCH = withMetrics("PATCH /api/recurring/[id]", withRequestLogging
         nativeToScVal(body.paused, { type: "bool" })]
     );
 
-    return successResponse(result);
+    return successResponse(invocationResult);
   } catch (err) {
     return handleApiError(err, "PATCH /api/recurring/[id]");
   }

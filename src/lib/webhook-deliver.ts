@@ -79,12 +79,9 @@ export async function deliverWebhook(
   }
 
   let lastStatusCode: number | undefined;
+  let lastError: string | undefined;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-
+  for (let attempt = 1; attempt <= totalAttempts; attempt++) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
@@ -115,7 +112,8 @@ export async function deliverWebhook(
       lastError = `HTTP ${response.status}`;
       logger.warn("Webhook delivery failed", { url, status: response.status, attempt });
     } catch (err) {
-      logger.warn("Webhook delivery error", { url, error: String(err), attempt });
+      lastError = String(err);
+      logger.warn("Webhook delivery error", { url, error: lastError, attempt });
     } finally {
       clearTimeout(timeout);
     }

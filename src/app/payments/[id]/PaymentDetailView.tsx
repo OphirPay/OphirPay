@@ -14,7 +14,8 @@ import {
   getStatusColor,
   shortenAddress,
 } from "@/lib/utils";
-import { getStellarExplorerUrl } from "@/lib/stellar";
+import { getStellarExplorerUrl, isValidStellarAddress } from "@/lib/stellar";
+import { downloadReceiptPdf } from "@/lib/receipt-pdf";
 
 // Payment ids are cuid strings (Prisma `@default(cuid())`). UUIDs are
 // accepted too so either id style resolves; anything shorter or containing
@@ -78,6 +79,36 @@ export default function PaymentDetailView({ id }: { id: string }) {
 
   const statusColor = getStatusColor(payment.status);
 
+  // Resolve sender/recipient Stellar addresses for the receipt PDF. The
+  // send flow persists them as sourceAccountId (sender) and inside
+  // metadata.destAddress (recipient, since the Payment model has no
+  // destination-address column).
+  let metadataDestAddress: string | undefined;
+  if (payment.metadata) {
+    try {
+      const parsed = JSON.parse(payment.metadata) as { destAddress?: string };
+      metadataDestAddress = parsed.destAddress;
+    } catch {
+      metadataDestAddress = undefined;
+    }
+  }
+  const receiptSender =
+    payment.sourceAccountId && isValidStellarAddress(payment.sourceAccountId)
+      ? payment.sourceAccountId
+      : undefined;
+  const receiptRecipient =
+    (metadataDestAddress && isValidStellarAddress(metadataDestAddress)
+      ? metadataDestAddress
+      : payment.destAccountId && isValidStellarAddress(payment.destAccountId)
+        ? payment.destAccountId
+        : undefined) ?? undefined;
+
+  // Receipt is only offered for confirmed payments with a tx hash and both
+  // addresses — a half-populated receipt is worse than no receipt.
+  const canDownloadReceipt = Boolean(
+    payment.transactionHash && receiptSender && receiptRecipient
+  );
+
   return (
     <div className="space-y-6 animate-fade-in">
       <Breadcrumb
@@ -100,12 +131,46 @@ export default function PaymentDetailView({ id }: { id: string }) {
             Details for payment record {payment.id}
           </p>
         </div>
-        <Link
-          href="/payments"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-        >
-          ← Back to Payments
-        </Link>
+        <div className="flex items-center gap-2">
+          {canDownloadReceipt && (
+            <button
+              onClick={() =>
+                downloadReceiptPdf({
+                  transactionHash: payment.transactionHash!,
+                  amount: String(payment.amount),
+                  assetCode: payment.assetCode,
+                  date: payment.createdAt,
+                  sender: receiptSender!,
+                  recipient: receiptRecipient!,
+                  memo: payment.memo || undefined,
+                })
+              }
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="w-4 h-4"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                />
+              </svg>
+              Download Receipt (PDF)
+            </button>
+          )}
+          <Link
+            href="/payments"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            ← Back to Payments
+          </Link>
+        </div>
       </div>
 
       {/* Details */}

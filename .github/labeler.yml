@@ -68,6 +68,7 @@
   - changed-files:
       - any-glob-to-any-file:
           - "src/lib/api-auth.ts"
+          - "src/lib/auth-rate-limit.ts"
           - "src/lib/crypto.ts"
           - "src/lib/rate-limit.ts"
           - "src/middleware.ts"

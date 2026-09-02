@@ -18,6 +18,10 @@ const envSchema = z.object({
   NEXT_PUBLIC_GA_ID: z.string().optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
   RATE_LIMIT_RPM: z.coerce.number().positive().default(120),
+  // Wallet-auth endpoints get stricter per-IP / per-account buckets on top of
+  // the global RATE_LIMIT_RPM (see src/lib/auth-rate-limit.ts).
+  AUTH_RATE_LIMIT_IP_RPM: z.coerce.number().positive().default(30),
+  AUTH_RATE_LIMIT_WALLET_RPM: z.coerce.number().positive().default(10),
   REDIS_URL: z.string().url().optional(),
   AUTH_SECRET: z.string().min(32).optional(), // required in production (see auth-session.ts)
   NEXT_PUBLIC_DEMO_MODE: z.string().optional(),
@@ -46,6 +50,8 @@ export function validateEnv(): Env {
       NEXT_PUBLIC_GA_ID: process.env.NEXT_PUBLIC_GA_ID,
       NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
       RATE_LIMIT_RPM: process.env.RATE_LIMIT_RPM,
+      AUTH_RATE_LIMIT_IP_RPM: process.env.AUTH_RATE_LIMIT_IP_RPM,
+      AUTH_RATE_LIMIT_WALLET_RPM: process.env.AUTH_RATE_LIMIT_WALLET_RPM,
       REDIS_URL: process.env.REDIS_URL,
       NEXT_PUBLIC_FEATURE_MULTI_ASSET: process.env.NEXT_PUBLIC_FEATURE_MULTI_ASSET,
       NEXT_PUBLIC_FEATURE_WEBHOOKS: process.env.NEXT_PUBLIC_FEATURE_WEBHOOKS,

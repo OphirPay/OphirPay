@@ -66,10 +66,22 @@ export function validateAmount(value: string): string | null {
   return null;
 }
 
-/** Validate a memo string for Stellar transactions. */
+/**
+ * Validate a memo string for Stellar transactions.
+ * Mirrors the server-side rules in validation-schemas.ts (memoField):
+ * optional, printable text only, ≤ 28 characters and ≤ 28 UTF-8 bytes.
+ */
 export function validateMemo(value: string): string | null {
   if (!value) return null; // Memo is optional
+  // Control characters (NUL, newlines, tabs, ESC, …) are never valid memo
+  // content — reject before anything is rendered, logged, or exported.
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(value)) {
+    return "Memo must not contain control or invisible characters";
+  }
   if (value.length > 28) return "Memo must be 28 characters or fewer";
+  if (new TextEncoder().encode(value).length > 28) {
+    return "Memo must be 28 bytes or fewer (non-ASCII characters count more)";
+  }
   return null;
 }
 

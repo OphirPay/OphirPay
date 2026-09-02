@@ -1,7 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
@@ -10,26 +10,40 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
-import { useApiQuery } from "@/hooks/useApiQuery";
 import { setFeeConfig, setFeeCollector } from "@/lib/contract-advanced";
+import { 
+  validateFeeBps, 
+  validateFeeConfig,
+  MAX_FEE_BPS,
+  useFeeConfig,
+  type FeeConfigData,
+} from "@/lib/fee-config";
 
-interface FeeConfigData {
-  payment_fee_bps: number;
-  escrow_fee_bps: number;
-  stream_fee_bps: number;
-  batch_base_fee: number;
-  batch_per_item_fee: number;
-  enabled: boolean;
+interface TxStatus {
+  type: "success" | "error";
+  message: string;
+  txHash?: string;
+}
+
+interface TxStatus {
+  type: "success" | "error";
+  message: string;
+  txHash?: string;
 }
 
 export default function FeeConfigPage() {
+  usePageTitle(PAGE_TITLES.FEE_CONFIG);
   const toast = useToast();
   const { wallet } = useWallet();
   const queryClient = useQueryClient();
+  
+  // State declarations - THESE WERE MISSING
   const [collector, setCollector] = useState<string | null>(null);
   const [showFeeModal, setShowFeeModal] = useState(false);
   const [showCollectorModal, setShowCollectorModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [txStatus, setTxStatus] = useState<TxStatus | null>(null);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   const [formPaymentFee, setFormPaymentFee] = useState(10);
   const [formEscrowFee, setFormEscrowFee] = useState(5);
@@ -39,51 +53,128 @@ export default function FeeConfigPage() {
   const [formEnabled, setFormEnabled] = useState(true);
   const [formCollector, setFormCollector] = useState("");
 
-  const {
-    data: rawConfig,
-    isLoading: loading,
-  } = useApiQuery<FeeConfigData>(["fee-config"], "/api/fee-config");
-  const config = rawConfig && typeof rawConfig === "object" && "payment_fee_bps" in rawConfig
-    ? rawConfig
-    : null;
+  const { config, isLoading: loading } = useFeeConfig();
+
+  // Initialize form values from config when loaded
+  useEffect(() => {
+    if (config) {
+      setFormPaymentFee(config.payment_fee_bps);
+      setFormEscrowFee(config.escrow_fee_bps);
+      setFormStreamFee(config.stream_fee_bps);
+      setFormBatchBase(config.batch_base_fee);
+      setFormBatchPerItem(config.batch_per_item_fee);
+      setFormEnabled(config.enabled);
+    }
+  }, [config]);
+
+  // Initialize form values from config when loaded
+  useEffect(() => {
+    if (config) {
+      setFormPaymentFee(config.payment_fee_bps);
+      setFormEscrowFee(config.escrow_fee_bps);
+      setFormStreamFee(config.stream_fee_bps);
+      setFormBatchBase(config.batch_base_fee);
+      setFormBatchPerItem(config.batch_per_item_fee);
+      setFormEnabled(config.enabled);
+    }
+  }, [config]);
 
   const handleFeeSubmit = async () => {
-    if (!wallet.publicKey) { toast.error("Connect your wallet first"); return; }
+    if (!wallet.publicKey) { 
+      toast.error("Connect your wallet first"); 
+      return; 
+    }
+    
+    // Validate fees before submission
+    const validation = validateFeeConfig(formPaymentFee, formEscrowFee, formStreamFee);
+    if (!validation.isValid) {
+      setValidationErrors(validation.errors);
+      toast.error(validation.errors[0]);
+      return;
+    }
+    
+    setValidationErrors([]);
     setSubmitting(true);
+    setTxStatus(null);
+    
     try {
       const result = await setFeeConfig(
         wallet.publicKey,
-        formPaymentFee, formEscrowFee, formStreamFee,
-        formBatchBase, formBatchPerItem, formEnabled,
+        formPaymentFee, 
+        formEscrowFee, 
+        formStreamFee,
+        formBatchBase, 
+        formBatchPerItem, 
+        formEnabled,
       );
+      
       if (result.success) {
-        toast.success("Fee configuration saved on-chain");
+        setTxStatus({
+          type: "success",
+          message: "Fee configuration saved on-chain",
+          txHash: result.txHash,
+        });
+        toast.success("Fee configuration saved on-chain", result.txHash ? `Tx: ${result.txHash.slice(0, 12)}...` : undefined);
         setShowFeeModal(false);
         queryClient.invalidateQueries({ queryKey: ["fee-config"] });
       } else {
+        setTxStatus({
+          type: "error",
+          message: result.error || "Failed to update fee config",
+        });
         toast.error(result.error || "Failed to update fee config");
       }
-    } catch {
-      toast.error("Network error");
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Network error";
+      setTxStatus({
+        type: "error",
+        message: errorMsg,
+      });
+      toast.error(errorMsg);
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleCollectorSubmit = async () => {
-    if (!wallet.publicKey) { toast.error("Connect your wallet first"); return; }
+    if (!wallet.publicKey) { 
+      toast.error("Connect your wallet first"); 
+      return; 
+    }
+    
+    if (!formCollector || formCollector.length < 10) {
+      toast.error("Please enter a valid collector address");
+      return;
+    }
+    
     setSubmitting(true);
+    setTxStatus(null);
+    
     try {
       const result = await setFeeCollector(wallet.publicKey, formCollector);
       if (result.success) {
-        toast.success("Fee collector updated on-chain");
+        setTxStatus({
+          type: "success",
+          message: "Fee collector updated on-chain",
+          txHash: result.txHash,
+        });
+        toast.success("Fee collector updated on-chain", result.txHash ? `Tx: ${result.txHash.slice(0, 12)}...` : undefined);
         setShowCollectorModal(false);
         setCollector(formCollector);
       } else {
+        setTxStatus({
+          type: "error",
+          message: result.error || "Failed to update collector",
+        });
         toast.error(result.error || "Failed to update collector");
       }
-    } catch {
-      toast.error("Network error");
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Network error";
+      setTxStatus({
+        type: "error",
+        message: errorMsg,
+      });
+      toast.error(errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -91,7 +182,7 @@ export default function FeeConfigPage() {
 
   if (loading) {
     return (
-      <div className="animate-fade-in space-y-6">
+      <div className="animate-fade-in space-y-6" data-testid="loading-skeleton">
         <div className="h-8 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
         <div className="h-40 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
       </div>
@@ -114,6 +205,39 @@ export default function FeeConfigPage() {
         </div>
       )}
 
+      {/* Transaction Status */}
+      {txStatus && (
+        <div 
+          className={`rounded-lg p-4 border ${
+            txStatus.type === "success" 
+              ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700" 
+              : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700"
+          }`}
+          role="alert"
+        >
+          <div className="flex items-start gap-2">
+            <span className="text-lg">{txStatus.type === "success" ? "✅" : "❌"}</span>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{txStatus.message}</p>
+              {txStatus.txHash && (
+                <p className="text-xs mt-1 font-mono break-all text-gray-600 dark:text-gray-400">
+                  Tx: {txStatus.txHash}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => setTxStatus(null)}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              aria-label="Dismiss transaction status"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Fee Configuration</h1>
@@ -122,10 +246,18 @@ export default function FeeConfigPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setShowFeeModal(true)} variant="primary">
+          <Button 
+            onClick={() => setShowFeeModal(true)} 
+            variant="primary"
+            aria-label="Edit Fees"
+          >
             ⚙ Edit Fees
           </Button>
-          <Button onClick={() => setShowCollectorModal(true)} variant="secondary">
+          <Button 
+            onClick={() => setShowCollectorModal(true)} 
+            variant="secondary"
+            aria-label="Set Collector"
+          >
             💰 Set Collector
           </Button>
         </div>
@@ -146,30 +278,30 @@ export default function FeeConfigPage() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Card className="p-4 hover:shadow-md transition-shadow">
+          <Card padding="md" className="hover:shadow-md transition-shadow">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Payment Fee</p>
             <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{bpsToPercent(config.payment_fee_bps)}%</p>
             <p className="text-xs text-gray-400 mt-1">{config.payment_fee_bps} bps</p>
           </Card>
-          <Card className="p-4 hover:shadow-md transition-shadow">
+          <Card padding="md" className="hover:shadow-md transition-shadow">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Escrow Fee</p>
             <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{bpsToPercent(config.escrow_fee_bps)}%</p>
             <p className="text-xs text-gray-400 mt-1">{config.escrow_fee_bps} bps</p>
           </Card>
-          <Card className="p-4 hover:shadow-md transition-shadow">
+          <Card padding="md" className="hover:shadow-md transition-shadow">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Stream Fee</p>
             <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{bpsToPercent(config.stream_fee_bps)}%</p>
             <p className="text-xs text-gray-400 mt-1">{config.stream_fee_bps} bps</p>
           </Card>
-          <Card className="p-4 hover:shadow-md transition-shadow">
+          <Card padding="md" className="hover:shadow-md transition-shadow">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Batch Base</p>
             <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{Number(config.batch_base_fee) / 10_000_000} XLM</p>
           </Card>
-          <Card className="p-4 hover:shadow-md transition-shadow">
+          <Card padding="md" className="hover:shadow-md transition-shadow">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Per-Item Fee</p>
             <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{Number(config.batch_per_item_fee) / 10_000_000} XLM</p>
           </Card>
-          <Card className="p-4 hover:shadow-md transition-shadow">
+          <Card padding="md" className="hover:shadow-md transition-shadow">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Status</p>
             <div className="mt-1">
               <Badge variant={config.enabled ? "success" : "warning"}>
@@ -182,7 +314,7 @@ export default function FeeConfigPage() {
 
       {/* Collector Address */}
       {collector && (
-        <Card className="p-4">
+        <Card padding="md">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Fee Collector</p>
           <code className="text-sm font-mono text-gray-700 dark:text-gray-300 block mt-1 truncate">{collector}</code>
         </Card>
@@ -191,53 +323,120 @@ export default function FeeConfigPage() {
       {/* Edit Fees Modal */}
       <Modal
         open={showFeeModal}
-        onClose={() => setShowFeeModal(false)}
+        onClose={() => {
+          setShowFeeModal(false);
+          setValidationErrors([]);
+        }}
         title="Configure Protocol Fees"
-        description="Owner only. Fees capped at 10% (1000 bps)."
+        description={`Owner only. Fees capped at 10% (${MAX_FEE_BPS} bps).`}
       >
         <div className="space-y-4">
+          {validationErrors.length > 0 && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3">
+              <ul className="list-disc list-inside text-sm text-red-600 dark:text-red-400">
+                {validationErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Payment Fee (bps)</label>
-              <input type="number" min={0} max={1000} value={formPaymentFee}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Payment Fee (bps)
+              </label>
+              <input 
+                type="number" 
+                min={0} 
+                max={MAX_FEE_BPS} 
+                value={formPaymentFee}
                 onChange={(e) => setFormPaymentFee(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" />
+                className={`w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 ${
+                  !validateFeeBps(formPaymentFee) ? "border-red-500" : ""
+                }`} 
+                aria-label="Payment Fee (bps)"
+              />
               <span className="text-xs text-gray-400">{bpsToPercent(formPaymentFee)}%</span>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Escrow Fee (bps)</label>
-              <input type="number" min={0} max={1000} value={formEscrowFee}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Escrow Fee (bps)
+              </label>
+              <input 
+                type="number" 
+                min={0} 
+                max={MAX_FEE_BPS} 
+                value={formEscrowFee}
                 onChange={(e) => setFormEscrowFee(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" />
+                className={`w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 ${
+                  !validateFeeBps(formEscrowFee) ? "border-red-500" : ""
+                }`} 
+                aria-label="Escrow Fee (bps)"
+              />
               <span className="text-xs text-gray-400">{bpsToPercent(formEscrowFee)}%</span>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stream Fee (bps)</label>
-              <input type="number" min={0} max={1000} value={formStreamFee}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Stream Fee (bps)
+              </label>
+              <input 
+                type="number" 
+                min={0} 
+                max={MAX_FEE_BPS} 
+                value={formStreamFee}
                 onChange={(e) => setFormStreamFee(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" />
+                className={`w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 ${
+                  !validateFeeBps(formStreamFee) ? "border-red-500" : ""
+                }`} 
+                aria-label="Stream Fee (bps)"
+              />
               <span className="text-xs text-gray-400">{bpsToPercent(formStreamFee)}%</span>
             </div>
           </div>
+          
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Batch Base Fee (stroops)</label>
-              <input type="number" min={0} value={formBatchBase}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Batch Base Fee (stroops)
+              </label>
+              <input 
+                type="number" 
+                min={0} 
+                value={formBatchBase}
                 onChange={(e) => setFormBatchBase(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" />
+                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" 
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Per-Item Fee (stroops)</label>
-              <input type="number" min={0} value={formBatchPerItem}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Per-Item Fee (stroops)
+              </label>
+              <input 
+                type="number" 
+                min={0} 
+                value={formBatchPerItem}
                 onChange={(e) => setFormBatchPerItem(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" />
+                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" 
+              />
             </div>
           </div>
+          
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={formEnabled} onChange={(e) => setFormEnabled(e.target.checked)} />
+            <input 
+              type="checkbox" 
+              checked={formEnabled} 
+              onChange={(e) => setFormEnabled(e.target.checked)} 
+            />
             <span className="text-sm text-gray-700 dark:text-gray-300">Enable fee collection</span>
           </label>
-          <Button onClick={handleFeeSubmit} loading={submitting} className="w-full">
+          
+          <Button 
+            onClick={handleFeeSubmit} 
+            loading={submitting} 
+            className="w-full"
+            disabled={!validateFeeBps(formPaymentFee) || !validateFeeBps(formEscrowFee) || !validateFeeBps(formStreamFee)}
+          >
             Save Fee Configuration
           </Button>
         </div>
@@ -252,13 +451,23 @@ export default function FeeConfigPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Collector Address</label>
-            <input value={formCollector}
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Collector Address
+            </label>
+            <input 
+              value={formCollector}
               onChange={(e) => setFormCollector(e.target.value)}
               className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 font-mono text-xs"
-              placeholder="GABC..." />
+              placeholder="GABC..." 
+              aria-label="Collector Address"
+            />
           </div>
-          <Button onClick={handleCollectorSubmit} loading={submitting} className="w-full">
+          <Button 
+            onClick={handleCollectorSubmit} 
+            loading={submitting} 
+            className="w-full"
+            disabled={!formCollector || formCollector.length < 10}
+          >
             Set Fee Collector
           </Button>
         </div>

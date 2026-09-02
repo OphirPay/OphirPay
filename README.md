@@ -69,6 +69,7 @@
 - [🚀 Live Demo](#-live-demo)
 - [🧭 System Architecture](#-system-architecture)
 - [⚡ Quick Start](#-quick-start)
+- [🛠 Local Development Guide](docs/LOCAL_DEV.md)
 - [🔐 Wallet Integration](#-wallet-integration)
 - [📡 Real-Time Events](#-real-time-events)
 - [🧪 Smart Contracts](#-smart-contracts)
@@ -79,7 +80,13 @@
 - [🛠 Tech Stack](#-tech-stack)
 - [📊 Database Schema](docs/SCHEMA.md)
 - [🚀 Deployment Guide](docs/DEPLOYMENT.md)
+- [📡 SSE Event Stream](docs/SSE.md)
+- [📖 SSE Integration & Architecture](docs/SSE_DOCUMENTATION.md)
+- [📜 Smart-contract SSE Reference](docs/CONTRACT_SSE_REFERENCE.md)
+- [🧪 Prisma CI & Testing](docs/PRISMA-CI.md)
+- [🗄️ Sharded Database E2E Runbook](docs/SHARDED_DATABASE_E2E.md)
 - [🤝 Contributing](#-contributing)
+- [📖 Stellar Glossary](GLOSSARY.md)
 - [🗺 Roadmap](#-roadmap)
 - [🔬 Formal Verification](#-formal-verification)
 - [🛡️ Security Audit](#️-security-audit)
@@ -105,6 +112,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **Cross-contract communication** | ✅ | ❌ |
 | **Multi-wallet support** (6 wallets: Freighter, xBull, Rabet, Albedo, Lobstr, Ledger) | ✅ | ❌ |
 | **Multi-asset support** (USDC, custom tokens) | ✅ | ❌ |
+| **Path payments** (cross-asset sends, rate preview, slippage protection) | ✅ | ❌ |
 | **PWA with offline support** | ✅ | ❌ |
 | **Classified error handling** (3 types, 300 contract variants) | ✅ | ❌ |
 | **Production error boundaries** | ✅ | ❌ |
@@ -124,6 +132,8 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **In-app notification center** (bell, unread count, live SSE updates, session persistence) | ✅ | ❌ |
 
 > All features above have dashboard UI pages. See [roadmap](#-roadmap) for details.
+>
+> 📄 **Batch payments CSV import** — see [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md) for the exact CSV format, validation rules, and error messages.
 
 | **Full CI/CD + 970 tests (806 app + 67 contracts + 97 e2e)** | ✅ | ⚠️ |
 
@@ -349,11 +359,19 @@ Browser ←──SSE stream─── GET /api/events ──polls──→ Paymen
 
 Visit **`/events`** in the app to see the live feed with connection status indicator, event type badges, timestamps, and auto-scroll.
 
+> 📡 **Client integrations:** see [docs/SSE.md](docs/SSE.md) for the full stream
+> contract — payload schemas for every event type, heartbeat/error behavior,
+> reconnection semantics, and example client code (browser, React, cURL).
+
 ---
 
 ## 🧪 Smart Contracts
 
 OphirPay deploys **two Soroban contracts**. The main `OphirPayContract` handles all payment logic and publishes native on-chain events, while the `PaymentEventEmitter` stores payment-event records that the app's SSE stream queries — keeping payment logic and event emission separate for cleaner architecture and independent queryability. The contracts are also wired for cross-contract orchestration: `emergency_pause_all` / `emergency_unpause_all` atomically propagate the circuit breaker to the emitter.
+
+> 📖 **Deep dive**: see [docs/CONTRACT_ARCHITECTURE.md](docs/CONTRACT_ARCHITECTURE.md) for how
+> OphirPay invokes the Emitter via `env.invoke_contract`, why the concerns are
+> split, and how to extend the pattern to new contracts.
 
 ### 🔗 Inter-Contract Flow
 
@@ -566,6 +584,30 @@ All app tests live in `src/__tests__/` (33 files, 806 cases): auth & sessions, C
 | `multisig.spec.ts` | Multisig propose/approve flows |
 | `governance.spec.ts` | Proposal lifecycle |
 
+### Visual Regression Tests (Playwright) — critical pages
+
+Screenshot-based visual coverage for the core pages (Dashboard, Send, Batches,
+Contracts) at desktop width, in both light and dark themes. Baselines live in
+`tests/visual/__screenshots__/` and are compared on every run.
+
+```bash
+# Compare the live render against committed baselines
+npm run test:visual
+
+# Intentionally update baselines (commit the regenerated PNG images)
+npm run test:visual:update
+```
+
+A committed change that alters a baseline beyond the configured pixel
+threshold (0.1% of pixels, set via the `maxDiffPixelRatio` option in
+`tests/visual/visual-regression.spec.ts`) fails the run and emits a diff
+artifact under `playwright-visual-report/`.
+
+**Updating baselines intentionally:** after a deliberate UI change, run
+`npm run test:visual:update`, review the regenerated screenshots in
+`tests/visual/__screenshots__/`, and commit them alongside the change. Never
+update baselines to mask an unintended regression.
+
 ### Error Classification System
 
 All contract failures route through a 3-tier classifier:
@@ -696,11 +738,19 @@ Every push to `main` triggers **22 jobs** across six tracks:
 
 We welcome contributions! Here's how to get started:
 
+> 💡 **New to Stellar/Soroban?** Read the [Stellar & Soroban glossary](GLOSSARY.md)
+> first — it explains the XLM, testnet, Horizon, Soroban, and other terms you'll
+> encounter throughout the codebase.
+
 1. **Fork** the repository
 2. **Create** a feature branch: `git checkout -b feat/amazing-feature`
 3. **Commit** your changes: `git commit -m 'feat: add amazing feature'`
 4. **Push** to your fork: `git push origin feat/amazing-feature`
 5. **Open** a Pull Request against `main`
+
+> 🛠️ **Setup trouble?** See the [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+> for fixes to common issues (Freighter detection, Rust/wasm32 target,
+> Prisma migrations, WASM builds, Node version, port conflicts).
 
 ### Development Scripts
 
@@ -838,7 +888,7 @@ OphirPay is designed with defense-in-depth across the contract, API, and web lay
 - **Session security** — HMAC-SHA256 signed session cookies with expiry, `HttpOnly; SameSite=Lax`, fail-closed on DB errors
 - **API keys** — SHA-256 hashed at rest, indexed prefix lookup, expiry support, `lastUsed` tracking
 - **SSRF guard for webhooks** — blocks loopback/link-local/private IPs and hostnames, with DNS-rebinding re-validation at delivery time
-- **HMAC-signed webhook payloads** — receivers verify `X-OphirPay-Signature` (HMAC-SHA256)
+- **HMAC-signed webhook payloads** — receivers verify `X-OphirPay-Signature` (HMAC-SHA256); see [Webhook Signature Verification](docs/webhook-verification.md) for the canonical form, replay protection, and Node/Python reference implementations
 - **Input validation** — Zod schemas on all mutation routes; Stellar address regex, amount bounds, memo length limits
 - **Rate limiting** — per-IP sliding window (120 RPM default, Redis backend for multi-instance)
 - **Security headers** — CSP with Stellar-only connect-src, HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, Referrer-Policy

@@ -3,6 +3,8 @@
 
 
 import { useState } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -36,6 +38,7 @@ interface CreateRequestBody {
 const QR_API = "https://api.qrserver.com/v1/create-qr-code";
 
 export default function RequestsPage() {
+  usePageTitle(PAGE_TITLES.REQUESTS);
   const toast = useToast();
   const { wallet } = useWallet();
   const [showCreate, setShowCreate] = useState(false);

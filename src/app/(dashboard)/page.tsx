@@ -3,6 +3,8 @@
 
 
 import { useEffect, useRef, useState } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { shortenAddress, formatAmount, timeAgo } from "@/lib/utils";
 import { getAccountExplorerUrl, XLM_STROOPS, STELLAR_NETWORK } from "@/lib/stellar";
@@ -26,6 +28,7 @@ interface OnChainData {
 }
 
 export default function TreasuryDashboard() {
+  usePageTitle(PAGE_TITLES.HOME);
   const { wallet, fetchBalance } = useWallet();
 
   const {

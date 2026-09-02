@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { useState } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -33,6 +35,7 @@ interface ProposalsResponse {
 }
 
 export default function GovernancePage() {
+  usePageTitle(PAGE_TITLES.GOVERNANCE);
   const { wallet } = useWallet();
   const toast = useToast();
   const [showCreate, setShowCreate] = useState(false);

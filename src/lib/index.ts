@@ -6,15 +6,30 @@
  */
 
 // Validation & Schemas
-export { createPaymentSchema, createBatchSchema, createRecurrenceSchema } from "./validation-schemas";
+export {
+  createPaymentSchema,
+  createBatchSchema,
+  createRecurrenceSchema,
+} from "./validation-schemas";
 export { validateEnv, isProduction, getAppUrl } from "./env";
 
 // API Helpers
-export { successResponse, errorResponse, validationError, notFoundError, serverError } from "./api-response";
+export {
+  successResponse,
+  errorResponse,
+  validationError,
+  notFoundError,
+  serverError,
+} from "./api-response";
 export { logger } from "./logger";
 
 // Stellar
-export { isValidStellarAddress, getStellarExplorerUrl, getAccountExplorerUrl, XLM_STROOPS } from "./stellar";
+export {
+  isValidStellarAddress,
+  getStellarExplorerUrl,
+  getAccountExplorerUrl,
+  XLM_STROOPS,
+} from "./stellar";
 export { xlmToStroops, stroopsToXlm } from "./stellar-helpers";
 
 // Utilities
@@ -22,6 +37,14 @@ export { cn, shortenAddress, formatAmount, formatDate, timeAgo, getStatusColor }
 export { sanitizeHtml, escapeHtml, sanitizeStellarAddress } from "./sanitize";
 export { cacheControl, CACHE_PRESETS } from "./cache";
 export { getSecurityHeaders, getCorsHeaders } from "./headers";
+export {
+  fetchXlmPrice,
+  convertXlmToUsd,
+  formatFiatAmount,
+  clearPriceCache,
+  ROUNDING_RULES,
+} from "./price";
+export type { PriceResult, FormatFiatOptions } from "./price";
 
 // Contracts
 export { classifyContractError, ContractErrorType, ContractError } from "./contracts";

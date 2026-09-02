@@ -1,0 +1,60 @@
+name: Prisma schema and migration checks
+
+on:
+  pull_request:
+    paths:
+      - "prisma/**"
+      - "scripts/validate-prisma-migrations.sh"
+      - "src/__tests__/prisma-schema-ci.test.ts"
+      - ".github/workflows/prisma-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "prisma/**"
+      - "scripts/validate-prisma-migrations.sh"
+      - "src/__tests__/prisma-schema-ci.test.ts"
+      - ".github/workflows/prisma-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  prisma:
+    name: Validate schema, replay migrations, and test invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: ophirpay_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d ophirpay_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+      DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - run: npx prisma generate
+      - run: bash scripts/validate-prisma-migrations.sh
+      - name: Check schema and migration drift
+        run: >-
+          npx prisma migrate diff
+          --from-migrations prisma/migrations
+          --to-schema-datamodel prisma/schema.prisma
+          --shadow-database-url "postgresql://prisma:prisma@localhost:5432/postgres"
+      - run: npx prisma migrate deploy
+      - run: npx vitest run src/__tests__/prisma-schema-ci.test.ts

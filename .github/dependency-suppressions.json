@@ -1,0 +1,17 @@
+{
+  "$comment": "Accepted dependency risks for the CI vulnerability scan (scripts/audit-dependencies.mjs). See the 'Dependency Vulnerability Policy' section in SECURITY.md. Suppressions are temporary, must carry a justification, and expire — adding an entry here does NOT silence new advisories.",
+  "suppressions": [
+    {
+      "id": "GHSA-ggr8-5vv4-36mx",
+      "package": "deepmerge-ts",
+      "reason": "DeepmergeTS stack exhaustion (CWE-674) only triggers on recursive object graphs, which the Prisma CLI never feeds into deepmerge; no patched deepmerge-ts >= 8.0.0 is published and @prisma/config (npm latest) still pins 7.1.5, so no fix is available upstream. Dev/tooling-only exposure — not reachable from the app runtime.",
+      "expires": "2027-01-01",
+      "tracking": "https://github.com/advisories/GHSA-ggr8-5vv4-36mx"
+    },
+    {
+      "package": "@prisma/config",
+      "reason": "Transitive path of GHSA-ggr8-5vv4-36mx (deepmerge-ts 7.1.5). Same justification: Prisma CLI config merging, dev tooling only, no upstream fix yet.",
+      "expires": "2027-01-01"
+    }
+  ]
+}

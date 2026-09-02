@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
 import {
   successResponse,
+  badRequestError,
   unauthorizedError,
+  conflictError,
   handleApiError,
 } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
@@ -11,7 +14,7 @@ import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, createRefundRecordSchema } from "@/lib/validation-schemas";
 import { withRequestLogging } from "@/lib/request-logging";
 
-export const GET = withRequestLogging(async function GET(request: Request) {
+export const GET = withMetrics("GET /api/refunds", withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -57,16 +60,16 @@ export const GET = withRequestLogging(async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/refunds");
   }
-});
+}));
 
 // ── POST /api/refunds ─────────────────────────────────────────
 
 /**
- * Persist a refund ledger row AFTER the on-chain request_refund succeeded.
- * The on-chain id (captured from the tx return value) is stored so the UI can
- * later target approve_refund / process_refund at the correct contract record.
+ * Update the lifecycle status of a refund ledger row AFTER the matching
+ * on-chain transition (approve_refund / process_refund) succeeded, so the
+ * Request → Approve → Process flow is reflected in the list.
  */
-export const POST = withRequestLogging(async function POST(request: Request) {
+export const POST = withMetrics("POST /api/refunds", withRequestLogging(async function POST(request: Request) {
   try {
     const csrfError = verifyCsrf(request);
     if (csrfError) return csrfError;
@@ -74,22 +77,25 @@ export const POST = withRequestLogging(async function POST(request: Request) {
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
 
-    const parsed = await validateBody(request, createRefundRecordSchema);
-    if (!parsed.success) return parsed.response;
+    const idParsed = await validateIdParam(params);
+    if (!idParsed.success) return idParsed.response;
+    const { id } = idParsed;
 
-    const { onChainId, ...data } = parsed.data;
-    const refund = await prisma.refund.create({
+    const bodyParsed = await validateBody(request, updateRefundStatusSchema);
+    if (!bodyParsed.success) return bodyParsed.response;
+
+    // Scoped update — only the owner can change their own refund row
+    const result = await prisma.refund.updateMany({
+      where: { id, userId: auth.userId },
       data: {
-        ...data,
-        paymentId: String(data.paymentId),
-        asset: data.asset === "native" || data.asset === "" ? "native" : data.asset,
-        onChainId: onChainId ?? null,
-        userId: auth.userId, // never trust a client-supplied userId
+        status: bodyParsed.data.status,
+        resolvedAt: new Date(),
       },
     });
+    if (result.count === 0) return badRequestError("Refund not found");
 
-    return successResponse(refund, undefined, 201);
+    return successResponse({ updated: true });
   } catch (err) {
-    return handleApiError(err, "POST /api/refunds");
+    return handleApiError(err, "PATCH /api/refunds/[id]");
   }
-});
+}));

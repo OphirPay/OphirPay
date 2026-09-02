@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
@@ -10,7 +11,7 @@ import { withRequestLogging } from "@/lib/request-logging";
  * Simulates a read-only call to OphirPayContract.get_fee_config_history().
  * Returns up to 100 version entries (capped by the contract).
  */
-export const GET = withRequestLogging(async function GET(request: Request) {
+export const GET = withMetrics("GET /api/fee-config/history", withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -31,4 +32,4 @@ export const GET = withRequestLogging(async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/fee-config/history");
   }
-});
+}));

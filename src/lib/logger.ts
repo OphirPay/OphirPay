@@ -7,6 +7,46 @@
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
+const SENSITIVE_FIELDS = new Set([
+  "memo",
+  "memos",
+  "email",
+  "emails",
+  "apiKey",
+  "api_key",
+  "apikey",
+  "authorization",
+  "token",
+  "secret",
+  "password",
+]);
+
+function redactValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    // Redact email addresses
+    return value.replace(
+      /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+      "[REDACTED]"
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map(redactValue);
+  }
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(obj)) {
+      if (SENSITIVE_FIELDS.has(key) || SENSITIVE_FIELDS.has(key.toLowerCase())) {
+        out[key] = "[REDACTED]";
+      } else {
+        out[key] = redactValue(entry);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
 interface LogEntry {
   timestamp: string;
   level: LogLevel;
@@ -15,7 +55,7 @@ interface LogEntry {
 }
 
 function formatEntry(entry: LogEntry): string {
-  return JSON.stringify(entry);
+  return JSON.stringify(redactValue(entry));
 }
 
 function log(level: LogLevel, message: string, context?: Record<string, unknown>) {

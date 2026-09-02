@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { useState, useEffect } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
@@ -26,6 +28,7 @@ const ROLE_LABELS: Record<RoleValue, { label: string; color: "info" | "success" 
 };
 
 export default function RBACPage() {
+  usePageTitle(PAGE_TITLES.RBAC);
   const toast = useToast();
   const { wallet } = useWallet();
   const queryClient = useQueryClient();

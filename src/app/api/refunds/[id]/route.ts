@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
 import {
@@ -19,7 +20,7 @@ import { withRequestLogging } from "@/lib/request-logging";
  * on-chain transition (approve_refund / process_refund) succeeded, so the
  * Request → Approve → Process flow is reflected in the list.
  */
-export const PATCH = withRequestLogging(async function PATCH(
+export const PATCH = withMetrics("PATCH /api/refunds/[id]", withRequestLogging(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -44,8 +45,18 @@ export const PATCH = withRequestLogging(async function PATCH(
     });
     if (result.count === 0) return badRequestError("Refund not found");
 
+    // Persisted audit trail entry for the lifecycle transition (issue #365).
+    await prisma.auditLog.create({
+      data: {
+        action: "refund:status",
+        actor: auth.userId,
+        target: id,
+        details: { status: parsed.data.status },
+      },
+    });
+
     return successResponse({ updated: true });
   } catch (err) {
     return handleApiError(err, "PATCH /api/refunds/[id]");
   }
-});
+}));

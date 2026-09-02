@@ -7,6 +7,28 @@ import { useState, useEffect, useCallback } from "react";
 /**
  * Countdown timer hook — counts down from initial seconds to 0.
  * Useful for payment request expiration, session timeouts, etc.
+ * Returns `remaining`, a formatted MM:SS string, running/expired flags,
+ * and `start` / `reset` controls.
+ *
+ * @example
+ * Show a payment-request expiration countdown that restarts when the user
+ * refreshes the request:
+ *
+ * ```tsx
+ * function PaymentRequestTimer({ validForSeconds }: { validForSeconds: number }) {
+ *   const { formatted, isRunning, isExpired, start, reset } =
+ *     useCountdown(validForSeconds, () => toast.success("Request expired"));
+ *
+ *   useEffect(() => start(), [start]);
+ *
+ *   return (
+ *     <div>
+ *       {isExpired ? <p>This request has expired.</p> : <p>{formatted}</p>}
+ *       <button onClick={() => reset(validForSeconds)}>Restart timer</button>
+ *     </div>
+ *   );
+ * }
+ * ```
  */
 export function useCountdown(initialSeconds: number, onExpire?: () => void) {
   const [remaining, setRemaining] = useState(initialSeconds);

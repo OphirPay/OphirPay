@@ -24,6 +24,7 @@ import {
 const navItems = [
   { href: "/", label: "Treasury", Icon: DashboardIcon },
   { href: "/send", label: "Send", Icon: SendIcon },
+  { href: "/address-book", label: "Address Book", Icon: AddressBookIcon },
   { href: "/payments", label: "Payments", Icon: PaymentsIcon },
   { href: "/batches", label: "Batches", Icon: BatchesIcon },
   { href: "/recurring", label: "Recurring", Icon: RecurringIcon },
@@ -38,12 +39,22 @@ const navItems = [
   { href: "/refunds", label: "Refunds", Icon: RefundsIcon },
   { href: "/hooks", label: "Hooks", Icon: HooksIcon },
   { href: "/rbac", label: "RBAC", Icon: RbacIcon },
+  { href: "/keys", label: "API Keys", Icon: ApiKeysIcon },
   { href: "/fee-config", label: "Fee Config", Icon: FeeConfigIcon },
+  { href: "/pause-controls", label: "Pause Controls", Icon: PauseControlsIcon },
   { href: "/timelock", label: "Timelock", Icon: TimelockIcon },
   { href: "/policy-versions", label: "Policy Versions", Icon: PolicyVersionsIcon },
 ];
 
 // Inline SVG icons for new feature pages
+function AddressBookIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+    </svg>
+  );
+}
+
 function MultisigIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -84,6 +95,14 @@ function FeeConfigIcon({ className }: { className?: string }) {
   );
 }
 
+function PauseControlsIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+    </svg>
+  );
+}
+
 function TimelockIcon({ className }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -116,9 +135,23 @@ function AuditLogIcon({ className }: { className?: string }) {
   );
 }
 
+function ApiKeysIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+    </svg>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Navigation can happen through router transitions, keyboard shortcuts, or
+  // browser history. Keep the drawer closed after every route change.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   // Keyboard navigation: Ctrl+1..9 for nav items
   const handleKeyDown = (e: KeyboardEvent) => {

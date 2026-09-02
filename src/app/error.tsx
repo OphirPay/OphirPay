@@ -3,6 +3,7 @@
 
 
 import { useEffect } from "react";
+import { reportRenderedError } from "@/lib/analytics-events";
 
 export default function ErrorPage({
   error,
@@ -13,6 +14,7 @@ export default function ErrorPage({
 }) {
   useEffect(() => {
     console.error("[OphirPay] Unhandled error:", error);
+    reportRenderedError(error);
   }, [error]);
 
   return (

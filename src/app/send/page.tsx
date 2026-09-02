@@ -1,27 +1,35 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { getWalletConnector } from "@/lib/wallets";
 import {
   isValidStellarAddress,
   buildPaymentTx,
+  buildPathPaymentStrictSendTx,
+  findStrictSendPath,
+  type PathPaymentEstimate,
   submitSignedTx,
   getStellarExplorerUrl,
   NETWORK_PASSPHRASE,
   STELLAR_NETWORK,
   XLM_STROOPS,
+  accountExists,
+  parseSubmissionError,
+  SPONSOR_MIN_STARTING_BALANCE,
 } from "@/lib/stellar";
 import { formatAmount, shortenAddress } from "@/lib/utils";
+import { validateMemo } from "@/lib/validation-helpers";
 import { recordPaymentOnChain } from "@/lib/contracts";
 import { estimateTransactionFee } from "@/lib/fee-estimator";
 import { useToast } from "@/components/ui/Toast";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useApiMutation } from "@/hooks/useApiQuery";
 import { AssetSelector } from "@/components/AssetSelector";
-import { XLM_ASSET, type AssetInfo } from "@/lib/assets";
+import { XLM_ASSET, getAssetInfo, type AssetInfo } from "@/lib/assets";
+import { nextRunAt, FREQUENCY_OPTIONS, FREQUENCY_LABELS, frequencyLabel, type Frequency } from "@/lib/recurrence";
 import Link from "next/link";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -33,12 +41,19 @@ type TxStep =
   | "submitting"
   | "recording"
   | "done";
+
 type TxResult =
   | {
       type: "success";
       txHash: string;
       amount: string;
+      sourceAsset: AssetInfo;
       destination: string;
+      isCrossAsset: boolean;
+      destAsset?: AssetInfo;
+      destAmount?: string;
+      destMin?: string;
+      exchangeRate?: number;
       onChain?: {
         status: "RECORDED" | "FAILED";
         txHash?: string;
@@ -51,17 +66,47 @@ type TxResult =
 // ── Page ──────────────────────────────────────────────────────
 
 export default function SendPage() {
+  // `useSearchParams` requires a Suspense boundary during static prerendering.
+  return (
+    <Suspense fallback={null}>
+      <SendPageClient />
+    </Suspense>
+  );
+}
+
+function SendPageClient() {
   const { wallet, fetchBalance } = useWallet();
   const toast = useToast();
+  const searchParams = useSearchParams();
 
   const [destination, setDestination] = useState("");
   const [amount, setAmount] = useState("");
   const [feeEstimate, setFeeEstimate] = useState<{ baseFee: string; congestion: string } | null>(null);
   const [memo, setMemo] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<AssetInfo>(XLM_ASSET);
+  const [destAsset, setDestAsset] = useState<AssetInfo>(XLM_ASSET);
   const [step, setStep] = useState<TxStep>("idle");
   const [result, setResult] = useState<TxResult>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Sponsored-account (new recipient) support
+  const [sponsorCreate, setSponsorCreate] = useState(false);
+  const [recipientStatus, setRecipientStatus] = useState<
+    "unknown" | "checking" | "funded" | "unfunded"
+  >("unknown");
+
+  // Recurring-payment mode: instead of a one-time on-chain send, the form
+  // records a DB Recurrence schedule (issue #172).
+  const [mode, setMode] = useState<"one-time" | "recurring">("one-time");
+  const [frequency, setFrequency] = useState<Frequency>("DAILY");
+
+  // Path payment estimate state
+  const [pathEstimate, setPathEstimate] = useState<PathPaymentEstimate | null>(null);
+  const [isEstimating, setIsEstimating] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
+
+  const isCrossAsset =
+    selectedAsset.code !== destAsset.code || selectedAsset.issuer !== destAsset.issuer;
 
   // Best-effort DB record — invalidates dashboard/payments caches on success
   const recordPaymentMutation = useApiMutation<
@@ -78,12 +123,145 @@ export default function SendPage() {
     invalidateKeys: [["dashboard", "payments"], ["payments", "list"], ["events", "onchain"]],
   });
 
+  // Records a DB Recurrence schedule when the user picks the recurring mode.
+  const createRecurrenceMutation = useApiMutation<
+    {
+      name: string;
+      frequency: string;
+      amount: number;
+      assetCode: string;
+      destAddress: string;
+      description?: string;
+      sourceAccountId: string;
+    },
+    { id: string; nextRunAt: string }
+  >("/api/recurring", {
+    invalidateKeys: [["recurring"]],
+  });
+
   // Fetch live fee estimate on mount
   useEffect(() => {
     estimateTransactionFee(1)
       .then((fee) => setFeeEstimate({ baseFee: fee.baseFee, congestion: fee.networkCongestion }))
       .catch(() => {});
   }, []);
+
+  // Pre-fill the form from a shareable payment link (?dest=...&amount=...&memo=...&asset=...)
+  useEffect(() => {
+    const dest = searchParams?.get("dest");
+    if (!dest) return;
+
+    if (!isValidStellarAddress(dest)) {
+      setValidationError(
+        "Invalid Stellar address in payment link. Must start with G and be 56 characters long."
+      );
+      return;
+    }
+
+    setDestination(dest);
+    const amountParam = searchParams?.get("amount");
+    if (amountParam) setAmount(amountParam);
+    const memoParam = searchParams?.get("memo");
+    if (memoParam) setMemo(memoParam);
+    const assetParam = searchParams?.get("asset");
+    if (assetParam) {
+      setSelectedAsset(getAssetInfo(assetParam));
+    }
+  }, [searchParams]);
+
+  // Detect whether the recipient account is funded. A 404 means the account
+  // does not exist yet, in which case we can offer to sponsor its creation.
+  useEffect(() => {
+    const dest = destination.trim();
+    if (!isValidStellarAddress(dest) || dest === wallet.publicKey) {
+      setRecipientStatus("unknown");
+      return;
+    }
+
+    let cancelled = false;
+    setRecipientStatus("checking");
+    const timer = setTimeout(() => {
+      accountExists(dest)
+        .then((exists) => {
+          if (cancelled) return;
+          setRecipientStatus(exists ? "funded" : "unfunded");
+        })
+        .catch(() => {
+          if (!cancelled) setRecipientStatus("unknown");
+        });
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [destination, wallet.publicKey]);
+
+  // Fetch strict-send path estimate when cross-asset send is active
+  useEffect(() => {
+    if (!isCrossAsset) {
+      setPathEstimate(null);
+      setPathError(null);
+      setIsEstimating(false);
+      return;
+    }
+
+    const amountNum = parseFloat(amount);
+    if (!amount || isNaN(amountNum) || amountNum <= 0) {
+      setPathEstimate(null);
+      setPathError(null);
+      setIsEstimating(false);
+      return;
+    }
+
+    let active = true;
+    setIsEstimating(true);
+    setPathError(null);
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const estimate = await findStrictSendPath({
+          sourceAssetCode: selectedAsset.code,
+          sourceAssetIssuer: selectedAsset.issuer,
+          sendAmount: amount,
+          destAssetCode: destAsset.code,
+          destAssetIssuer: destAsset.issuer,
+          destinationAddress:
+            destination && isValidStellarAddress(destination.trim())
+              ? destination.trim()
+              : undefined,
+        });
+
+        if (!active) return;
+
+        if (estimate) {
+          setPathEstimate(estimate);
+          setPathError(null);
+        } else {
+          setPathEstimate(null);
+          setPathError(
+            `No path found with sufficient liquidity on the Stellar network between ${selectedAsset.code} and ${destAsset.code}.`
+          );
+        }
+      } catch {
+        if (active) {
+          setPathEstimate(null);
+          setPathError(
+            `Failed to discover conversion path between ${selectedAsset.code} and ${destAsset.code}.`
+          );
+        }
+      } finally {
+        if (active) {
+          setIsEstimating(false);
+        }
+      }
+    }, 100);
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [isCrossAsset, amount, selectedAsset, destAsset, destination]);
 
   // ── Validation ───────────────────────────────────────────
 
@@ -107,9 +285,32 @@ export default function SendPage() {
       setValidationError("Please enter a valid amount greater than 0.");
       return false;
     }
-    if (memo.length > 28) {
-      setValidationError("Memo must be 28 characters or fewer.");
+    const memoError = validateMemo(memo);
+    if (memoError) {
+      setValidationError(memoError);
       return false;
+    }
+    if (recipientStatus === "unfunded" &&
+      !sponsorCreate &&
+      selectedAsset.type === "native" &&
+      mode === "one-time"
+    ) {
+      setValidationError(
+        "This recipient account does not exist yet. Enable “Fund new account (sponsor)” to create it in the same transaction, or use an existing address."
+      );
+      return false;
+    }
+    if (isCrossAsset && mode === "one-time") {
+      if (isEstimating) {
+        setValidationError("Calculating exchange rate path... Please wait.");
+        return false;
+      }
+      if (!pathEstimate || pathError) {
+        setValidationError(
+          pathError || `No conversion path available between ${selectedAsset.code} and ${destAsset.code}.`
+        );
+        return false;
+      }
     }
     return true;
   };
@@ -124,15 +325,69 @@ export default function SendPage() {
     setStep("building");
 
     try {
+      // Recurring mode — record a DB Recurrence schedule instead of executing
+      // a one-time on-chain payment (issue #172).
+      if (mode === "recurring") {
+        const nextRun = nextRunAt(new Date(), frequency);
+        await createRecurrenceMutation.mutateAsync({
+          name: memo.trim() || `Recurring ${frequency.toLowerCase()} payment`,
+          frequency,
+          amount: parseFloat(amount),
+          assetCode: selectedAsset.code,
+          destAddress: destination.trim(),
+          description: memo.trim() || undefined,
+          sourceAccountId: wallet.publicKey,
+        });
+
+        setStep("done");
+        setResult({
+          type: "success",
+          txHash: "",
+          amount,
+          sourceAsset: selectedAsset,
+          destination: destination.trim(),
+          isCrossAsset: false,
+        });
+
+        fetchBalance();
+        toast.success(
+          "Recurring payment scheduled",
+          `${formatAmount(parseFloat(amount), selectedAsset.code)} ${frequencyLabel(frequency)} → ${shortenAddress(destination.trim(), 6)} · next run ${nextRun.toLocaleDateString()}`
+        );
+        return;
+      }
+
       // 1. Build the transaction
-      const { xdr } = await buildPaymentTx({
-        sourcePublicKey: wallet.publicKey,
-        destination: destination.trim(),
-        amount,
-        memo: memo.trim() || undefined,
-        assetCode: selectedAsset.code,
-        assetIssuer: selectedAsset.issuer,
-      });
+      let xdr: string;
+
+      if (isCrossAsset && pathEstimate) {
+        // Use PathPaymentStrictSend when source and destination assets differ
+        const res = await buildPathPaymentStrictSendTx({
+          sourcePublicKey: wallet.publicKey,
+          destination: destination.trim(),
+          sendAmount: amount,
+          destMin: pathEstimate.destMin,
+          sourceAssetCode: selectedAsset.code,
+          sourceAssetIssuer: selectedAsset.issuer,
+          destAssetCode: destAsset.code,
+          destAssetIssuer: destAsset.issuer,
+          path: pathEstimate.path,
+          memo: memo.trim() || undefined,
+        });
+        xdr = res.xdr;
+      } else {
+        // Standard Direct Payment
+        const res = await buildPaymentTx({
+          sourcePublicKey: wallet.publicKey,
+          destination: destination.trim(),
+          amount,
+          memo: memo.trim() || undefined,
+          assetCode: selectedAsset.code,
+          assetIssuer: selectedAsset.issuer,
+          sponsorCreate,
+        });
+        xdr = res.xdr;
+      }
 
       // 2. Sign with the active wallet connector
       setStep("signing");
@@ -151,21 +406,19 @@ export default function SendPage() {
       setStep("submitting");
       const response = await submitSignedTx(signedXdr);
 
-      // 4. Record the payment on-chain via the Soroban contract.
-      //    Best-effort: the Horizon payment is already settled, so a failure
-      //    here is surfaced as a non-blocking warning on the success screen.
+      // 4. Record the payment on-chain via Soroban contract
       setStep("recording");
       const onChain = await recordPaymentOnChain({
         payer: wallet.publicKey,
         payee: destination.trim(),
         amountStroops: Math.round(parseFloat(amount) * XLM_STROOPS),
         txHash: response.hash,
-        signTransaction: (xdr, opts) => connector.signTransaction(xdr, opts),
+        signTransaction: (xdrToSign, opts) => connector.signTransaction(xdrToSign, opts),
         network: STELLAR_NETWORK,
         networkPassphrase: NETWORK_PASSPHRASE,
       });
 
-      // 5. Create a DB payment record (triggers webhooks automatically)
+      // 5. Create DB payment record
       try {
         await recordPaymentMutation.mutateAsync({
           amount: parseFloat(amount),
@@ -185,17 +438,33 @@ export default function SendPage() {
         type: "success",
         txHash: response.hash,
         amount,
+        sourceAsset: selectedAsset,
         destination: destination.trim(),
+        isCrossAsset,
+        destAsset: isCrossAsset ? destAsset : undefined,
+        destAmount: pathEstimate?.destinationAmount,
+        destMin: pathEstimate?.destMin,
+        exchangeRate: pathEstimate?.exchangeRate,
         onChain,
       });
 
       // Refresh balance after successful transaction
       fetchBalance();
-      toast.success("Payment sent!", `${formatAmount(parseFloat(amount), "XLM")} to ${shortenAddress(destination.trim(), 6)}`);
+
+      if (isCrossAsset && pathEstimate) {
+        toast.success(
+          "Path Payment Sent!",
+          `Sent ${formatAmount(parseFloat(amount), selectedAsset.code)} → Recipient receives ~${pathEstimate.destinationAmount} ${destAsset.code}`
+        );
+      } else {
+        toast.success(
+          "Payment sent!",
+          `${formatAmount(parseFloat(amount), selectedAsset.code)} to ${shortenAddress(destination.trim(), 6)}`
+        );
+      }
     } catch (err) {
       setStep("done");
-      const message =
-        err instanceof Error ? err.message : "Transaction failed. Please try again.";
+      const message = parseSubmissionError(err);
       setResult({ type: "error", message });
       toast.error("Transaction failed", message);
     }
@@ -207,7 +476,13 @@ export default function SendPage() {
     setAmount("");
     setDestination("");
     setMemo("");
+    setSponsorCreate(false);
+    setRecipientStatus("unknown");
+    setPathEstimate(null);
+    setPathError(null);
     setValidationError(null);
+    setMode("one-time");
+    setFrequency("DAILY");
   };
 
   // ── Not connected state ──────────────────────────────────
@@ -274,26 +549,54 @@ export default function SendPage() {
           </div>
 
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
-            Payment Sent!
+            {result.isCrossAsset ? "Path Payment Completed!" : "Payment Sent!"}
           </h2>
           <p className="text-gray-500 dark:text-gray-400 mb-6">
-            Your transaction has been submitted to the Stellar network.
+            Your transaction has been confirmed on the Stellar network.
           </p>
 
           {/* Transaction details */}
           <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 text-left space-y-3 mb-6">
             <div className="flex justify-between">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Amount</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {result.isCrossAsset ? "You Sent" : "Amount"}
+              </span>
               <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
-                {formatAmount(parseFloat(result.amount), "XLM")}
+                {formatAmount(parseFloat(result.amount), result.sourceAsset.code)}
               </span>
             </div>
+
+            {result.isCrossAsset && result.destAsset && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    Recipient Receives (est.)
+                  </span>
+                  <span className="text-sm font-mono font-semibold text-green-600 dark:text-green-400">
+                    {`~${result.destAmount} ${result.destAsset.code}`}
+                  </span>
+                </div>
+
+                {result.exchangeRate !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      Exchange Rate
+                    </span>
+                    <span className="text-xs font-mono text-gray-700 dark:text-gray-300">
+                      1 {result.sourceAsset.code} ≈ {result.exchangeRate.toFixed(6)} {result.destAsset.code}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+
             <div className="flex justify-between">
               <span className="text-sm text-gray-500 dark:text-gray-400">To</span>
               <span className="text-sm font-mono text-gray-900 dark:text-white">
                 {shortenAddress(result.destination, 6)}
               </span>
             </div>
+
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-500 dark:text-gray-400">TX Hash</span>
               <span className="flex items-center gap-2">
@@ -308,6 +611,7 @@ export default function SendPage() {
                 <CopyButton value={result.txHash} label="Hash" />
               </span>
             </div>
+
             <div className="flex justify-between">
               <span className="text-sm text-gray-500 dark:text-gray-400">On-chain record</span>
               {result.onChain?.status === "RECORDED" ? (
@@ -426,18 +730,26 @@ export default function SendPage() {
         >
           ← Dashboard
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">
-          Send Payment
-        </h1>
+        <div className="flex items-center justify-between mt-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Send Payment
+          </h1>
+          {isCrossAsset && mode === "one-time" && (
+            <span
+              data-testid="cross-asset-badge"
+              className="px-2.5 py-1 rounded-full text-xs font-semibold bg-ophir-100 text-ophir-800 dark:bg-ophir-950/50 dark:text-ophir-300 border border-ophir-200 dark:border-ophir-800"
+            >
+              ⚡ Path Payment
+            </span>
+          )}
+        </div>
         <p className="text-gray-500 dark:text-gray-400 mt-1">
-          Send {selectedAsset.code} on the Stellar Testnet
+          {mode === "recurring"
+            ? `Schedule a recurring ${selectedAsset.code} payment on Stellar`
+            : isCrossAsset
+              ? `Cross-asset transfer: Pay in ${selectedAsset.code}, recipient receives ${destAsset.code}`
+              : `Send ${selectedAsset.code} on the Stellar Testnet`}
         </p>
-        {selectedAsset.type !== "native" && selectedAsset.issuer && (
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-            Non-native asset — recipient needs a trustline to{" "}
-            {selectedAsset.issuer.slice(0, 8)}...
-          </p>
-        )}
       </div>
 
       {/* Wallet info */}
@@ -462,25 +774,69 @@ export default function SendPage() {
 
       {/* Form */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 space-y-4">
+        {/* Payment type toggle */}
+        <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl" role="tablist" aria-label="Payment type">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "one-time"}
+            onClick={() => setMode("one-time")}
+            disabled={isSubmitting}
+            data-testid="mode-one-time"
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${
+              mode === "one-time"
+                ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+            }`}
+          >
+            One-time
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "recurring"}
+            onClick={() => setMode("recurring")}
+            disabled={isSubmitting}
+            data-testid="mode-recurring"
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 ${
+              mode === "recurring"
+                ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+            }`}
+          >
+            Recurring
+          </button>
+        </div>
+
         {/* Destination */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
             Destination Address
           </label>
-          <input
-            type="text"
+          <AddressAutocomplete
             value={destination}
-            onChange={(e) => setDestination(e.target.value)}
+            onChange={setDestination}
             disabled={isSubmitting}
             placeholder="G..."
+            data-testid="destination-input"
             className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
           />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+            Start typing to autocomplete from your{" "}
+            <Link
+              href="/address-book"
+              className="text-ophir-600 dark:text-ophir-400 hover:underline"
+            >
+              address book
+            </Link>
+            .
+          </p>
         </div>
 
-        {/* Asset Selector */}
+        {/* Source Asset Selector */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            Asset
+            You Send (Source Asset)
           </label>
           <AssetSelector
             publicKey={wallet.publicKey}
@@ -490,10 +846,76 @@ export default function SendPage() {
           />
         </div>
 
+        {/* Destination Asset Selector */}
+        {mode === "one-time" && (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Recipient Receives (Destination Asset)
+              </label>
+              {isCrossAsset && (
+                <button
+                  type="button"
+                  onClick={() => setDestAsset(selectedAsset)}
+                  className="text-xs text-ophir-600 dark:text-ophir-400 hover:underline"
+                >
+                  Match Source ({selectedAsset.code})
+                </button>
+              )}
+            </div>
+            <AssetSelector
+              publicKey={destination && isValidStellarAddress(destination) ? destination : null}
+              selectedAsset={destAsset}
+              onSelect={setDestAsset}
+              disabled={isSubmitting}
+            />
+          </div>
+        )}
+
+        {/* Recurring frequency picker + next-run preview */}
+        {mode === "recurring" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Frequency
+            </label>
+            <select
+              value={frequency}
+              onChange={(e) => setFrequency(e.target.value as Frequency)}
+              disabled={isSubmitting}
+              data-testid="frequency-input"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {FREQUENCY_OPTIONS.map((f) => (
+                <option key={f} value={f}>
+                  {FREQUENCY_LABELS[f]}
+                </option>
+              ))}
+            </select>
+            {amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0 && (
+              <div
+                data-testid="next-run-preview"
+                className="mt-2 p-3 rounded-lg bg-ophir-50 dark:bg-ophir-950/30 border border-ophir-200 dark:border-ophir-800"
+              >
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  First run scheduled for{" "}
+                  <span className="font-medium text-ophir-700 dark:text-ophir-300">
+                    {nextRunAt(new Date(), frequency).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                  , then {frequencyLabel(frequency).toLowerCase()}.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Amount */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            Amount
+            Amount to Send
           </label>
           <div className="relative">
             <input
@@ -505,12 +927,14 @@ export default function SendPage() {
               placeholder="0.00"
               step="0.0000001"
               min="0.0000001"
+              data-testid="amount-input"
               className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed pr-16"
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">
               {selectedAsset.code}
             </span>
           </div>
+
           {feeEstimate && (
             <div className="mt-2 flex items-center gap-2 text-xs">
               <span className="text-gray-500 dark:text-gray-400">
@@ -527,6 +951,72 @@ export default function SendPage() {
           )}
         </div>
 
+        {/* Cross-Asset Rate Preview Card */}
+        {isCrossAsset && mode === "one-time" && (
+          <div
+            data-testid="rate-preview-card"
+            className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 space-y-2.5"
+          >
+            <div className="flex items-center justify-between text-xs font-semibold text-gray-700 dark:text-gray-300">
+              <span className="flex items-center gap-1.5">
+                <span className="text-base">💱</span> Rate & Route Preview
+              </span>
+              {isEstimating && (
+                <span className="text-ophir-600 dark:text-ophir-400 animate-pulse font-normal">
+                  Finding best path...
+                </span>
+              )}
+            </div>
+
+            {pathEstimate && !isEstimating && (
+              <div className="space-y-2 text-xs pt-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 dark:text-gray-400">Exchange Rate:</span>
+                  <span
+                    data-testid="exchange-rate-display"
+                    className="font-mono font-medium text-gray-900 dark:text-white"
+                  >
+                    {`1 ${selectedAsset.code} ≈ ${pathEstimate.exchangeRate.toFixed(6)} ${destAsset.code}`}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 dark:text-gray-400">Estimated Receipt:</span>
+                  <span
+                    data-testid="estimated-dest-amount"
+                    className="font-mono font-semibold text-green-600 dark:text-green-400 text-sm"
+                  >
+                    {`~${pathEstimate.destinationAmount} ${destAsset.code}`}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-gray-400">Guaranteed Minimum (1% slippage):</span>
+                  <span className="font-mono text-gray-600 dark:text-gray-300">
+                    {pathEstimate.destMin} {destAsset.code}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center text-[11px] pt-1 border-t border-gray-200 dark:border-gray-700">
+                  <span className="text-gray-400">Conversion Route:</span>
+                  <span className="font-mono text-ophir-600 dark:text-ophir-400">
+                    {[selectedAsset.code, ...pathEstimate.pathAssets.map((p) => p.code), destAsset.code].join(" → ")}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {pathError && !isEstimating && (
+              <div
+                data-testid="path-error-box"
+                className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400"
+              >
+                {pathError}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Memo */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -540,13 +1030,32 @@ export default function SendPage() {
             placeholder="e.g. Payment for services"
             className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-            A Stellar memo is an optional note (up to 28 bytes) attached to the
-            transaction. Some exchanges and services require a memo or
-            destination tag to credit payments — include it if the recipient
-            asked for one.
-          </p>
         </div>
+
+        {/* Sponsored account creation */}
+        {mode === "one-time" && recipientStatus === "unfunded" && selectedAsset.type === "native" && (
+          <div className="p-3 rounded-lg bg-ophir-50 dark:bg-ophir-950/30 border border-ophir-200 dark:border-ophir-800">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sponsorCreate}
+                onChange={(e) => setSponsorCreate(e.target.checked)}
+                disabled={isSubmitting}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-ophir-600 focus:ring-ophir-500 disabled:opacity-50"
+              />
+              <span className="text-sm">
+                <span className="font-medium text-gray-800 dark:text-gray-200">
+                  Fund new account (sponsor)
+                </span>
+                <span className="block text-gray-500 dark:text-gray-400 mt-0.5">
+                  This address isn’t funded yet. Sponsor its creation by sending a{" "}
+                  {SPONSOR_MIN_STARTING_BALANCE} XLM reserve in the same transaction
+                  (total debited: {SPONSOR_MIN_STARTING_BALANCE} XLM + your amount + fee).
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         {/* Validation error */}
         {validationError && (
@@ -560,7 +1069,8 @@ export default function SendPage() {
         {/* Submit */}
         <button
           onClick={handleSend}
-          disabled={isSubmitting}
+          disabled={isSubmitting || (mode === "one-time" && isCrossAsset && (!pathEstimate || Boolean(pathError)))}
+          data-testid="send-btn"
           className="w-full py-3 rounded-lg bg-gradient-to-r from-ophir-600 to-stellar-dark text-white font-medium text-sm hover:from-ophir-700 hover:to-stellar disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg shadow-ophir-500/25 active:scale-[0.98] flex items-center justify-center gap-2"
         >
           {isSubmitting ? (
@@ -585,13 +1095,15 @@ export default function SendPage() {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                 />
               </svg>
-              {step === "building"
-                ? "Building transaction..."
-                : step === "signing"
-                  ? "Waiting for signature..."
-                  : step === "recording"
-                    ? "Recording on-chain (sign to confirm)..."
-                    : "Submitting to Stellar..."}
+              {mode === "recurring"
+                ? "Scheduling recurring payment..."
+                : step === "building"
+                  ? "Building transaction..."
+                  : step === "signing"
+                    ? "Waiting for signature..."
+                    : step === "recording"
+                      ? "Recording on-chain (sign to confirm)..."
+                      : "Submitting to Stellar..."}
             </>
           ) : (
             <>
@@ -609,7 +1121,13 @@ export default function SendPage() {
                   d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
                 />
               </svg>
-              {`Send ${selectedAsset.code}`}
+              {mode === "recurring"
+                ? "Schedule Recurring"
+                : isCrossAsset
+                  ? pathError
+                    ? "No Path Available"
+                    : `Send ${amount || "0"} ${selectedAsset.code} → ~${pathEstimate?.destinationAmount || "0"} ${destAsset.code}`
+                  : `Send ${selectedAsset.code}`}
             </>
           )}
         </button>

@@ -201,8 +201,8 @@ async function relayerLoop(): Promise<void> {
         const matchingHooks = hooks.filter((h) => h.eventType === event.event);
 
         for (const hook of matchingHooks) {
-          const success = await deliverWebhook(hook.webhookUrl, HOOK_SECRET, event);
-          if (success) {
+          const result = await deliverWebhook(hook.webhookUrl, HOOK_SECRET, event);
+          if (result.success) {
             delivered++;
             logger.info("✅ Webhook delivered", {
               hookId: hook.id,

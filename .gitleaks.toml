@@ -15,6 +15,13 @@ title = "OphirPay Gitleaks Config"
     '''prisma/seed.ts''',
     '''scripts/mockups/''',
     '''public/''',
+    # Scanner self-test fixtures (issue #393): these files contain FAKE,
+    # publicly documented example secrets on purpose. They are excluded from
+    # the repo-wide scan because the `secrets-scan` CI job scans this dir
+    # separately with DEFAULT gitleaks rules and asserts the fixtures ARE
+    # flagged — proving the blocklist actually detects secrets. See
+    # SECURITY.md → "Secrets Scanning in CI".
+    '''tests/fixtures/secrets/''',
   ]
 
   # Demo/test private keys and public identifiers that are NOT real secrets

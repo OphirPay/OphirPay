@@ -5,6 +5,7 @@ node_modules/
 
 # testing
 coverage/
+dependency-audit-report/
 
 # next.js
 .next/
@@ -56,7 +57,8 @@ contracts/**/target/wasm32-unknown-unknown/release/.cargo-*
 contracts/**/target/wasm32-unknown-unknown/release/*.d
 contracts/**/target/.rustc_info.json
 contracts/**/target/CACHEDIR.TAG
-contracts/**/Cargo.lock
+# Cargo.lock is intentionally committed: the WASM reproducibility check
+# (issue #405) requires a pinned dependency graph to produce identical bytes.
 
 # Soroban
 .soroban/
@@ -67,6 +69,13 @@ contracts/**/spec/target/
 # Soroban test snapshot artifacts (generated on test failure)
 **/test_snapshots/
 
+# Proptest regression persistence (generated after a shrinking run)
+**/*.proptest-regressions
+
 # Playwright
 playwright-report/
+playwright-visual-report/
 test-results/
+
+# Load-test raw results (regenerated locally; baselines live in docs/PERFORMANCE.md)
+tests/load/results/

@@ -1,23 +1,30 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
 import { Suspense, useMemo, useState } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
+import { cn, formatAmount, shortenAddress, timeAgo } from "@/lib/utils";
 import { getStellarExplorerUrl } from "@/lib/stellar";
 import { exportToCsv } from "@/lib/csv";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { EmptyState } from "@/components/EmptyState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Pagination } from "@/components/ui/Pagination";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
 import { useToast } from "@/components/ui/Toast";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useApiQuery, apiFetch, type ApiError } from "@/hooks/useApiQuery";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
+import { useTableKeyboardNavigation } from "@/hooks/useTableKeyboardNavigation";
+import { convertXlmToUsd, formatFiatAmount } from "@/lib/price";
 import type { Payment, PaymentStatus } from "@/types";
 
 // ── Status lifecycle ──────────────────────────────────────────
@@ -84,7 +91,7 @@ const ALLOWED_PAGE_SIZES = [10, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 25;
 
 export default function PaymentsPage() {
-  // `useSearchParams` requires a Suspense boundary during static prerendering.
+  usePageTitle(PAGE_TITLES.PAYMENTS);
   return (
     <Suspense fallback={<PaymentsFallback />}>
       <PaymentsClient />
@@ -108,7 +115,7 @@ function PaymentsClient() {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const debouncedSearch = useDebounce(search, 300);
 
   const {
@@ -122,12 +129,6 @@ function PaymentsClient() {
   const error = fetchError ? fetchError.message : null;
 
   // ── Optimistic status updates ────────────────────────────────
-  //
-  // Changing a row's status updates that row in the cache immediately
-  // (optimistic), then the PATCH response reconciles it. Each update is
-  // tracked per-row so concurrent updates to different rows never interfere:
-  // a failed request rolls back only its own row's snapshot and its own row's
-  // control stays disabled until that request settles.
 
   const [pendingStatuses, setPendingStatuses] = useState<
     Record<string, PaymentStatus>
@@ -175,7 +176,6 @@ function PaymentsClient() {
 
   // Client-side search/filter
   const filtered = useMemo(() => {
-    if (!debouncedSearch) return payments;
     const q = debouncedSearch.toLowerCase();
     return payments.filter(
       (p) =>
@@ -187,15 +187,12 @@ function PaymentsClient() {
     );
   }, [payments, debouncedSearch]);
 
-  // Client-side pagination — page and page size are persisted in the URL
-  // search params so filtered/paginated views are shareable.
-  const pageParam = parseInt(searchParams.get("page") ?? "", 10);
+  // Client-side pagination
+  const pageParam = Number.parseInt(searchParams.get("page") ?? "", 10);
   const page = Number.isFinite(pageParam) && pageParam >= 1 ? pageParam : 1;
 
-  const pageSizeParam = parseInt(searchParams.get("pageSize") ?? "", 10);
-  const pageSize = (ALLOWED_PAGE_SIZES as readonly number[]).includes(
-    pageSizeParam
-  )
+  const pageSizeParam = Number.parseInt(searchParams.get("pageSize") ?? "", 10);
+  const pageSize = (ALLOWED_PAGE_SIZES as readonly number[]).includes(pageSizeParam)
     ? pageSizeParam
     : DEFAULT_PAGE_SIZE;
 
@@ -203,6 +200,9 @@ function PaymentsClient() {
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * pageSize;
   const paginated = filtered.slice(startIndex, startIndex + pageSize);
+
+  const { activeIndex, getRowProps, onRowsKeyDown, tbodyRef } =
+    useTableKeyboardNavigation(paginated.length);
 
   const updateQuery = (updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -214,8 +214,7 @@ function PaymentsClient() {
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  const goToPage = (target: number) =>
-    updateQuery({ page: target <= 1 ? null : String(target) });
+  const goToPage = (target: number) => updateQuery({ page: target <= 1 ? null : String(target) });
 
   const changePageSize = (size: number) =>
     updateQuery({
@@ -223,13 +222,36 @@ function PaymentsClient() {
       page: null,
     });
 
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
+
+  const renderPaymentAmount = (payment: Payment) => {
+    if (payment.assetCode !== "XLM" || currency !== "USD") {
+      return formatAmount(payment.amount, payment.assetCode);
+    }
+    if (xlmPrice !== null) {
+      return (
+        <div>
+          <span className="font-medium text-gray-900 dark:text-white">
+            {formatFiatAmount(convertXlmToUsd(payment.amount, xlmPrice), { showApprox: true })}
+          </span>
+          <span className="block text-[11px] text-gray-400 dark:text-gray-500">
+            {formatAmount(payment.amount, "XLM")}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <span>{formatAmount(payment.amount, "XLM")}</span>
+        <span className="block text-[11px] text-amber-600 dark:text-amber-400 font-sans">
+          (USD unavailable)
+        </span>
+      </div>
+    );
+  };
+
   const handleExport = async () => {
-    // Prefer the server-side export (GET /api/payments/export): it applies the
-    // CURRENT search filter to the full DB-backed record set, so the CSV is
-    // not limited to the rows loaded into the page. It falls back to a
-    // client-side export of the loaded rows when there is no server session
-    // (e.g. wallet connected but the session cookie expired) so the button
-    // never dead-ends in a 401.
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
 
@@ -245,15 +267,13 @@ function PaymentsClient() {
         link.download = `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv`;
         document.body.appendChild(link);
         link.click();
-        document.body.removeChild(link);
+        link.remove();
         URL.revokeObjectURL(url);
         return;
       }
     } catch {
-      // Network failure or missing session — fall through to the client-side
-      // export below.
+      // Fall through to client-side export
     }
-
     exportToCsv(filtered, [
       { key: "id", header: "Payment ID" },
       { key: "amount", header: "Amount" },
@@ -266,31 +286,47 @@ function PaymentsClient() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Breadcrumb */}
       <Breadcrumb items={[{ label: "Payments" }]} />
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Payments
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Payments</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
             Your payment records and their lifecycle statuses
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            showPrice={currency === "USD"}
+            price={xlmPrice}
+            isUnavailable={isPriceUnavailable}
+          />
           <button
+            type="button"
             onClick={handleExport}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             title="Export CSV"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-4 h-4"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
             </svg>
             CSV
           </button>
           <button
+            type="button"
             onClick={() => load()}
             disabled={loading}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
@@ -303,7 +339,11 @@ function PaymentsClient() {
               stroke="currentColor"
               className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M2.985 19.644l3.181-3.182" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M2.985 19.644l3.181-3.182"
+              />
             </svg>
             Refresh
           </button>
@@ -311,7 +351,14 @@ function PaymentsClient() {
             href="/send"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors shadow-lg shadow-ophir-500/25 active:scale-95"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-4 h-4"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
             Send
@@ -319,10 +366,20 @@ function PaymentsClient() {
         </div>
       </div>
 
-      {/* Search bar */}
       <div className="relative max-w-sm">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+          />
         </svg>
         <input
           type="text"
@@ -333,7 +390,6 @@ function PaymentsClient() {
         />
       </div>
 
-      {/* Record count */}
       <div className="flex items-center gap-2">
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-xs font-medium text-green-700 dark:text-green-400">
           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
@@ -346,39 +402,64 @@ function PaymentsClient() {
         )}
       </div>
 
-      {/* Error */}
       {error && (
         <div className="p-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30">
           <p className="text-sm text-red-700 dark:text-red-400">
             Failed to load payments: {error}
           </p>
-          <button onClick={() => load()} className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline">
+          <button
+            type="button"
+            onClick={() => load()}
+            className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
+          >
             Try again
           </button>
         </div>
       )}
 
-      {/* Table */}
+      {!loading && !error && payments.length === 0 && !search ? (
+        <EmptyState
+          icon={
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-8 h-8 text-gray-400"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
+              />
+            </svg>
+          }
+          title="No Payments Yet"
+          description="Payments recorded on-chain by the OphirPay Soroban contract will appear here. Send your first payment to get started."
+          actionLabel="Create First Payment"
+          onAction={() => router.push("/send")}
+        />
+      ) : (
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm" aria-busy={loading}>
             <thead>
               <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
                 <th className="py-3 px-4 font-medium">Payment</th>
-                <th className="py-3 px-4 font-medium">Amount</th>
+                <th className="py-3 px-4 font-medium">
+                  Amount {currency === "USD" ? "(USD)" : "(XLM)"}
+                </th>
                 <th className="py-3 px-4 font-medium">Status</th>
                 <th className="py-3 px-4 font-medium">Date</th>
                 <th className="py-3 px-4 font-medium">Tx Hash</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody ref={tbodyRef} onKeyDown={onRowsKeyDown}>
               {loading &&
-                // Skeleton rows pulse in place so the table keeps its height
-                // (no layout shift) while the list is in flight.
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr
                     key={i}
-                    aria-hidden="true"
                     className="border-b border-gray-100 dark:border-gray-800/50"
                   >
                     <td className="py-3 px-4" colSpan={5}>
@@ -404,15 +485,21 @@ function PaymentsClient() {
               )}
 
               {!loading &&
-                paginated.map((payment) => {
+                paginated.map((payment, index) => {
                   const transitions = SAFE_TRANSITIONS[payment.status] ?? [];
                   const pending = isStatusPending(payment.id);
                   return (
                     <tr
                       key={payment.id}
-                      className={`border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors ${
+                      data-row-index={index}
+                      {...getRowProps(index)}
+                      className={cn(
+                        "border-b border-gray-100 dark:border-gray-800/50 transition-colors",
+                        index === activeIndex
+                          ? "bg-ophir-50/70 dark:bg-ophir-950/40 hover:bg-ophir-100/70 dark:hover:bg-ophir-900/40"
+                          : "hover:bg-gray-50 dark:hover:bg-gray-800/30",
                         pending ? "opacity-60" : ""
-                      }`}
+                      )}
                     >
                       <td className="py-3 px-4">
                         <p className="font-medium text-gray-900 dark:text-white">
@@ -425,7 +512,7 @@ function PaymentsClient() {
                         )}
                       </td>
                       <td className="py-3 px-4 text-gray-700 dark:text-gray-300 font-mono">
-                        {formatAmount(payment.amount, payment.assetCode)}
+                        {renderPaymentAmount(payment)}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
@@ -456,7 +543,7 @@ function PaymentsClient() {
                         </div>
                       </td>
                       <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs">
-                        {formatDate(payment.createdAt)}
+                        {timeAgo(payment.createdAt)}
                       </td>
                       <td className="py-3 px-4">
                         {payment.transactionHash ? (
@@ -483,13 +570,12 @@ function PaymentsClient() {
         </div>
 
         {!loading && !error && filtered.length > 0 && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-800">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-200 dark:border-gray-800">
             <div className="flex items-center gap-3">
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Showing{" "}
                 <span className="font-medium">
-                  {startIndex + 1}–
-                  {Math.min(startIndex + pageSize, filtered.length)}
+                  {startIndex + 1}–{Math.min(startIndex + pageSize, filtered.length)}
                 </span>{" "}
                 of <span className="font-medium">{filtered.length}</span>{" "}
                 {filtered.length === 1 ? "payment" : "payments"}
@@ -519,6 +605,7 @@ function PaymentsClient() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

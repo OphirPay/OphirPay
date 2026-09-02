@@ -1,6 +1,7 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
 # OphirPay Smart Contract Deployment Workflow
+# Validate PUBLIC config in CI: bash scripts/validate-deploy-config.sh
 # ─────────────────────────────────────────────────────────────
 # Automates the full Soroban contract deployment pipeline:
 # 1. Build WASM from Rust source
@@ -22,8 +23,25 @@ echo -e "${GREEN}└────────────────────
 echo ""
 
 # ── Configuration ───────────────────────────────────────────
-RPC_URL="${RPC_URL:-https://soroban-testnet.stellar.org:443}"
-NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
+# Network mode: TESTNET (default) or PUBLIC (Stellar Mainnet).
+# PUBLIC mode requires --network public and disables friendbot funding.
+NETWORK_MODE="${NETWORK_MODE:-TESTNET}"
+DRY_RUN="${DRY_RUN:-false}"
+
+if [ "$NETWORK_MODE" = "PUBLIC" ]; then
+  RPC_URL="${RPC_URL:-https://soroban.stellar.org:443}"
+  HORIZON_URL="${HORIZON_URL:-https://horizon.stellar.org}"
+  NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Public Global Stellar Network ; September 2015}"
+  NETWORK_FLAG="--network public"
+  FRIENDBOT_ENABLED=false
+else
+  RPC_URL="${RPC_URL:-https://soroban-testnet.stellar.org:443}"
+  HORIZON_URL="${HORIZON_URL:-https://horizon-testnet.stellar.org}"
+  NETWORK_PASSPHRASE="${NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
+  NETWORK_FLAG="--network testnet"
+  FRIENDBOT_ENABLED=true
+fi
+
 CONTRACT_DIR="contracts/ophirpay"
 WASM_PATH="$CONTRACT_DIR/target/wasm32v1-none/release/ophirpay_contract.wasm"
 
@@ -35,9 +53,12 @@ if [ $# -lt 2 ]; then
   echo "  $0 SDEMO... GDEMO... CA6LAP..."
   echo ""
   echo "Environment variables:"
-  echo "  RPC_URL               Soroban RPC URL (default: testnet)"
+  echo "  NETWORK_MODE          TESTNET (default) or PUBLIC (Stellar Mainnet)"
+  echo "  RPC_URL               Soroban RPC URL (default: testnet or mainnet)"
+  echo "  HORIZON_URL           Stellar Horizon URL (default: testnet or mainnet)"
   echo "  NETWORK_PASSPHRASE     Network passphrase"
   echo "  STELLAR_CLI_PATH       Path to stellar CLI binary"
+  echo "  DRY_RUN               Set to true to validate config without submitting"
   exit 1
 fi
 
@@ -45,6 +66,21 @@ SECRET_KEY="$1"
 OWNER_KEY="$2"
 EMITTER_ID="${3:-}"
 STELLAR_CLI="${STELLAR_CLI_PATH:-stellar}"
+
+# ── Dry-run guard ────────────────────────────────────────────
+# In PUBLIC mode, a dry-run must fail before any real submission.
+if [ "$NETWORK_MODE" = "PUBLIC" ] && [ "$DRY_RUN" = "true" ]; then
+  echo -e "${YELLOW}[dry-run] Validating PUBLIC network configuration...${NC}"
+  echo -e "${YELLOW}[dry-run] RPC:            ${RPC_URL}${NC}"
+  echo -e "${YELLOW}[dry-run] Horizon:        ${HORIZON_URL}${NC}"
+  echo -e "${YELLOW}[dry-run] Passphrase:     ${NETWORK_PASSPHRASE}${NC}"
+  echo -e "${YELLOW}[dry-run] Friendbot:      disabled (mainnet has no friendbot)${NC}"
+  echo -e "${YELLOW}[dry-run] Network flag:   ${NETWORK_FLAG}${NC}"
+  echo ""
+  echo -e "${RED}✗ Dry-run: refusing to submit any transaction to PUBLIC network.${NC}"
+  echo -e "${RED}  Remove DRY_RUN=true to perform a real mainnet deployment.${NC}"
+  exit 1
+fi
 
 # ── Check prerequisites ──────────────────────────────────────
 if ! command -v "$STELLAR_CLI" &>/dev/null; then
@@ -79,12 +115,13 @@ else
 fi
 
 # ── Step 2: Upload WASM ──────────────────────────────────────
-echo -e "${YELLOW}[2/5] Uploading WASM to Stellar Testnet...${NC}"
+echo -e "${YELLOW}[2/5] Uploading WASM to Stellar ${NETWORK_MODE}...${NC}"
 $STELLAR_CLI contract upload \
   --wasm "$WASM_PATH" \
   --source-account "$SECRET_KEY" \
   --rpc-url "$RPC_URL" \
   --network-passphrase "$NETWORK_PASSPHRASE" \
+  $NETWORK_FLAG \
   --quiet
 
 echo -e "${GREEN}  ✓ WASM uploaded${NC}"
@@ -96,6 +133,7 @@ CONTRACT_ID=$($STELLAR_CLI contract deploy \
   --source-account "$SECRET_KEY" \
   --rpc-url "$RPC_URL" \
   --network-passphrase "$NETWORK_PASSPHRASE" \
+  $NETWORK_FLAG \
   --quiet 2>/dev/null)
 
 echo -e "${GREEN}  ✓ Contract ID: ${CONTRACT_ID}${NC}"
@@ -108,6 +146,7 @@ if [ -n "$EMITTER_ID" ]; then
     --source-account "$SECRET_KEY" \
     --rpc-url "$RPC_URL" \
     --network-passphrase "$NETWORK_PASSPHRASE" \
+    $NETWORK_FLAG \
     --quiet \
     -- init --owner "$OWNER_KEY" --emitter "$EMITTER_ID" 2>/dev/null || echo "")
 else
@@ -117,6 +156,7 @@ else
     --source-account "$SECRET_KEY" \
     --rpc-url "$RPC_URL" \
     --network-passphrase "$NETWORK_PASSPHRASE" \
+    $NETWORK_FLAG \
     --quiet \
     -- init --owner "$OWNER_KEY" 2>/dev/null || echo "")
 fi
@@ -134,6 +174,7 @@ OWNER_RESULT=$($STELLAR_CLI contract invoke \
   --source-account "$SECRET_KEY" \
   --rpc-url "$RPC_URL" \
   --network-passphrase "$NETWORK_PASSPHRASE" \
+  $NETWORK_FLAG \
   --send no \
   --quiet \
   -- get_owner 2>/dev/null || echo "N/A")
@@ -141,12 +182,18 @@ OWNER_RESULT=$($STELLAR_CLI contract invoke \
 echo -e "${GREEN}  ✓ Owner: ${OWNER_RESULT}${NC}"
 
 # ── Summary ──────────────────────────────────────────────────
+if [ "$NETWORK_MODE" = "PUBLIC" ]; then
+  EXPLORER_URL="https://stellar.expert/explorer/public/contract/${CONTRACT_ID}"
+else
+  EXPLORER_URL="https://stellar.expert/explorer/testnet/contract/${CONTRACT_ID}"
+fi
 echo ""
 echo -e "${GREEN}┌──────────────────────────────────────────────┐${NC}"
 echo -e "${GREEN}│   Deployment Complete!                       │${NC}"
 echo -e "${GREEN}├──────────────────────────────────────────────┤${NC}"
+echo -e "${GREEN}│ Network:  ${NETWORK_MODE}${NC}"
 echo -e "${GREEN}│ Contract: ${CONTRACT_ID}${NC}"
-echo -e "${GREEN}│ Explorer: https://stellar.expert/explorer/testnet/contract/${CONTRACT_ID}${NC}"
+echo -e "${GREEN}│ Explorer: ${EXPLORER_URL}${NC}"
 echo -e "${GREEN}│ Owner:    ${OWNER_RESULT}${NC}"
 echo -e "${GREEN}└──────────────────────────────────────────────┘${NC}"
 echo ""

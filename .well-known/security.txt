@@ -1,0 +1,14 @@
+Contact: mailto:security@ophirpay.com
+Expires: 2027-08-28T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://ophirpay.vercel.app/.well-known/security.txt
+Policy: https://github.com/OphirPay/OphirPay/blob/main/SECURITY.md
+
+# OphirPay Security Policy
+#
+# This file provides security researchers with information about how to
+# report vulnerabilities in OphirPay.
+#
+# For more details, see: https://github.com/OphirPay/OphirPay/blob/main/SECURITY.md
+#
+# Last updated: August 2026

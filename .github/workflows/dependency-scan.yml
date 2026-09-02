@@ -1,0 +1,39 @@
+name: Dependency Vulnerability Scan — Nightly
+
+# Runs the dependency vulnerability scan on a nightly schedule and on
+# demand (workflow_dispatch). Every pull request additionally gets the same
+# blocking scan from the `dependency-scan` job in ci.yml (issue #394).
+#
+# The scan (scripts/audit-dependencies.mjs) runs `npm audit --json`, applies
+# the documented suppressions in .github/dependency-suppressions.json, and
+# fails when any remaining advisory is rated high or critical. The full JSON
+# report is uploaded as an artifact on every run.
+
+on:
+  schedule:
+    # Nightly 03:17 UTC — off-peak for GitHub Actions minutes.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-scan:
+    name: "Dependency Vulnerability Scan (fail on high/critical)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Run dependency vulnerability scan
+        run: node scripts/audit-dependencies.mjs
+      - name: Upload audit report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-report
+          path: dependency-audit-report/
+          retention-days: 30

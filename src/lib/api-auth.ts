@@ -2,8 +2,28 @@
 
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-import { unauthorizedError } from "@/lib/api-response";
+import { unauthorizedError, forbiddenError } from "@/lib/api-response";
 import { NextResponse } from "next/server";
+
+// ── Scopes ─────────────────────────────────────────────────────
+//
+// Scope constants and hasScope live in @/lib/api-scopes (client-safe — no
+// server-only imports) and are re-exported here so server code keeps a single
+// import site. Client components must import from @/lib/api-scopes directly.
+
+import {
+  API_SCOPES,
+  ADMIN_SCOPE,
+  hasScope,
+  type ApiScope,
+} from "@/lib/api-scopes";
+
+export {
+  API_SCOPES,
+  ADMIN_SCOPE,
+  hasScope,
+  type ApiScope,
+};
 
 /**
  * Consolidated API authentication module — single source of truth.
@@ -57,6 +77,7 @@ export interface AuthResult {
   userId: string;
   keyId: string;
   keyName: string;
+  scopes: string[];
 }
 
 /**
@@ -77,7 +98,13 @@ export async function authenticateRequest(
   try {
     const apiKey = await prisma.apiKey.findFirst({
       where: { keyHash, prefix },
-      select: { id: true, userId: true, name: true, expiresAt: true },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        expiresAt: true,
+        scopes: true,
+      },
     });
 
     if (!apiKey) return null;
@@ -94,6 +121,7 @@ export async function authenticateRequest(
       userId: apiKey.userId,
       keyId: apiKey.id,
       keyName: apiKey.name,
+      scopes: apiKey.scopes ?? [],
     };
   } catch {
     // DB unavailable — reject rather than fail open
@@ -110,9 +138,17 @@ export async function authenticateRequest(
  *   export const GET = withApiAuth(async (req) => { … });
  */
 export function withApiAuth(
-  handler: (request: Request, ...args: unknown[]) => Promise<Response>
+  handler: (request: Request, ...args: unknown[]) => Promise<Response>,
+  required?: ApiScope | ApiScope[]
 ) {
   return async (request: Request, ...args: unknown[]): Promise<Response> => {
+    // Scope-enforced variant
+    if (required) {
+      const auth = await requireScopes(request, required);
+      if (!("userId" in auth)) return auth; // auth is a 401/403 Response
+      return handler(request, ...args);
+    }
+
     const auth = await authenticateRequest(request);
     if (!auth) {
       return unauthorizedError(
@@ -121,6 +157,39 @@ export function withApiAuth(
     }
     return handler(request, ...args);
   };
+}
+
+/**
+ * Authenticate *and* verify the request's API key carries the required scope(s).
+ *
+ * Returns the `AuthResult` on success, or a 401/403 `NextResponse` on failure.
+ * Check the result with `if (!("userId" in auth)) return auth;` before using it.
+ *
+ *   const auth = await requireScopes(request, "read:payments");
+ *   if (!("userId" in auth)) return auth;   // 401/403 Response
+ *   // auth.userId / auth.scopes available
+ */
+export async function requireScopes(
+  request: Request,
+  required: ApiScope | ApiScope[]
+): Promise<AuthResult | NextResponse> {
+  const auth = await authenticateRequest(request);
+  if (!auth) {
+    return unauthorizedError(
+      "Valid API key required. Use Authorization: Bearer <key> or X-API-Key header."
+    );
+  }
+
+  const requiredList = Array.isArray(required) ? required : [required];
+  if (!hasScope(auth.scopes, requiredList)) {
+    return forbiddenError(
+      `This API key lacks the required scope(s): ${requiredList.join(", ")}. ` +
+        `Its effective scopes are: ${auth.scopes.length ? auth.scopes.join(", ") : "(none)"}`,
+      { required: requiredList, has: auth.scopes }
+    );
+  }
+
+  return auth;
 }
 
 /**

@@ -16,6 +16,7 @@ export const ROUTES = {
   MULTISIG: "/multisig",
   GOVERNANCE: "/governance",
   RBAC: "/rbac",
+  KEYS: "/keys",
   FEE_CONFIG: "/fee-config",
   TIMELOCK: "/timelock",
   POLICY_VERSIONS: "/policy-versions",
@@ -30,6 +31,8 @@ export const API_ROUTES = {
   PAYMENTS: "/api/payments",
   BATCHES: "/api/batches",
   WEBHOOKS: "/api/webhooks",
+  WEBHOOK_REPLAY: "/api/webhooks", // append /[id]/replay
+  WEBHOOK_DELIVERIES: "/api/webhooks", // append /[id]/deliveries
   ANALYTICS: "/api/analytics",
   REQUESTS: "/api/requests",
   RECURRING: "/api/recurring",

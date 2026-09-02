@@ -33,7 +33,7 @@ describe("GET /api/payments", () => {
 
     expect(res.status).toBe(200);
     expect(mockFindMany).toHaveBeenCalledWith({
-      where: { userId: "user-1" },
+      where: { userId: "user-1", deletedAt: null },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 51,
     });
@@ -46,7 +46,7 @@ describe("GET /api/payments", () => {
 
     expect(res.status).toBe(200);
     expect(mockFindMany).toHaveBeenCalledWith({
-      where: { userId: "user-1" },
+      where: { userId: "user-1", deletedAt: null },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: 10,
       take: 10,
@@ -64,12 +64,16 @@ describe("GET /api/payments", () => {
     expect(mockFindMany).toHaveBeenCalledWith({
       where: {
         userId: "user-1",
+        deletedAt: null,
         status: "COMPLETED",
+        // Issue #157: memo is ILIKE (case-insensitive contains), the
+        // transaction hash is an exact match.
         OR: [
           { description: { contains: "invoice" } },
-          { memo: { contains: "invoice" } },
-          { transactionHash: { contains: "invoice" } },
+          { memo: { contains: "invoice", mode: "insensitive" } },
+          { transactionHash: { equals: "invoice" } },
         ],
+        deletedAt: null,
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 51,

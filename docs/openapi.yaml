@@ -11,6 +11,10 @@ info:
     - `X-API-Key: <api-key>`
     
     API keys are generated at `POST /api/keys` and shown only once.
+
+    **Conventions** — see [docs/API_GUIDE.md](./API_GUIDE.md) for the
+    endpoint conventions: file structure, Zod validation, error handling,
+    auth usage, the response envelope, and rate limiting.
   version: 0.1.0
   contact:
     name: OphirPay Team
@@ -243,6 +247,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /api/payments/export:
+    get:
+      tags: [Payments]
+      summary: Export payments as CSV
+      description: |
+        Server-side CSV export of the CURRENT filter results — every row
+        matching `status` / `search` (the same filters as GET /api/payments),
+        not just the page loaded in the browser. Returns a dated CSV
+        attachment that includes all key fields plus memo and transaction hash.
+        The response includes an `X-Export-Truncated` header set to `true`
+        when the result set exceeds the export row cap.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Only export payments with this status
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Only export payments matching this search term
+      responses:
+        "200":
+          description: CSV attachment with the matching payment rows
+          headers:
+            X-Export-Truncated:
+              description: true when the result set was truncated to the export cap
+              schema:
+                type: string
+                enum: ["true", "false"]
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ── Escrows ───────────────────────────────────────────────
   /api/escrows:
@@ -504,8 +551,20 @@ paths:
           $ref: "#/components/responses/Unauthorized"
     post:
       tags: [Batches]
-      summary: Create a batch payment
+      summary: Create a batch payment (idempotent)
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, minLength: 8, maxLength: 255 }
+          description: >-
+            Per-user key that makes submission idempotent. Re-sending the same
+            key returns the already-created batch (200) instead of double
+            sending; if the first attempt crashed before inserting child
+            payments, a retry resumes only the missing ones. An equivalent
+            `idempotencyKey` body field is accepted when no header is sent, but
+            the header takes precedence.
       requestBody:
         required: true
         content:
@@ -513,12 +572,24 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateBatchRequest"
       responses:
+        "200":
+          description: Already-processed batch returned for a replayed idempotency key (meta.deduplicated is true)
         "201":
           description: Batch created with child payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    $ref: "#/components/schemas/BatchResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/batches/{id}:
     get:
@@ -532,6 +603,30 @@ paths:
       responses:
         "200":
           description: Batch details with child payments
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Batches]
+      summary: Bulk-cancel a batch's PENDING payments
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      description: >
+        Cancels all PENDING payments of the batch in one request. Payments that
+        have already been submitted (any non-PENDING status) are left untouched
+        and reported via `skipped`, so callers see exactly what changed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Counts of cancelled / skipped / total payments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkCancelBatchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -631,6 +726,26 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Webhooks]
+      summary: Rotate a webhook signing secret
+      description: >
+        Generates a new HMAC-SHA256 signing secret and revokes the previous
+        one immediately — the next delivery is signed with the new secret.
+        The new secret is returned exactly once.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Secret rotated (new secret returned once)
+        "400":
+          description: Missing webhook ID or webhook not found
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     delete:
       tags: [Webhooks]
       summary: Delete a webhook
@@ -648,6 +763,66 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/webhooks/{id}/replay:
+    post:
+      tags: [Webhooks]
+      summary: Replay stored webhook events within a bounded date range
+      description: |
+        Re-delivers stored events from the last 7 days (max 100 per request).
+        Each replay attempt is recorded as a delivery for dashboard visibility.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                since:
+                  type: string
+                  format: date-time
+                  description: Start of replay window (clamped to last 7 days)
+                until:
+                  type: string
+                  format: date-time
+                  description: End of replay window (defaults to now)
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  description: Max events to replay (default 50)
+      responses:
+        "200":
+          description: Replay summary with delivery counts
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/webhooks/{id}/deliveries:
+    get:
+      tags: [Webhooks]
+      summary: List delivery history for a webhook
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Delivery history (original + replay attempts)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   # ── API Keys ──────────────────────────────────────────────
   /api/keys:
     get:
@@ -656,7 +831,7 @@ paths:
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       responses:
         "200":
-          description: API key list (id, name, prefix, timestamps only)
+          description: API key list (id, name, prefix, scopes, timestamps)
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
@@ -669,14 +844,24 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, userId]
+              required: [name]
               properties:
                 name:
                   type: string
                   description: Label for this key
-                userId:
-                  type: string
-                  description: Owning user ID
+                scopes:
+                  type: array
+                  description: >
+                    Permitted scopes for the key. Allowed values:
+                    read:payments, write:payments, read:analytics, admin.
+                    The admin scope grants all scopes. Empty means no access.
+                  items:
+                    type: string
+                    enum:
+                      - read:payments
+                      - write:payments
+                      - read:analytics
+                      - admin
       responses:
         "201":
           description: Key generated — store the raw key immediately
@@ -692,11 +877,43 @@ paths:
                       id: { type: string }
                       name: { type: string }
                       prefix: { type: string }
+                      scopes:
+                        type: array
+                        items: { type: string }
                       key:
                         type: string
                         description: Raw API key — shown only once
         "400":
           $ref: "#/components/responses/ValidationError"
+    patch:
+      tags: [API Keys]
+      summary: Update the scopes of an existing API key
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, scopes]
+              properties:
+                id:
+                  type: string
+                  description: API key ID to update
+                scopes:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - read:payments
+                      - write:payments
+                      - read:analytics
+                      - admin
+      responses:
+        "200":
+          description: Scopes updated
+        "400":
+          description: Missing key ID or invalid scope
     delete:
       tags: [API Keys]
       summary: Revoke an API key
@@ -741,6 +958,43 @@ paths:
       responses:
         "200":
           description: Session revoked
+
+  /api/auth/challenge:
+    get:
+      tags: [Session]
+      summary: Mint a proof-of-ownership challenge for a wallet
+      description: |
+        Returns a short-lived, server-signed challenge plus the exact message
+        the wallet must sign. `POST /api/auth/session` only issues a session
+        cookie when the signature over this message verifies against the
+        public key.
+      parameters:
+        - name: publicKey
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Stellar wallet public key (G...)
+      responses:
+        "200":
+          description: Challenge minted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challenge, message, expiresIn]
+                properties:
+                  challenge:
+                    type: string
+                    description: Single-use challenge token
+                  message:
+                    type: string
+                    description: Exact message the wallet must sign
+                  expiresIn:
+                    type: integer
+                    description: Challenge lifetime in seconds
+        "400":
+          description: Invalid or missing public key
 
   /api/csrf:
     get:
@@ -1139,29 +1393,65 @@ paths:
     get:
       tags: [Audit Log]
       summary: Query contract audit log
+      description: |
+        Offset-paginated audit log with combined, server-side applied filters
+        (`actor`, `action`, `resource`, `since`/`until` date range) and stable
+        ordering (newest first by default). `total` reflects the filtered set.
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       parameters:
         - name: page
           in: query
-          schema: { type: integer, default: 1 }
+          schema: { type: integer, minimum: 1, default: 1 }
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
         - name: actor
           in: query
           schema: { type: string }
-          description: Filter by Stellar address
+          description: >
+            Filter by Stellar address (substring match, case-insensitive).
+            Combine with `action`, `since`, and `until`; all filters compose
+            with `page`/`limit` pagination.
         - name: action
           in: query
           schema: { type: string }
-          description: Filter by action type
+          description: Filter by exact action type (e.g. `payment_recorded`)
         - name: since
           in: query
           schema: { type: integer }
-          description: Unix timestamp filter
+          description: >
+            Inclusive lower bound on entry timestamp (Unix seconds).
+            Use with `until` to filter by date range.
+        - name: until
+          in: query
+          schema: { type: integer }
+          description: Inclusive upper bound on entry timestamp (Unix seconds)
+          description: Filter by exact Stellar actor address
+        - name: action
+          in: query
+          schema: { type: string }
+          description: Filter by exact action type
+        - name: resource
+          in: query
+          schema: { type: integer }
+          description: Filter by the affected entity id (matches target_id)
+        - name: since
+          in: query
+          schema: { type: string }
+          description: Inclusive start of the date range — Unix seconds or ISO 8601
+        - name: until
+          in: query
+          schema: { type: string }
+          description: Inclusive end of the date range — Unix seconds or ISO 8601
+        - name: order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: desc }
+          description: Result ordering by entry id (newest first by default)
       responses:
         "200":
-          description: Paginated audit log entries
+          description: >
+            Paginated audit log entries. Response `meta.total` reflects the
+            filtered result set, so pagination composes with filters.
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -1180,6 +1470,46 @@ paths:
             text/event-stream:
               schema:
                 type: string
+
+  /api/audit-log/export:
+    get:
+      tags: [Audit Log]
+      summary: Export contract audit log to CSV
+      description: |
+        Streaming CSV download of the audit log applying the same filters as
+        GET /api/audit-log. Rows are streamed chunk-by-chunk from the contract,
+        so the full result set is never held in memory.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: actor
+          in: query
+          schema: { type: string }
+          description: Filter by exact Stellar actor address
+        - name: action
+          in: query
+          schema: { type: string }
+          description: Filter by exact action type
+        - name: resource
+          in: query
+          schema: { type: integer }
+          description: Filter by the affected entity id (matches target_id)
+        - name: since
+          in: query
+          schema: { type: string }
+          description: Inclusive start of the date range — Unix seconds or ISO 8601
+        - name: until
+          in: query
+          schema: { type: string }
+          description: Inclusive end of the date range — Unix seconds or ISO 8601
+        - name: order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: desc }
+          description: Result ordering by entry id
+      responses:
+        "200":
+          description: CSV attachment
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ── SSE Events ────────────────────────────────────────────
   /api/events:
@@ -1219,11 +1549,20 @@ paths:
     get:
       tags: [Health]
       summary: Service health check
+      description: >-
+        Reports per-check status for the database (critical), Stellar RPC and
+        Horizon reachability, Redis (when configured), and configured contract
+        IDs. Returns 200 with status `ok` or `degraded` (only optional checks
+        failing) and 503 with status `down` when the database is unreachable.
       responses:
         "200":
-          description: All services healthy
+          description: Healthy or degraded (optional checks failing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
         "503":
-          description: One or more services unhealthy
+          description: Critical dependency (database) unavailable
           content:
             application/json:
               schema:
@@ -1310,6 +1649,28 @@ components:
           items:
             $ref: "#/components/schemas/PaymentResponse"
 
+    BulkCancelBatchResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          properties:
+            batchId: { type: string }
+            cancelled:
+              type: integer
+              description: Number of PENDING payments flipped to CANCELLED
+            skipped:
+              type: integer
+              description: Number of already-submitted (non-PENDING) payments left untouched
+            total:
+              type: integer
+              description: Total child payments in the batch
+        meta:
+          type: object
+          properties:
+            timestamp: { type: string, format: date-time }
+
     PaginatedBatches:
       type: object
       properties:
@@ -1390,6 +1751,11 @@ components:
         description:
           type: string
           maxLength: 500
+        idempotencyKey:
+          type: string
+          minLength: 8
+          maxLength: 255
+          description: Optional alternative to the Idempotency-Key header (trimmed before validation/storage)
         recipients:
           type: array
           minItems: 1
@@ -1413,6 +1779,29 @@ components:
                 maxLength: 28
         sourceAccountId:
           type: string
+        idempotencyKey:
+          type: string
+          minLength: 8
+          maxLength: 255
+          description: >-
+            Optional body-form idempotency key. The Idempotency-Key header
+            takes precedence when both are provided.
+
+    BatchResponse:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        idempotencyKey: { type: [string, 'null'] }
+        status: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentResponse"
 
     CreateRecurrenceRequest:
       type: object
@@ -1474,6 +1863,28 @@ components:
           type: boolean
           default: true
 
+    TestWebhookResponse:
+      type: object
+      properties:
+        delivered:
+          type: boolean
+          description: Whether the endpoint returned a 2xx response
+        status:
+          type: string
+          enum: [delivered, failed]
+        event:
+          type: string
+          description: The simulated event type (e.g. payment.completed)
+        test:
+          type: boolean
+          description: Always true — this was a test event
+        durationMs:
+          type: integer
+          description: Round-trip delivery time in milliseconds
+        sentAt:
+          type: string
+          format: date-time
+
     HealthResponse:
       type: object
       properties:
@@ -1482,6 +1893,7 @@ components:
           type: object
           properties:
             version: { type: string }
+            status: { type: string, enum: [ok, degraded, down] }
             services:
               type: object
               properties:
@@ -1500,11 +1912,36 @@ components:
                   properties:
                     network: { type: string }
                     rpcUrl: { type: string }
+                    horizonUrl: { type: string }
                     rpc:
                       type: object
                       properties:
                         status: { type: string, enum: [ok, error, unchecked] }
                         latencyMs: { type: [integer, 'null'] }
+                    horizon:
+                      type: object
+                      properties:
+                        status: { type: string, enum: [ok, error, unchecked] }
+                        latencyMs: { type: [integer, 'null'] }
+                    contracts:
+                      type: object
+                      properties:
+                        status: { type: string, enum: [ok, error] }
+                        ophirpay:
+                          type: object
+                          properties:
+                            id: { type: [string, 'null'] }
+                            status: { type: string, enum: [ok, error, not_configured] }
+                        emitter:
+                          type: object
+                          properties:
+                            id: { type: [string, 'null'] }
+                            status: { type: string, enum: [ok, error, not_configured] }
+                        chainReadSource:
+                          type: object
+                          properties:
+                            id: { type: [string, 'null'] }
+                            status: { type: string, enum: [ok, error, not_configured] }
             uptime: { type: number }
         meta:
           type: object
@@ -1792,4 +2229,3 @@ components:
       - RPC_UNAVAILABLE
       - DATABASE_UNAVAILABLE
       - CACHE_UNAVAILABLE
-      - EMAIL_UNAVAILABLE

@@ -11,7 +11,8 @@ export type PaymentStatus =
   | "PROCESSING"
   | "COMPLETED"
   | "FAILED"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "SCHEDULED";
 
 export type BatchStatus =
   | "CREATED"

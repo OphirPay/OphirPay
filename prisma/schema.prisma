@@ -2,14 +2,45 @@
 // Documentation: https://pris.ly/d/prisma-schema
 //
 // ── Database Provider ──────────────────────────────────────
-// The provider is selected via the DATABASE_PROVIDER env var.
-// Supported values: "sqlite" | "postgresql"
+// The committed schema is the canonical PostgreSQL definition — the
+// datasource block below is hardcoded to PostgreSQL, and CI/production
+// run `npx prisma migrate deploy`. There is no runtime env-var-based
+// provider selection.
 //
-//   SQLite (dev):       DATABASE_PROVIDER=sqlite       npx prisma db push
-//   PostgreSQL (prod):  DATABASE_PROVIDER=postgresql   npx prisma migrate deploy
+// For local development on SQLite, follow the "SQLite ⇄ PostgreSQL
+// notes" below: swap the datasource block and drop the four
+// `@db.Decimal(18, 7)` annotations as LOCAL, UNCOMMITTED edits, then
+// run `npx prisma db push`.
 //
 // For PostgreSQL with connection pooling (e.g. Supabase, Neon),
 // set DIRECT_DATABASE_URL for migrations.
+//
+// ── SQLite ⇄ PostgreSQL notes ──────────────────────────────
+// The committed schema is the canonical PostgreSQL definition (native
+// datasource + `@db.Decimal(18, 7)` annotations). For local SQLite dev you
+// must make two LOCAL, UNCOMMITTED edits — do not commit them, so migrations
+// and CI validate a single canonical schema:
+//
+//   1. Swap the datasource: uncomment the sqlite block below and comment out
+//      the postgresql block.
+//   2. Drop all four `@db.Decimal(18, 7)` annotations — SQLite has no
+//      fixed-precision numeric type, so Prisma stores Decimal as its own
+//      arbitrary-precision text representation.
+//
+// Behavioral differences that matter when running against SQLite:
+//
+//   • Enums — PostgreSQL uses native ENUM types; SQLite emulates them as
+//     TEXT columns with client-side validation. Enum *values* are identical
+//     across providers, so `prisma db push` handles the translation.
+//
+//   • `relationMode = "prisma"` — required by SQLite (it has no foreign-key
+//     enforcement); PostgreSQL supports both modes. Keep it set so the same
+//     data model works on both providers.
+//
+//   • Unique indexes on nullable columns — both providers treat NULLs as
+//     distinct, so a compound unique index that includes a nullable field
+//     allows any number of rows with NULL while still enforcing uniqueness
+//     for non-NULL values.
 
 generator client {
   provider = "prisma-client-js"
@@ -32,286 +63,634 @@ datasource db {
 
 // ── User / Organization ──────────────────────────────────────
 
+/// A registered OphirPay user. Identified by wallet (Stellar) or email and
+/// the owner of every payment, batch, webhook, and key in the system.
 model User {
+  /// Primary key — CUID generated at insert time.
   id              String   @id @default(cuid())
+  /// Stellar public key (G…) used to authenticate this user. Unique — a
+  /// wallet can only ever belong to one OphirPay account. Nullable because
+  /// users may register with email first and connect a wallet later.
   stellarAddress  String?  @unique
+  /// Display name shown in the UI and webhook payloads.
   name            String?
+  /// Login email. Unique — one account per email.
   email           String?  @unique
+  /// Profile picture URL (Gravatar / uploaded avatar).
   avatarUrl       String?
+  /// When the account was created.
   createdAt       DateTime @default(now())
+  /// Last time any field on this row changed (maintained by Prisma).
   updatedAt       DateTime @updatedAt
 
+  /// Stellar accounts the user has linked (see Account).
   accounts        Account[]
+  /// Every payment the user has ever created (see Payment).
   payments        Payment[]
+  /// Every batch the user has created (see Batch).
   batches         Batch[]
+  /// Recurring-payment schedules owned by the user (see Recurrence).
   recurrences     Recurrence[]
+  /// Shareable payment requests / links created by the user (see PaymentRequest).
   paymentRequests PaymentRequest[]
+  /// Outgoing webhook subscriptions owned by the user (see Webhook).
   webhooks        Webhook[]
+  /// API keys issued for programmatic access (see ApiKey).
   apiKeys         ApiKey[]
+  /// Refund ledger rows requested by the user (see Refund).
   refunds         Refund[]
+  /// On-chain notification-hook ledger rows owned by the user (see NotificationHook).
   notificationHooks NotificationHook[]
+  webhookEvents     WebhookEvent[]
 }
 
 // ── Stellar Accounts ──────────────────────────────────────────
 
+/// A Stellar account (public key) linked to a user, used as the source or
+/// destination of payments. A user can manage several accounts.
 model Account {
+  /// Primary key — CUID generated at insert time.
   id            String   @id @default(cuid())
+  /// Owning user (see User).
   userId        String
+  /// Stellar public key (G…). Unique — the same on-chain account cannot be
+  /// linked twice.
   publicKey     String   @unique
+  /// Human-readable label (e.g. "Treasury", "Operations").
   name          String
+  /// Whether this account is currently selectable for new payments.
   isActive      Boolean  @default(true)
+  /// When the account was linked.
   createdAt     DateTime @default(now())
+  /// Last time any field on this row changed (maintained by Prisma).
   updatedAt     DateTime @updatedAt
 
+  /// Owner of this account (see User).
   user          User       @relation(fields: [userId], references: [id])
+  /// Payments that used this account as the on-chain source.
   paymentsFrom  Payment[]  @relation("PaymentSourceAccount")
+  /// Payments that used this account as the on-chain destination.
   paymentsTo    Payment[]  @relation("PaymentDestinationAccount")
 
+  /// Speeds up "all accounts for a user" lookups.
   @@index([userId])
 }
 
 // ── Payments ───────────────────────────────────────────────────
 
+/// A single payment record. Off-chain ledger row for a payment that was
+/// (or will be) recorded on-chain by the OphirPay Soroban contract.
 model Payment {
+  /// Primary key — CUID generated at insert time.
   id                String    @id @default(cuid())
+  /// Owning user (see User).
   userId            String
 
   // Payment details
+  /// Payment amount in ASSET UNITS (e.g. 10.5 = 10.5 XLM), NOT stroops —
+  /// Decimal(18,7) holds up to 18 digits with 7 fractional asset-unit
+  /// digits. Contract call paths convert asset units → stroops (×10^7)
+  /// via XLM_STROOPS; Horizon builders pass this decimal value directly.
   amount            Decimal   @db.Decimal(18, 7)
+  /// Asset code sent (defaults to XLM, the Stellar native asset).
   assetCode         String    @default("XLM")
+  /// Issuer account for non-native assets; NULL means the native asset.
   assetIssuer       String?
+  /// Free-text description shown in the UI and webhook payloads.
   description       String?
+  /// Stellar memo attached to the on-chain transaction (max 28 bytes).
   memo              String?
 
   // Status
+  /// Lifecycle status (see PaymentStatus enum).
   status            PaymentStatus @default(CREATED)
 
   // Stellar
+  /// Transaction hash once the payment is submitted to the network.
   transactionHash   String?
+  /// On-chain operation/event id reported by the contract.
   stellarOpId       String?
 
   // Relations
+  /// Source account (see Account) — NULL until one is chosen.
   sourceAccountId   String?
+  /// Destination account (see Account) when paying another linked account.
   destAccountId     String?
 
   // Batch & recurring
+  /// Parent batch (see Batch) when created as part of a batch payment.
   batchId           String?
+  /// Parent recurrence (see Recurrence) when created by a schedule.
   recurrenceId      String?
 
   // Metadata
+  /// Free-form JSON string for flexible metadata (e.g. on-chain event info).
   metadata          String?   // JSON string for flexible metadata
+  /// Human-readable error message when the payment failed.
   errorMessage      String?
 
   // Idempotency: a per-attempt key so retries (issue #159) are never
   // mistaken for the original attempt. Regenerated on every retry.
   idempotencyKey    String?
 
+  /// Deterministic identity of one scheduled run ("<recurrenceId>:<epoch ms>").
+  /// Unique per payment — the DB-level dedupe guaranteeing at-most-once
+  /// scheduler execution (issue #366). Null for non-scheduled payments.
+  scheduleRunKey    String?   @unique
+
   createdAt         DateTime  @default(now())
+  /// Last time any field on this row changed (maintained by Prisma).
   updatedAt         DateTime  @updatedAt
+  /// When the payment reached a terminal success state.
   completedAt       DateTime?
+  /// Soft-delete timestamp — the row is hidden but kept for audit.
   deletedAt         DateTime?
 
+  /// Owner of this payment (see User).
   user              User      @relation(fields: [userId], references: [id])
+  /// Source account relation (see Account).
   sourceAccount     Account?  @relation("PaymentSourceAccount", fields: [sourceAccountId], references: [id])
+  /// Destination account relation (see Account).
   destAccount       Account?  @relation("PaymentDestinationAccount", fields: [destAccountId], references: [id])
+  /// Parent batch, if any (see Batch).
   batch             Batch?    @relation(fields: [batchId], references: [id])
+  /// Parent recurrence, if any (see Recurrence).
   recurrence        Recurrence? @relation(fields: [recurrenceId], references: [id])
+  /// Refund ledger rows attached to this payment (see Refund).
   refunds           Refund[]
 
+  /// Speeds up "all payments for a user".
   @@index([userId])
+  /// Speeds up status-filtered queries (dashboard stats, webhook dispatch).
   @@index([status])
+  /// Speeds up "all payments in a batch".
   @@index([batchId])
+  /// Speeds up "all payments from a recurrence".
   @@index([recurrenceId])
+  /// Speeds up account-centric queries.
   @@index([sourceAccountId])
+  /// Speeds up account-centric queries.
   @@index([destAccountId])
 }
 
+/// Lifecycle of a Payment row. CREATED → SIGNED → SUBMITTED → CONFIRMED →
+/// COMPLETED; terminal states are COMPLETED / FAILED / CANCELLED. PENDING /
+/// PROCESSING are transient states used during asynchronous flows.
 enum PaymentStatus {
+  /// Row created, nothing signed yet.
   CREATED
+  /// Transaction built and signed by the wallet.
   SIGNED
+  /// Transaction submitted to Horizon / the network.
   SUBMITTED
+  /// Transaction confirmed by the network (ledger close).
   CONFIRMED
+  /// Awaiting an external step (e.g. user action or webhook).
   PENDING
+  /// Being processed (e.g. contract invocation in flight).
   PROCESSING
+  /// Successfully completed.
   COMPLETED
+  /// Failed — see errorMessage for details.
   FAILED
+  /// Cancelled before execution.
   CANCELLED
+  /// Generated by the recurring scheduler, awaiting execution (issue #366).
+  SCHEDULED
 }
 
 // ── Batch Payments ────────────────────────────────────────────
 
+/// A batch of payments submitted together — e.g. payroll, vendor payments,
+/// or grant distributions. The batch row is the group header; each payment
+/// in the batch is a child Payment row linked via batchId.
 model Batch {
+  /// Primary key — CUID generated at insert time.
   id          String    @id @default(cuid())
+  /// Owning user (see User).
   userId      String
+  /// Display name of the batch (e.g. "August Payroll").
   name        String
+  /// Optional longer description of the batch.
   description String?
+
+  // Idempotency (issue #170): a client-supplied key lets a retry of a batch
+  // submission be recognized as a duplicate. Deduplication is scoped per
+  // user, so two different users can safely reuse the same key.
+  idempotencyKey String?
+
+  /// Lifecycle status (see BatchStatus enum).
   status      BatchStatus @default(CREATED)
+  /// When the batch was created.
   createdAt   DateTime  @default(now())
+  /// Last time any field on this row changed (maintained by Prisma).
   updatedAt   DateTime  @updatedAt
 
+  /// Owner of this batch (see User).
   user        User      @relation(fields: [userId], references: [id])
+  /// Child payments belonging to this batch (see Payment).
   payments    Payment[]
 
+  /// Speeds up "all batches for a user".
   @@index([userId])
+  /// Speeds up status-filtered batch lists.
   @@index([status])
+  @@unique([userId, idempotencyKey])
 }
 
+/// Lifecycle of a Batch. CREATED → PROCESSING → COMPLETED; a batch that
+/// partially succeeded is PARTIALLY_COMPLETED; terminal failure is FAILED.
 enum BatchStatus {
+  /// Batch created; child payments not yet processed.
   CREATED
+  /// Payments are being submitted/confirmed.
   PROCESSING
+  /// Every child payment completed.
   COMPLETED
+  /// Some child payments completed, some failed.
   PARTIALLY_COMPLETED
+  /// The batch failed (see child payment errorMessages for details).
   FAILED
 }
 
 // ── Recurring Payments ────────────────────────────────────────
 
+/// A recurring-payment schedule. Each run generates one or more Payment
+/// rows; the schedule stays active until isActive is set to false.
 model Recurrence {
+  /// Primary key — CUID generated at insert time.
   id          String        @id @default(cuid())
+  /// Owning user (see User).
   userId      String
+  /// Display name of the schedule (e.g. "Monthly Rent").
   name        String
+  /// How often the schedule fires (see Frequency enum).
   frequency   Frequency
+  /// Amount per run in ASSET UNITS (e.g. 10.5 = 10.5 XLM), NOT stroops —
+  /// Decimal(18,7) holds up to 18 digits with 7 fractional asset-unit
+  /// digits. Contract call paths convert asset units → stroops (×10^7).
   amount      Decimal       @db.Decimal(18, 7)
+  /// Asset code to send (defaults to XLM).
   assetCode   String        @default("XLM")
+  /// Issuer for non-native assets; NULL means the native asset.
   assetIssuer String?
+  /// Destination Stellar address (G…).
   destAddress String
+  /// Optional note attached to generated payments.
   description String?
+  /// Whether the schedule is currently live. Set false to pause/cancel.
   isActive    Boolean       @default(true)
+  /// When the next run is scheduled to execute.
   nextRunAt   DateTime
+  /// When the last run executed (NULL until the first run).
   lastRunAt   DateTime?
+  /// When the schedule was created.
   createdAt   DateTime      @default(now())
+  /// Last time any field on this row changed (maintained by Prisma).
   updatedAt   DateTime      @updatedAt
 
+  /// Owner of this schedule (see User).
   user        User          @relation(fields: [userId], references: [id])
+  /// Payments generated by this schedule (see Payment).
   payments    Payment[]
 
+  /// Speeds up "all schedules for a user".
   @@index([userId])
+  /// Speeds up the scheduler's "what runs next?" query.
   @@index([nextRunAt])
 }
 
+/// How often a Recurrence fires.
 enum Frequency {
+  /// Every day.
   DAILY
+  /// Every week.
   WEEKLY
+  /// Every two weeks.
   BIWEEKLY
+  /// Every month.
   MONTHLY
+  /// Every quarter.
   QUARTERLY
+  /// Every year.
   YEARLY
 }
 
 // ── Payment Requests ──────────────────────────────────────────
 
+/// A shareable payment request / invoice-style link. Created by the payer,
+/// paid by the recipient via a public link; status transitions as it is
+/// paid, expires, or is cancelled.
 model PaymentRequest {
+  /// Primary key — CUID generated at insert time.
   id            String   @id @default(cuid())
+  /// Owning user (see User).
   userId        String
+  /// Requested amount in ASSET UNITS (e.g. 10.5 = 10.5 XLM), NOT stroops —
+  /// Decimal(18,7) holds up to 18 digits with 7 fractional asset-unit
+  /// digits. Contract call paths convert asset units → stroops (×10^7).
   amount        Decimal  @db.Decimal(18, 7)
+  /// Asset code requested (defaults to XLM).
   assetCode     String   @default("XLM")
+  /// Issuer for non-native assets; NULL means the native asset.
   assetIssuer   String?
+  /// Note explaining what the request is for.
   description   String?
+  /// Optional recipient address the request is addressed to.
   recipientAddress String?
+  /// Lifecycle status (see RequestStatus enum).
   status        RequestStatus @default(PENDING)
+  /// Transaction hash once the request is paid.
   transactionHash String?
+  /// When the request was created.
   createdAt     DateTime @default(now())
+  /// Last time any field on this row changed (maintained by Prisma).
   updatedAt     DateTime @updatedAt
 
+  /// Owner of this request (see User).
   user          User     @relation(fields: [userId], references: [id])
 
+  /// Speeds up "all requests for a user".
   @@index([userId])
 }
 
+/// Lifecycle of a PaymentRequest.
 enum RequestStatus {
+  /// Waiting to be paid.
   PENDING
+  /// Paid — transactionHash is set.
   PAID
+  /// Passed its expiry without being paid.
   EXPIRED
+  /// Cancelled by the creator before payment.
   CANCELLED
 }
 
 // ── Webhooks ───────────────────────────────────────────────────
 
+/// An outgoing webhook subscription. When a subscribed event fires, OphirPay
+/// POSTs a signed JSON payload to `url` (see webhook-deliver for the HMAC
+/// signing scheme). The `secret` is used to sign payloads and verify
+/// authenticity.
 model Webhook {
+  /// Primary key — CUID generated at insert time.
   id        String   @id @default(cuid())
+  /// Owning user (see User).
   userId    String
+  /// Destination URL that receives signed event payloads.
   url       String
+  /// JSON array of subscribed event type strings (e.g. ["payment.created"]).
   events    String   // JSON array of event types
+  /// Whether delivery is currently enabled.
   isActive  Boolean  @default(true)
+  /// HMAC signing secret shared with the endpoint owner.
   secret    String
+  /// When the webhook was registered.
   createdAt DateTime @default(now())
+  /// Last time any field on this row changed (maintained by Prisma).
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id])
+  /// Owner of this webhook (see User).
+  user        User              @relation(fields: [userId], references: [id])
+  deliveries  WebhookDelivery[]
 
+  /// Speeds up "all webhooks for a user".
   @@index([userId])
+}
+
+model WebhookEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  event     String
+  timestamp DateTime
+  data      String   // JSON payload data
+  createdAt DateTime @default(now())
+
+  user       User              @relation(fields: [userId], references: [id])
+  deliveries WebhookDelivery[]
+
+  @@index([userId, createdAt])
+  @@index([userId, event, createdAt])
+}
+
+model WebhookDelivery {
+  id            String         @id @default(cuid())
+  webhookId     String
+  eventId       String
+  status        DeliveryStatus @default(FAILED)
+  responseCode  Int?
+  isReplay      Boolean        @default(false)
+  replayBatchId String?
+  deliveredAt   DateTime       @default(now())
+  createdAt     DateTime       @default(now())
+
+  webhook Webhook     @relation(fields: [webhookId], references: [id])
+  event   WebhookEvent @relation(fields: [eventId], references: [id])
+
+  @@index([webhookId, deliveredAt])
+  @@index([replayBatchId])
+}
+
+enum DeliveryStatus {
+  SUCCESS
+  FAILED
 }
 
 // ── Refunds ───────────────────────────────────────────────────
 
+/// Ledger row mirroring an on-chain refund request (request_refund). Kept in
+/// sync with the Soroban contract via onChainId so the UI can map the DB row
+/// to the contract record for approve/process.
 model Refund {
+  /// Primary key — CUID generated at insert time.
   id          String       @id @default(cuid())
+  /// Owning user (see User).
   userId      String
+  /// Payment being refunded (see Payment).
   paymentId   String
+  /// Refund amount in ASSET UNITS (e.g. 10.5 = 10.5 XLM), NOT stroops —
+  /// Decimal(18,7) holds up to 18 digits with 7 fractional asset-unit
+  /// digits. Contract call paths convert asset units → stroops (×10^7).
   amount      Decimal      @db.Decimal(18, 7)
+  /// Asset being refunded (defaults to "native" = XLM).
   asset       String       @default("native")
+  /// Human-readable reason for the refund.
   reason      String
+  /// Coded reason (0–5) used for analytics bucketing.
   reasonCode  Int          @default(0)
+  /// Lifecycle status (see RefundStatus enum).
   status      RefundStatus @default(REQUESTED)
   // On-chain refund id returned by the Soroban contract's request_refund.
   // Lets the UI map a DB ledger row to the contract record for
   // approve/process, and uniquely identifies the synced on-chain refund.
+  /// Contract u64 refund id returned by request_refund. Unique — one ledger
+  /// row per on-chain refund.
   onChainId   Int?         @unique
+  /// When the refund was requested.
   requestedAt DateTime     @default(now())
+  /// When the refund reached a terminal state.
   resolvedAt  DateTime?
+  /// When the row was created.
   createdAt   DateTime     @default(now())
+  /// Last time any field on this row changed (maintained by Prisma).
   updatedAt   DateTime     @updatedAt
 
+  /// Owner of this refund (see User).
   user        User         @relation(fields: [userId], references: [id])
+  /// Payment being refunded (see Payment).
   payment     Payment?     @relation(fields: [paymentId], references: [id])
 
+  /// Speeds up "all refunds for a user".
   @@index([userId])
+  /// Speeds up status-filtered refund lists.
   @@index([status])
+  /// Speeds up "all refunds for a payment".
   @@index([paymentId])
+  /// One refund per payment per user (idempotency, issue #365). Duplicate
+  /// submissions hit this unique index and fail closed with a 409.
+  @@unique([userId, paymentId])
 }
 
+// ── Audit log ─────────────────────────────────────────────────
+
+/// Persisted off-chain audit trail (issue #365). Complements the contract's
+/// on-chain audit ledger: lifecycle actions on refunds (and any future
+/// record) are written here with their DB record id, so history is
+/// queryable via GET /api/audit-log?source=db|all.
+model AuditLog {
+  /// Primary key — CUID generated at insert time.
+  id        String   @id @default(cuid())
+  /// Action identifier, e.g. "refund:create".
+  action    String
+  /// Actor (user id or API key id) that performed the action.
+  actor     String?
+  /// Target record id this action refers to (e.g. the refund id).
+  target    String?
+  /// Structured extra context (paymentId, reasonCode, onChainId, ...).
+  details   Json?
+  /// Client IP that performed the action, when known.
+  ip        String?
+  /// When the action was recorded.
+  createdAt DateTime @default(now())
+
+  /// Speeds up history queries by action/target.
+  @@index([action, target])
+}
+
+/// Lifecycle of a Refund row, mirroring the on-chain refund state machine.
 enum RefundStatus {
+  /// Requested on-chain; awaiting approval.
   REQUESTED
+  /// Approved on-chain (approve_refund).
   APPROVED
+  /// Rejected on-chain.
   REJECTED
+  /// Fully processed (process_refund) — funds returned.
   PROCESSED
 }
 
 // ── Notification Hooks ────────────────────────────────────────
 
+/// Ledger row mirroring an on-chain notification hook (register_hook). Maps
+/// the DB row to the contract record via onChainId so Deactivate targets the
+/// correct contract hook.
 model NotificationHook {
+  /// Primary key — CUID generated at insert time.
   id          String   @id @default(cuid())
+  /// Owning user (see User).
   userId      String
+  /// Event type this hook listens for (e.g. "payment.created").
   eventType   String
+  /// URL that receives the notification for the subscribed event.
   webhookUrl  String
+  /// Whether the hook is currently active.
   active      Boolean  @default(true)
   // On-chain hook id returned by the Soroban contract's register_hook.
   // Maps this row to the contract record so Deactivate targets the right
   // contract hook, and uniquely identifies the synced on-chain hook.
+  /// Contract u64 hook id returned by register_hook. Unique — one ledger row
+  /// per on-chain hook.
   onChainId   Int?     @unique
+  /// When the hook was registered.
   createdAt   DateTime @default(now())
+  /// Last time any field on this row changed (maintained by Prisma).
   updatedAt   DateTime @updatedAt
 
+  /// Owner of this hook (see User).
   user        User     @relation(fields: [userId], references: [id])
 
+  /// Speeds up "all hooks for a user".
   @@index([userId])
+  /// Speeds up event-type-filtered hook lookups.
   @@index([eventType])
 }
 
 // ── API Keys ──────────────────────────────────────────────────
 
+/// An API key for programmatic access. Only a hash and a display prefix are
+/// stored — the raw key is shown once at creation and cannot be recovered.
 model ApiKey {
+  /// Primary key — CUID generated at insert time.
   id        String   @id @default(cuid())
+  /// Owning user (see User).
   userId    String
+  /// Human-readable label (e.g. "CI bot").
   name      String
+  /// SHA-256 (or similar) hash of the raw key. Unique — one row per key.
   keyHash   String   @unique
+  /// First 8 characters of the raw key, for display / identification only.
   prefix    String   // First 8 chars for display
+  scopes    String[] @default([]) // e.g. ["read:payments","write:payments","admin"]
+  /// Last time the key was used to authenticate a request.
   lastUsed  DateTime?
+  /// When the key was created.
   createdAt DateTime @default(now())
+  /// Optional expiry — the key stops working after this time.
   expiresAt DateTime?
 
+  /// Owner of this key (see User).
   user      User     @relation(fields: [userId], references: [id])
 
+  /// Speeds up "all keys for a user".
   @@index([userId])
+  /// Speeds up prefix-based identification lookups.
   @@index([prefix])
+}
+
+// ── Payment Status Sync (Horizon reconciliation job) ─────────
+
+/// Ledger row recording a single run of the periodic job that reconciles
+/// submitted payments against their on-chain Horizon outcome. Persisting the
+/// run lets the admin view surface job results and history, and lets the job
+/// guard against overlapping runs.
+model PaymentSyncRun {
+  /// Primary key — CUID generated at insert time.
+  id           String   @id @default(cuid())
+  /// How the run was triggered: "cron" (scheduled) or "admin" (on demand).
+  trigger      String
+  /// Run lifecycle: "running" | "success" | "error".
+  status       String
+  /// Payments in SUBMITTED state with a tx hash (eligible for reconciliation).
+  scanned      Int      @default(0)
+  /// Successful on-chain → payment marked CONFIRMED.
+  confirmed    Int      @default(0)
+  /// Failed on-chain → payment marked FAILED.
+  failed       Int      @default(0)
+  /// Hash not yet ingested by Horizon → payment left untouched.
+  notFound     Int      @default(0)
+  /// Horizon lookups that errored → payment left untouched.
+  errors       Int      @default(0)
+  /// First error message when the run itself threw.
+  errorMessage String?
+  /// When the run started.
+  createdAt    DateTime @default(now())
+  /// When the run finished (NULL while still running).
+  completedAt  DateTime?
+
+  /// Speeds up "all cron-triggered runs vs on-demand runs".
+  @@index([trigger])
+  /// Speeds up overlap checks ("is a run in flight?").
+  @@index([status])
+  /// Speeds up "most recent runs" (admin view).
+  @@index([createdAt])
 }

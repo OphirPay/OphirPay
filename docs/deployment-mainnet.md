@@ -2,6 +2,11 @@
 
 This guide walks through deploying OphirPay to Stellar Mainnet with PostgreSQL, Soroban contracts, Kubernetes, and monitoring.
 
+> 🚀 **Looking for the executable checklist?** Use the
+> [**Mainnet Deployment Runbook**](./MAINNET_RUNBOOK.md) — it consolidates this
+> guide into a step-by-step runbook with a pre-flight checklist (funding, WASM
+> hashes, contract IDs), rollback procedures, and post-deploy verification.
+
 ## Pre-Flight Checklist
 
 - [ ] Stellar Mainnet Horizon URL and Soroban RPC URL obtained
@@ -49,7 +54,21 @@ DATABASE_URL="postgresql://..." npx prisma migrate deploy
 
 ## 2. Soroban Contract Deployment
 
-### 2.1 Build WASM artifacts
+> ⚠ **WARNING:** This section targets the **live Stellar Mainnet**. There is **no friendbot** — the deployer account must be funded with real XLM. Deployments are irreversible and cost real XLM. Always run the dry-run first.
+
+### 2.1 Account funding
+
+Mainnet accounts are **not** funded by friendbot. Fund the deployer account with real XLM before deploying:
+
+```bash
+# Check the deployer account balance (must be > 100 XLM for contract deployment)
+curl -s "https://horizon.stellar.org/accounts/<MAINNET_PUBLIC_KEY>" | jq '.balances[] | select(.asset_type=="native") | .balance'
+
+# Fund from an exchange or another funded wallet by sending XLM to <MAINNET_PUBLIC_KEY>.
+# Recommended minimum: 100 XLM to cover upload + deploy + init + verification fees.
+```
+
+### 2.2 Build WASM artifacts
 
 ```bash
 cd contracts/ophirpay
@@ -58,51 +77,118 @@ cd ../emitter
 cargo build --target wasm32v1-none --release
 ```
 
-### 2.2 Deploy OphirPay contract
+### 2.3 Dry-run validation (REQUIRED before any real submission)
+
+Validate the PUBLIC network configuration **without** submitting any transaction:
 
 ```bash
-stellar contract deploy \
-  --wasm target/wasm32v1-none/release/ophirpay.wasm \
-  --source <MAINNET_KEY> \
-  --network public \
-  --fee 10000000
-
-# Save the returned contract ID → NEXT_PUBLIC_CONTRACT_ID
+NETWORK_MODE=PUBLIC DRY_RUN=true \
+  ./scripts/deploy-workflow.sh <MAINNET_SECRET_KEY> <OWNER_PUBLIC_KEY> <EMITTER_CONTRACT_ID>
 ```
 
-### 2.3 Deploy Emitter contract
+The dry-run must **fail** with a clear message before any real submission. Only proceed once it confirms the correct mainnet RPC/Horizon and that friendbot is disabled.
+
+You can also run the standalone CI validation script, which asserts the deploy script's PUBLIC config compiles and targets Stellar Mainnet:
+
+```bash
+bash scripts/validate-deploy-config.sh
+```
+
+This script is used in CI to guard against accidental testnet/mainnet misconfiguration.
+
+### 2.4 Deploy order: emitter → main
+
+Deploy the **emitter first**, then the **main contract** (the main contract is initialized with the emitter ID).
+
+#### 2.4.1 Deploy Emitter contract
 
 ```bash
 stellar contract deploy \
-  --wasm ../emitter/target/wasm32v1-none/release/emitter.wasm \
-  --source <MAINNET_KEY> \
+  --wasm contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm \
+  --source <MAINNET_SECRET_KEY> \
+  --rpc-url "https://soroban.stellar.org:443" \
+  --network-passphrase "Public Global Stellar Network ; September 2015" \
   --network public \
   --fee 10000000
 
 # Save the returned contract ID → NEXT_PUBLIC_EMITTER_CONTRACT_ID
 ```
 
-### 2.4 Initialize contracts
+#### 2.4.2 Initialize Emitter
 
 ```bash
-# Initialize OphirPay with owner address
 stellar contract invoke \
-  --id <CONTRACT_ID> \
-  --source <MAINNET_KEY> \
+  --id <EMITTER_CONTRACT_ID> \
+  --source <MAINNET_SECRET_KEY> \
+  --rpc-url "https://soroban.stellar.org:443" \
+  --network-passphrase "Public Global Stellar Network ; September 2015" \
   --network public \
   -- init --owner <OWNER_PUBLIC_KEY>
+```
 
-# Verify
+#### 2.4.3 Deploy OphirPay main contract
+
+```bash
+stellar contract deploy \
+  --wasm contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm \
+  --source <MAINNET_SECRET_KEY> \
+  --rpc-url "https://soroban.stellar.org:443" \
+  --network-passphrase "Public Global Stellar Network ; September 2015" \
+  --network public \
+  --fee 10000000
+
+# Save the returned contract ID → NEXT_PUBLIC_CONTRACT_ID
+```
+
+#### 2.4.4 Initialize OphirPay main contract (with emitter)
+
+```bash
 stellar contract invoke \
   --id <CONTRACT_ID> \
-  --source <MAINNET_KEY> \
+  --source <MAINNET_SECRET_KEY> \
+  --rpc-url "https://soroban.stellar.org:443" \
+  --network-passphrase "Public Global Stellar Network ; September 2015" \
   --network public \
+  -- init --owner <OWNER_PUBLIC_KEY> --emitter <EMITTER_CONTRACT_ID>
+```
+
+### 2.5 Post-deploy verification
+
+```bash
+# Verify main contract owner
+stellar contract invoke \
+  --id <CONTRACT_ID> \
+  --source <MAINNET_SECRET_KEY> \
+  --rpc-url "https://soroban.stellar.org:443" \
+  --network-passphrase "Public Global Stellar Network ; September 2015" \
+  --network public \
+  --send no \
   -- get_owner
+
+# Verify emitter owner
+stellar contract invoke \
+  --id <EMITTER_CONTRACT_ID> \
+  --source <MAINNET_SECRET_KEY> \
+  --rpc-url "https://soroban.stellar.org:443" \
+  --network-passphrase "Public Global Stellar Network ; September 2015" \
+  --network public \
+  --send no \
+  -- get_owner
+
+# Verify payment counter is 0 on a fresh deployment
+stellar contract invoke \
+  --id <CONTRACT_ID> \
+  --source <MAINNET_SECRET_KEY> \
+  --rpc-url "https://soroban.stellar.org:443" \
+  --network-passphrase "Public Global Stellar Network ; September 2015" \
+  --network public \
+  --send no \
+  -- get_payment_count
 ```
 
 ---
 
-## 2.5 Contract Address Registry
+## 2.6 Contract Address Registry
 
 | Network | OphirPay Contract | Emitter Contract |
 |---|---|---|
@@ -207,7 +293,11 @@ curl https://ophirpay.com/api/metrics
 Recommended alert thresholds:
 - **5xx error rate > 1%** → PagerDuty critical
 - **p99 latency > 2s** → Slack warning
-- **Webhook failure rate > 5%** → Slack warning
+- **Webhook sustained failure rate > 25% for 10m** → Slack warning. This is
+  measured from `ophirpay_delivery_final_outcomes_total{delivery_type="webhook"}`
+  and should be investigated alongside
+  `ophirpay_delivery_attempts_total{delivery_type="webhook"}` to distinguish
+  first-attempt endpoint failures from retry exhaustion.
 - **DB backup missed** → PagerDuty critical
 - **Restore drill failed** → PagerDuty critical
 

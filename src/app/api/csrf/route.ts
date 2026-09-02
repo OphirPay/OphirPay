@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import { generateCsrfToken, csrfCookieHeader } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -10,7 +11,7 @@ import { withRequestLogging } from "@/lib/request-logging";
  * so client-side code can echo it back via the `x-csrf-token` header on
  * mutation requests (double-submit cookie pattern, see lib/csrf.ts).
  */
-export const GET = withRequestLogging(async function GET(request: Request) {
+export const GET = withMetrics("GET /api/csrf", withRequestLogging(async function GET(request: Request) {
   const token = generateCsrfToken();
 
   // The __Host-/Secure flags are only valid over HTTPS; over plain http (dev
@@ -26,4 +27,4 @@ export const GET = withRequestLogging(async function GET(request: Request) {
       "Set-Cookie": csrfCookieHeader(token, secure),
     },
   });
-});
+}));

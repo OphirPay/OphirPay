@@ -155,12 +155,12 @@ describe("createWebhookSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects empty events array", () => {
+  it("accepts an empty events array (subscribes to all events)", () => {
     const result = createWebhookSchema.safeParse({
       url: "https://example.com/webhook",
       events: [],
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 });
 

@@ -17,3 +17,5 @@ export { ProgressBar } from "./ProgressBar";
 export { Skeleton } from "./Skeleton";
 export { Kbd } from "./Kbd";
 export { Amount } from "./Amount";
+export { CurrencyToggle } from "./CurrencyToggle";
+export type { CurrencyToggleProps } from "./CurrencyToggle";

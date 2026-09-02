@@ -1,4 +1,4 @@
-name: OphirPay CI/CD — 20 Jobs
+name: OphirPay CI/CD — 22 Jobs
 
 on:
   push:
@@ -43,6 +43,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
+      - run: npx prisma generate
       - run: npx tsc --noEmit
 
   # ══════════════════════════════════════════════════════════════
@@ -95,9 +96,9 @@ jobs:
         with:
           targets: wasm32v1-none
           components: rustfmt, clippy
-      - name: Install Soroban SDK deps
+      - name: Install Soroban SDK deps & WASM optimization tools
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -109,15 +110,34 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
           restore-keys: cargo-${{ runner.os }}-
       - name: Build OphirPay contract
+        env:
+          RUSTFLAGS: "-C link-arg=-s"
         run: cd contracts/ophirpay && cargo build --target wasm32v1-none --release
       - name: Build Emitter contract
+        env:
+          RUSTFLAGS: "-C link-arg=-s"
         run: cd contracts/emitter && cargo build --target wasm32v1-none --release
+      - name: Optimize WASM (OphirPay + Emitter)
+        run: |
+          set -e
+          OPHIR_WASM=contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm
+          EMIT_WASM=contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm
+
+          for f in "$OPHIR_WASM" "$EMIT_WASM"; do
+            if [ -f "$f" ]; then
+              echo "Before: $(basename $f) $(stat -c%s "$f") bytes"
+              cp "$f" "${f}.orig"
+              wasm-strip "$f" || true
+              wasm-opt -Oz -o "$f" "${f}" || true
+              echo "After:  $(basename $f) $(stat -c%s "$f") bytes"
+            fi
+          done
       - name: Verify WASM artifacts
         run: |
           ls -lh contracts/ophirpay/target/wasm32v1-none/release/*.wasm
           ls -lh contracts/emitter/target/wasm32v1-none/release/*.wasm
-      - name: Run OphirPay contract unit tests
-        run: cd contracts/ophirpay && cargo test
+      - name: Run OphirPay contract unit & property tests
+        run: cd contracts/ophirpay && PROPTEST_CASES=64 cargo test
       - name: Run Emitter contract unit tests
         run: cd contracts/emitter && cargo test
       - name: Upload WASM artifacts
@@ -130,10 +150,48 @@ jobs:
           retention-days: 7
 
   # ══════════════════════════════════════════════════════════════
-  # 6. RUST CLIPPY — Lint both Soroban contracts
+  # 6. CONTRACT WASM REPRODUCIBILITY — Byte-for-byte deterministic build check
+  #    (issue #405: pinned toolchain + committed expected hashes; on failure
+  #    the job prints BOTH the expected and the actual hash)
+  # ══════════════════════════════════════════════════════════════
+  wasm-repro:
+    name: "6️⃣ Contracts — WASM Reproducibility Check"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          targets: wasm32v1-none
+      - name: Install build deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/ophirpay/target
+            contracts/emitter/target
+          key: cargo-repro-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
+          restore-keys: cargo-repro-${{ runner.os }}-
+      - name: Verify WASM reproducibility against committed expected hashes
+        run: ./scripts/verify-wasm-reproducibility.sh
+      - name: Upload raw WASM artifacts (debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-repro-raw
+          path: |
+            contracts/ophirpay/target/wasm32v1-none/release/*.wasm
+            contracts/emitter/target/wasm32v1-none/release/*.wasm
+          retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════
+  # 7. RUST CLIPPY — Lint both Soroban contracts
   # ══════════════════════════════════════════════════════════════
   rust-clippy:
-    name: "6️⃣ Backend — Clippy (Rust Lint)"
+    name: "7️⃣ Backend — Clippy (Rust Lint)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -163,7 +221,7 @@ jobs:
   # 7. RUST FORMAT — Check rustfmt on both contracts
   # ══════════════════════════════════════════════════════════════
   rust-fmt:
-    name: "7️⃣ Backend — Format (rustfmt)"
+    name: "8️⃣ Backend — Format (rustfmt)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -180,7 +238,7 @@ jobs:
   # 8. NEXT.JS BUILD — Production build verification
   # ══════════════════════════════════════════════════════════════
   next-build:
-    name: "8️⃣ Frontend — Build (Next.js)"
+    name: "9️⃣ Frontend — Build (Next.js)"
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -206,7 +264,7 @@ jobs:
   # 9. SMOKE TEST — HTTP checks against live Vercel (no browser)
   # ══════════════════════════════════════════════════════════════
   smoke-test:
-    name: "9️⃣ Frontend — Smoke (curl)"
+    name: "1️⃣0️⃣ Frontend — Smoke (curl)"
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -232,7 +290,8 @@ jobs:
           echo "✅ All 19 pages healthy"
 
   # ══════════════════════════════════════════════════════════════
-  # 10. E2E TESTS — Playwright against a self-hosted production build.
+  # 10. E2E TESTS — Playwright against a self-hosted production build,
+  # sharded across 4 parallel workers (issue #406).
   #
   # The E2E suite is deterministic by design (auth-gate 401s, wallet-gated
   # page states, health 200|503), so it runs against a production build +
@@ -240,12 +299,23 @@ jobs:
   # depends on a working production DATABASE_URL. The build happens in this
   # job rather than reusing the next-build artifact: upload-artifact@v4
   # excludes gitignored paths and `.next/` is gitignored.
+  #
+  # The suite is split into 4 equal shards by spec file (Playwright's
+  # --shard flag balances by test file). Each shard uploads its blob report;
+  # the e2e-report job below downloads every blob and merges them into one
+  # combined HTML report. On a shard failure, the same runner immediately
+  # reruns only the failed tests (--last-failed) for flaky triage.
   # ══════════════════════════════════════════════════════════════
   e2e-tests:
-    name: "🔟 Frontend — E2E (Playwright)"
+    name: "🔟 Frontend — E2E (Playwright ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: contract-wasm
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
     services:
       postgres:
         image: postgres:16-alpine
@@ -278,6 +348,11 @@ jobs:
         with:
           name: contract-wasm
           path: contracts/
+      - name: Recreate target directories for tests
+        run: |
+          mkdir -p contracts/ophirpay/target/wasm32v1-none/release contracts/emitter/target/wasm32v1-none/release
+          find contracts -name "ophirpay_contract.wasm" -exec cp {} contracts/ophirpay/target/wasm32v1-none/release/ \;
+          find contracts -name "ophirpay_emitter.wasm" -exec cp {} contracts/emitter/target/wasm32v1-none/release/ \;
       - name: Apply migrations to test DB
         run: npx prisma migrate deploy
       - name: Build Next.js production bundle
@@ -292,15 +367,80 @@ jobs:
             sleep 2
           done
           curl -sf -o /dev/null http://localhost:3000/ || { echo "next start failed to come up"; tail -20 /tmp/next-start.log; exit 1; }
-      - name: Run E2E tests against production build
-        run: npx playwright test --project=chromium
+      - name: SSE load test (100 concurrent clients, issue #391)
+        # Only shard 1 runs the load test so it never competes with the
+        # E2E browsers on the other shards. Exercises heartbeat delivery,
+        # no-connection-leak, and bounded-memory acceptance criteria.
+        if: matrix.shardIndex == 1
+        run: node scripts/sse-load-test.mjs
+        env:
+          BASE_URL: http://localhost:3000
+      - name: Run E2E tests against production build (shard)
+        run: npx playwright test --project=chromium --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+      - name: Rerun only failed tests (flaky triage)
+        if: failure()
+        run: npx playwright test --project=chromium --last-failed
+      - name: Upload blob report for shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.shardIndex }}
+          path: blob-report/
+          retention-days: 1
       - name: Upload E2E report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shardIndex }}
           path: playwright-report/
           retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════
+  # 10b. E2E COMBINED REPORT — merge every shard's blob report into a
+  # single HTML report (issue #406). Runs after all shards finish.
+  # ══════════════════════════════════════════════════════════════
+  e2e-report:
+    name: "🔟b Frontend — E2E Combined Report"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: e2e-tests
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Download all shard blob reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+      - name: Merge into single HTML report
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+      - name: Upload combined report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-combined
+          path: playwright-report/
+          retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════
+  # 10c. PRISMA DRIFT CHECK — static schema ⇄ migration sync check
+  # (issue #404). No database connection required: parses schema.prisma
+  # and replays the committed migration SQL to detect drift.
+  # ══════════════════════════════════════════════════════════════
+  prisma-drift-check:
+    name: "🔟c Backend — Prisma Drift Check (no DB)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Verify schema and migrations are in sync
+        run: node scripts/verify-prisma-drift.mjs
 
   # ══════════════════════════════════════════════════════════════
   # 11. PRISMA VALIDATE — Schema integrity, generate, db push
@@ -376,6 +516,38 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
       - name: Run Gitleaks detect
         run: gitleaks detect --config .gitleaks.toml --verbose --redact
+      # Scanner self-test (issue #393): prove the blocklist catches a sample
+      # secret and does not false-positive on clean text. The fixture
+      # directory is allowlisted for the repo-wide scan above, so these
+      # dedicated scans (default rules, --no-git) are the positive control.
+      - name: Self-test — scanner catches the sample-secret fixture
+        run: |
+          set +e
+          gitleaks detect --source tests/fixtures/secrets/positive --no-git \
+            --no-banner --redact >/tmp/gitleaks-positive.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ]; then
+            echo "✅ Scanner caught the fixture secret (exit 1 as expected)"
+          else
+            echo "❌ Scanner did NOT flag the sample-secret fixture (exit $rc)"
+            cat /tmp/gitleaks-positive.log
+            exit 1
+          fi
+      - name: Self-test — clean fixture stays clean (no false positives)
+        run: |
+          set +e
+          gitleaks detect --source tests/fixtures/secrets/clean --no-git \
+            --no-banner >/tmp/gitleaks-clean.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "✅ Clean fixture produced no findings (exit 0)"
+          else
+            echo "❌ Scanner flagged the clean fixture (exit $rc) — check allowlist"
+            cat /tmp/gitleaks-clean.log
+            exit 1
+          fi
 
   # ══════════════════════════════════════════════════════════════
   # 13. DOCKER BUILD — Build & validate production Docker image
@@ -509,22 +681,28 @@ jobs:
           "
 
   # ══════════════════════════════════════════════════════════════
-  # 16. OPENAPI VALIDATE — Validate the OpenAPI specification
+  # 16. OPENAPI VALIDATE — Validate the OpenAPI specification and
+  #     check spec ↔ implementation conformance (drift detection).
+  #     `npm run test:openapi` (vitest) asserts every spec endpoint
+  #     has a route handler and every route handler is documented.
   # ══════════════════════════════════════════════════════════════
   openapi-validate:
-    name: "1️⃣6️⃣ Docs — OpenAPI (Validate)"
+    name: "1️⃣6️⃣ Docs — OpenAPI (Validate + Conformance)"
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
       - name: Install OpenAPI lint tools
         run: npm install -g @redocly/cli@1.25.11
       - name: Lint OpenAPI spec
         run: redocly lint docs/openapi.yaml
       - name: Bundle OpenAPI spec (catches $ref errors)
         run: redocly bundle docs/openapi.yaml -o /tmp/openapi-bundled.yaml && echo "✅ OpenAPI spec is valid and bundled"
+      - name: Check spec ↔ implementation conformance (drift detection)
+        run: npm run test:openapi
 
   # ══════════════════════════════════════════════════════════════
   # 17. SPELL CHECK — Check for typos in docs, comments, and code
@@ -606,21 +784,32 @@ jobs:
             echo "✅ Helm chart renders successfully ($(wc -l < /tmp/rendered.yaml) lines)"
 
   # ══════════════════════════════════════════════════════════════
-  # 20. DEPENDENCY AUDIT — npm audit for vulnerabilities
+  # 20. DEPENDENCY SCAN — fail on high/critical advisories
+  #
+  # Blocking gate (issue #394): runs the shared scan script
+  # (scripts/audit-dependencies.mjs) which applies the documented
+  # suppressions from .github/dependency-suppressions.json and fails the
+  # build on any remaining high/critical advisory. The nightly + on-demand
+  # run lives in .github/workflows/dependency-scan.yml.
   # ══════════════════════════════════════════════════════════════
-  dependency-audit:
-    name: "2️⃣0️⃣ Security — Audit (npm)"
+  dependency-scan:
+    name: "2️⃣0️⃣ Security — Dependency Scan (fail on high/critical)"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    continue-on-error: true  # Don't block PRs, just surface warnings
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version-file: '.nvmrc', cache: "npm" }
-      - name: npm audit (production deps only, no fix)
-        run: npm audit --omit=dev --audit-level=high 2>&1 || true
-      - name: npm audit (all deps, report only)
-        run: npm audit --audit-level=critical 2>&1 || true
+      - run: npm ci
+      - name: Run dependency vulnerability scan
+        run: node scripts/audit-dependencies.mjs
+      - name: Upload audit report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-report
+          path: dependency-audit-report/
+          retention-days: 30
 
   # ══════════════════════════════════════════════════════════════
   # 21. CONTRACT GAS REPORT — WASM analysis via stellar CLI
@@ -703,3 +892,39 @@ jobs:
             contracts/ophirpay/target/wasm32v1-none/release/*.wasm
             contracts/emitter/target/wasm32v1-none/release/*.wasm
           retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════
+  # 22. TESTNET INTEGRATION — Live RPC testnet contract verification
+  # ══════════════════════════════════════════════════════════════
+  testnet-integration:
+    name: "2️⃣2️⃣ Backend — Testnet Integration (RPC)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: contract-wasm
+    continue-on-error: true # Non-blocking on testnet RPC rate-limits / outages
+    env:
+      SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
+      STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+      SKIP_ON_NETWORK_ERROR: "true"
+      NEXT_PUBLIC_CONTRACT_ID: CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET
+      NEXT_PUBLIC_EMITTER_CONTRACT_ID: CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          targets: wasm32v1-none
+      - name: Install build deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - name: Download contract WASM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: contract-wasm
+          path: contracts/
+      - name: Run Cargo integration test suite
+        run: cd contracts/ophirpay && cargo test --test integration_tests
+      - name: Run Live RPC Testnet Integration Tests
+        run: node scripts/testnet-integration.mjs
+

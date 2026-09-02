@@ -28,8 +28,8 @@ export function generateCsrfToken(): string {
  */
 export function csrfCookieHeader(token: string, secure = true): string {
   const name = secure ? CSRF_COOKIE : CSRF_COOKIE_INSECURE;
-  const secureAttr = secure ? "; Secure" : "";
-  return `${name}=${token}; Path=/;${secureAttr} HttpOnly; SameSite=Strict; Max-Age=86400`;
+  const secureAttr = secure ? "Secure; " : "";
+  return `${name}=${token}; Path=/; ${secureAttr}HttpOnly; SameSite=Strict; Max-Age=86400`;
 }
 
 /**

@@ -4,13 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "=27.0.5"
 
 [dev-dependencies]
 soroban-sdk = { version = "=27.0.5", features = ["testutils"] }
+proptest = { version = "1.6", default-features = false, features = ["std"] }
+ophirpay-emitter = { path = "../emitter", features = ["testutils"] }
 
 # cargo test runs natively (50 unit tests). soroban-sdk 27 fixed the
 # ed25519-dalek 3.0 / rand_chacha 0.3 conflict from env-host 22.1.3.

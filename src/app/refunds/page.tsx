@@ -3,6 +3,8 @@
 
 
 import { useState } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
@@ -54,6 +56,7 @@ interface RefundAnalytics {
 }
 
 export default function RefundsPage() {
+  usePageTitle(PAGE_TITLES.REFUNDS);
   const { wallet } = useWallet();
   const toast = useToast();
   const queryClient = useQueryClient();

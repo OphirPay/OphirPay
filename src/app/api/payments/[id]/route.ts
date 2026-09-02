@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
+import { updatePaymentSchema } from "@/lib/validation-schemas";
 import {
   successResponse,
+  validationError,
   notFoundError,
   unauthorizedError,
   handleApiError,
@@ -13,7 +16,7 @@ import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { getAuthContext } from "@/lib/auth-session";
 import { withRequestLogging } from "@/lib/request-logging";
 
-export const GET = withRequestLogging(async function GET(
+export const GET = withMetrics("GET /api/payments/[id]", withRequestLogging(async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -36,9 +39,9 @@ export const GET = withRequestLogging(async function GET(
   } catch (err) {
     return handleApiError(err, `GET /api/payments/[id]`);
   }
-});
+}));
 
-export const PATCH = withRequestLogging(async function PATCH(
+export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -51,7 +54,13 @@ export const PATCH = withRequestLogging(async function PATCH(
     }
 
     const { id } = await params;
-    const body = await request.json() as { status?: string; description?: string; memo?: string };
+    const rawBody = await request.json();
+    // Validate the whole update body (status enum, description, memo length /
+    // charset) server-side so invalid memos never reach the database or the
+    // webhook payloads.
+    const parsed = updatePaymentSchema.safeParse(rawBody);
+    if (!parsed.success) return validationError(parsed.error);
+    const body = parsed.data;
 
     // updateMany scopes the write to the authenticated user's records and
     // excludes soft-deleted payments (consistent 404, same as GET).
@@ -77,7 +86,7 @@ export const PATCH = withRequestLogging(async function PATCH(
         assetCode: payment.assetCode,
         status: payment.status,
         signedAt: new Date().toISOString(),
-      });
+      }, auth.userId);
     } else if (body.status === "SUBMITTED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_SUBMITTED, {
         paymentId: payment.id,
@@ -85,7 +94,7 @@ export const PATCH = withRequestLogging(async function PATCH(
         assetCode: payment.assetCode,
         transactionHash: payment.transactionHash,
         submittedAt: new Date().toISOString(),
-      });
+      }, auth.userId);
     } else if (body.status === "CONFIRMED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_CONFIRMED, {
         paymentId: payment.id,
@@ -93,7 +102,7 @@ export const PATCH = withRequestLogging(async function PATCH(
         assetCode: payment.assetCode,
         transactionHash: payment.transactionHash,
         confirmedAt: new Date().toISOString(),
-      });
+      }, auth.userId);
     } else if (body.status === "COMPLETED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_COMPLETED, {
         paymentId: payment.id,
@@ -101,7 +110,7 @@ export const PATCH = withRequestLogging(async function PATCH(
         assetCode: payment.assetCode,
         transactionHash: payment.transactionHash,
         completedAt: payment.completedAt?.toISOString() ?? new Date().toISOString(),
-      });
+      }, auth.userId);
     } else if (body.status === "FAILED") {
       dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_FAILED, {
         paymentId: payment.id,
@@ -109,16 +118,16 @@ export const PATCH = withRequestLogging(async function PATCH(
         assetCode: payment.assetCode,
         errorMessage: payment.errorMessage,
         failedAt: new Date().toISOString(),
-      });
+      }, auth.userId);
     }
 
     return successResponse(payment);
   } catch (err) {
     return handleApiError(err, `PATCH /api/payments/[id]`);
   }
-});
+}));
 
-export const DELETE = withRequestLogging(async function DELETE(
+export const DELETE = withMetrics("DELETE /api/payments/[id]", withRequestLogging(async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -144,4 +153,4 @@ export const DELETE = withRequestLogging(async function DELETE(
   } catch (err) {
     return handleApiError(err, `DELETE /api/payments/[id]`);
   }
-});
+}));

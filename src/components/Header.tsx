@@ -3,6 +3,7 @@
 
 
 import { WalletButton } from "./WalletButton";
+import { NotificationCenter } from "./NotificationCenter";
 import { useTheme } from "@/hooks/useTheme";
 
 export function Header() {
@@ -19,8 +20,9 @@ export function Header() {
           </h2>
         </div>
 
-        {/* Right: Theme toggle + Wallet button */}
+        {/* Right: Notifications + Theme toggle + Wallet button */}
         <div className="flex items-center gap-2 md:gap-3">
+          <NotificationCenter />
           {/* Dark mode toggle */}
           <button
             onClick={toggle}

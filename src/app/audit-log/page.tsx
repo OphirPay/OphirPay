@@ -1,8 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { EmptyState } from "@/components/EmptyState";
@@ -12,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Pagination } from "@/components/ui/Pagination";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { useDebounce } from "@/hooks/useDebounce";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 interface AuditEntry {
   id: number;
@@ -134,15 +134,58 @@ async function fetchAuditLog(filters: {
 
 export default function AuditLogPage() {
   usePageTitle(PAGE_TITLES.AUDIT_LOG);
-  const [filter, setFilter] = useState("");
+  // `useSearchParams` requires a Suspense boundary during static prerendering.
+  return (
+    <Suspense fallback={<AuditLogFallback />}>
+      <AuditLogClient />
+    </Suspense>
+  );
+}
+
+function AuditLogFallback() {
+  return (
+    <div className="animate-fade-in space-y-6">
+      <div className="h-8 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AuditLogClient() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Filter values are persisted in URL params so filtered/paginated views are
+  // shareable and survive reloads.
+  const actorParam = searchParams.get("actor") ?? "";
+  const actionParam = searchParams.get("action") ?? "";
+  const sinceParam = parseTimestamp(searchParams.get("since"));
+  const untilParam = parseTimestamp(searchParams.get("until"));
+
+  const pageParam = Number.parseInt(searchParams.get("page") ?? "", 10);
+  const page = Number.isFinite(pageParam) && pageParam >= 1 ? pageParam : 1;
+
+  const pageSizeParam = Number.parseInt(searchParams.get("pageSize") ?? "", 10);
+  const pageSize = (PAGE_SIZES as readonly number[]).includes(pageSizeParam)
+    ? pageSizeParam
+    : DEFAULT_PAGE_SIZE;
+
+  // Local draft for actor so typing feels responsive; the URL only updates
+  // after the value has settled.
+  const [actorDraft, setActorDraft] = useState(actorParam);
+  const debouncedActor = useDebounce(actorDraft, 300);
+
+  // Live SSE tail.
   const [connected, setConnected] = useState(false);
   const [liveMode, setLiveMode] = useState(false);
-  const [connected, setConnected] = useState(false);
   const [liveEntries, setLiveEntries] = useState<AuditEntry[]>([]);
   const sseRef = useRef<EventSource | null>(null);
 
-  // Close the EventSource when the page unmounts — otherwise the stream keeps
-  // polling and the connection leaks until the tab is closed.
   useEffect(() => {
     return () => {
       sseRef.current?.close();
@@ -158,23 +201,47 @@ export default function AuditLogPage() {
       try {
         const data = JSON.parse(e.data) as AuditEntry;
         setLiveEntries((prev) => [data, ...prev].slice(0, 100));
-      } catch {}
+      } catch {
+        // ignore malformed events
+      }
     });
     es.onerror = () => setConnected(false);
     return es;
   }, []);
 
-  const toggleLive = () => {
-    if (!liveMode) {
-      connectSSE();
-      setLiveMode(true);
-    } else {
-      sseRef.current?.close();
-      setConnected(false);
-      setLiveMode(false);
-      setLiveEntries([]);
+  const toggleLive = useCallback(() => {
+    setLiveMode((prev) => {
+      const next = !prev;
+      if (next) {
+        connectSSE();
+      } else {
+        sseRef.current?.close();
+        setConnected(false);
+        setLiveEntries([]);
+      }
+      return next;
+    });
+  }, [connectSSE]);
+
+  const updateQuery = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null) params.delete(key);
+        else params.set(key, value);
+      }
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [searchParams, router, pathname]
+  );
+
+  // Sync actor draft back to URL when the debounced value changes.
+  useEffect(() => {
+    if (debouncedActor !== actorParam) {
+      updateQuery({ actor: debouncedActor || null, page: null });
     }
-  };
+  }, [debouncedActor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Data fetch keyed on filters + pagination ──
   const {
@@ -183,32 +250,29 @@ export default function AuditLogPage() {
     error,
     refetch,
   } = useApiQuery<AuditLogResponse>(
-    [
-      "audit-log",
-      JSON.stringify({ actor, action, since, until, page, pageSize }),
-    ],
+    ["audit-log", actorParam, actionParam, String(sinceParam), String(untilParam), String(page), String(pageSize)],
     undefined,
     { refetchOnWindowFocus: false },
-    () => fetchAuditLog({ actor, action, since, until, page, pageSize })
+    () => fetchAuditLog({ actor: actorParam, action: actionParam, since: sinceParam, until: untilParam, page, pageSize })
   );
 
   const entries = useMemo(() => data?.entries ?? [], [data]);
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const hasFilters = Boolean(actor || action || since !== null || until !== null);
+  const hasFilters = Boolean(actorParam || actionParam || sinceParam !== null || untilParam !== null);
 
   // Live entries must satisfy the same predicate the API applies, so the
   // real-time tail matches the filtered view.
   const matchesFilters = useCallback(
     (e: AuditEntry) => {
-      if (actor && !e.actor.toLowerCase().includes(actor.toLowerCase())) return false;
-      if (action && e.action !== action) return false;
-      if (since !== null && e.timestamp < since) return false;
-      if (until !== null && e.timestamp > until) return false;
+      if (actorParam && e.actor !== actorParam) return false;
+      if (actionParam && e.action !== actionParam) return false;
+      if (sinceParam !== null && e.timestamp < sinceParam) return false;
+      if (untilParam !== null && e.timestamp > untilParam) return false;
       return true;
     },
-    [actor, action, since, until]
+    [actorParam, actionParam, sinceParam, untilParam]
   );
 
   const visibleLive = useMemo(
@@ -228,14 +292,34 @@ export default function AuditLogPage() {
     return out;
   }, [visibleLive, entries]);
 
-  const goToPage = (target: number) =>
-    updateQuery({ page: target <= 1 ? null : String(target) });
+  const goToPage = useCallback(
+    (target: number) => updateQuery({ page: target <= 1 ? null : String(target) }),
+    [updateQuery]
+  );
 
-  const changePageSize = (size: number) =>
-    updateQuery({
-      pageSize: size === DEFAULT_PAGE_SIZE ? null : String(size),
-      page: null,
-    });
+  const changePageSize = useCallback(
+    (size: number) =>
+      updateQuery({
+        pageSize: size === DEFAULT_PAGE_SIZE ? null : String(size),
+        page: null,
+      }),
+    [updateQuery]
+  );
+
+  const clearFilters = useCallback(() => {
+    setActorDraft("");
+    updateQuery({ actor: null, action: null, since: null, until: null, page: null });
+  }, [updateQuery]);
+
+  const exportCsv = useCallback(() => {
+    const params = new URLSearchParams();
+    if (actorParam) params.set("actor", actorParam);
+    if (actionParam) params.set("action", actionParam);
+    if (sinceParam !== null) params.set("since", String(sinceParam));
+    if (untilParam !== null) params.set("until", String(untilParam));
+    const url = `/api/audit-log/export?${params.toString()}`;
+    window.open(url, "_blank");
+  }, [actorParam, actionParam, sinceParam, untilParam]);
 
   const formatTime = (ts: number) => new Date(ts * 1000).toLocaleString();
 
@@ -243,16 +327,7 @@ export default function AuditLogPage() {
   const rangeEnd = Math.min((currentPage - 1) * pageSize + entries.length, total);
 
   if (loading) {
-    return (
-      <div className="animate-fade-in space-y-6">
-        <div className="h-8 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-16 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
+    return <AuditLogFallback />;
   }
 
   return (
@@ -267,20 +342,27 @@ export default function AuditLogPage() {
             Immutable on-chain trail of every contract state change
           </p>
         </div>
-        <Button
-          size="sm"
-          variant={liveMode ? "primary" : "secondary"}
-          onClick={toggleLive}
-        >
-          {liveMode ? (
-            <span className="flex items-center gap-1">
-              <span className={`h-2 w-2 rounded-full ${connected ? "bg-green-500" : "bg-red-500"} animate-pulse`} />
-              Live {connected ? "●" : "✕"}
-            </span>
-          ) : (
-            "▶ Live"
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={exportCsv}>
+            Export CSV
+          </Button>
+          <Button
+            size="sm"
+            variant={liveMode ? "primary" : "secondary"}
+            onClick={toggleLive}
+          >
+            {liveMode ? (
+              <span className="flex items-center gap-1">
+                <span
+                  className={`h-2 w-2 rounded-full ${connected ? "bg-green-500" : "bg-red-500"} animate-pulse`}
+                />
+                Live {connected ? "●" : "✕"}
+              </span>
+            ) : (
+              "▶ Live"
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Filters — persisted to URL params so views are shareable */}
@@ -310,7 +392,7 @@ export default function AuditLogPage() {
           </label>
           <select
             id="audit-action"
-            value={action}
+            value={actionParam}
             onChange={(e) =>
               updateQuery({ action: e.target.value || null, page: null })
             }
@@ -334,7 +416,7 @@ export default function AuditLogPage() {
           <input
             id="audit-from"
             type="date"
-            value={toDateInputValue(since)}
+            value={toDateInputValue(sinceParam)}
             onChange={(e) =>
               updateQuery({
                 since: e.target.value
@@ -356,7 +438,7 @@ export default function AuditLogPage() {
           <input
             id="audit-to"
             type="date"
-            value={toDateInputValue(until)}
+            value={toDateInputValue(untilParam)}
             onChange={(e) =>
               updateQuery({
                 until: e.target.value
@@ -397,20 +479,13 @@ export default function AuditLogPage() {
           description={
             hasFilters
               ? "Try adjusting the actor, action, or date range filters."
-              : "Contract activity will appear here as state changes occur."
-          title={filter ? "No Matching Entries" : "No Audit Entries"}
-          description={
-            filter
-              ? "Try a different filter term."
               : liveMode
                 ? "Listening for contract activity — new entries will stream in here in real-time."
                 : "Contract activity will appear here as state changes occur. Enable live to watch entries stream in."
           }
-          actionLabel={
-            filter ? "Clear Filter" : liveMode ? undefined : "Enable Live"
-          }
+          actionLabel={hasFilters ? "Clear Filters" : liveMode ? undefined : "Enable Live"}
           actionIcon={
-            filter ? (
+            hasFilters ? (
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
@@ -419,11 +494,7 @@ export default function AuditLogPage() {
                 stroke="currentColor"
                 className="w-4 h-4"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             ) : (
               <svg
@@ -434,17 +505,11 @@ export default function AuditLogPage() {
                 stroke="currentColor"
                 className="w-4 h-4"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
               </svg>
             )
           }
-          onAction={
-            filter ? () => setFilter("") : liveMode ? undefined : toggleLive
-          }
+          onAction={hasFilters ? clearFilters : liveMode ? undefined : toggleLive}
         />
       ) : (
         <div className="space-y-2">

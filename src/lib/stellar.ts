@@ -8,6 +8,7 @@ import {
   Operation,
   Asset,
   Memo,
+  Keypair,
 } from "@stellar/stellar-sdk";
 import { getStellarErrorMessage } from "./stellar-error";
 

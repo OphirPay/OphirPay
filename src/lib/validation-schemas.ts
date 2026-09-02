@@ -110,20 +110,6 @@ export const paymentExportParamsSchema = z.object({
 
 // ── Batch Schemas ─────────────────────────────────────────────
 
-/**
- * Idempotency key shared by POST /api/batches (header or body field).
- *
- * The value is trimmed BEFORE validation so the validated value is exactly
- * the value that gets persisted — a body key like `"  short  "` is rejected
- * (its trimmed form is 5 chars) and `"  my-key-123  "` is stored as
- * `"my-key-123"`, keeping header and body keys consistent.
- */
-export const idempotencyKeySchema = z
-  .string("Idempotency key must be a string")
-  .trim()
-  .min(8, "Idempotency key must be at least 8 characters")
-  .max(255, "Idempotency key must be at most 255 characters");
-
 export const batchRecipientSchema = z.object({
   address: stellarAddress,
   amount: z.number().positive("Amount must be greater than zero"),
@@ -268,6 +254,26 @@ export const createScheduledPaymentSchema = z.object({
 });
 
 export type CreateScheduledPaymentInput = z.infer<typeof createScheduledPaymentSchema>;
+export const updateScheduledPaymentSchema = z.object({
+  amount: z.number().positive("Amount must be greater than 0").optional(),
+  assetCode: z.string().optional(),
+  assetIssuer: z.string().optional(),
+  destAddress: stellarAddress.optional(),
+  memo: z.string().max(28).optional(),
+  scheduledFor: z
+    .string()
+    .refine(
+      (value) => !Number.isNaN(new Date(value).getTime()),
+      "Scheduled date must be a valid date"
+    )
+    .refine(
+      (value) => new Date(value).getTime() > Date.now(),
+      "Scheduled date must be in the future"
+    )
+    .optional(),
+});
+
+export type UpdateScheduledPaymentInput = z.infer<typeof updateScheduledPaymentSchema>;
 
 // ── Recurrence alias ───────────────────────────────────────────
 

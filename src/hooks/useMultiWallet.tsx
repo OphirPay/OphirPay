@@ -25,8 +25,30 @@ interface WalletContextType {
   disconnect: () => Promise<void>;
   fetchBalance: () => Promise<void>;
   isConnecting: boolean;
+  isReconnecting: boolean;
+  missingWallet: WalletId | null;
   error: string | null;
   availableWallets: WalletId[];
+}
+
+// ── Persistence ───────────────────────────────────────────────
+
+const WALLET_STORAGE_KEY = "ophirpay-wallet-connected";
+
+function readStoredWallet(): WalletId | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(WALLET_STORAGE_KEY);
+  if (!raw) return null;
+  return raw as WalletId;
+}
+
+function storeWallet(walletId: WalletId | null): void {
+  if (typeof window === "undefined") return;
+  if (walletId) {
+    localStorage.setItem(WALLET_STORAGE_KEY, walletId);
+  } else {
+    localStorage.removeItem(WALLET_STORAGE_KEY);
+  }
 }
 
 // ── Initial State ─────────────────────────────────────────────
@@ -45,6 +67,8 @@ const initialWalletState: MultiWalletState = {
 export function MultiWalletProvider({ children }: { children: React.ReactNode }) {
   const [wallet, setWallet] = useState<MultiWalletState>(initialWalletState);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [missingWallet, setMissingWallet] = useState<WalletId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [availableWallets, setAvailableWallets] = useState<WalletId[]>([]);
 
@@ -55,58 +79,80 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
   }, []);
 
   const loadBalance = useCallback(async (publicKey: string) => {
+    const maxAttempts = 3;
+    const baseDelayMs = 1000;
+
     setWallet((prev) => ({ ...prev, balanceLoading: true }));
-    try {
-      const balance = await fetchXlmBalance(publicKey);
-      // Ignore stale responses: a balance fetch that resolves after a
-      // disconnect (or an account switch) must not repopulate the cache.
-      setWallet((prev) =>
-        prev.connected && prev.publicKey === publicKey
-          ? { ...prev, balance, balanceLoading: false }
-          : prev,
-      );
-    } catch {
-      setWallet((prev) =>
-        prev.connected && prev.publicKey === publicKey
-          ? { ...prev, balanceLoading: false }
-          : prev,
-      );
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const balance = await fetchXlmBalance(publicKey);
+        // Ignore stale responses: a balance fetch that resolves after a
+        // disconnect (or an account switch) must not repopulate the cache.
+        setWallet((prev) =>
+          prev.connected && prev.publicKey === publicKey
+            ? { ...prev, balance, balanceLoading: false }
+            : prev,
+        );
+        return;
+      } catch {
+        if (attempt < maxAttempts) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1))
+          );
+        }
+      }
     }
+
+    // All retries exhausted — stop the spinner but leave the prior balance
+    // unchanged if we already had one.
+    setWallet((prev) =>
+      prev.connected && prev.publicKey === publicKey
+        ? { ...prev, balanceLoading: false }
+        : prev,
+    );
   }, []);
 
   const loadBalanceRef = useRef(loadBalance);
   loadBalanceRef.current = loadBalance;
 
-  // Try to auto-reconnect on mount (check all available wallets)
+  // Try to auto-reconnect on mount to the wallet the user last selected.
   useEffect(() => {
     const autoReconnect = async () => {
-      for (const walletId of ["freighter", "albedo", "xbull"] as WalletId[]) {
-        try {
-          const connector = getWalletConnector(walletId);
-          if (!connector.isAvailable()) continue;
-          const connected = await connector.isConnected();
-          if (connected) {
-            const publicKey = await connector.getAddress();
-            const network = await connector.getNetwork();
-            if (publicKey) {
-              setWallet({
-                connected: true,
-                publicKey,
-                network,
-            balance: null,
-            balanceLoading: true,
-            activeWalletId: walletId,
-          });
-          setActiveWalletId(walletId);
-          loadBalanceRef.current(publicKey);
-              // Restore the server-side session for API authorization
-              await establishSession(publicKey, network || "TESTNET");
-              return; // Connected to first available wallet
-            }
+      const storedWalletId = readStoredWallet();
+      if (!storedWalletId) return;
+
+      const connector = getWalletConnector(storedWalletId);
+      if (!connector.isAvailable()) {
+        setMissingWallet(storedWalletId);
+        return;
+      }
+
+      setIsReconnecting(true);
+      try {
+        const connected = await connector.isConnected();
+        if (connected) {
+          const publicKey = await connector.getAddress();
+          const network = await connector.getNetwork();
+          if (publicKey) {
+            setWallet({
+              connected: true,
+              publicKey,
+              network,
+              balance: null,
+              balanceLoading: true,
+              activeWalletId: storedWalletId,
+            });
+            setActiveWalletId(storedWalletId);
+            loadBalanceRef.current(publicKey);
+            // Restore the server-side session for API authorization
+            await establishSession(publicKey, network || "TESTNET");
           }
-        } catch {
-          // Try next wallet
         }
+      } catch {
+        // Best-effort reconnect; the user can still connect manually.
+      } finally {
+        setIsReconnecting(false);
       }
     };
 
@@ -117,6 +163,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     async (walletId: WalletId) => {
       setIsConnecting(true);
       setError(null);
+      setMissingWallet(null);
 
       try {
         const connector = getWalletConnector(walletId);
@@ -147,6 +194,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
           activeWalletId: walletId,
         });
         setActiveWalletId(walletId);
+        storeWallet(walletId);
 
         if (publicKey) {
           loadBalance(publicKey);
@@ -167,6 +215,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
           // "connected" state with no server session behind it.
           setWallet(initialWalletState);
           setActiveWalletId(null);
+          storeWallet(null);
           setError(
             "Wallet connected, but the server rejected the session. You may have declined the signature request — reconnect and approve it to use API features."
           );
@@ -200,6 +249,8 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     setWallet(initialWalletState);
     setActiveWalletId(null);
     setError(null);
+    setMissingWallet(null);
+    storeWallet(null);
 
     if (walletId) {
       try {
@@ -235,6 +286,8 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
         disconnect,
         fetchBalance,
         isConnecting,
+        isReconnecting,
+        missingWallet,
         error,
         availableWallets,
       }}

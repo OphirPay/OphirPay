@@ -28,6 +28,7 @@ import { useToast } from "@/components/ui/Toast";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useApiMutation } from "@/hooks/useApiQuery";
 import { AssetSelector } from "@/components/AssetSelector";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { XLM_ASSET, getAssetInfo, type AssetInfo } from "@/lib/assets";
 import { nextRunAt, FREQUENCY_OPTIONS, FREQUENCY_LABELS, frequencyLabel, type Frequency } from "@/lib/recurrence";
 import Link from "next/link";

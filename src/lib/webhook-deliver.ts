@@ -73,10 +73,6 @@ export async function deliverWebhook(
   let lastStatusCode: number | undefined;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {

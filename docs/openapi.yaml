@@ -1426,27 +1426,6 @@ paths:
           in: query
           schema: { type: integer }
           description: Inclusive upper bound on entry timestamp (Unix seconds)
-          description: Filter by exact Stellar actor address
-        - name: action
-          in: query
-          schema: { type: string }
-          description: Filter by exact action type
-        - name: resource
-          in: query
-          schema: { type: integer }
-          description: Filter by the affected entity id (matches target_id)
-        - name: since
-          in: query
-          schema: { type: string }
-          description: Inclusive start of the date range — Unix seconds or ISO 8601
-        - name: until
-          in: query
-          schema: { type: string }
-          description: Inclusive end of the date range — Unix seconds or ISO 8601
-        - name: order
-          in: query
-          schema: { type: string, enum: [asc, desc], default: desc }
-          description: Result ordering by entry id (newest first by default)
       responses:
         "200":
           description: >

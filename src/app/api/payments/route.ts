@@ -3,11 +3,12 @@ import { withMetrics } from "@/lib/metrics-middleware";
 
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
+import { createPaymentSchema, paginationSchema, idempotencyKeySchema } from "@/lib/validation-schemas";
 import {
   successResponse,
   validationError,
   badRequestError,
+  conflictError,
   unauthorizedError,
   handleApiError,
 } from "@/lib/api-response";
@@ -121,24 +122,75 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
     const parsed = createPaymentSchema.safeParse(body);
     if (!parsed.success) return validationError(parsed.error);
 
-    const payment = await prisma.payment.create({
-      data: {
-        amount: parsed.data.amount,
-        assetCode: parsed.data.assetCode,
-        assetIssuer: parsed.data.assetIssuer,
-        description: parsed.data.description,
-        memo: parsed.data.memo,
-        // Server-generated idempotency key — every attempt (original or
-        // retried) carries its own key, so attempts are never confused.
-        idempotencyKey: crypto.randomUUID(),
-        status: "CREATED",
-        // The authenticated user owns the record; sourceAccountId is a
-        // Stellar account reference, NOT the User FK (previously this
-        // wrote a Stellar address into userId, breaking the relation).
-        userId: auth.userId,
-        sourceAccountId: parsed.data.sourceAccountId,
-      },
-    });
+    // Idempotency key (issue #548): the `Idempotency-Key` header takes
+    // precedence over the optional body field.
+    let idempotencyKey = parsed.data.idempotencyKey;
+    const headerKey = request.headers.get("idempotency-key");
+    if (headerKey !== null) {
+      const headerCheck = idempotencyKeySchema.safeParse(headerKey);
+      if (!headerCheck.success) {
+        return validationError(headerCheck.error);
+      }
+      idempotencyKey = headerCheck.data;
+    }
+
+    // Re-submission of an already-processed payment: same user + same key means
+    // no new payment. 
+    if (idempotencyKey) {
+      const existing = await prisma.payment.findFirst({
+        where: { userId: auth.userId, idempotencyKey },
+      });
+
+      if (existing) {
+        return successResponse(
+          existing,
+          { deduplicated: true, timestamp: new Date().toISOString() },
+          200
+        );
+      }
+    }
+
+    let payment;
+    try {
+      payment = await prisma.payment.create({
+        data: {
+          amount: parsed.data.amount,
+          assetCode: parsed.data.assetCode,
+          assetIssuer: parsed.data.assetIssuer,
+          description: parsed.data.description,
+          memo: parsed.data.memo,
+          // Server-generated when the client sends no key, so every payment
+          // records an idempotency key. Deduplication only applies to
+          // client-supplied keys, which retries actually re-send.
+          idempotencyKey: idempotencyKey ?? crypto.randomUUID(),
+          status: "CREATED",
+          // The authenticated user owns the record; sourceAccountId is a
+          // Stellar account reference, NOT the User FK (previously this
+          // wrote a Stellar address into userId, breaking the relation).
+          userId: auth.userId,
+          sourceAccountId: parsed.data.sourceAccountId,
+        },
+      });
+    } catch (err) {
+      const isUniqueConstraint = typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "P2002";
+      if (isUniqueConstraint && idempotencyKey) {
+        // A concurrent request won the race with the same key
+        const winner = await prisma.payment.findFirst({
+          where: { userId: auth.userId, idempotencyKey },
+        });
+        if (winner) {
+          return successResponse(
+            winner,
+            { deduplicated: true, timestamp: new Date().toISOString() },
+            200
+          );
+        }
+        return conflictError(
+          "A payment with this idempotency key already exists but could not be recovered."
+        );
+      }
+      throw err;
+    }
 
     logger.info("Payment created", { id: payment.id, amount: payment.amount });
 

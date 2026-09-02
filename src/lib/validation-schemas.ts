@@ -51,6 +51,12 @@ export const memoField = z
 
 // ── Payment Schemas ───────────────────────────────────────────
 
+export const idempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(8, "Idempotency key must be at least 8 characters")
+  .max(255, "Idempotency key must be at most 255 characters");
+
 export const createPaymentSchema = z.object({
   amount: z.number().positive("Amount must be greater than zero"),
   sourceAccountId: z.string().min(1, "Source account is required"),
@@ -59,6 +65,7 @@ export const createPaymentSchema = z.object({
   assetIssuer: z.string().optional(),
   description: z.string().max(200).optional(),
   memo: memoField,
+  idempotencyKey: idempotencyKeySchema.optional(),
 });
 
 /** Body for POST /api/payments/retry — which failed payment to retry. */
@@ -123,11 +130,6 @@ export const batchRecipientSchema = z.object({
  * body field. `.trim()` runs before the length checks so a wrapped key is
  * normalized consistently and a whitespace-only value is rejected.
  */
-export const idempotencyKeySchema = z
-  .string()
-  .trim()
-  .min(8, "Idempotency key must be at least 8 characters")
-  .max(255, "Idempotency key must be at most 255 characters");
 
 export const createBatchSchema = z.object({
   name: z.string().min(1).max(100),

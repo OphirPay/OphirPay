@@ -11,7 +11,8 @@ export type PaymentStatus =
   | "PROCESSING"
   | "COMPLETED"
   | "FAILED"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "SCHEDULED";
 
 export type BatchStatus =
   | "CREATED"
@@ -28,7 +29,8 @@ export type Frequency =
   | "QUARTERLY"
   | "YEARLY";
 
-export type RequestStatus = "PENDING" | "PAID" | "EXPIRED" | "CANCELLED";
+export type RequestStatus = "PENDING" | "PAID" | "EXPIRED" | "CANCELLED"
+  | "SCHEDULED";
 
 // ── Wallet / Freighter ────────────────────────────────────────
 

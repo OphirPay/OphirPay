@@ -220,18 +220,21 @@ changes, only the latest 100 are returned.
 
 ## Testing Strategy
 
-Each invariant is verified by at least one unit test in the contract's
-`#[test]` module. See `contracts/ophirpay/src/lib.rs` (lines ~2960+).
+Each invariant is verified by unit tests, property-based proptests, and integration harnesses:
+- **Unit Tests**: `contracts/ophirpay/src/lib.rs` (lines ~3840+)
+- **Proptest Suite**: `contracts/ophirpay/tests/proptest_token_moving.rs` (fuzzing token paths, reentrancy-shaped sequences, and `LOCKED_BALANCE` conservation)
+- **Integration Tests**: `contracts/ophirpay/tests/integration/` (end-to-end multi-contract flows)
 
-To run tests (soroban-sdk 27 — the env-host conflict from v22.1.3 is fixed):
+To run tests:
 ```bash
-cd contracts/ophirpay && cargo test   # unit tests, native host
-cd contracts/emitter && cargo test    # unit tests, native host
+cd contracts/ophirpay && cargo test                             # unit tests & in-crate property tests
+cd contracts/ophirpay && cargo test --test proptest_token_moving # dedicated proptest suite
+cd contracts/emitter && cargo test                              # emitter unit tests
 ```
 
 ## Future Verification Work
 
-- [ ] Fuzz testing with `proptest` for edge cases (zero amounts, max values)
+- [x] Property testing with `proptest` for token-moving paths & reentrancy sequences (`LOCKED_BALANCE` conservation)
 - [ ] Bounded model checking with `kani` for the 5 highest-risk invariants
 - [ ] Formal verification of the `compute_vested()` function (overflow safety)
 - [ ] Third-party security audit before mainnet deployment

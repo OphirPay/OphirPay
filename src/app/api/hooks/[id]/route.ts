@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
 import {
@@ -18,7 +19,7 @@ import { withRequestLogging } from "@/lib/request-logging";
  * Update a notification hook ledger row AFTER the matching on-chain
  * transition (unregister_hook) succeeded, so the list reflects deactivation.
  */
-export const PATCH = withRequestLogging(async function PATCH(
+export const PATCH = withMetrics("PATCH /api/hooks/[id]", withRequestLogging(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -44,4 +45,4 @@ export const PATCH = withRequestLogging(async function PATCH(
   } catch (err) {
     return handleApiError(err, "PATCH /api/hooks/[id]");
   }
-});
+}));

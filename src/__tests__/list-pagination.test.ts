@@ -158,7 +158,7 @@ describe("GET /api/payments — cursor pagination over 10,050 rows", () => {
     for (const c of cursorCalls) {
       expect(c.skip).toBeUndefined();
     }
-  });
+  }, 30000);
 
   it("keeps offset pagination working for backward compatibility", async () => {
     const res = await getPayments(

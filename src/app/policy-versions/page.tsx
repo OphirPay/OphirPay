@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { useState } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -36,6 +38,7 @@ interface PolicyVersionData {
 }
 
 export default function PolicyVersionsPage() {
+  usePageTitle(PAGE_TITLES.POLICY_VERSIONS);
   const [activeTab, setActiveTab] = useState<Tab>("fees");
   const { data, isLoading: loading } = useApiQuery<PolicyVersionData>(
     ["policy-versions"],

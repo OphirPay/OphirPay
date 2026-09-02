@@ -80,11 +80,48 @@ export function validateMemo(value: string, type: MemoType = "text"): MemoValida
   }
 
   // Text memo
+  // Charset: reject C0/C1 control characters — they are never legitimate
+  // memo content and keeping them out keeps memos safe to render and log.
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(value)) {
+    return {
+      valid: false,
+      type,
+      error: "Memo text must not contain control or invisible characters.",
+    };
+  }
   if (new TextEncoder().encode(value).length > MEMO_LIMITS.text) {
     return { valid: false, type, error: "Memo text must be 28 bytes or fewer." };
   }
 
+  // Check for dangerous control characters (0x00 - 0x1F except printable tabs/newlines)
+  if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(value)) {
+    return { valid: false, type, error: "Memo contains invalid control characters." };
+  }
+
   return { valid: true, type };
+}
+
+/**
+ * Sanitize HTML / script tags from user-supplied memo strings for safe UI rendering.
+ */
+export function sanitizeMemoHtml(input: string): string {
+  if (!input) return "";
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;")
+    .replace(/\//g, "&#x2F;");
+}
+
+/**
+ * Strip control characters and sanitize input memo for payment ingestion.
+ */
+export function sanitizeMemo(input: string): string {
+  if (!input) return "";
+  // Strip control characters and trim
+  return input.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").trim();
 }
 
 /**
@@ -96,3 +133,4 @@ export function detectMemoType(value: string): MemoType {
   if (/^[0-9a-fA-F]{64}$/.test(value)) return "hash";
   return "text";
 }
+

@@ -3,6 +3,8 @@
 
 
 import { useState, useEffect } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
@@ -37,6 +39,7 @@ interface ApprovalRequest {
 }
 
 export default function MultisigPage() {
+  usePageTitle(PAGE_TITLES.MULTISIG);
   const toast = useToast();
   const { wallet } = useWallet();
   const queryClient = useQueryClient();

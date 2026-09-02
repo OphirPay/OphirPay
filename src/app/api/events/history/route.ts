@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import { fetchOnChainPayments } from "@/lib/contracts";
 import { successResponse, serverError } from "@/lib/api-response";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  * GET /api/events/history?limit=50 — fetch on-chain payment event history.
  * Cached for 60s since on-chain data changes slowly.
  */
-export const GET = withRequestLogging(async function GET(request: Request) {
+export const GET = withMetrics("GET /api/events/history", withRequestLogging(async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
@@ -39,4 +40,4 @@ export const GET = withRequestLogging(async function GET(request: Request) {
   } catch (err) {
     return serverError(err instanceof Error ? err.message : "Failed to fetch event history");
   }
-});
+}));

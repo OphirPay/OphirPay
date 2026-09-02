@@ -47,6 +47,12 @@
       ]
     }
   ],
+  "rewrites": [
+    {
+      "source": "/.well-known/security.txt",
+      "destination": "/.well-known/security.txt"
+    }
+  ],
   "redirects": [
     {
       "source": "/home",
@@ -59,5 +65,11 @@
     "autoAlias": true,
     "silent": false,
     "productionBranch": "main"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/scheduled/run",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

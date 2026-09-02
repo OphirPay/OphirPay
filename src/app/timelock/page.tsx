@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { useState } from "react";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { useQueryClient } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
@@ -38,6 +40,7 @@ const ACTION_TYPES = [
 ] as const;
 
 export default function TimelockPage() {
+  usePageTitle(PAGE_TITLES.TIMELOCK);
   const toast = useToast();
   const { wallet } = useWallet();
   const queryClient = useQueryClient();

@@ -19,6 +19,31 @@ interface RetryState {
 /**
  * Exponential backoff retry hook for API calls and async operations.
  * Each retry waits longer: baseDelay * 2^attempt, capped at maxDelay.
+ * Returns { attempt, error, isRetrying, execute, cancel }.
+ *
+ * @example
+ * Retry a best-effort Horizon submission with a cancel affordance:
+ *
+ * ```tsx
+ * function SubmitPayment({ xdr }: { xdr: string }) {
+ *   const { execute, cancel, isRetrying, error } = useRetry();
+ *   const [hash, setHash] = useState<string | null>(null);
+ *
+ *   const submit = async () => {
+ *     const result = await execute((signal) => submitSignedTxWithSignal(xdr, signal));
+ *     setHash(result.hash);
+ *   };
+ *
+ *   return (
+ *     <>
+ *       <button onClick={submit} disabled={isRetrying}>Submit</button>
+ *       {isRetrying && <button onClick={cancel}>Cancel</button>}
+ *       {error && <p>{error.message}</p>}
+ *       {hash && <p>Hash: {hash}</p>}
+ *     </>
+ *   );
+ * }
+ * ```
  */
 export function useRetry(options: RetryOptions = {}) {
   const { maxAttempts = 3, baseDelay = 1000, maxDelay = 30000 } = options;

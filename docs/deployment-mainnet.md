@@ -2,6 +2,11 @@
 
 This guide walks through deploying OphirPay to Stellar Mainnet with PostgreSQL, Soroban contracts, Kubernetes, and monitoring.
 
+> 🚀 **Looking for the executable checklist?** Use the
+> [**Mainnet Deployment Runbook**](./MAINNET_RUNBOOK.md) — it consolidates this
+> guide into a step-by-step runbook with a pre-flight checklist (funding, WASM
+> hashes, contract IDs), rollback procedures, and post-deploy verification.
+
 ## Pre-Flight Checklist
 
 - [ ] Stellar Mainnet Horizon URL and Soroban RPC URL obtained
@@ -288,7 +293,11 @@ curl https://ophirpay.com/api/metrics
 Recommended alert thresholds:
 - **5xx error rate > 1%** → PagerDuty critical
 - **p99 latency > 2s** → Slack warning
-- **Webhook failure rate > 5%** → Slack warning
+- **Webhook sustained failure rate > 25% for 10m** → Slack warning. This is
+  measured from `ophirpay_delivery_final_outcomes_total{delivery_type="webhook"}`
+  and should be investigated alongside
+  `ophirpay_delivery_attempts_total{delivery_type="webhook"}` to distinguish
+  first-attempt endpoint failures from retry exhaustion.
 - **DB backup missed** → PagerDuty critical
 - **Restore drill failed** → PagerDuty critical
 

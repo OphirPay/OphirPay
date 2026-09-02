@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
@@ -10,7 +11,7 @@ import { withRequestLogging } from "@/lib/request-logging";
  * Reads from OphirPayContract.get_stats() on-chain.
  * Returns counters for payments, escrows, streams, batches, and total amounts.
  */
-export const GET = withRequestLogging(async function GET(request: Request) {
+export const GET = withMetrics("GET /api/stats", withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -40,4 +41,4 @@ export const GET = withRequestLogging(async function GET(request: Request) {
   } catch (err) {
     return handleApiError(err, "GET /api/stats");
   }
-});
+}));

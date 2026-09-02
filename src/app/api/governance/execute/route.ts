@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
@@ -12,7 +13,7 @@ import { withRequestLogging } from "@/lib/request-logging";
  * POST /api/governance/execute
  * Execute a passed governance proposal on-chain.
  */
-export const POST = withRequestLogging(async function POST(request: Request) {
+export const POST = withMetrics("POST /api/governance/execute", withRequestLogging(async function POST(request: Request) {
   try {
     const csrfError = verifyCsrf(request);
     if (csrfError) return csrfError;
@@ -43,4 +44,4 @@ export const POST = withRequestLogging(async function POST(request: Request) {
   } catch (error) {
     return handleApiError(error);
   }
-});
+}));

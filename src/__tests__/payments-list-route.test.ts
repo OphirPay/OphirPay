@@ -66,11 +66,14 @@ describe("GET /api/payments", () => {
         userId: "user-1",
         deletedAt: null,
         status: "COMPLETED",
+        // Issue #157: memo is ILIKE (case-insensitive contains), the
+        // transaction hash is an exact match.
         OR: [
           { description: { contains: "invoice" } },
-          { memo: { contains: "invoice" } },
-          { transactionHash: { contains: "invoice" } },
+          { memo: { contains: "invoice", mode: "insensitive" } },
+          { transactionHash: { equals: "invoice" } },
         ],
+        deletedAt: null,
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 51,

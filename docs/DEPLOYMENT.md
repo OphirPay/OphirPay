@@ -65,7 +65,9 @@ cp .env.example .env.local
 |---|---|---|
 | `NODE_ENV` | `development` | `production` for live deploys |
 | `DIRECT_DATABASE_URL` | — | Direct DB URL for Prisma migrations (when using connection pooling) |
-| `RATE_LIMIT_RPM` | `120` | Requests per minute per IP |
+| `RATE_LIMIT_RPM` | `120` | Requests per minute per IP (global proxy limit) |
+| `AUTH_RATE_LIMIT_IP_RPM` | `30` | Wallet-auth per-IP requests per minute (`/api/auth/challenge`, `/api/auth/session`) |
+| `AUTH_RATE_LIMIT_WALLET_RPM` | `10` | Wallet-auth per-account requests per minute (keyed by Stellar public key) |
 | `REDIS_URL` | — | Redis URL for distributed rate limiting |
 | `NEXT_PUBLIC_SENTRY_DSN` | — | Sentry error tracking DSN |
 | `NEXT_PUBLIC_DEMO_MODE` | `false` | Enable demo mode |

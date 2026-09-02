@@ -125,3 +125,37 @@ body {
   background: rgba(17, 24, 39, 0.7);
   border: 1px solid rgba(55, 65, 81, 0.3);
 }
+
+/* ── Reduced Motion Overrides ──────────────────────────────── */
+/* #202 — respect prefers-reduced-motion for all non-essential motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-in-up {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .animate-spin {
+    animation: none;
+  }
+
+  .animate-pulse {
+    animation: none;
+  }
+
+  .shimmer {
+    animation: none;
+    background-position: 0% 0%;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

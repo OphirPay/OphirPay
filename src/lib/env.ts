@@ -18,6 +18,10 @@ const envSchema = z.object({
   NEXT_PUBLIC_GA_ID: z.string().optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
   RATE_LIMIT_RPM: z.coerce.number().positive().default(120),
+  // Wallet-auth endpoints get stricter per-IP / per-account buckets on top of
+  // the global RATE_LIMIT_RPM (see src/lib/auth-rate-limit.ts).
+  AUTH_RATE_LIMIT_IP_RPM: z.coerce.number().positive().default(30),
+  AUTH_RATE_LIMIT_WALLET_RPM: z.coerce.number().positive().default(10),
   REDIS_URL: z.string().url().optional(),
   AUTH_SECRET: z.string().min(32).optional(), // required in production (see auth-session.ts)
   CRON_SECRET: z.string().min(16).optional(), // required for /api/cron (see app/api/cron/route.ts)
@@ -48,6 +52,8 @@ export function validateEnv(): Env {
       NEXT_PUBLIC_GA_ID: process.env.NEXT_PUBLIC_GA_ID,
       NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
       RATE_LIMIT_RPM: process.env.RATE_LIMIT_RPM,
+      AUTH_RATE_LIMIT_IP_RPM: process.env.AUTH_RATE_LIMIT_IP_RPM,
+      AUTH_RATE_LIMIT_WALLET_RPM: process.env.AUTH_RATE_LIMIT_WALLET_RPM,
       REDIS_URL: process.env.REDIS_URL,
       CRON_SECRET: process.env.CRON_SECRET,
       SCHEDULED_PAYMENTS_SOURCE_SECRET: process.env.SCHEDULED_PAYMENTS_SOURCE_SECRET,

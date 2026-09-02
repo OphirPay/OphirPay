@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+import { withMetrics } from "@/lib/metrics-middleware";
 
 import { successResponse, unauthorizedError, handleApiError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
@@ -18,7 +19,7 @@ function invalidateProposalCache(proposalId: number) {
  * POST /api/governance/vote — cast a vote on a proposal
  * Calls OphirPayContract.vote_on_proposal() on-chain.
  */
-export const POST = withRequestLogging(async function POST(request: Request) {
+export const POST = withMetrics("POST /api/governance/vote", withRequestLogging(async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -48,4 +49,4 @@ export const POST = withRequestLogging(async function POST(request: Request) {
   } catch (err) {
     return handleApiError(err, "POST /api/governance/vote");
   }
-});
+}));

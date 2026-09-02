@@ -112,16 +112,17 @@ function ToastViewport({
 
   return createPortal(
     <div
-      aria-live="polite"
-      aria-atomic="false"
       className="fixed bottom-4 right-4 z-[60] flex flex-col gap-2 w-full max-w-sm pointer-events-none"
     >
       {toasts.map((t) => {
         const styles = variantStyles[t.variant];
+        const isError = t.variant === "error";
         return (
           <div
             key={t.id}
-            role="status"
+            role={isError ? "alert" : "status"}
+            aria-live={isError ? "assertive" : "polite"}
+            aria-atomic="true"
             className="pointer-events-auto bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl p-4 flex items-start gap-3 animate-fade-in-up"
           >
             <svg

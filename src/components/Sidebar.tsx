@@ -32,6 +32,7 @@ const navItems = [
   { href: "/webhooks", label: "Webhooks", Icon: WebhookIcon },
   { href: "/contracts", label: "Contracts", Icon: ContractsIcon },
   { href: "/analytics", label: "Analytics", Icon: AnalyticsIcon },
+  { href: "/keys", label: "API Keys", Icon: ApiKeysIcon },
   { href: "/events", label: "Events", Icon: EventsIcon },
   { href: "/multisig", label: "Multisig", Icon: MultisigIcon },
   { href: "/governance", label: "Governance", Icon: GovernanceIcon },
@@ -46,6 +47,10 @@ const navItems = [
   { href: "/policy-versions", label: "Policy Versions", Icon: PolicyVersionsIcon },
   { href: "/keys", label: "API Keys", Icon: PolicyVersionsIcon },
 ];
+
+function ApiKeysIcon({ className }: { className?: string }) {
+  return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 19.5a7.5 7.5 0 0115 0M15 8.25l3 3m0 0l2.25-2.25M18 11.25l-2.25 2.25" /></svg>;
+}
 
 // Inline SVG icons for new feature pages
 function AddressBookIcon({ className }: { className?: string }) {

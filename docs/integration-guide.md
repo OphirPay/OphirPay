@@ -47,6 +47,16 @@ stellar contract invoke \
 
 ## Integration Patterns
 
+## API Key Usage
+
+The dashboard's **API Keys** view shows request totals for each key and its last-used time. The same data is available to an authenticated browser session through:
+
+```http
+GET /api/keys/stats?window=30d
+```
+
+`window` accepts `24h`, `7d`, or `30d` and defaults to `30d`. The response contains `keys`, where each item includes the key metadata, `total` (all recorded requests), and `window` (requests in the selected period). Only keys owned by the authenticated user are returned.
+
 ### Pattern 1: Record a Payment
 
 ```typescript

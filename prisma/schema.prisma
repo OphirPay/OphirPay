@@ -692,6 +692,7 @@ model ApiKey {
 
   /// Owner of this key (see User).
   user      User     @relation(fields: [userId], references: [id])
+  requestLogs ApiKeyRequestLog[]
 
   /// Speeds up "all keys for a user".
   @@index([userId])

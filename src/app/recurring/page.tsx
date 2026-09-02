@@ -48,12 +48,17 @@ export default function RecurringPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [editingRecurrence, setEditingRecurrence] = useState<Recurrence | null>(null);
 
   const [formName, setFormName] = useState("");
   const [formPayee, setFormPayee] = useState("");
   const [formAmount, setFormAmount] = useState("");
   const [formFrequency, setFormFrequency] = useState("DAILY");
   const [formDescription, setFormDescription] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [editFrequency, setEditFrequency] = useState("DAILY");
+  const [editNextRun, setEditNextRun] = useState("");
+  const [editDescription, setEditDescription] = useState("");
 
   const {
     data: rawRecurrences,
@@ -69,6 +74,14 @@ export default function RecurringPage() {
   const cancelMutation = useApiMutation<
     { id: string },
     { cancelled: boolean }
+  >((body) => `/api/recurring/${body.id}`, {
+    method: "PATCH",
+    invalidateKeys: [["recurring"]],
+  });
+
+  const editMutation = useApiMutation<
+    { id: string; amount?: number; nextRunAt?: string; frequency?: string; description?: string },
+    Recurrence
   >((body) => `/api/recurring/${body.id}`, {
     method: "PATCH",
     invalidateKeys: [["recurring"]],
@@ -130,6 +143,37 @@ export default function RecurringPage() {
     } catch (err) {
       const apiErr = err as ApiError;
       toast.error(apiErr.message || "Failed to cancel recurring payment");
+    }
+  };
+
+  const startEdit = (recurrence: Recurrence) => {
+    setEditingRecurrence(recurrence);
+    setEditAmount(recurrence.amount);
+    setEditFrequency(recurrence.frequency);
+    setEditNextRun(new Date(recurrence.nextRunAt).toISOString().slice(0, 16));
+    setEditDescription(recurrence.description ?? "");
+  };
+
+  const handleEdit = async () => {
+    if (!editingRecurrence) return;
+    const amountNum = parseFloat(editAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast.error("Please enter a valid amount greater than 0.");
+      return;
+    }
+    try {
+      await editMutation.mutateAsync({
+        id: editingRecurrence.id,
+        amount: amountNum,
+        frequency: editFrequency,
+        nextRunAt: new Date(editNextRun).toISOString(),
+        description: editDescription.trim() || undefined,
+      });
+      setEditingRecurrence(null);
+      toast.success("Recurring payment updated");
+    } catch (err) {
+      const apiErr = err as ApiError;
+      toast.error(apiErr.message || "Failed to update recurring payment");
     }
   };
 
@@ -234,6 +278,11 @@ export default function RecurringPage() {
                     Cancel
                   </Button>
                 )}
+                {rp.isActive && (
+                  <Button size="sm" variant="secondary" onClick={() => startEdit(rp)}>
+                    Edit
+                  </Button>
+                )}
               </div>
             </Card>
           ))}
@@ -283,6 +332,38 @@ export default function RecurringPage() {
           )}
 
           <Button onClick={handleCreate} loading={submitting} className="w-full" data-testid="recurring-create-btn">Create Recurring Payment</Button>
+        </div>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal
+        open={editingRecurrence !== null}
+        onClose={() => setEditingRecurrence(null)}
+        title="Edit Recurring Payment"
+        description="Update the amount, schedule, or note before the next run."
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount</label>
+            <input type="number" min="0.0000001" step="0.0000001" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" placeholder="50.00" data-testid="recurring-edit-amount-input" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Frequency</label>
+            <select value={editFrequency} onChange={(e) => setEditFrequency(e.target.value)} className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" data-testid="recurring-edit-frequency-input">
+              {FREQUENCY_OPTIONS.map((f) => (
+                <option key={f} value={f}>{FREQUENCY_LABELS[f]}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Next Run</label>
+            <input type="datetime-local" value={editNextRun} onChange={(e) => setEditNextRun(e.target.value)} className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" data-testid="recurring-edit-nextrun-input" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" placeholder="e.g. Automatic rent payment" data-testid="recurring-edit-description-input" />
+          </div>
+          <Button onClick={handleEdit} loading={editMutation.isPending} className="w-full" data-testid="recurring-edit-save-btn">Save Changes</Button>
         </div>
       </Modal>
     </div>

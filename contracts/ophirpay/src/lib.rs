@@ -3683,6 +3683,74 @@ impl OphirPayContract {
         Ok(())
     }
 
+    /// Update an active recurring payment schedule before it executes.
+    /// Only the creator or contract owner may edit. Fields set to None
+    /// keep their current values.
+    pub fn update_recurring(
+        env: Env,
+        caller: Address,
+        recurring_id: u64,
+        amount: Option<i128>,
+        next_execution: Option<u64>,
+        remaining: Option<u32>,
+        metadata: Option<String>,
+    ) -> Result<(), PaymentError> {
+        caller.require_auth();
+        require_not_paused(&env)?;
+
+        let mut recurring: RecurringPayment = env
+            .storage()
+            .persistent()
+            .get(&(RECURRING_KEY, recurring_id))
+            .ok_or(PaymentError::RecurringNotFound)?;
+
+        if !recurring.active {
+            return Err(PaymentError::RecurringAlreadyCancelled);
+        }
+
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&OWNER)
+            .ok_or(PaymentError::NotInitialized)?;
+        if caller != recurring.creator && caller != owner {
+            return Err(PaymentError::Unauthorized);
+        }
+
+        if let Some(amount) = amount {
+            if amount <= 0 {
+                return Err(PaymentError::InvalidAmount);
+            }
+            recurring.amount = amount;
+        }
+        if let Some(next_execution) = next_execution {
+            recurring.next_execution = next_execution;
+        }
+        if let Some(remaining) = remaining {
+            recurring.remaining = remaining;
+        }
+        if let Some(metadata) = metadata {
+            recurring.metadata = metadata;
+        }
+
+        env.storage()
+            .persistent()
+            .set(&(RECURRING_KEY, recurring_id), &recurring);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(RECURRING_KEY, recurring_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        record_audit(
+            &env,
+            "recurring_updated",
+            &caller,
+            recurring_id,
+            "Recurring payment updated",
+        );
+
+        Ok(())
+    }
+
     /// Get a recurring payment schedule by ID.
     pub fn get_recurring(env: Env, recurring_id: u64) -> Result<RecurringPayment, PaymentError> {
         env.storage()
@@ -5158,6 +5226,115 @@ mod tests {
         client.cancel_recurring(&creator, &id);
         let rec = client.get_recurring(&id);
         assert!(!rec.active);
+    }
+
+    #[test]
+    fn test_update_recurring_payment() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+
+        let id = client.create_recurring(
+            &creator,
+            &payee,
+            &100i128,
+            &sac,
+            &ScheduleType::Daily,
+            &10u32,
+            &String::from_str(&env, "sub"),
+        );
+
+        client.update_recurring(
+            &creator,
+            &id,
+            &Some(200i128),
+            &Some(now + 86400),
+            &Some(5u32),
+            &Some(String::from_str(&env, "updated")),
+        );
+
+        let rec = client.get_recurring(&id);
+        assert_eq!(rec.amount, 200);
+        assert_eq!(rec.next_execution, now + 86400);
+        assert_eq!(rec.remaining, 5);
+        assert_eq!(rec.metadata, String::from_str(&env, "updated"));
+    }
+
+    #[test]
+    fn test_update_recurring_unauthorized_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let attacker = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        let id = client.create_recurring(
+            &creator,
+            &payee,
+            &100i128,
+            &sac,
+            &ScheduleType::Daily,
+            &10u32,
+            &String::from_str(&env, "sub"),
+        );
+
+        let result = client.try_update_recurring(
+            &attacker,
+            &id,
+            &Some(200i128),
+            &None,
+            &None,
+            &None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_cancelled_recurring_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        let id = client.create_recurring(
+            &creator,
+            &payee,
+            &100i128,
+            &sac,
+            &ScheduleType::Daily,
+            &10u32,
+            &String::from_str(&env, "sub"),
+        );
+
+        client.cancel_recurring(&creator, &id);
+
+        let result = client.try_update_recurring(
+            &creator,
+            &id,
+            &Some(200i128),
+            &None,
+            &None,
+            &None,
+        );
+        assert!(result.is_err());
     }
 
     // ── Fee Config Tests ───────────────────────────────────

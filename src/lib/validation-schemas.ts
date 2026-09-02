@@ -204,9 +204,21 @@ export const createRecurringSchema = z.object({
   frequency: z.enum(["DAILY", "WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]),
   amount: z.number().positive(),
   assetCode: z.string().default("XLM"),
+  assetIssuer: z.string().optional(),
   destAddress: stellarAddress,
   description: z.string().max(500).optional(),
   sourceAccountId: z.string().min(1),
+});
+
+export const updateRecurringSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  amount: z.number().positive().optional(),
+  assetCode: z.string().min(1).max(12).optional(),
+  assetIssuer: z.string().optional(),
+  destAddress: stellarAddress.optional(),
+  description: z.string().max(500).optional(),
+  frequency: z.enum(["DAILY", "WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]).optional(),
+  nextRunAt: z.string().datetime().optional(),
 });
 
 // ── Webhook Schemas ───────────────────────────────────────────

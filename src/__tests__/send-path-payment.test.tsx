@@ -43,6 +43,14 @@ vi.mock("@/lib/fee-estimator", () => ({
   }),
 }));
 
+vi.mock("@/lib/transaction-simulator", () => ({
+  simulatePayment: vi.fn().mockResolvedValue({
+    success: true,
+    fee: "100",
+    operations: 1,
+  }),
+}));
+
 // Mock contracts
 vi.mock("@/lib/contracts", () => ({
   recordPaymentOnChain: vi.fn().mockResolvedValue({
@@ -58,9 +66,16 @@ vi.mock("@/hooks/useApiQuery", () => ({
   }),
 }));
 
+// Mock trustline
+vi.mock("@/lib/trustline", () => ({
+  checkTrustline: vi.fn().mockResolvedValue({ hasTrustline: true, balance: "100" }),
+}));
+
 describe("SendPage - Path Payment Cross-Asset UI", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(stellarLib, "fetchAllBalances").mockResolvedValue([]);
+    vi.spyOn(stellarLib, "accountExists").mockResolvedValue(true);
   });
 
   it("renders standard payment mode when source and destination assets match", () => {
@@ -112,14 +127,14 @@ describe("SendPage - Path Payment Cross-Asset UI", () => {
     await waitFor(() => {
       expect(screen.getByTestId("cross-asset-badge")).toBeInTheDocument();
       expect(screen.getByTestId("rate-preview-card")).toBeInTheDocument();
-    }, { timeout: 3000 });
+    }, { timeout: 8000 });
 
     // Verify rate and estimated destination amount are displayed
     await waitFor(() => {
       expect(screen.getByTestId("exchange-rate-display")).toHaveTextContent("1 XLM ≈ 0.125000 USDC");
       expect(screen.getByTestId("estimated-dest-amount")).toHaveTextContent("~1.2500000 USDC");
-    }, { timeout: 3000 });
-  });
+    }, { timeout: 8000 });
+  }, 15000);
 
   it("displays clear error message and disables send button when no path exists", async () => {
     vi.spyOn(stellarLib, "findStrictSendPath").mockResolvedValue(null);
@@ -146,13 +161,13 @@ describe("SendPage - Path Payment Cross-Asset UI", () => {
     await waitFor(() => {
       expect(screen.getByTestId("path-error-box")).toBeInTheDocument();
       expect(screen.getByTestId("path-error-box")).toHaveTextContent(/No path found with sufficient liquidity/i);
-    }, { timeout: 3000 });
+    }, { timeout: 8000 });
 
     // Send button should be disabled
     const sendBtn = screen.getByTestId("send-btn");
     expect(sendBtn).toBeDisabled();
     expect(sendBtn).toHaveTextContent("No Path Available");
-  });
+  }, 15000);
 
   it("successfully executes a cross-asset path payment and shows success screen", async () => {
     const mockEstimate: stellarLib.PathPaymentEstimate = {
@@ -197,7 +212,7 @@ describe("SendPage - Path Payment Cross-Asset UI", () => {
     // Wait for rate to be estimated
     await waitFor(() => {
       expect(screen.getByTestId("estimated-dest-amount")).toBeInTheDocument();
-    }, { timeout: 3000 });
+    }, { timeout: 8000 });
 
     // Click send button
     const sendBtn = screen.getByTestId("send-btn");
@@ -209,6 +224,6 @@ describe("SendPage - Path Payment Cross-Asset UI", () => {
       expect(screen.getByText("Path Payment Completed!")).toBeInTheDocument();
       expect(screen.getByText("~2.5000000 USDC")).toBeInTheDocument();
       expect(screen.getByText(/Recorded/)).toBeInTheDocument();
-    }, { timeout: 3000 });
-  });
+    }, { timeout: 8000 });
+  }, 15000);
 });

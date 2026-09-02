@@ -25,6 +25,7 @@ import { isValidStellarAddress } from "@/lib/stellar";
 import { successResponse, badRequestError, unauthorizedError } from "@/lib/api-response";
 import { verifyCsrf } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
+import { enforceAuthRateLimit } from "@/lib/auth-rate-limit";
 
 export const POST = withMetrics("POST /api/auth/session", withRequestLogging(async function POST(request: Request) {
   const csrfError = verifyCsrf(request);
@@ -40,6 +41,12 @@ export const POST = withMetrics("POST /api/auth/session", withRequestLogging(asy
       "A valid Stellar public key (G...) is required to open a session."
     );
   }
+
+  // Rate limit per IP and per wallet BEFORE any signature verification or
+  // session issuance — throttled clients never reach the expensive proof-of-
+  // ownership work (lib/auth-rate-limit.ts).
+  const rateLimited = await enforceAuthRateLimit(request, { publicKey });
+  if (rateLimited) return rateLimited;
 
   const network = body?.network === "PUBLIC" ? "PUBLIC" : "TESTNET";
 
@@ -83,7 +90,14 @@ export const POST = withMetrics("POST /api/auth/session", withRequestLogging(asy
   return response;
 }));
 
-export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging(async function DELETE() {
+export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging(async function DELETE(request: Request) {
+  const csrfError = verifyCsrf(request);
+  if (csrfError) return csrfError;
+
+  // Logout is cheap, but still bounded per IP to stop cookie-flooding.
+  const rateLimited = await enforceAuthRateLimit(request);
+  if (rateLimited) return rateLimited;
+
   const response = successResponse({ authenticated: false });
   response.headers.set("Set-Cookie", buildLogoutCookie());
   return response;

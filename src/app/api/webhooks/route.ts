@@ -75,6 +75,39 @@ export const POST = withMetrics("POST /api/webhooks", withRequestLogging(async f
   }
 }));
 
+// ── PATCH /api/webhooks?id=... (rotate secret) ────────────────
+
+export async function PATCH(request: Request) {
+  try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
+    const auth = await getAuthContext(request);
+    if (!auth) return unauthorizedError("Authentication required.");
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) return badRequestError("Webhook ID is required");
+
+    // Rotate the HMAC signing secret. Replacing the stored secret revokes the
+    // old one immediately: the dispatcher signs every delivery with whatever
+    // is in the DB, so the previous value stops validating right away.
+    const newSecret = crypto.randomBytes(32).toString("hex");
+    const result = await prisma.webhook.updateMany({
+      where: { id, userId: auth.userId }, // scoped — only the owner's webhook
+      data: { secret: newSecret },
+    });
+    if (result.count === 0) return badRequestError("Webhook not found");
+
+    logger.info("Webhook secret rotated", { id });
+
+    // The new secret is returned exactly once, mirroring POST /api/webhooks.
+    return successResponse({ id, secret: newSecret });
+  } catch (err) {
+    return handleApiError(err, "PATCH /api/webhooks");
+  }
+}
+
 // ── DELETE /api/webhooks?id=... ────────────────────────────────
 
 export const DELETE = withMetrics("DELETE /api/webhooks", withRequestLogging(async function DELETE(request: Request) {

@@ -170,6 +170,40 @@ describe('helper response functions', () => {
     expect(json.error.code).toBe('RATE_LIMITED');
   });
 
+  it('rateLimitError sets 429 status', async () => {
+    const res = rateLimitError();
+    expect(res.status).toBe(429);
+  });
+
+  it('rateLimitError omits Retry-After when not provided', async () => {
+    const res = rateLimitError();
+    expect(res.headers.get('Retry-After')).toBeNull();
+  });
+
+  it('rateLimitError includes Retry-After when provided', async () => {
+    const res = rateLimitError('Slow down', 42);
+    expect(res.headers.get('Retry-After')).toBe('42');
+    const json = await res.json();
+    expect(json.error.code).toBe('RATE_LIMITED');
+    expect(json.error.message).toBe('Slow down');
+  });
+
+  it('rateLimitError floors fractional retry seconds', async () => {
+    const res = rateLimitError('Slow down', 12.9);
+    expect(res.headers.get('Retry-After')).toBe('12');
+  });
+
+  it('rateLimitError clamps negative retry seconds to 0', async () => {
+    const res = rateLimitError('Slow down', -5);
+    expect(res.headers.get('Retry-After')).toBe('0');
+  });
+
+  it('rateLimitError merges extra headers', async () => {
+    const res = rateLimitError('Slow down', 10, { 'X-Request-Id': 'req_1' });
+    expect(res.headers.get('Retry-After')).toBe('10');
+    expect(res.headers.get('X-Request-Id')).toBe('req_1');
+  });
+
   it('conflictError', async () => {
     const res = conflictError('Already exists');
     const json = await res.json();

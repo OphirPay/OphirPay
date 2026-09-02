@@ -59,5 +59,11 @@
     "autoAlias": true,
     "silent": false,
     "productionBranch": "main"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/scheduled/run",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

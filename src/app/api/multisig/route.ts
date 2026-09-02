@@ -3,6 +3,7 @@ import { withMetrics } from "@/lib/metrics-middleware";
 
 import { successResponse, handleApiError, badRequestError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { setMultisigConfig } from "@/lib/contract-advanced";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -48,6 +49,9 @@ export const GET = withMetrics("GET /api/multisig", withRequestLogging(async fun
  */
 export const POST = withMetrics("POST /api/multisig", withRequestLogging(async function POST(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) {
       return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");

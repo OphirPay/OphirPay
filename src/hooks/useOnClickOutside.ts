@@ -7,6 +7,24 @@ import { useEffect, useRef, type RefObject } from "react";
 /**
  * Detects clicks outside of the given ref element and calls the callback.
  * Useful for dropdowns, modals, and popovers.
+ *
+ * @example
+ * Close a payment-details dropdown when the user clicks elsewhere:
+ *
+ * ```tsx
+ * function RecipientMenu() {
+ *   const ref = useRef<HTMLDivElement>(null);
+ *   const [open, setOpen] = useState(false);
+ *   useOnClickOutside(ref, () => setOpen(false), open);
+ *
+ *   return (
+ *     <div ref={ref}>
+ *       <button onClick={() => setOpen((o) => !o)}>⋯</button>
+ *       {open && <ul>…</ul>}
+ *     </div>
+ *   );
+ * }
+ * ```
  */
 export function useOnClickOutside<T extends HTMLElement>(
   ref: RefObject<T | null>,

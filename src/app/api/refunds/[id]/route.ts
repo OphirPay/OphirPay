@@ -45,6 +45,16 @@ export const PATCH = withMetrics("PATCH /api/refunds/[id]", withRequestLogging(a
     });
     if (result.count === 0) return badRequestError("Refund not found");
 
+    // Persisted audit trail entry for the lifecycle transition (issue #365).
+    await prisma.auditLog.create({
+      data: {
+        action: "refund:status",
+        actor: auth.userId,
+        target: id,
+        details: { status: parsed.data.status },
+      },
+    });
+
     return successResponse({ updated: true });
   } catch (err) {
     return handleApiError(err, "PATCH /api/refunds/[id]");

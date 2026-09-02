@@ -120,25 +120,40 @@ X-OphirPay-Event: payment_recorded
 }
 ```
 
-The signature is HMAC-SHA256 (hex) over the payload **without** the
-`signature` field, using the secret returned when you registered the
+The signature is HMAC-SHA256 (hex) over the payload with the `signature`
+field **emptied** (set to `""`, the key is kept) and re-serialized with
+stable key order — using the secret returned when you registered the
 webhook. The same value is mirrored in the `X-OphirPay-Signature` header for
-convenience. Verify by recomputing:
+convenience. Verify by recomputing over the exact canonical form:
 
 ```typescript
 import { createHmac, timingSafeEqual } from "crypto";
 
 const received = await request.json();
-const { signature, ...payload } = received; // strip signature before signing
+// Canonicalize: empty the signature field (keep the key, set it to "") and
+// re-serialize with the received key order — matches buildSignedPayload.
+const canonical = JSON.stringify({ ...received, signature: "" });
 const expected = createHmac("sha256", yourSecret)
-  .update(JSON.stringify(payload))
+  .update(canonical)
   .digest("hex");
-const ok = signature.length === expected.length &&
-  timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+const provided = request.headers.get("x-ophirpay-signature") ?? "";
+const ok = provided.length === expected.length &&
+  timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
 ```
 
-Always compare with a constant-time comparison (`timingSafeEqual`) and
-reject requests missing a valid signature.
+Always compare with a constant-time comparison (`timingSafeEqual`), verify
+against the **header** value, and reject requests missing a valid signature.
+See [Webhook Signature Verification](webhook-verification.md) for the exact
+canonical form, replay protection, and runnable Node/Python reference
+implementations.
+
+### Rotating your webhook secret
+
+Secrets can be rotated from the Webhooks page (or via `PATCH /api/webhooks?id=...`).
+Rotating revokes the previous secret **immediately** — the next delivery is
+signed with the new secret, so any receiver still verifying with the old value
+will reject it. Before rotating, make sure your endpoint's stored secret is easy
+to update, and save the new secret right away: it is shown only once.
 
 ### Webhook Event Types
 
@@ -156,6 +171,32 @@ Payments emit lifecycle events as they progress through their lifecycle:
 Batches, recurrences, and payment requests emit their own events
 (`batch.*`, `recurrence.*`, `request.*`). Subscribe to any subset of these
 event types when registering a webhook.
+
+### Replaying Missed Events
+
+If your endpoint was down during an outage, replay stored events from the
+last 7 days:
+
+```typescript
+const res = await fetch("/api/webhooks/<webhook-id>/replay", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: "Bearer <api-key>",
+    "x-csrf-token": "<csrf-token>",
+  },
+  body: JSON.stringify({
+    since: "2026-08-19T00:00:00Z", // optional, clamped to 7-day window
+    until: "2026-08-26T00:00:00Z", // optional, defaults to now
+    limit: 50,                     // optional, max 100
+  }),
+});
+const { data } = await res.json();
+// { replayBatchId, selected, succeeded, failed, window }
+```
+
+Each replay attempt is recorded as a delivery. View history at
+`GET /api/webhooks/<webhook-id>/deliveries` or in the Webhooks dashboard.
 
 ## Available Contract Functions
 
@@ -210,6 +251,45 @@ event types when registering a webhook.
 | `accept_ownership` | Accept pending ownership |
 | `set_fee_config` | Configure platform fees per operation |
 
+## Rate Limiting
+
+API requests are rate limited per client IP to protect the service. When a
+client exceeds the limit, the API responds with HTTP `429 Too Many Requests`.
+
+### Response Shape
+
+The 429 response uses the standard error envelope:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Too many requests. Please try again later."
+  },
+  "timestamp": "2026-08-26T00:00:00.000Z"
+}
+```
+
+### Headers
+
+| Header | Description |
+|---|---|
+| `Retry-After` | Seconds (integer) until the current window resets. Clients should wait this long before retrying. |
+| `X-RateLimit-Limit` | Maximum requests allowed in the current window. |
+| `X-RateLimit-Remaining` | Requests remaining in the current window. |
+| `X-RateLimit-Reset` | Unix timestamp (seconds) when the window resets. |
+
+The limit is configurable via the `RATE_LIMIT_RPM` environment variable
+(default: 120 requests per minute per IP). Health (`/api/health`) and metrics
+(`/api/metrics`) endpoints are excluded from rate limiting.
+
+### Backing Off
+
+Respect the `Retry-After` header: wait at least the indicated number of seconds
+before retrying. Repeatedly ignoring it will keep returning `429`. For bursty
+workloads, implement exponential backoff starting from the `Retry-After` value.
+
 ## Environment Variables
 
 | Variable | Required | Description |
@@ -247,5 +327,6 @@ npx playwright test
 
 - [Open an issue](https://github.com/OphirPay/OphirPay/issues/new?template=bug_report.yml)
 - [Read the architecture guide](./architecture.md)
+- [Read the API endpoint conventions guide](./API_GUIDE.md) — the reference for adding or modifying API endpoints
 - [View the mainnet deployment guide](./deployment-mainnet.md)
 - [Check SUPPORT.md](../.github/SUPPORT.md)

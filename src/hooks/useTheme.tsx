@@ -3,6 +3,25 @@
 /**
  * Theme context provider and useTheme hook.
  * Supports light/dark/system mode with localStorage persistence.
+ *
+ * @example
+ * Wrap your app tree once, then read and toggle the theme anywhere:
+ *
+ * ```tsx
+ * // app/layout.tsx (root layout)
+ * export default function RootLayout({ children }) {
+ *   return <ThemeProvider>{children}</ThemeProvider>;
+ * }
+ *
+ * function ThemeToggle() {
+ *   const { theme, resolved, toggle } = useTheme();
+ *   return (
+ *     <button onClick={toggle} aria-label="Toggle theme">
+ *       {resolved === "dark" ? "🌙" : "☀️"} ({theme})
+ *     </button>
+ *   );
+ * }
+ * ```
  */
 "use client";
 

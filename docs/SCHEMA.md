@@ -292,6 +292,12 @@ The schema defines the following indexes for query performance:
 
 ---
 
+## 📚 Migration Workflow & Safe Deployment
+
+For a detailed guide on authoring, testing, and safely applying Prisma migrations without table locks (including the `CREATE INDEX CONCURRENTLY` caveat), see **[Database Schema & Migration Guide](./DATABASE_SCHEMA_MIGRATIONS.md)**.
+
+---
+
 <div align="center">
 
 **[← Back to OphirPay README](../README.md)**

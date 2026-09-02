@@ -13,6 +13,7 @@ import {
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 
 /**
  * POST /api/payments/retry
@@ -26,6 +27,9 @@ import { getAuthContext } from "@/lib/auth-session";
  */
 export async function POST(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) {
       return unauthorizedError(

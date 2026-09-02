@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
+import type { PaymentStatus } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { createBatchSchema, paginationSchema } from "@/lib/validation-schemas";
+import { createBatchSchema, idempotencyKeySchema, paginationSchema } from "@/lib/validation-schemas";
 import {
   successResponse,
   validationError,
   badRequestError,
   unauthorizedError,
+  conflictError,
   handleApiError,
 } from "@/lib/api-response";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { incMetric } from "@/lib/metrics-counters";
 import {
   buildCursorWhere,
@@ -96,10 +99,63 @@ export const GET = withMetrics("GET /api/batches", withRequestLogging(async func
   }
 }));
 
-// ── POST /api/batches — Create a new batch ──────────────────
+// ── POST /api/batches — Create a new batch (idempotent) ──────
+
+const IDEMPOTENCY_HEADER = "Idempotency-Key";
+
+/** True when `err` is a Prisma unique-constraint violation (P2002). */
+function isUniqueConstraintError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: unknown }).code === "P2002"
+  );
+}
+
+/**
+ * True for a Prisma P2002 (unique constraint) error. Detected by code rather
+ * than `instanceof` so it also fires for the error shape serialized across
+ * runtime boundaries, and it lets tests simulate the race cheaply.
+ */
+function isUniqueConstraintViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: unknown }).code === "P2002"
+  );
+}
+
+/** Shared shape for the child payments created with a batch. */
+function paymentCreateData(
+  payments: Array<{ amount: number; memo?: string; assetCode?: string }>,
+  batchId: string,
+  userId: string
+) {
+  return payments.map((p) => ({
+    amount: p.amount,
+    assetCode: p.assetCode || "XLM",
+    memo: p.memo || "",
+    // Child payments start as CREATED — they are never completed here.
+    status: "CREATED" as PaymentStatus,
+    userId,
+    batchId,
+  }));
+}
+
+async function fetchBatchWithPayments(batchId: string) {
+  return prisma.batch.findUnique({
+    where: { id: batchId },
+    include: { payments: true },
+  });
+}
 
 export const POST = withMetrics("POST /api/batches", withRequestLogging(async function POST(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) {
       return unauthorizedError(
@@ -107,41 +163,25 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
       );
     }
 
-    const body = await request.json();
+    const batch = result.returnValue as Record<string, unknown>;
 
-    const parsed = createBatchSchema.safeParse(body);
-    if (!parsed.success) {
-      return validationError(parsed.error);
+    // Optionally include batch payments
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get("payments") === "true") {
+      const paymentsResult = await simulateContractCall(
+        DEFAULT_CONTRACT_ID,
+        "get_payments_by_batch",
+        CHAIN_READ_SOURCE,
+        [nativeToScVal(batchId, { type: "u64" })]
+      );
+      return successResponse({
+        ...batch,
+        payments: paymentsResult.status === "SIMULATION_FAILED" ? [] : paymentsResult.returnValue,
+      });
     }
 
-    const { name, description, recipients: payments } = parsed.data;
-    const { userId } = auth;
-
-    const batch = await prisma.batch.create({
-      data: { name, description, userId },
-    });
-
-    // Create child payments — status is CREATED (not COMPLETED)
-    await prisma.payment.createMany({
-      data: payments.map((p) => ({
-        amount: p.amount,
-        assetCode: p.assetCode || "XLM",
-        memo: p.memo || "",
-        status: "CREATED",
-        userId,
-        batchId: batch.id,
-      })),
-    });
-
-    const result = await prisma.batch.findUnique({
-      where: { id: batch.id },
-      include: { payments: true },
-    });
-
-    incMetric("batches_processed_total");
-
-    return successResponse(result, { timestamp: new Date().toISOString() }, 201);
+    return successResponse(batch);
   } catch (err) {
-    return handleApiError(err, "POST /api/batches");
+    return handleApiError(err, "GET /api/batches/[id]");
   }
 }));

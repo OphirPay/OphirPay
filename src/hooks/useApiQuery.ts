@@ -100,6 +100,24 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
  * Pass an optional `queryFn` to read from a non-REST source (e.g. on-chain
  * contract reads via Soroban simulation) while keeping the same cache
  * key/invalidation semantics.
+ *
+ * @example
+ * Fetch the user's payments with proper query-key caching:
+ *
+ * ```tsx
+ * function RecentPayments() {
+ *   const { data, isLoading, isError } = useApiQuery<Payment[]>(
+ *     ["payments"],
+ *     "/api/payments",
+ *   );
+ *
+ *   if (isLoading) return <Skeleton />;
+ *   if (isError) return <Alert>Failed to load payments</Alert>;
+ *   return (
+ *     <ul>{data?.map((p) => <li key={p.id}>{formatAmount(p.amount)}</li>)}</ul>
+ *   );
+ * }
+ * ```
  */
 export function useApiQuery<T>(
   key: string[],
@@ -136,6 +154,21 @@ export interface ApiMutationOptions {
  * useful for DELETE/PATCH routes that identify the resource in the query
  * string or path (e.g. `/api/webhooks?id=${body.id}`).
  * Automatically invalidates cached queries on success so data refreshes.
+ *
+ * @example
+ * Record a payment and refresh the dashboard caches on success. The body type
+ * `TBody` and response type `TResponse` are inferred from the URL/response:
+ *
+ * ```tsx
+ * const recordPayment = useApiMutation<{ amount: number }, { id: string }>(
+ *   "/api/payments",
+ *   { invalidateKeys: [["payments"], ["dashboard"]] },
+ * );
+ *
+ * async function submit() {
+ *   await recordPayment.mutateAsync({ amount: 5 });
+ * }
+ * ```
  */
 export function useApiMutation<TBody, TResponse>(
   url: string | ((body: TBody) => string),

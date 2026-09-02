@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { useState } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -127,6 +128,88 @@ describe("Modal", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("restores focus to the trigger element when closed via Escape", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open modal
+          </button>
+          <Modal open={open} onClose={() => setOpen(false)} title="Dialog">
+            Content
+          </Modal>
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: /open modal/i });
+    trigger.focus();
+
+    fireEvent.click(trigger);
+    // Focus moves into the dialog (the inner tabindex=-1 container)
+    await waitFor(() =>
+      expect(screen.getByRole("dialog").querySelector('[tabindex="-1"]')).toHaveFocus()
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("keeps focus inside the dialog when the onClose identity changes mid-open", async () => {
+    // Regression: the production caller (e.g. WalletButton) recreates onClose
+    // on connection-state changes. The focus/keydown effect must not tear down
+    // and restore focus to the trigger while the dialog remains open.
+    function Harness({ onClose }: { onClose: () => void }) {
+      return <Modal open onClose={onClose} title="Dialog">Content</Modal>;
+    }
+
+    const { rerender } = render(<Harness onClose={() => {}} />);
+    const dialog = screen.getByRole("dialog");
+    const inner = dialog.querySelector('[tabindex="-1"]') as HTMLElement;
+    await waitFor(() => expect(inner).toHaveFocus());
+
+    // Caller re-renders with a brand-new onClose closure — same as when
+    // connection state changes in WalletButton.
+    rerender(<Harness onClose={() => {}} />);
+
+    expect(inner).toHaveFocus();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it("restores focus to the trigger element when closed via the close button", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open modal
+          </button>
+          <Modal open={open} onClose={() => setOpen(false)} title="Dialog">
+            Content
+          </Modal>
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: /open modal/i });
+    trigger.focus();
+
+    fireEvent.click(trigger);
+    await waitFor(() =>
+      expect(screen.getByRole("dialog").querySelector('[tabindex="-1"]')).toHaveFocus()
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /close dialog/i }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
   it("pushes a history entry so the back button can close it", () => {
     render(<Modal open onClose={() => {}}>Content</Modal>);
     expect(window.history.state?.ophirPayModal).toBe(true);
@@ -137,6 +220,101 @@ describe("Modal", () => {
     render(<Modal open onClose={onClose}>Content</Modal>);
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("moves focus to the first interactive element when opened", () => {
+    render(
+      <Modal open onClose={() => {}}>
+        <button>First Action</button>
+        <button>Second Action</button>
+      </Modal>
+    );
+    expect(screen.getByRole("button", { name: /first action/i })).toHaveFocus();
+  });
+
+  it("cycles focus with Tab and Shift+Tab within the dialog", () => {
+    render(
+      <Modal open onClose={() => {}}>
+        <button>First</button>
+        <button>Middle</button>
+        <button>Last</button>
+      </Modal>
+    );
+    const first = screen.getByRole("button", { name: "First" });
+    const middle = screen.getByRole("button", { name: "Middle" });
+    const last = screen.getByRole("button", { name: "Last" });
+
+    // Shift+Tab from the first element wraps to the last
+    first.focus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(last).toHaveFocus();
+
+    // Tab from the last element wraps to the first
+    last.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(first).toHaveFocus();
+
+    // Elements between the boundaries receive focus as usual
+    expect(middle).toBeInTheDocument();
+  });
+
+  it("redirects focus back into the dialog if it escapes", () => {
+    render(
+      <>
+        <button>Outside</button>
+        <Modal open onClose={() => {}}>
+          <button>Inside</button>
+        </Modal>
+      </>
+    );
+    const inside = screen.getByRole("button", { name: "Inside" });
+    screen.getByRole("button", { name: "Outside" }).focus();
+    expect(inside).toHaveFocus();
+  });
+
+  it("restores focus to the trigger element when closed", () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>Open modal</button>
+          <Modal open={open} onClose={() => setOpen(false)}>
+            <button>Inside</button>
+          </Modal>
+        </>
+      );
+    }
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: /open modal/i });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("button", { name: "Inside" })).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(trigger).toHaveFocus();
+  });
+
+  it("keeps focus in the dialog when the parent re-renders", () => {
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      const [value, setValue] = useState(0);
+      return (
+        <>
+          <button onClick={() => setOpen(false)}>Close</button>
+          <Modal open={open} onClose={() => setOpen(false)} title="Amount">
+            <input
+              aria-label="Amount input"
+              value={value}
+              onChange={(e) => setValue(Number(e.target.value))}
+            />
+          </Modal>
+        </>
+      );
+    }
+    render(<Harness />);
+    const input = screen.getByLabelText("Amount input");
+    input.focus();
+    fireEvent.change(input, { target: { value: 5 } });
+    expect(input).toHaveFocus();
   });
 });
 

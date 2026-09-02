@@ -2,11 +2,20 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
+
+vi.mock("@/lib/webhook-url-guard", () => ({
+  isSafeWebhookUrlAtDelivery: vi.fn(async (url: string) => !url.includes("127.0.0.1")),
+}));
+
 import {
   signWebhookPayload,
   buildSignedPayload,
   deliverWebhook,
 } from "@/lib/webhook-deliver";
+import {
+  getMetricsSnapshot,
+  resetMetricsForTest,
+} from "@/lib/metrics-counters";
 
 const SECRET = "test-secret-0123456789";
 
@@ -63,6 +72,7 @@ describe("deliverWebhook", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetMetricsForTest();
   });
 
   afterEach(() => {
@@ -77,7 +87,7 @@ describe("deliverWebhook", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 1);
-    expect(ok).toBe(true);
+    expect(ok.success).toBe(true);
 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://example.com/hook");
@@ -87,6 +97,19 @@ describe("deliverWebhook", () => {
     expect(body.event).toBe("payment.created");
     expect(body.signature).toMatch(/^[a-f0-9]{64}$/);
     expect((init.headers as Record<string, string>)["X-OphirPay-Signature"]).toBe(body.signature);
+
+    const metrics = getMetricsSnapshot();
+    expect(metrics.delivery_attempts).toEqual([
+      { delivery_type: "webhook", attempt_number: 1, count: 1 },
+    ]);
+    expect(metrics.delivery_final_outcomes).toEqual([
+      {
+        delivery_type: "webhook",
+        attempt_number: 1,
+        final_outcome: "success",
+        count: 1,
+      },
+    ]);
   });
 
   it("treats a 3xx redirect response as a failure (never follows it)", async () => {
@@ -98,8 +121,21 @@ describe("deliverWebhook", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 1);
-    expect(ok).toBe(false);
+    expect(ok.success).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const metrics = getMetricsSnapshot();
+    expect(metrics.delivery_attempts).toEqual([
+      { delivery_type: "webhook", attempt_number: 1, count: 1 },
+    ]);
+    expect(metrics.delivery_final_outcomes).toEqual([
+      {
+        delivery_type: "webhook",
+        attempt_number: 1,
+        final_outcome: "failure",
+        count: 1,
+      },
+    ]);
   });
 
   it("returns false when the destination fails the delivery-time guard", async () => {
@@ -107,7 +143,44 @@ describe("deliverWebhook", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     // Loopback URL is blocked by the guard before any fetch happens.
     const ok = await deliverWebhook("http://127.0.0.1:8080/hook", SECRET, samplePayload, 2);
-    expect(ok).toBe(false);
+    expect(ok.success).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
+
+    const metrics = getMetricsSnapshot();
+    expect(metrics.delivery_attempts).toEqual([]);
+    expect(metrics.delivery_final_outcomes).toEqual([
+      {
+        delivery_type: "webhook",
+        attempt_number: 1,
+        final_outcome: "failure",
+        count: 1,
+      },
+    ]);
+  });
+
+  it("counts each retry attempt and labels the final failed outcome by the last attempt", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 2);
+    expect(ok).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const metrics = getMetricsSnapshot();
+    expect(metrics.delivery_attempts).toEqual([
+      { delivery_type: "webhook", attempt_number: 1, count: 1 },
+      { delivery_type: "webhook", attempt_number: 2, count: 1 },
+    ]);
+    expect(metrics.delivery_final_outcomes).toEqual([
+      {
+        delivery_type: "webhook",
+        attempt_number: 2,
+        final_outcome: "failure",
+        count: 1,
+      },
+    ]);
   });
 });

@@ -8,6 +8,7 @@ Thanks for using OphirPay! Here's where to get help:
 - **[CONTRIBUTING.md](../CONTRIBUTING.md)** — How to contribute
 - **[Architecture Guide](../docs/architecture.md)** — System design and component overview
 - **[Integration Guide](../docs/integration-guide.md)** — How to integrate OphirPay into your app
+- **[Webhook Signature Verification](../docs/webhook-verification.md)** — Verify `X-OphirPay-Signature` (canonical form, replay protection, Node/Python examples)
 - **[Mainnet Deployment](../docs/deployment-mainnet.md)** — Production deployment checklist
 
 ## 🐛 Bug Reports & Feature Requests

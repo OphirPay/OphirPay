@@ -80,6 +80,15 @@ export function validateMemo(value: string, type: MemoType = "text"): MemoValida
   }
 
   // Text memo
+  // Charset: reject C0/C1 control characters — they are never legitimate
+  // memo content and keeping them out keeps memos safe to render and log.
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(value)) {
+    return {
+      valid: false,
+      type,
+      error: "Memo text must not contain control or invisible characters.",
+    };
+  }
   if (new TextEncoder().encode(value).length > MEMO_LIMITS.text) {
     return { valid: false, type, error: "Memo text must be 28 bytes or fewer." };
   }

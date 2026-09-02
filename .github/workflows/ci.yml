@@ -89,6 +89,7 @@ jobs:
     name: "5️⃣ Backend — Contracts (WASM + Tests)"
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    needs: [lint, typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.0
@@ -157,6 +158,7 @@ jobs:
     name: "6️⃣ Contracts — WASM Reproducibility Check"
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    needs: [lint, typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91.0
@@ -240,6 +242,7 @@ jobs:
     name: "9️⃣ Frontend — Build (Next.js)"
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [lint, typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -515,6 +518,7 @@ jobs:
     name: "1️⃣3️⃣ Infra — Docker Build"
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [lint, typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx
@@ -540,7 +544,7 @@ jobs:
     name: "1️⃣4️⃣ Frontend — Bundle Size"
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: next-build
+    needs: [next-build]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

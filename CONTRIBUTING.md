@@ -44,6 +44,8 @@ Every PR triggers 15 independent CI/CD checks across quality, testing, security,
 | 14 | npm Audit | ✅ | ⚠️ Advisory |
 | 15 | PR Auto-Label | ✅ | ℹ️ No block |
 
+> 💡 **Fail-fast CI:** Heavy jobs (like Contract WASM, Next.js Build, Docker Build, and E2E) are gated behind fast "smoke checks" (Lint, Typecheck, Unit Tests). If any smoke check fails, the heavy jobs will not run, saving CI runner minutes and providing faster feedback.
+
 ### Branch Protection Rules (recommended)
 
 Configure these in **Settings → Branches → Branch protection rules** for `main`:

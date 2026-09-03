@@ -864,6 +864,16 @@ fn add_locked(env: &Env, delta: i128) {
     env.storage().instance().set(&LOCKED_BALANCE, &clamped);
 }
 
+/// Compute the protocol fee for an amount at the given fee basis points.
+/// Shared by the public `calculate_fee` contract method and the internal
+/// `collect_fee` helper so fee math stays in one place.
+fn compute_fee(amount: i128, fee_bps: u32) -> i128 {
+    if fee_bps == 0 || amount <= 0 {
+        return 0;
+    }
+    amount.saturating_mul(fee_bps as i128) / 10000
+}
+
 /// Collect protocol fees from the payer and transfer to the fee collector.
 /// Returns the fee amount collected (0 if fees are disabled or no collector
 /// is set).  Returns an error if the fee transfer fails — which reverts
@@ -875,7 +885,8 @@ fn collect_fee(
     payment_amount: i128,
 ) -> Result<i128, PaymentError> {
     // Read fee config; if disabled or no collector, skip fee collection.
-    let config: FeeConfig = match env.storage().instance().get(&FEE_KEY) {
+    let config: Option<FeeConfig> = env.storage().instance().get(&FEE_KEY);
+    let config = match config {
         Some(c) if c.enabled => c,
         _ => return Ok(0),
     };
@@ -884,7 +895,7 @@ fn collect_fee(
         None => return Ok(0),
     };
 
-    let fee = calculate_fee(payment_amount, config.payment_fee_bps);
+    let fee = compute_fee(payment_amount, config.payment_fee_bps);
     if fee <= 0 {
         return Ok(0);
     }
@@ -1890,10 +1901,7 @@ impl OphirPayContract {
     /// Calculate fee for a given amount based on bps.
     /// Computed entirely locally — zero storage access, minimal CPU.
     pub fn calculate_fee(amount: i128, fee_bps: u32) -> i128 {
-        if fee_bps == 0 || amount <= 0 {
-            return 0;
-        }
-        amount.saturating_mul(fee_bps as i128) / 10000
+        compute_fee(amount, fee_bps)
     }
 
     /// Set spending limits for a user (owner only).
@@ -6360,6 +6368,7 @@ mod tests {
     #[test]
     fn test_get_bump_policy_returns_constants() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
@@ -6374,6 +6383,7 @@ mod tests {
     #[test]
     fn test_bump_storage_noop_on_empty_ranges() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
@@ -6437,6 +6447,7 @@ mod tests {
         // The actual gas cost is bounded by the number of entries scanned;
         // an empty range should cost ~5 000 instructions (instance bump only).
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         let owner = Address::generate(&env);

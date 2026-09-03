@@ -5,6 +5,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Env, String, Symbol,
+    Vec,
 };
 
 // ── Storage Keys ───────────────────────────────────────────────
@@ -23,7 +24,7 @@ const EVENT_SCHEMA_VERSION: u32 = 1;
 // ── Data Types ─────────────────────────────────────────────────
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PaymentEvent {
     pub version: u32,
     pub id: u64,
@@ -169,17 +170,14 @@ impl PaymentEventEmitter {
 
     /// Get event by ID with legacy backward compatibility.
     pub fn get_event(env: Env, event_id: u64) -> Result<PaymentEvent, EmitterError> {
-        let raw: Option<soroban_sdk::Bytes> = env.storage().persistent().get(&event_id);
-
-        if let Some(bytes) = raw {
-            // Try V1 schema first (with version field) using FromXdr trait
-            if let Ok(event) = <PaymentEvent as soroban_sdk::xdr::FromXdr>::from_xdr(&bytes) {
-                return Ok(event);
-            }
-            // Fallback to legacy schema (without version field)
-            if let Ok(legacy) = <LegacyPaymentEvent as soroban_sdk::xdr::FromXdr>::from_xdr(&bytes) {
-                return Ok(legacy.into_payment_event());
-            }
+        // Events are stored natively (contracttype conversion), so read them
+        // back the same way — try the V1 schema first (with version field),
+        // then fall back to the legacy schema (without version field).
+        if let Some(event) = env.storage().persistent().get::<_, PaymentEvent>(&event_id) {
+            return Ok(event);
+        }
+        if let Some(legacy) = env.storage().persistent().get::<_, LegacyPaymentEvent>(&event_id) {
+            return Ok(legacy.into_payment_event());
         }
 
         Err(EmitterError::EventNotFound)

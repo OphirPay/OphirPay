@@ -39,6 +39,75 @@ OphirPay supports two equivalent authentication headers for authenticated routes
 
 ---
 
+## 📇 Endpoint Index
+
+Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
+`{id}` placeholders denote path parameters.
+
+| Endpoint | Methods |
+|---|---|
+| `/api/auth/challenge` | GET |
+| `/api/auth/session` | POST, DELETE |
+| `/api/csrf` | GET |
+| `/api/payments` | GET, POST |
+| `/api/payments/{id}` | GET, PATCH, DELETE |
+| `/api/payments/retry` | POST |
+| `/api/payments/cancel` | POST |
+| `/api/payments/export` | GET |
+| `/api/escrows` | GET, POST |
+| `/api/escrows/{id}` | GET |
+| `/api/streams` | GET, POST |
+| `/api/streams/{id}` | GET |
+| `/api/timelock` | GET |
+| `/api/rbac` | GET |
+| `/api/fee-config` | GET |
+| `/api/fee-config/collector` | GET |
+| `/api/fee-config/history` | GET |
+| `/api/policy-versions` | GET |
+| `/api/contracts` | GET |
+| `/api/stats` | GET |
+| `/api/batches` | GET, POST |
+| `/api/batches/{id}` | GET, POST |
+| `/api/batches/summary` | GET |
+| `/api/recurring` | GET, POST, PATCH |
+| `/api/recurring/{id}` | GET, PATCH |
+| `/api/scheduled` | GET, POST, DELETE |
+| `/api/scheduled/run` | GET, POST |
+| `/api/requests` | GET, POST |
+| `/api/webhooks` | GET, POST, PATCH, DELETE |
+| `/api/webhooks/{id}` | GET |
+| `/api/webhooks/{id}/test` | POST |
+| `/api/webhooks/{id}/replay` | POST |
+| `/api/webhooks/{id}/deliveries` | GET |
+| `/api/webhooks/{id}/deliveries/{deliveryId}/redeliver` | POST |
+| `/api/keys` | GET, POST, PATCH, DELETE |
+| `/api/keys/stats` | GET |
+| `/api/multisig` | GET, POST |
+| `/api/multisig/propose` | POST |
+| `/api/multisig/approve` | POST |
+| `/api/multisig/execute` | POST |
+| `/api/multisig/requests` | GET |
+| `/api/governance/proposals` | GET, POST |
+| `/api/governance/vote` | POST |
+| `/api/governance/execute` | POST |
+| `/api/analytics` | GET |
+| `/api/refunds` | GET, POST |
+| `/api/refunds/{id}` | PATCH |
+| `/api/hooks` | GET, POST |
+| `/api/hooks/{id}` | PATCH |
+| `/api/audit-log` | GET |
+| `/api/audit-log/sse` | GET |
+| `/api/audit-log/export` | GET |
+| `/api/events` | GET |
+| `/api/events/history` | GET |
+| `/api/health` | GET |
+| `/api/metrics` | GET |
+| `/api/cron` | GET, POST |
+| `/api/jobs/process-due-recurring` | POST |
+| `/api/pause-state` | GET |
+
+---
+
 ## 1. Authentication & API Keys
 
 ### Generate a New API Key
@@ -381,6 +450,20 @@ curl -X POST "https://api.ophirpay.com/api/streams" \
 ---
 
 ## 8. Webhooks & Notification Hooks
+
+### Rotate a Webhook Signing Secret
+```bash
+curl -X PATCH "https://api.ophirpay.com/api/webhooks?id=wh_019a99824c" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+```
+**Response (`200 OK`):**
+```json
+{
+  "id": "wh_019a99824c",
+  "secret": "whsec_new_secret_returned_once_9f2d1a",
+  "rotatedAt": "2026-08-26T19:10:00.000Z"
+}
+```
 
 ### Register an Outgoing Webhook Endpoint
 ```bash

@@ -1,6 +1,6 @@
 # 🧰 OphirPay Troubleshooting Guide
 
-> Common setup and network errors — with **symptom → cause → fix** for each.
+> Common setup and network errors — with **symptom → cause → resolution** for each.
 > If your issue isn't here, search the [issues](https://github.com/OphirPay/OphirPay/issues)
 > and open a new one with the error message, your network (`TESTNET`/`PUBLIC`),
 > and the commands you ran.
@@ -11,45 +11,117 @@
 
 ## 🔧 Setup & environment
 
+### 1. Freighter not detected
+
+**Symptom**: The wallet button does nothing, or you see an "install Freighter" prompt even though you have the extension installed.
+
+**Cause**: The Freighter extension is not installed, is not unlocked, or the page was loaded before the extension injected its API into the page.
+
+**Resolution**:
+1. Install Freighter from the [official extension store](https://freighter.app) (Chrome/Edge/Firefox).
+2. Unlock it with your password and make sure you have a funded account selected.
+3. Refresh the page — the wallet API is injected at page load, so a reload is required after installing/unlocking.
+4. If it still fails, open the browser console and look for an `isConnected` error, then retry.
+
+### 2. Rust wasm32 target missing
+
+**Symptom**: `cargo build` fails for the contracts with an error like `target may not be installed` / `no such file or directory ... wasm32v1-none`, or the WASM reproducibility check in CI cannot compile the contract.
+
+**Cause**: The contract targets `wasm32v1-none`, but that Rust target is not installed on your toolchain.
+
+**Resolution**: Install the target with rustup, then rebuild:
+
+```bash
+rustup target add wasm32v1-none
+cargo build --target wasm32v1-none --release
+```
+
+### 3. Prisma migration errors
+
+**Symptom**: `next build` or `npm run dev` fails at the Prisma step — e.g. `P1001`/`P1000` connection errors, `table does not exist`, or `Schema not found`.
+
+**Cause**: The database is unreachable (`DATABASE_URL` unset/wrong), the client is out of sync with `prisma/schema.prisma`, or pending migrations were never applied.
+
+**Resolution**:
+1. Verify `DATABASE_URL` is set in `.env.local` (and `DATABASE_PROVIDER` is `postgresql` for production, `sqlite` for local dev).
+2. Apply the schema to your database: `npx prisma db push`.
+3. Regenerate the client: `npx prisma generate`.
+4. Re-run the build. If migrations exist, prefer `npx prisma migrate deploy` over `db push` in production.
+
+### 4. WASM build failures
+
+**Symptom**: Contract build fails during `npm run build` or the contracts CI job — e.g. `linker 'wasm-ld' not found` or `error: failed to load bitcode`.
+
+**Cause**: The `wasm32v1-none` target or the wasm linker is missing, or the build was invoked without the `--release` profile that the contracts require.
+
+**Resolution**:
+
+```bash
+rustup target add wasm32v1-none
+cargo build --target wasm32v1-none --release
+```
+
+If `wasm-ld` is missing, install a wasm-capable LLD via your package manager or rustup component, then retry.
+
+### 5. Node version mismatch
+
+**Symptom**: `npm install` or `npm run dev` fails with engine errors, or the app behaves differently than CI (which passes).
+
+**Cause**: Your local Node version differs from the pinned version in `.nvmrc` / `.node-version` / `package.json` `engines`.
+
+**Resolution**: Switch to the pinned version:
+
+```bash
+nvm use          # reads .nvmrc
+node -v          # confirm it matches the engines field in package.json
+npm ci
+```
+
+### 6. Port conflicts
+
+**Symptom**: Starting the dev server or the WebSocket event server fails with `EADDRINUSE`, or `npm run dev` prints `Port 3000 is in use`.
+
+**Cause**: Another process is already listening on the default port (3000 for Next.js, 8787 for the event WebSocket server).
+
+**Resolution**:
+1. Find the offender: `lsof -i :3000` (macOS/Linux) or `netstat -ano | findstr :3000` (Windows), then kill it.
+2. Or run on a different port: `npm run dev -- -p 3001`.
+3. For the events server, set `EVENTS_WS_PORT` (default `8787`) to a free port.
+
 ### `npm install` fails or hangs
 
-| | |
-|---|---|
-| **Symptom** | `npm install` errors out, or the install never finishes |
-| **Cause** | Lockfile out of sync, registry/network issue, or a platform-specific dependency |
-| **Fix** | 1. Delete `node_modules` and re-run `npm ci` (uses the committed lockfile): `rm -rf node_modules && npm ci`. 2. If you changed dependencies, run `npm install` and **commit the updated `package-lock.json`**. 3. Check `npm config get registry` is a reachable registry (default `https://registry.npmjs.org/`). |
+**Symptom**: `npm install` errors out, or the install never finishes.
 
-### `Prisma generate failed` / `Schema not found`
+**Cause**: Lockfile out of sync, registry/network issue, or a platform-specific dependency.
 
-| | |
-|---|---|
-| **Symptom** | `next build` or `npm run dev` fails at the Prisma step |
-| **Cause** | Prisma client not generated, or wrong `DATABASE_PROVIDER` |
-| **Fix** | Run `npx prisma generate`. Verify `DATABASE_PROVIDER` is set (`postgresql` for production, `sqlite` for local dev). Then re-run the build. |
+**Resolution**:
+1. Delete `node_modules` and re-run `npm ci` (uses the committed lockfile): `rm -rf node_modules && npm ci`.
+2. If you changed dependencies, run `npm install` and **commit the updated `package-lock.json`**.
+3. Check `npm config get registry` is a reachable registry (default `https://registry.npmjs.org/`).
 
 ### `ENOENT: no such file or directory, open '.env'` / `NEXT_PUBLIC_*` values missing
 
-| | |
-|---|---|
-| **Symptom** | App starts but env-driven features are blank or error at runtime |
-| **Cause** | No `.env.local` / `.env.production` file |
-| **Fix** | `cp .env.example .env.local` and fill in the required values (see the [Deployment Guide](DEPLOYMENT.md#-environment-variables)). Restart the dev server — Next.js caches env at boot. |
+**Symptom**: App starts but env-driven features are blank or error at runtime.
+
+**Cause**: No `.env.local` / `.env.production` file.
+
+**Resolution**: `cp .env.example .env.local` and fill in the required values (see the [Deployment Guide](DEPLOYMENT.md#-environment-variables)). Restart the dev server — Next.js caches env at boot.
 
 ### `AUTH_SECRET is not set` at login
 
-| | |
-|---|---|
-| **Symptom** | Login/session endpoints fail with an auth error |
-| **Cause** | Missing session-signing secret |
-| **Fix** | Generate one and set it: `echo "AUTH_SECRET=$(openssl rand -hex 32)" >> .env.local`. Restart. |
+**Symptom**: Login/session endpoints fail with an auth error.
+
+**Cause**: Missing session-signing secret.
+
+**Resolution**: Generate one and set it: `echo "AUTH_SECRET=$(openssl rand -hex 32)" >> .env.local`. Restart.
 
 ### `next build` fails after switching branches
 
-| | |
-|---|---|
-| **Symptom** | Build errors referencing stale code or missing modules |
-| **Cause** | Stale `.next` cache or leftover `node_modules` from another branch |
-| **Fix** | `rm -rf .next node_modules && npm ci && npm run build`. |
+**Symptom**: Build errors referencing stale code or missing modules.
+
+**Cause**: Stale `.next` cache or leftover `node_modules` from another branch.
+
+**Resolution**: `rm -rf .next node_modules && npm ci && npm run build`.
 
 ---
 
@@ -57,27 +129,31 @@
 
 ### Friendbot returns an error or the account stays at 0 XLM
 
-| | |
-|---|---|
-| **Symptom** | `friendbot.stellar.org` request fails, or the account balance stays 0 after funding |
-| **Cause** | You requested funds for the **wrong network** (friendbot only funds **testnet**), the address is malformed, or the account already has funds (friendbot refuses duplicates) |
-| **Fix** | 1. Only use friendbot on **testnet**: `curl "https://friendbot.stellar.org?addr=<PUBLIC_KEY>"`. 2. Verify the address is a valid Stellar `G…` strkey (56 chars). 3. Check the balance via Horizon: `curl -s "https://horizon-testnet.stellar.org/accounts/<PUBLIC_KEY>" \| jq '.balances[] \| select(.asset_type=="native") \| .balance'`. 4. If it says the account already exists, it is funded — just poll Horizon until the balance appears. |
+**Symptom**: `friendbot.stellar.org` request fails, or the account balance stays 0 after funding.
+
+**Cause**: You requested funds for the **wrong network** (friendbot only funds **testnet**), the address is malformed, or the account already has funds (friendbot refuses duplicates).
+
+**Resolution**:
+1. Only use friendbot on **testnet**: `curl "https://friendbot.stellar.org?addr=<PUBLIC_KEY>"`.
+2. Verify the address is a valid Stellar `G…` strkey (56 chars).
+3. Check the balance via Horizon: `curl -s "https://horizon-testnet.stellar.org/accounts/<PUBLIC_KEY>" | jq '.balances[] | select(.asset_type=="native") | .balance'`.
+4. If it says the account already exists, it is funded — just poll Horizon until the balance appears.
 
 ### `Insufficient funds` on testnet
 
-| | |
-|---|---|
-| **Symptom** | Any transaction fails with `Insufficient funds` / `op_underfunded` |
-| **Cause** | The signing account has no XLM; on **testnet** it wasn't friendbot-funded |
-| **Fix** | Fund it (friendbot for testnet, exchange for mainnet — **there is no friendbot on mainnet**), then wait a few seconds for the ledger to confirm before retrying. |
+**Symptom**: Any transaction fails with `Insufficient funds` / `op_underfunded`.
+
+**Cause**: The signing account has no XLM; on **testnet** it wasn't friendbot-funded.
+
+**Resolution**: Fund it (friendbot for testnet, exchange for mainnet — **there is no friendbot on mainnet**), then wait a few seconds for the ledger to confirm before retrying.
 
 ### `Insufficient funds` on mainnet
 
-| | |
-|---|---|
-| **Symptom** | Deployment or payment fails with insufficient funds |
-| **Cause** | Mainnet accounts must be funded with **real XLM**; there is no friendbot |
-| **Fix** | Send XLM from an exchange or funded wallet to the account, confirm the balance via `https://horizon.stellar.org/accounts/<PUBLIC_KEY>`, and budget ≥ 100 XLM for contract deployment (see the [Mainnet Runbook](MAINNET_RUNBOOK.md#01-funding)). |
+**Symptom**: Deployment or payment fails with insufficient funds.
+
+**Cause**: Mainnet accounts must be funded with **real XLM**; there is no friendbot.
+
+**Resolution**: Send XLM from an exchange or funded wallet to the account, confirm the balance via `https://horizon.stellar.org/accounts/<PUBLIC_KEY>`, and budget ≥ 100 XLM for contract deployment (see the [Mainnet Runbook](MAINNET_RUNBOOK.md#01-funding)).
 
 ---
 
@@ -85,35 +161,45 @@
 
 ### `failed to send HTTP request` / RPC timeout
 
-| | |
-|---|---|
-| **Symptom** | API routes or the CLI hang, then fail with a request/connection error |
-| **Cause** | Soroban RPC endpoint unreachable, wrong URL, or a firewall/proxy issue |
-| **Fix** | 1. Verify the endpoint responds: `curl -s -X POST https://soroban-testnet.stellar.org:443 -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'`. 2. Check `NEXT_PUBLIC_STELLAR_RPC_URL` (testnet: `https://soroban-testnet.stellar.org:443`, mainnet: `https://soroban.stellar.org:443`). 3. Check [status.stellar.org](https://status.stellar.org) for an outage. 4. Retry — transient timeouts are normal; the app retries automatically. |
+**Symptom**: API routes or the CLI hang, then fail with a request/connection error.
+
+**Cause**: Soroban RPC endpoint unreachable, wrong URL, or a firewall/proxy issue.
+
+**Resolution**:
+1. Verify the endpoint responds: `curl -s -X POST https://soroban-testnet.stellar.org:443 -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'`.
+2. Check `NEXT_PUBLIC_STELLAR_RPC_URL` (testnet: `https://soroban-testnet.stellar.org:443`, mainnet: `https://soroban.stellar.org:443`).
+3. Check [status.stellar.org](https://status.stellar.org) for an outage.
+4. Retry — transient timeouts are normal; the app retries automatically.
 
 ### `Horizon timeout` / Horizon requests fail
 
-| | |
-|---|---|
-| **Symptom** | Account/balance lookups fail; the dashboard shows no balances |
-| **Cause** | Horizon endpoint down, slow, or misconfigured |
-| **Fix** | 1. Verify: `curl -s https://horizon-testnet.stellar.org/ | jq .core_version`. 2. Confirm `NEXT_PUBLIC_STELLAR_HORIZON_URL` matches the network. 3. Check status.stellar.org. 4. Try the alternate Horizon instance for your network. |
+**Symptom**: Account/balance lookups fail; the dashboard shows no balances.
+
+**Cause**: Horizon endpoint down, slow, or misconfigured.
+
+**Resolution**:
+1. Verify: `curl -s https://horizon-testnet.stellar.org/ | jq .core_version`.
+2. Confirm `NEXT_PUBLIC_STELLAR_HORIZON_URL` matches the network.
+3. Check status.stellar.org.
+4. Try the alternate Horizon instance for your network.
 
 ### `Network passphrase mismatch`
 
-| | |
-|---|---|
-| **Symptom** | Transaction submission fails with a passphrase error |
-| **Cause** | `STELLAR_NETWORK_PASSPHRASE` doesn't match the configured network |
-| **Fix** | Testnet: `Test SDF Network ; September 2015`. Mainnet: `Public Global Stellar Network ; September 2015`. They must match `NEXT_PUBLIC_STELLAR_NETWORK` (`TESTNET`/`PUBLIC`) — see the [env table](DEPLOYMENT.md#testnet-vs-mainnet). |
+**Symptom**: Transaction submission fails with a passphrase error.
+
+**Cause**: `STELLAR_NETWORK_PASSPHRASE` doesn't match the configured network.
+
+**Resolution**: Testnet: `Test SDF Network ; September 2015`. Mainnet: `Public Global Stellar Network ; September 2015`. They must match `NEXT_PUBLIC_STELLAR_NETWORK` (`TESTNET`/`PUBLIC`) — see the [env table](DEPLOYMENT.md#testnet-vs-mainnet).
 
 ### `Contract not found` / contract calls return empty
 
-| | |
-|---|---|
-| **Symptom** | API routes that read the contract return nothing, or `Contract not found` |
-| **Cause** | Wrong `NEXT_PUBLIC_CONTRACT_ID` / `NEXT_PUBLIC_EMITTER_CONTRACT_ID`, or the contract lives on a different network |
-| **Fix** | 1. Verify the IDs in `.env.local` against the [contract registry](deployment-mainnet.md#26-contract-address-registry) (testnet IDs are pre-configured in `.env.example`). 2. Confirm the contract was deployed on the same network you're pointing at. |
+**Symptom**: API routes that read the contract return nothing, or `Contract not found`.
+
+**Cause**: Wrong `NEXT_PUBLIC_CONTRACT_ID` / `NEXT_PUBLIC_EMITTER_CONTRACT_ID`, or the contract lives on a different network.
+
+**Resolution**:
+1. Verify the IDs in `.env.local` against the [contract registry](deployment-mainnet.md#26-contract-address-registry) (testnet IDs are pre-configured in `.env.example`).
+2. Confirm the contract was deployed on the same network you're pointing at.
 
 ---
 
@@ -121,19 +207,22 @@
 
 ### Non-native asset (e.g. USDC) can't be selected or sent
 
-| | |
-|---|---|
-| **Symptom** | The asset is greyed out, or sending fails with a trustline error |
-| **Cause** | The destination/your account has no **trustline** for that asset+issuer. OphirPay checks this via `checkTrustline` before selecting an asset |
-| **Fix** | 1. Add a trustline for the asset in Freighter (Assets → Add asset, enter code + issuer). 2. Confirm it registered: check the account balances on Horizon and look for the asset's `asset_code`/`asset_issuer`. 3. Retry the payment. |
+**Symptom**: The asset is greyed out, or sending fails with a trustline error.
+
+**Cause**: The destination/your account has no **trustline** for that asset+issuer. OphirPay checks this via `checkTrustline` before selecting an asset.
+
+**Resolution**:
+1. Add a trustline for the asset in Freighter (Assets → Add asset, enter code + issuer).
+2. Confirm it registered: check the account balances on Horizon and look for the asset's `asset_code`/`asset_issuer`.
+3. Retry the payment.
 
 ### `would exceed trustline limit` / payment over trustline cap
 
-| | |
-|---|---|
-| **Symptom** | Sending an amount fails at the trustline limit |
-| **Cause** | The receiving account's trustline limit is lower than the send amount |
-| **Fix** | Have the recipient raise the trustline limit (Freighter lets you edit the limit), or reduce the amount. |
+**Symptom**: Sending an amount fails at the trustline limit.
+
+**Cause**: The receiving account's trustline limit is lower than the send amount.
+
+**Resolution**: Have the recipient raise the trustline limit (Freighter lets you edit the limit), or reduce the amount.
 
 ---
 
@@ -141,35 +230,46 @@
 
 ### Freighter doesn't connect / "Freighter not found"
 
-| | |
-|---|---|
-| **Symptom** | Wallet button does nothing, or "install Freighter" prompt |
-| **Cause** | Freighter extension not installed, or not unlocked |
-| **Fix** | 1. Install Freighter from the extension store. 2. Unlock it. 3. Refresh the page. 4. If it still fails, check the browser console for an `isConnected` error and retry. |
+**Symptom**: Wallet button does nothing, or "install Freighter" prompt.
+
+**Cause**: Freighter extension not installed, or not unlocked.
+
+**Resolution**:
+1. Install Freighter from the [extension store](https://freighter.app).
+2. Unlock it.
+3. Refresh the page.
+4. If it still fails, check the browser console for an `isConnected` error and retry.
 
 ### Wallet says "wrong network"
 
-| | |
-|---|---|
-| **Symptom** | Transaction rejected with a network error |
-| **Cause** | Freighter is on a different network than the app (`TESTNET` vs `PUBLIC`) |
-| **Fix** | Switch Freighter's network to match the app (`Testnet` for local/testnet, `Mainnet` for production) and retry. |
+**Symptom**: Transaction rejected with a network error.
+
+**Cause**: Freighter is on a different network than the app (`TESTNET` vs `PUBLIC`).
+
+**Resolution**: Switch Freighter's network to match the app (`Testnet` for local/testnet, `Mainnet` for production) and retry.
 
 ### Wallet shows "transaction rejected"
 
-| | |
-|---|---|
-| **Symptom** | The wallet popup opens but the transaction is rejected |
-| **Cause** | The user clicked "Reject", or the wallet auto-rejected (e.g. fee too high, or the account is a hardware wallet requiring confirmation) |
-| **Fix** | 1. Retry and **approve** the transaction in the popup. 2. Check the fee estimate isn't above the wallet's threshold. 3. For hardware wallets, confirm the transaction on the device. |
+**Symptom**: The wallet popup opens but the transaction is rejected.
+
+**Cause**: The user clicked "Reject", or the wallet auto-rejected (e.g. fee too high, or the account is a hardware wallet requiring confirmation).
+
+**Resolution**:
+1. Retry and **approve** the transaction in the popup.
+2. Check the fee estimate isn't above the wallet's threshold.
+3. For hardware wallets, confirm the transaction on the device.
 
 ### Transaction fails after approval (in `submitted` / `failed` state)
 
-| | |
-|---|---|
-| **Symptom** | The wallet signs, but the payment errors on submission |
-| **Cause** | Common causes: insufficient funds, invalid destination, missing memo for memo-required destination, or expired timebounds |
-| **Fix** | 1. Confirm the payer has XLM to cover the amount + fee. 2. Confirm the destination `G…`/`C…` address is valid. 3. If the destination requires a memo, include one. 4. Retry — the app rebuilds the transaction. |
+**Symptom**: The wallet signs, but the payment errors on submission.
+
+**Cause**: Common causes: insufficient funds, invalid destination, missing memo for memo-required destination, or expired timebounds.
+
+**Resolution**:
+1. Confirm the payer has XLM to cover the amount + fee.
+2. Confirm the destination `G…`/`C…` address is valid.
+3. If the destination requires a memo, include one.
+4. Retry — the app rebuilds the transaction.
 
 ---
 
@@ -177,27 +277,30 @@
 
 ### `Rate limit exceeded` (HTTP 429)
 
-| | |
-|---|---|
-| **Symptom** | API requests fail with 429 |
-| **Cause** | Per-IP rate limit hit (`RATE_LIMIT_RPM`, default 120/min) |
-| **Fix** | Wait for the window to reset. For sustained load, raise `RATE_LIMIT_RPM` or configure `REDIS_URL` for distributed limiting. |
+**Symptom**: API requests fail with 429.
+
+**Cause**: Per-IP rate limit hit (`RATE_LIMIT_RPM`, default 120/min).
+
+**Resolution**: Wait for the window to reset. For sustained load, raise `RATE_LIMIT_RPM` or configure `REDIS_URL` for distributed limiting.
 
 ### `CSRF_INVALID`
 
-| | |
-|---|---|
-| **Symptom** | Form/API submissions fail with a CSRF error |
-| **Cause** | Stale session cookie or `NEXT_PUBLIC_APP_URL` mismatch |
-| **Fix** | Clear cookies and reload. Ensure `NEXT_PUBLIC_APP_URL` matches the origin you're using (localhost vs. domain). |
+**Symptom**: Form/API submissions fail with a CSRF error.
+
+**Cause**: Stale session cookie or `NEXT_PUBLIC_APP_URL` mismatch.
+
+**Resolution**: Clear cookies and reload. Ensure `NEXT_PUBLIC_APP_URL` matches the origin you're using (localhost vs. domain).
 
 ### Payments page is empty after sending a payment
 
-| | |
-|---|---|
-| **Symptom** | The payment succeeded on-chain but doesn't appear in the UI |
-| **Cause** | The page reads from the contract via RPC; a stale RPC response or wrong contract ID |
-| **Fix** | 1. Verify on-chain: `stellar contract invoke --id <CONTRACT_ID> -- get_payment_count`. 2. Check the [contract registry](deployment-mainnet.md#26-contract-address-registry) for the right ID. 3. Refresh after a few seconds (the chain confirms asynchronously). |
+**Symptom**: The payment succeeded on-chain but doesn't appear in the UI.
+
+**Cause**: The page reads from the contract via RPC; a stale RPC response or wrong contract ID.
+
+**Resolution**:
+1. Verify on-chain: `stellar contract invoke --id <CONTRACT_ID> -- get_payment_count`.
+2. Check the [contract registry](deployment-mainnet.md#26-contract-address-registry) for the right ID.
+3. Refresh after a few seconds (the chain confirms asynchronously).
 
 ---
 
@@ -205,21 +308,37 @@
 
 ### Live feed shows "offline" / events stop arriving
 
-| | |
-|---|---|
-| **Symptom** | The `/events` page status flips to offline, or `payment:created` events stop |
-| **Cause** | The SSE route (`GET /api/events`) is unreachable — often a reverse proxy that buffers the stream, or the emitter contract/RPC is down |
-| **Fix** | 1. Verify the stream: `curl -N http://localhost:3000/api/events` — you should see a `connected` event then `heartbeat` frames every 15 s. 2. If behind Nginx, disable buffering (`proxy_buffering off;`) — see the [Nginx example](DEPLOYMENT.md#reverse-proxy-nginx). 3. Check the emitter contract ID and RPC health (see [RPC & network](#-rpc--network)). |
+**Symptom**: The `/events` page status flips to offline, or `payment:created` events stop.
+
+**Cause**: The SSE route (`GET /api/events`) is unreachable — often a reverse proxy that buffers the stream, or the emitter contract/RPC is down.
+
+**Resolution**:
+1. Verify the stream: `curl -N http://localhost:3000/api/events` — you should see a `connected` event then `heartbeat` frames every 15 s.
+2. If behind Nginx, disable buffering (`proxy_buffering off;`) — see the [Nginx example](DEPLOYMENT.md#reverse-proxy-nginx).
+3. Check the emitter contract ID and RPC health (see [RPC & network](#-rpc--network)).
 
 ### `WebSocket connection failed` then falls back
 
-| | |
-|---|---|
-| **Symptom** | Status shows `fallback` (SSE) instead of WS |
-| **Cause** | The WebSocket event server (port `8787`, `EVENTS_WS_PORT`) isn't running or isn't reachable; the client falls back to SSE automatically |
-| **Fix** | 1. This is **expected behavior** — SSE fallback works. 2. The WebSocket server starts automatically on boot via `instrumentation.ts` (`EVENTS_WS_PORT`, default `8787`); check the startup log for `WebSocket event server listening`. 3. Confirm `ws(s)://<host>:8787/api/events` connects. 4. In production, make sure the port is exposed through the ingress/load balancer. |
+**Symptom**: Status shows `fallback` (SSE) instead of WS.
+
+**Cause**: The WebSocket event server (port `8787`, `EVENTS_WS_PORT`) isn't running or isn't reachable; the client falls back to SSE automatically.
+
+**Resolution**:
+1. This is **expected behavior** — SSE fallback works.
+2. The WebSocket server starts automatically on boot via `instrumentation.ts` (`EVENTS_WS_PORT`, default `8787`); check the startup log for `WebSocket event server listening`.
+3. Confirm `ws(s)://<host>:8787/api/events` connects.
+4. In production, make sure the port is exposed through the ingress/load balancer.
 
 ---
+
+## Quick checks
+
+- `node -v` matches `.nvmrc` / `package.json` engines.
+- `.env.local` exists and all `NEXT_PUBLIC_*` + `DATABASE_URL`/`AUTH_SECRET` values are set.
+- `npx prisma db push && npx prisma generate` succeeded.
+- `cargo build --target wasm32v1-none --release` succeeds for the contracts.
+- `curl -s https://horizon-testnet.stellar.org/ | jq .core_version` responds.
+- Freighter is installed, unlocked, and on the same network as the app.
 
 ## Still stuck?
 

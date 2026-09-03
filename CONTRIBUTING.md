@@ -10,6 +10,11 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 4. Set up the database: `npx prisma db push && npx prisma generate`
 5. Start the dev server: `npm run dev`
 
+> 🛠️ **Setup trouble?** See the
+> [Troubleshooting Guide](docs/TROUBLESHOOTING.md) — it covers Freighter
+> detection, the Rust `wasm32` target, Prisma migrations, WASM builds,
+> Node version mismatches, and port conflicts.
+
 > 💡 **New to Stellar or Soroban?** Check out the
 > [Stellar & Soroban glossary](GLOSSARY.md) — it defines the terms used
 > throughout the codebase (XLM, testnet, friendbot, Horizon, Soroban, SAC,

@@ -268,6 +268,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/payments/cancel:
+    post:
+      tags: [Payments]
+      summary: Cancel a payment
+      description: |
+        Soft-cancels a payment by transaction hash: the row is flipped to
+        CANCELLED so the UI can reflect the status change while the chain
+        confirms. Scoped to the authenticated user's own payments.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [txHash]
+              properties:
+                txHash:
+                  type: string
+                  description: Transaction hash of the payment to cancel
+      responses:
+        "200":
+          description: Payment cancelled
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/payments/export:
     get:
       tags: [Payments]
@@ -650,6 +680,26 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/batches/summary:
+    get:
+      tags: [Batches]
+      summary: Batch status summary for the authenticated user
+      description: |
+        Per-status counts of the user's batches with optional drill-down into
+        the newest batch of each status (including per-payment progress
+        counts). Useful for dashboard badges.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: drillDown
+          in: query
+          schema: { type: boolean, default: false }
+          description: Include the newest batch per status with payment counts
+      responses:
+        "200":
+          description: Per-status batch counts (with optional drill-down)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   # ── Recurring Payments ────────────────────────────────────
   /api/recurring:
     get:
@@ -679,6 +729,32 @@ paths:
           description: Recurrence created
         "400":
           $ref: "#/components/responses/ValidationError"
+    patch:
+      tags: [Recurring]
+      summary: Pause or resume a recurring payment
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, paused]
+              properties:
+                id:
+                  type: string
+                paused:
+                  type: boolean
+                  description: true pauses the schedule, false resumes it
+      responses:
+        "200":
+          description: Recurrence updated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Recurrence not found
 
   /api/recurring/{id}:
     get:
@@ -694,6 +770,126 @@ paths:
           description: Recurrence details
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Recurring]
+      summary: Cancel (deactivate) a recurring payment
+      description: |
+        Deactivates the schedule so the scheduler stops firing it, preserving
+        its run history. Scoped to the authenticated user's own schedules.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Recurrence deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Scheduled Payments ────────────────────────────────────
+  /api/scheduled:
+    get:
+      tags: [Scheduled Payments]
+      summary: List scheduled payments (soonest first)
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Paginated scheduled payments
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Scheduled Payments]
+      summary: Create a scheduled payment
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, assetCode, destAddress, scheduledAt]
+              properties:
+                amount:
+                  type: number
+                  exclusiveMinimum: 0
+                assetCode:
+                  type: string
+                  default: XLM
+                assetIssuer:
+                  type: string
+                destAddress:
+                  type: string
+                  pattern: "^G[A-Z0-9]{55}$"
+                memo:
+                  type: string
+                  maxLength: 28
+                scheduledAt:
+                  type: string
+                  format: date-time
+                  description: Must be in the future
+      responses:
+        "201":
+          description: Scheduled payment created
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [Scheduled Payments]
+      summary: Cancel a scheduled payment that has not executed
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Scheduled payment cancelled
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/scheduled/run:
+    get:
+      tags: [Scheduled Payments]
+      summary: Trigger the scheduled-payment sweep (cron ping)
+      description: |
+        Executes due scheduled payments. Invoked by Vercel Cron with the
+        `CRON_SECRET` as a Bearer token or `x-cron-secret` header; usable for
+        manual triggering with the same secret.
+      responses:
+        "200":
+          description: Run summary (picked / executed / failed / skipped)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Scheduler not configured (missing secrets)
+    post:
+      tags: [Scheduled Payments]
+      summary: Trigger the scheduled-payment sweep manually
+      description: Same run as GET, for external schedulers and manual triggering.
+      responses:
+        "200":
+          description: Run summary (picked / executed / failed / skipped)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Scheduler not configured (missing secrets)
 
   # ── Payment Requests ──────────────────────────────────────
   /api/requests:
@@ -783,6 +979,44 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/webhooks/{id}:
+    get:
+      tags: [Webhooks]
+      summary: Get a single webhook (secret redacted)
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Webhook details (signing secret redacted)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/webhooks/{id}/test:
+    post:
+      tags: [Webhooks]
+      summary: Send a test webhook delivery
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Test event delivered
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/webhooks/{id}/replay:
     post:
       tags: [Webhooks]
@@ -842,6 +1076,34 @@ paths:
           description: Delivery history (original + replay attempts)
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /api/webhooks/{id}/deliveries/{deliveryId}/redeliver:
+    post:
+      tags: [Webhooks]
+      summary: Redeliver a webhook payload from a prior delivery
+      description: |
+        Re-sends the stored payload from the original event associated with a
+        prior delivery and records a new delivery row for dashboard
+        visibility.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: deliveryId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: New delivery recorded and attempted
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ── API Keys ──────────────────────────────────────────────
   /api/keys:
@@ -948,6 +1210,26 @@ paths:
           description: Key revoked
         "400":
           description: Missing key ID
+
+  /api/keys/stats:
+    get:
+      tags: [API Keys]
+      summary: API key usage statistics
+      description: |
+        Aggregated request counts per API key over the chosen window
+        (24h / 7d / 30d), alongside each key's metadata and last-used time.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: window
+          in: query
+          schema: { type: string, enum: [24h, 7d, 30d], default: 30d }
+      responses:
+        "200":
+          description: Per-key usage stats for the window
+        "400":
+          description: Window must be 24h, 7d, or 30d
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ── Session ───────────────────────────────────────────────
   /api/auth/session:
@@ -1436,21 +1718,6 @@ paths:
           in: query
           schema: { type: string }
           description: Filter by exact action type (e.g. `payment_recorded`)
-        - name: since
-          in: query
-          schema: { type: integer }
-          description: >
-            Inclusive lower bound on entry timestamp (Unix seconds).
-            Use with `until` to filter by date range.
-        - name: until
-          in: query
-          schema: { type: integer }
-          description: Inclusive upper bound on entry timestamp (Unix seconds)
-          description: Filter by exact Stellar actor address
-        - name: action
-          in: query
-          schema: { type: string }
-          description: Filter by exact action type
         - name: resource
           in: query
           schema: { type: integer }
@@ -1467,6 +1734,10 @@ paths:
           in: query
           schema: { type: string, enum: [asc, desc], default: desc }
           description: Result ordering by entry id (newest first by default)
+        - name: source
+          in: query
+          schema: { type: string, enum: [contract, db, all], default: contract }
+          description: Backing store — on-chain ledger, persisted audit trail, or both
       responses:
         "200":
           description: >
@@ -1600,6 +1871,75 @@ paths:
             text/plain:
               schema:
                 type: string
+
+  # ── Jobs & Cron ──────────────────────────────────────────
+  /api/cron:
+    get:
+      tags: [Jobs & Cron]
+      summary: Scheduled-payment execution sweep (Vercel Cron ping)
+      description: |
+        Executes due scheduled payments. Vercel Cron invokes the GET path
+        with the project's `CRON_SECRET` as `Authorization: Bearer` or the
+        `x-cron-secret` header; POST runs the same work for external
+        schedulers and manual triggering.
+      responses:
+        "200":
+          description: Run summary (picked / executed / failed / skipped)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Scheduler not configured (missing secrets)
+    post:
+      tags: [Jobs & Cron]
+      summary: Run the scheduled-payment sweep manually
+      description: Same work as the GET cron ping, for external schedulers.
+      responses:
+        "200":
+          description: Run summary (picked / executed / failed / skipped)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Scheduler not configured (missing secrets)
+
+  /api/jobs/process-due-recurring:
+    post:
+      tags: [Jobs & Cron]
+      summary: Claim and execute due recurring schedules
+      description: |
+        Claims due recurring schedules (atomically, per-schedule) and creates
+        the payment for each. Intended for cron / worker invocation with an
+        authenticated session.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: integer
+                  minimum: 1
+                  description: Max schedules to process this run
+      responses:
+        "200":
+          description: Processed run summary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/pause-state:
+    get:
+      tags: [Contracts]
+      summary: Contract pause state
+      description: |
+        Reads the on-chain `is_paused` flag from the payment contract via a
+        simulated contract call.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      responses:
+        "200":
+          description: Pause state ({ paused, available })
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
 # ── Components ────────────────────────────────────────────────
 components:
@@ -1803,29 +2143,6 @@ components:
                 maxLength: 28
         sourceAccountId:
           type: string
-        idempotencyKey:
-          type: string
-          minLength: 8
-          maxLength: 255
-          description: >-
-            Optional body-form idempotency key. The Idempotency-Key header
-            takes precedence when both are provided.
-
-    BatchResponse:
-      type: object
-      properties:
-        id: { type: string }
-        userId: { type: string }
-        name: { type: string }
-        description: { type: [string, 'null'] }
-        idempotencyKey: { type: [string, 'null'] }
-        status: { type: string }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-        payments:
-          type: array
-          items:
-            $ref: "#/components/schemas/PaymentResponse"
 
     CreateRecurrenceRequest:
       type: object

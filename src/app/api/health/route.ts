@@ -126,8 +126,6 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     const isDegraded = dbStatus === "ok" && hasOptionalError;
     const overallStatus = dbStatus === "error" ? "error" : isDegraded ? "degraded" : "ok";
 
-    const httpStatus = overallStatus === "error" ? 503 : 200;
-
     return successResponse(
       {
         status: overallStatus,

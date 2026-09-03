@@ -13,7 +13,6 @@ import {
   deliverWebhook,
 } from "@/lib/webhook-deliver";
 import {
-  getMetricsSnapshot,
   resetMetricsForTest,
 } from "@/lib/metrics-counters";
 

@@ -9,13 +9,6 @@ import { createSessionToken, getAuthContext } from "@/lib/auth-session";
 import { POST as postBatch } from "@/app/api/batches/route";
 import * as csvImportModule from "@/lib/csv-import";
 
-interface CsvFileLike {
-  name: string;
-  type: string;
-  text(): Promise<string>;
-  arrayBuffer(): Promise<ArrayBuffer>;
-}
-
 /**
  * The test expects a PostgreSQL instance on localhost:5432, e.g.
  *

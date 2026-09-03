@@ -3,22 +3,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import FeeConfigPage from "./page";
-import { useWallet } from "@/hooks/useMultiWallet";
-import { useApiQuery } from "@/hooks/useApiQuery";
-import { setFeeConfig, setFeeCollector } from "@/lib/contract-advanced";
+
+// Hoisted mocks let tests configure each module mock before the page renders.
+// The mocked modules are declared via `vi.mock` below, and tests drive the
+// return values through `mocks.*` (no `as any` casts needed).
+const mocks = vi.hoisted(() => ({
+  useWallet: vi.fn(),
+  useApiQuery: vi.fn(),
+  setFeeConfig: vi.fn(),
+  setFeeCollector: vi.fn(),
+}));
 
 // Mock the hooks and contract functions
 vi.mock("@/hooks/useMultiWallet", () => ({
-  useWallet: vi.fn(),
+  useWallet: mocks.useWallet,
 }));
 
 vi.mock("@/hooks/useApiQuery", () => ({
-  useApiQuery: vi.fn(),
+  useApiQuery: mocks.useApiQuery,
 }));
 
 vi.mock("@/lib/contract-advanced", () => ({
-  setFeeConfig: vi.fn(),
-  setFeeCollector: vi.fn(),
+  setFeeConfig: mocks.setFeeConfig,
+  setFeeCollector: mocks.setFeeCollector,
 }));
 
 vi.mock("@/components/ui/Toast", () => ({
@@ -56,8 +63,8 @@ describe("FeeConfigPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
-    (useWallet as any).mockReturnValue({ wallet: mockWallet });
-    (useApiQuery as any).mockReturnValue({
+    mocks.useWallet.mockReturnValue({ wallet: mockWallet });
+    mocks.useApiQuery.mockReturnValue({
       data: mockConfig,
       isLoading: false,
       error: null,
@@ -78,7 +85,7 @@ describe("FeeConfigPage", () => {
 
   it("successfully updates fee config with transaction hash", async () => {
     const mockTxHash = "0xabc123def456789";
-    (setFeeConfig as any).mockResolvedValue({
+    mocks.setFeeConfig.mockResolvedValue({
       success: true,
       txHash: mockTxHash,
     });
@@ -97,7 +104,7 @@ describe("FeeConfigPage", () => {
     fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(setFeeConfig).toHaveBeenCalledWith(
+      expect(mocks.setFeeConfig).toHaveBeenCalledWith(
         "GABC1234567890",
         150,
         200,
@@ -143,11 +150,11 @@ describe("FeeConfigPage", () => {
     fireEvent.change(escrowInput, { target: { value: "-10" } });
     
     // Submit should not be called
-    expect(setFeeConfig).not.toHaveBeenCalled();
+    expect(mocks.setFeeConfig).not.toHaveBeenCalled();
   });
 
   it("shows error on failed contract call", async () => {
-    (setFeeConfig as any).mockResolvedValue({
+    mocks.setFeeConfig.mockResolvedValue({
       success: false,
       error: "Contract rejected transaction: fee too high",
     });
@@ -168,7 +175,7 @@ describe("FeeConfigPage", () => {
 
   it("updates fee collector successfully", async () => {
     const mockTxHash = "0xcollector123";
-    (setFeeCollector as any).mockResolvedValue({
+    mocks.setFeeCollector.mockResolvedValue({
       success: true,
       txHash: mockTxHash,
     });
@@ -187,7 +194,7 @@ describe("FeeConfigPage", () => {
     fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(setFeeCollector).toHaveBeenCalledWith(
+      expect(mocks.setFeeCollector).toHaveBeenCalledWith(
         "GABC1234567890",
         "GCOLLECTOR123456789",
       );
@@ -196,7 +203,7 @@ describe("FeeConfigPage", () => {
   });
 
   it("shows wallet connection warning when disconnected", () => {
-    (useWallet as any).mockReturnValue({ 
+    mocks.useWallet.mockReturnValue({ 
       wallet: { connected: false, publicKey: null } 
     });
 
@@ -207,7 +214,7 @@ describe("FeeConfigPage", () => {
   });
 
   it("shows loading state", () => {
-    (useApiQuery as any).mockReturnValue({
+    mocks.useApiQuery.mockReturnValue({
       data: null,
       isLoading: true,
       error: null,
@@ -221,7 +228,7 @@ describe("FeeConfigPage", () => {
   });
 
   it("shows empty state when no config exists", () => {
-    (useApiQuery as any).mockReturnValue({
+    mocks.useApiQuery.mockReturnValue({
       data: null,
       isLoading: false,
       error: null,

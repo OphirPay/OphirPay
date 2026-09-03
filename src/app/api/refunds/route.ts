@@ -4,7 +4,6 @@ import { withMetrics } from "@/lib/metrics-middleware";
 import prisma from "@/lib/prisma";
 import {
   successResponse,
-  badRequestError,
   unauthorizedError,
   conflictError,
   handleApiError,

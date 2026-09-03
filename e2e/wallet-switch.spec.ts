@@ -52,7 +52,6 @@ function injectWalletMocks(
   } = opts;
 
   // The script body is a plain string so no TS variable references leak in.
-  /* eslint-disable no-template-curly-in-string */
   page.addInitScript(`
     (function() {
       var FREIGHTER_PK = "${FREIGHTER_PK}";

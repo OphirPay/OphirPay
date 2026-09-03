@@ -56,7 +56,6 @@ vi.mock("@/lib/contracts", () => ({
 
 import prisma from "@/lib/prisma";
 import * as authSession from "@/lib/auth-session";
-import * as contracts from "@/lib/contracts";
 import * as webhookDispatcher from "@/lib/webhook-dispatcher";
 import { GET as getPayments, POST as postPayments } from "@/app/api/payments/route";
 import {

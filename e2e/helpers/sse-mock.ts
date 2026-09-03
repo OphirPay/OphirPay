@@ -39,7 +39,6 @@ export interface SseMock {
 }
 
 export function installSseMock(page: Page): SseMock {
-  const encoder = new TextEncoder();
   let connections: http.ServerResponse[] = [];
   let clientCount = 0;
   const nextClientWaiters: { afterIndex: number; resolve: () => void }[] = [];

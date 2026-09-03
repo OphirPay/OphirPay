@@ -13,12 +13,11 @@ import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { setFeeConfig, setFeeCollector } from "@/lib/contract-advanced";
-import { 
-  validateFeeBps, 
+import {
+  validateFeeBps,
   validateFeeConfig,
   MAX_FEE_BPS,
   useFeeConfig,
-  type FeeConfigData,
 } from "@/lib/fee-config";
 
 interface TxStatus {

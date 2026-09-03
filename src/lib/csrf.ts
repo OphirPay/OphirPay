@@ -128,10 +128,10 @@ export function verifyCsrf(request: Request): Response | null {
  * });
  * ```
  */
-export function withCsrf(
-  handler: (request: Request, context?: any) => Promise<Response>
+export function withCsrf<TContext = undefined>(
+  handler: (request: Request, context?: TContext) => Promise<Response>
 ) {
-  return async (request: Request, context?: any): Promise<Response> => {
+  return async (request: Request, context?: TContext): Promise<Response> => {
     const csrfError = verifyCsrf(request);
     if (csrfError) return csrfError;
     return handler(request, context);

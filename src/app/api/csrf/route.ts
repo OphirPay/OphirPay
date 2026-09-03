@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
-import { NextResponse } from "next/server";
 import { generateCsrfToken, csrfCookieHeader } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
 

@@ -2,7 +2,6 @@
 
 import { deliverWebhook, type WebhookDeliveryResult } from "@/lib/webhook-deliver";
 import { recordWebhookDelivery, toWebhookPayload } from "@/lib/webhook-event-store";
-import type { DeliveryStatus } from "@prisma/client";
 
 export interface RecordDeliveryOptions {
   responseCode?: number;

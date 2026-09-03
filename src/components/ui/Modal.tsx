@@ -48,6 +48,15 @@ export function Modal({
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  // title/description only decide where the focus trap starts when the dialog
+  // opens — read the latest values through a ref (same pattern as onCloseRef)
+  // so the trap effect below can stay keyed on `open` alone without focus
+  // churn when a caller changes the header mid-open.
+  const headerRef = useRef({ title, description });
+  useEffect(() => {
+    headerRef.current = { title, description };
+  });
+
   // Close the modal when the user presses the browser back button instead of
   // navigating away from the page. Opening the modal pushes a history entry;
   // pressing back pops it and fires `popstate`, which closes the modal.
@@ -90,7 +99,7 @@ export function Modal({
     // focus on the labelled region first so its name is announced; plain
     // content dialogs move straight to the first interactive element.
     const releaseTrap = trapFocus(dialogRef.current, {
-      focusContainer: Boolean(title || description),
+      focusContainer: Boolean(headerRef.current.title || headerRef.current.description),
     });
 
     // ESC to close

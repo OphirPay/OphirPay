@@ -7,18 +7,6 @@ import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
 import type { BatchStatus } from "@/types";
 
-type BatchGroupResult = { status: string; _count: { _all: number } };
-
-type BatchDrillDown = {
-  id: string;
-  name: string;
-  description: string | null;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-  paymentCounts?: { total: number; completed: number; failed: number; pending: number };
-};
-
 const BATCH_STATUSES: BatchStatus[] = [
   "CREATED",
   "PROCESSING",

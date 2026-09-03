@@ -32,7 +32,7 @@ function duePayment(overrides: Record<string, unknown> = {}) {
     assetIssuer: null,
     destAddress: ADDRESS,
     memo: null,
-    scheduledFor: new Date(Date.now() - 60_000),
+    scheduledAt: new Date(Date.now() - 60_000),
     status: "SCHEDULED",
     transactionHash: null,
     errorMessage: null,
@@ -47,7 +47,7 @@ describe("createScheduledPaymentSchema", () => {
   const base = {
     amount: 100,
     destAddress: ADDRESS,
-    scheduledFor: new Date(Date.now() + 86_400_000).toISOString(),
+    scheduledAt: new Date(Date.now() + 86_400_000).toISOString(),
   };
 
   it("accepts a valid future schedule", () => {
@@ -61,7 +61,7 @@ describe("createScheduledPaymentSchema", () => {
   it("rejects a past scheduled date", () => {
     const result = createScheduledPaymentSchema.safeParse({
       ...base,
-      scheduledFor: new Date(Date.now() - 60_000).toISOString(),
+      scheduledAt: new Date(Date.now() - 60_000).toISOString(),
     });
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -74,7 +74,7 @@ describe("createScheduledPaymentSchema", () => {
   it("rejects an invalid date string", () => {
     const result = createScheduledPaymentSchema.safeParse({
       ...base,
-      scheduledFor: "not-a-date",
+      scheduledAt: "not-a-date",
     });
     expect(result.success).toBe(false);
   });
@@ -112,9 +112,9 @@ describe("pickDueScheduledPayments", () => {
     expect(prismaMock.scheduledPayment.findMany).toHaveBeenCalledWith({
       where: {
         status: "SCHEDULED",
-        scheduledFor: { lte: now },
+        scheduledAt: { lte: now },
       },
-      orderBy: { scheduledFor: "asc" },
+      orderBy: { scheduledAt: "asc" },
       take: 10,
     });
   });

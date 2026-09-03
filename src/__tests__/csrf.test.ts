@@ -70,12 +70,16 @@ describe("CSRF Protection", () => {
 
     it("rejects tokens of wrong length", () => {
       expect(validateCsrfToken("abc", "abc")).toBe(false);
-      expect(validateCsrfToken("a".repeat(64), "a".repeat(64))).toBe(false);
+      expect(validateCsrfToken("a".repeat(32), "a".repeat(32))).toBe(false);
     });
 
     it("rejects non-hex tokens", () => {
       const token = "z".repeat(64);
       expect(validateCsrfToken(token, token)).toBe(false);
+    });
+
+    it("accepts matching hex tokens", () => {
+      expect(validateCsrfToken("a".repeat(64), "a".repeat(64))).toBe(true);
     });
   });
 

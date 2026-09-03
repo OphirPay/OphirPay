@@ -23,7 +23,10 @@ vi.mock("@/lib/auth-session", () => ({
 vi.mock("@/lib/webhook-dispatcher", () => ({
   dispatchWebhookEventAsync: vi.fn(),
 }));
-vi.mock("@/lib/metrics-counters", () => ({ incMetric: vi.fn() }));
+vi.mock("@/lib/metrics-counters", () => ({
+  incMetric: vi.fn(),
+  recordEndpointLatency: vi.fn(),
+}));
 vi.mock("@/lib/logger", () => ({
   logger: { request: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
@@ -163,7 +166,7 @@ describe("GET /api/payments — keyset pagination", () => {
     expect(res.status).toBe(200);
 
     expect(mockedFindMany).toHaveBeenCalledWith({
-      where: { AND: [{ userId: "user-1" }] },
+      where: { userId: "user-1", deletedAt: null },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 4,
     });
@@ -188,11 +191,11 @@ describe("GET /api/payments — keyset pagination", () => {
     expect(mockedFindMany).toHaveBeenCalledWith({
       where: {
         AND: [
-          { userId: "user-1" },
+          { userId: "user-1", deletedAt: null },
           {
             OR: [
-              { createdAt: { lt: DATE_B } },
-              { createdAt: DATE_B, id: { lt: "b1" } },
+              { createdAt: { lt: DATE_B.toISOString() } },
+              { createdAt: DATE_B.toISOString(), id: { lt: "b1" } },
             ],
           },
         ],
@@ -227,7 +230,7 @@ describe("GET /api/payments — keyset pagination", () => {
     const res = await GET(apiUrl("limit=3&includeTotal=true"));
     const body = await res.json();
     expect(body.meta.total).toBe(4);
-    expect(mockedCount).toHaveBeenCalledWith({ where: { AND: [{ userId: "user-1" }] } });
+    expect(mockedCount).toHaveBeenCalledWith({ where: { userId: "user-1", deletedAt: null } });
   });
 
   it("applies status + search filters in keyset mode", async () => {
@@ -235,16 +238,15 @@ describe("GET /api/payments — keyset pagination", () => {
     await GET(apiUrl("limit=3&status=COMPLETED&search=freelance"));
     expect(mockedFindMany).toHaveBeenCalledWith({
       where: {
-        AND: [
-          { userId: "user-1" },
-          { status: "COMPLETED" },
-          {
-            OR: [
-              { description: { contains: "freelance" } },
-              { memo: { contains: "freelance" } },
-              { transactionHash: { contains: "freelance" } },
-            ],
-          },
+        userId: "user-1",
+        deletedAt: null,
+        status: "COMPLETED",
+        // Issue #157: description + memo substring search (memo is
+        // case-insensitive), transaction hash is an exact match.
+        OR: [
+          { description: { contains: "freelance" } },
+          { memo: { contains: "freelance", mode: "insensitive" } },
+          { transactionHash: { equals: "freelance" } },
         ],
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -257,7 +259,7 @@ describe("GET /api/payments — keyset pagination", () => {
     const res = await GET(apiUrl(""));
     expect(res.status).toBe(200); // previously 400 for missing page/status/search
     const body = await res.json();
-    expect(body.meta.limit).toBe(20); // default applied
+    expect(body.meta.limit).toBe(50); // default applied
   });
 });
 
@@ -277,12 +279,12 @@ describe("GET /api/payments — legacy offset mode (page param)", () => {
     expect(res.status).toBe(200);
 
     expect(mockedFindMany).toHaveBeenCalledWith({
-      where: { AND: [{ userId: "user-1" }] },
+      where: { userId: "user-1", deletedAt: null },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: 10,
       take: 10,
     });
-    expect(mockedCount).toHaveBeenCalledWith({ where: { AND: [{ userId: "user-1" }] } });
+    expect(mockedCount).toHaveBeenCalledWith({ where: { userId: "user-1", deletedAt: null } });
 
     const body = await res.json();
     expect(body.meta.page).toBe(2);

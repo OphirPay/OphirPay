@@ -150,7 +150,7 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     path: "/api/batches/[id]",
     authRequired: true,
     requiredRole: null,
-    csrfProtected: false,
+    csrfProtected: true,
     description: "Bulk-cancel a batch's pending payments (user-scoped)",
   },
 

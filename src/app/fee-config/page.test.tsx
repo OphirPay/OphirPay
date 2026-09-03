@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import FeeConfigPage from "../page";
+import FeeConfigPage from "./page";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { setFeeConfig, setFeeCollector } from "@/lib/contract-advanced";
@@ -100,10 +100,10 @@ describe("FeeConfigPage", () => {
       expect(setFeeConfig).toHaveBeenCalledWith(
         "GABC1234567890",
         150,
-        5,
-        2,
-        0,
-        0,
+        200,
+        300,
+        1000000,
+        100000,
         true,
       );
       expect(screen.getByText(/Tx: 0xabc123def456789/)).toBeInTheDocument();
@@ -183,7 +183,7 @@ describe("FeeConfigPage", () => {
     fireEvent.change(collectorInput, { target: { value: "GCOLLECTOR123456789" } });
     
     // Submit
-    const submitButton = screen.getByText("Set Fee Collector");
+    const submitButton = screen.getByRole("button", { name: "Set Fee Collector" });
     fireEvent.click(submitButton);
 
     await waitFor(() => {

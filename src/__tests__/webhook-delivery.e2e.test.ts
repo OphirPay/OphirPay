@@ -41,7 +41,7 @@ describe("webhook delivery retry flow", () => {
       2,
     );
 
-    expect(delivered).toBe(true);
+    expect(delivered.success).toBe(true);
     expect(attempts).toBe(2);
     expect(JSON.parse(bodies[1]).event).toBe("payment.created");
     expect(JSON.parse(bodies[1]).signature).toMatch(/^[a-f0-9]{64}$/);

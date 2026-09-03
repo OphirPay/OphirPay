@@ -4,6 +4,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vites
 import net from "node:net";
 import { createBatchSchema } from "@/lib/validation-schemas";
 import { AUDIT_ACTIONS } from "@/lib/audit";
+import type { CsvImportRow } from "@/lib/csv-import";
 import { createSessionToken, getAuthContext } from "@/lib/auth-session";
 import { POST as postBatch } from "@/app/api/batches/route";
 import * as csvImportModule from "@/lib/csv-import";
@@ -131,7 +132,7 @@ G${"B".repeat(55)},50,
 
   it("imports CSV data and inserts rows into the database via admin batch creation", async () => {
     // Parse and validate the CSV file
-    const { rows, fileErrors } = await (csvImport as { parseRecipientsCsvToRows: (file: CsvFileLike) => Promise<{ rows: Array<{ values: Record<string, string>; errors: Record<string, unknown> }>; fileErrors: string[] }> }).parseRecipientsCsvToRows(csvFile(sampleCsv));
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(csvFile(sampleCsv));
 
     expect(fileErrors).toEqual([]);
     expect(rows).toHaveLength(2);

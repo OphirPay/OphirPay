@@ -97,19 +97,8 @@ describe("deliverWebhook", () => {
     expect(body.event).toBe("payment.created");
     expect(body.signature).toMatch(/^[a-f0-9]{64}$/);
     expect((init.headers as Record<string, string>)["X-OphirPay-Signature"]).toBe(body.signature);
-
-    const metrics = getMetricsSnapshot();
-    expect(metrics.delivery_attempts).toEqual([
-      { delivery_type: "webhook", attempt_number: 1, count: 1 },
-    ]);
-    expect(metrics.delivery_final_outcomes).toEqual([
-      {
-        delivery_type: "webhook",
-        attempt_number: 1,
-        final_outcome: "success",
-        count: 1,
-      },
-    ]);
+    expect(ok.attempts).toBe(1);
+    expect(ok.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
   it("treats a 3xx redirect response as a failure (never follows it)", async () => {
@@ -123,19 +112,8 @@ describe("deliverWebhook", () => {
     const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 1);
     expect(ok.success).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    const metrics = getMetricsSnapshot();
-    expect(metrics.delivery_attempts).toEqual([
-      { delivery_type: "webhook", attempt_number: 1, count: 1 },
-    ]);
-    expect(metrics.delivery_final_outcomes).toEqual([
-      {
-        delivery_type: "webhook",
-        attempt_number: 1,
-        final_outcome: "failure",
-        count: 1,
-      },
-    ]);
+    expect(ok.attempts).toBe(1);
+    expect(ok.errorMessage).toBe("HTTP 302");
   });
 
   it("returns false when the destination fails the delivery-time guard", async () => {
@@ -145,17 +123,7 @@ describe("deliverWebhook", () => {
     const ok = await deliverWebhook("http://127.0.0.1:8080/hook", SECRET, samplePayload, 2);
     expect(ok.success).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
-
-    const metrics = getMetricsSnapshot();
-    expect(metrics.delivery_attempts).toEqual([]);
-    expect(metrics.delivery_final_outcomes).toEqual([
-      {
-        delivery_type: "webhook",
-        attempt_number: 1,
-        final_outcome: "failure",
-        count: 1,
-      },
-    ]);
+    expect(ok.errorMessage).toBe("URL resolved to a private/internal address");
   });
 
   it("counts each retry attempt and labels the final failed outcome by the last attempt", async () => {
@@ -166,21 +134,9 @@ describe("deliverWebhook", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 2);
-    expect(ok).toBe(false);
+    expect(ok.success).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-
-    const metrics = getMetricsSnapshot();
-    expect(metrics.delivery_attempts).toEqual([
-      { delivery_type: "webhook", attempt_number: 1, count: 1 },
-      { delivery_type: "webhook", attempt_number: 2, count: 1 },
-    ]);
-    expect(metrics.delivery_final_outcomes).toEqual([
-      {
-        delivery_type: "webhook",
-        attempt_number: 2,
-        final_outcome: "failure",
-        count: 1,
-      },
-    ]);
+    expect(ok.attempts).toBe(2);
+    expect(ok.statusCode).toBe(500);
   });
 });

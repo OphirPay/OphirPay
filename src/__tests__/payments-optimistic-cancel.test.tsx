@@ -93,6 +93,18 @@ describe("PaymentsPage optimistic cancel (Issue #47)", () => {
 
   it("optimistically flips the status to CANCELLED on click, then reconciles on success", async () => {
     mocks.fetchMock.mockResolvedValue({ ok: true });
+    // Initial load returns #1 as RECORDED; the post-cancel refetch returns it
+    // as CANCELLED (the server flipped it), so the button stays hidden after
+    // the optimistic state is reconciled away.
+    mocks.fetchOnChainPayments
+      .mockResolvedValueOnce({
+        payments: [recordedPayment, cancelledPayment],
+        total: 2,
+      })
+      .mockResolvedValueOnce({
+        payments: [{ ...recordedPayment, metadata: "CANCELLED" }, cancelledPayment],
+        total: 2,
+      });
 
     renderPage();
     await screen.findAllByRole("row");

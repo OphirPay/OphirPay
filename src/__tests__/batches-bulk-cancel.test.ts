@@ -27,13 +27,20 @@ vi.mock("@/lib/auth-session", () => ({
 }));
 
 import { POST } from "@/app/api/batches/[id]/route";
+import { generateCsrfToken } from "@/lib/csrf";
 
 const USER_ID = "user-1";
 const BATCH_ID = "cm0bt0000000000000000001";
 
+const token = generateCsrfToken();
+
 const makeRequest = () =>
   new Request("http://localhost/api/batches/cm0bt0000000000000000001", {
     method: "POST",
+    headers: {
+      "x-csrf-token": token,
+      cookie: `__Host-csrf=${token}`,
+    },
   });
 
 function makePayment(id: string, status: string) {

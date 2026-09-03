@@ -30,7 +30,13 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: mockGetAuthContext,
 }));
 
+import { generateCsrfToken } from "@/lib/csrf";
 import { POST } from "@/app/api/batches/route";
+
+function csrfHeaders(): Record<string, string> {
+  const token = generateCsrfToken();
+  return { "x-csrf-token": token, cookie: `__Host-csrf=${token}` };
+}
 
 const USER_ID = "user-1";
 const BATCH_ID = "cm0bt0000000000000000001";
@@ -65,7 +71,7 @@ function makeBody(overrides: Record<string, unknown> = {}) {
 function makeRequest(body: unknown, headers: Record<string, string> = {}): Request {
   return new Request("http://localhost/api/batches", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: { "Content-Type": "application/json", ...csrfHeaders(), ...headers },
     body: JSON.stringify(body),
   });
 }

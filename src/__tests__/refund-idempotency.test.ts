@@ -23,6 +23,7 @@ vi.mock("@/lib/prisma", () => ({
     auditLog: {
       create: mockAuditCreate,
       findMany: mockFindMany,
+      count: vi.fn().mockResolvedValue(1),
     },
   },
 }));

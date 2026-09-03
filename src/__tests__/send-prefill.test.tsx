@@ -66,6 +66,13 @@ vi.mock("@/components/ui/CopyButton", () => ({
 }));
 
 vi.mock("@/hooks/useApiQuery", () => ({
+  useApiQuery: () => ({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   useApiMutation: () => ({
     mutateAsync: vi.fn(),
     isPending: false,

@@ -3,6 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@/components/ui/Toast";
 import PaymentsPage from "@/app/payments/page";
 
 vi.mock("next/navigation", () => ({
@@ -36,7 +37,9 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <PaymentsPage />
+      <ToastProvider>
+        <PaymentsPage />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
@@ -89,9 +92,12 @@ describe("PaymentsPage keyboard navigation", () => {
       expect(button).toBeEnabled();
     }
 
-    const explorerLinks = await screen.findAllByRole("link", {
+    // Row action = the tx-hash explorer link (opens in a new tab). The
+    // payment-detail link also contains "…" (shortened addresses), so scope
+    // to links that open externally.
+    const explorerLinks = (await screen.findAllByRole("link", {
       name: /\.\.\./,
-    });
+    })).filter((link) => link.getAttribute("target") === "_blank");
     expect(explorerLinks.length).toBe(PAYMENTS.length);
     for (const link of explorerLinks) {
       expect(link).toHaveAttribute("href");
@@ -191,7 +197,7 @@ describe("PaymentsPage keyboard navigation", () => {
     const headers = await screen.findAllByRole("columnheader");
     expect(headers.map((h) => h.textContent)).toEqual([
       "Payment",
-      "Amount",
+      "Amount (XLM)",
       "Status",
       "Date",
       "Tx Hash",

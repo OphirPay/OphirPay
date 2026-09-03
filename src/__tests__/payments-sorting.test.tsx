@@ -10,6 +10,7 @@ import {
   type RenderResult,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@/components/ui/Toast";
 import PaymentsPage from "@/app/payments/page";
 import type { OnChainPayment } from "@/lib/contracts";
 
@@ -75,7 +76,9 @@ function renderPage(): RenderResult {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <PaymentsPage />
+      <ToastProvider>
+        <PaymentsPage />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
@@ -83,7 +86,9 @@ function renderPage(): RenderResult {
 function rerender(view: RenderResult) {
   view.rerender(
     <QueryClientProvider client={queryClient}>
-      <PaymentsPage />
+      <ToastProvider>
+        <PaymentsPage />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

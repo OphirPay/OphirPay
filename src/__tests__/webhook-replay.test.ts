@@ -72,8 +72,9 @@ describe("selectEventsForReplay", () => {
       },
     ]);
 
-    const since = new Date("2026-08-19T00:00:00Z");
-    const until = new Date("2026-08-21T00:00:00Z");
+    // Relative to now so the 7-day replay window clamp never trips.
+    const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const until = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
 
     const result = await selectEventsForReplay({
       userId: "user_1",
@@ -129,6 +130,7 @@ describe("toWebhookPayload", () => {
 describe("recordWebhookDelivery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDeliveryCreate.mockResolvedValue({ id: "dlv_1" });
   });
 
   it("persists replay deliveries with batch id", async () => {

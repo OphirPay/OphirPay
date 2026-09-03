@@ -119,7 +119,9 @@ describe("GET /api/payments — search combined with filters & pagination", () =
   });
 
   it("still counts the full filtered set for pagination metadata", async () => {
-    await GET(makeRequest("http://localhost/api/payments?search=hash"));
+    await GET(
+      makeRequest("http://localhost/api/payments?search=hash&includeTotal=true")
+    );
 
     expect(mockCount).toHaveBeenCalledWith({
       where: expect.objectContaining({

@@ -73,7 +73,6 @@ describe("GET /api/payments", () => {
           { memo: { contains: "invoice", mode: "insensitive" } },
           { transactionHash: { equals: "invoice" } },
         ],
-        deletedAt: null,
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 51,

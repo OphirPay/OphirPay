@@ -166,9 +166,9 @@ describe("SendPage scheduling", () => {
       destAddress: RECIPIENT,
       memo: "September payout",
     });
-    // scheduledFor must match the chosen local datetime (instant-safe)
+    // scheduledAt must match the chosen local datetime (instant-safe)
     expect(
-      new Date(String(createdBodies[0].scheduledFor)).getTime()
+      new Date(String(createdBodies[0].scheduledAt)).getTime()
     ).toBe(new Date("2099-01-01T10:00").getTime());
   });
 
@@ -218,7 +218,7 @@ describe("ScheduledPaymentsList", () => {
                 assetCode: "XLM",
                 destAddress: RECIPIENT,
                 memo: "Payout",
-                scheduledFor: "2099-01-01T10:00:00.000Z",
+                scheduledAt: "2099-01-01T10:00:00.000Z",
                 status: "SCHEDULED",
               },
               {
@@ -226,7 +226,7 @@ describe("ScheduledPaymentsList", () => {
                 amount: "25",
                 assetCode: "XLM",
                 destAddress: PUBLIC_KEY,
-                scheduledFor: "2099-02-01T10:00:00.000Z",
+                scheduledAt: "2099-02-01T10:00:00.000Z",
                 status: "EXECUTED",
                 transactionHash: "tx123",
               },
@@ -268,7 +268,7 @@ describe("ScheduledPaymentsList", () => {
                 amount: "100",
                 assetCode: "XLM",
                 destAddress: RECIPIENT,
-                scheduledFor: "2099-01-01T10:00:00.000Z",
+                scheduledAt: "2099-01-01T10:00:00.000Z",
                 status: "SCHEDULED",
               },
             ],

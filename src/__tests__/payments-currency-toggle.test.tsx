@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@/components/ui/Toast";
 import PaymentsPage from "@/app/payments/page";
 import * as priceModule from "@/lib/price";
 
@@ -34,7 +35,9 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <PaymentsPage />
+      <ToastProvider>
+        <PaymentsPage />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

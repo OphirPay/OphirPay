@@ -86,7 +86,7 @@ export function validateMemo(value: string, type: MemoType = "text"): MemoValida
     return {
       valid: false,
       type,
-      error: "Memo text must not contain control or invisible characters.",
+      error: "Memo text must not contain control characters or invisible characters.",
     };
   }
   if (new TextEncoder().encode(value).length > MEMO_LIMITS.text) {

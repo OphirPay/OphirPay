@@ -15,6 +15,7 @@ interface AddressAutocompleteProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  "data-testid"?: string;
 }
 
 type Option =
@@ -39,6 +40,7 @@ export function AddressAutocomplete({
   placeholder = "G...",
   disabled = false,
   className,
+  "data-testid": dataTestId,
 }: AddressAutocompleteProps) {
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
@@ -153,6 +155,7 @@ export function AddressAutocomplete({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder={placeholder}
+        data-testid={dataTestId}
         autoComplete="off"
         role="combobox"
         aria-expanded={showDropdown}

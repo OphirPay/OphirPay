@@ -97,64 +97,13 @@ export function prismaPagination(page: number, limit: number) {
   };
 }
 
-// ── Cursor (keyset) pagination ─────────────────────────────────
+// ── Keyset query building ─────────────────────────────────────
 //
 // Offset pagination (`skip: (page - 1) * limit`) degrades on large tables:
 // the database must scan and discard `skip` rows on every page. Keyset
 // pagination instead remembers the last row of the previous page and asks
 // for rows strictly after it — the query is index-friendly and each page
 // costs the same regardless of depth.
-
-/** A page boundary: the last row of the previous page. */
-export interface Cursor {
-  /** ISO timestamp of the boundary row (ordering column). */
-  createdAt: string;
-  /** Unique tiebreaker so the boundary is unambiguous on timestamp ties. */
-  id: string;
-}
-
-function base64UrlEncode(value: string): string {
-  if (typeof btoa === "function") {
-    return btoa(value)
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-  }
-  return Buffer.from(value, "utf8").toString("base64url");
-}
-
-function base64UrlDecode(value: string): string {
-  const b64 = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
-  if (typeof atob === "function") return atob(padded);
-  return Buffer.from(padded, "base64").toString("utf8");
-}
-
-/** Serialize a page boundary into an opaque, URL-safe cursor string. */
-export function encodeCursor(cursor: Cursor): string {
-  return base64UrlEncode(JSON.stringify(cursor));
-}
-
-/**
- * Parse an opaque cursor string. Returns null for malformed input so callers
- * can reject bad cursors with a 400 instead of crashing the query.
- */
-export function decodeCursor(raw: string): Cursor | null {
-  try {
-    const parsed = JSON.parse(base64UrlDecode(raw)) as Partial<Cursor>;
-    if (
-      typeof parsed.createdAt === "string" &&
-      parsed.createdAt.length > 0 &&
-      typeof parsed.id === "string" &&
-      parsed.id.length > 0
-    ) {
-      return { createdAt: parsed.createdAt, id: parsed.id };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Combine the base filter with the keyset condition for `createdAt desc,
@@ -163,7 +112,7 @@ export function decodeCursor(raw: string): Cursor | null {
  */
 export function buildCursorWhere(
   baseWhere: Record<string, unknown>,
-  cursor: Cursor | null
+  cursor: CursorPayload | null
 ): Record<string, unknown> {
   if (!cursor) return baseWhere;
   return {

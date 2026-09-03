@@ -3,6 +3,8 @@
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -18,12 +20,6 @@ import {
   useFeeConfig,
   type FeeConfigData,
 } from "@/lib/fee-config";
-
-interface TxStatus {
-  type: "success" | "error";
-  message: string;
-  txHash?: string;
-}
 
 interface TxStatus {
   type: "success" | "error";
@@ -54,18 +50,6 @@ export default function FeeConfigPage() {
   const [formCollector, setFormCollector] = useState("");
 
   const { config, isLoading: loading } = useFeeConfig();
-
-  // Initialize form values from config when loaded
-  useEffect(() => {
-    if (config) {
-      setFormPaymentFee(config.payment_fee_bps);
-      setFormEscrowFee(config.escrow_fee_bps);
-      setFormStreamFee(config.stream_fee_bps);
-      setFormBatchBase(config.batch_base_fee);
-      setFormBatchPerItem(config.batch_per_item_fee);
-      setFormEnabled(config.enabled);
-    }
-  }, [config]);
 
   // Initialize form values from config when loaded
   useEffect(() => {

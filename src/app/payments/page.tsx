@@ -1,12 +1,20 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { Suspense, useCallback, useMemo, useState, useOptimistic } from "react";
+import {
+  Suspense,
+  startTransition,
+  useCallback,
+  useMemo,
+  useState,
+  useOptimistic,
+  type ReactNode,
+} from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { formatAmount, shortenAddress, timeAgo } from "@/lib/utils";
+import { formatAmount, shortenAddress, timeAgo, cn } from "@/lib/utils";
 import { fetchOnChainPayments, type OnChainPayment } from "@/lib/contracts";
 import { useToast } from "@/components/ui/Toast";
 import { getStellarExplorerUrl, XLM_STROOPS } from "@/lib/stellar";
@@ -23,6 +31,75 @@ import { useApiQuery } from "@/hooks/useApiQuery";
 import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
 import { useXlmPrice } from "@/hooks/usePrice";
 import { convertXlmToUsd, formatFiatAmount } from "@/lib/price";
+import {
+  parsePaymentSort,
+  applyPaymentSort,
+  getSortParamUpdates,
+  getNextSort,
+  type PaymentSort,
+  type PaymentSortKey,
+} from "@/lib/payments-sort";
+import { useTableKeyboardNavigation } from "@/hooks/useTableKeyboardNavigation";
+
+// ── Sortable column header ─────────────────────────────────────
+
+function SortArrow({ dir }: { dir: "asc" | "desc" }) {
+  return dir === "asc" ? (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+    </svg>
+  ) : (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+    </svg>
+  );
+}
+
+function SortNeutralIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+    </svg>
+  );
+}
+
+interface SortableThProps {
+  label: string;
+  sortKey: PaymentSortKey;
+  sort: PaymentSort;
+  onSort: (key: PaymentSortKey) => void;
+  children?: ReactNode;
+}
+
+function SortableTh({ label, sortKey, sort, onSort, children }: SortableThProps) {
+  const active = sort.key === sortKey;
+  const ariaSort = active ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
+  return (
+    <th scope="col" aria-sort={ariaSort} className="py-3 px-4">
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        aria-label={`Sort by ${label}`}
+        title={`Sort by ${label}`}
+        className={cn(
+          "inline-flex items-center gap-1 font-medium group/btn transition-colors",
+          active
+            ? "text-ophir-600 dark:text-ophir-400"
+            : "hover:text-gray-700 dark:hover:text-gray-200"
+        )}
+      >
+        {children}
+        <span
+          className={cn(
+            active ? "text-ophir-500 dark:text-ophir-400" : "text-gray-300 dark:text-gray-600 group-hover/btn:text-gray-400 dark:group-hover/btn:text-gray-500"
+          )}
+        >
+          {active ? <SortArrow dir={sort.dir} /> : <SortNeutralIcon />}
+        </span>
+      </button>
+    </th>
+  );
+}
 
 // ── Page ──────────────────────────────────────────────────────
 
@@ -83,7 +160,7 @@ function PaymentsClient() {
       // On-chain reads are N+1 RPC simulations — don't refetch on tab focus
       refetchOnWindowFocus: false,
     },
-    () => fetchOnChainPayments(50)
+    () => fetchOnChainPayments(FETCH_ALL_RECORDS)
   );
 
   const payments = useMemo(() => data?.payments ?? [], [data]);
@@ -108,25 +185,30 @@ function PaymentsClient() {
   );
 
   const handleCancel = useCallback(
-    async (payment: OnChainPayment) => {
-      // Optimistically mark as CANCELLED
-      setOptimisticStatuses({ id: payment.id, status: "CANCELLED" });
+    (payment: OnChainPayment) => {
+      // useOptimistic only applies updates dispatched inside a transition, so
+      // the whole cancel flow (optimistic flip → server call → reconcile /
+      // rollback) runs as one async transition.
+      startTransition(async () => {
+        // Optimistically mark as CANCELLED
+        setOptimisticStatuses({ id: payment.id, status: "CANCELLED" });
 
-      try {
-        const res = await fetch("/api/payments/cancel", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ txHash: payment.txHash }),
-        });
-        if (!res.ok) throw new Error("Failed to cancel payment");
-        // Reconcile: refetch from server to confirm the state
-        await load();
-        toast.success("Payment cancelled");
-      } catch {
-        // Roll back: revert to original status
-        setOptimisticStatuses({ id: payment.id, status: "RECORDED" });
-        toast.error("Failed to cancel payment", "The payment status has been reverted.");
-      }
+        try {
+          const res = await fetch("/api/payments/cancel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ txHash: payment.txHash }),
+          });
+          if (!res.ok) throw new Error("Failed to cancel payment");
+          // Reconcile: refetch from server to confirm the state
+          await load();
+          toast.success("Payment cancelled");
+        } catch {
+          // Roll back: revert to original status
+          setOptimisticStatuses({ id: payment.id, status: "RECORDED" });
+          toast.error("Failed to cancel payment", "The payment status has been reverted.");
+        }
+      });
     },
     [setOptimisticStatuses, load, toast]
   );
@@ -437,13 +519,17 @@ function PaymentsClient() {
           <table className="w-full text-sm" aria-busy={loading}>
             <thead>
               <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
-                <th className="py-3 px-4 font-medium">Payment</th>
-                <th className="py-3 px-4 font-medium">
+                <th scope="col" className="py-3 px-4 font-medium">Payment</th>
+                <SortableTh label="amount" sortKey="amount" sort={sort} onSort={toggleSort}>
                   Amount {currency === "USD" ? "(USD)" : "(XLM)"}
-                </th>
-                <th className="py-3 px-4 font-medium">Status</th>
-                <th className="py-3 px-4 font-medium">Date</th>
-                <th className="py-3 px-4 font-medium">Tx Hash</th>
+                </SortableTh>
+                <SortableTh label="status" sortKey="status" sort={sort} onSort={toggleSort}>
+                  Status
+                </SortableTh>
+                <SortableTh label="date" sortKey="date" sort={sort} onSort={toggleSort}>
+                  Date
+                </SortableTh>
+                <th scope="col" className="py-3 px-4 font-medium">Tx Hash</th>
               </tr>
             </thead>
             <tbody ref={tbodyRef} onKeyDown={onRowsKeyDown}>

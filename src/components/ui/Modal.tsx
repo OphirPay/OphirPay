@@ -23,6 +23,9 @@ const sizeClasses = {
   lg: "max-w-2xl",
 };
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
 /**
  * Accessible modal dialog — ESC to close, backdrop click to close,
  * body scroll lock, focus trap, and focus restore on close.
@@ -82,9 +85,13 @@ export function Modal({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Moves focus to the first interactive element and restores it to the
-    // trigger element when released.
-    const releaseTrap = trapFocus(dialogRef.current);
+    // Moves focus into the dialog and restores it to the trigger element when
+    // released. Dialogs with a header (title/description + close control) put
+    // focus on the labelled region first so its name is announced; plain
+    // content dialogs move straight to the first interactive element.
+    const releaseTrap = trapFocus(dialogRef.current, {
+      focusContainer: Boolean(title || description),
+    });
 
     // ESC to close
     const onKeyDown = (e: KeyboardEvent) => {

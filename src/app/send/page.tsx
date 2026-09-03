@@ -20,7 +20,7 @@ import {
   parseSubmissionError,
   SPONSOR_MIN_STARTING_BALANCE,
 } from "@/lib/stellar";
-import { formatAmount, shortenAddress } from "@/lib/utils";
+import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
 import { recordPaymentOnChain } from "@/lib/contracts";
 import { downloadReceiptPdf } from "@/lib/receipt-pdf";
@@ -29,6 +29,8 @@ import { useToast } from "@/components/ui/Toast";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useApiMutation } from "@/hooks/useApiQuery";
 import { AssetSelector } from "@/components/AssetSelector";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import ScheduledPaymentsList from "@/components/ScheduledPaymentsList";
 import { XLM_ASSET, getAssetInfo, type AssetInfo } from "@/lib/assets";
 import { nextRunAt, FREQUENCY_OPTIONS, FREQUENCY_LABELS, frequencyLabel, type Frequency } from "@/lib/recurrence";
 import Link from "next/link";
@@ -67,7 +69,7 @@ type TxResult =
       id: string;
       amount: string;
       destination: string;
-      scheduledFor: string;
+      scheduledAt: string;
     }
   | { type: "error"; message: string }
   | null;
@@ -98,7 +100,7 @@ function SendPageClient() {
   const [result, setResult] = useState<TxResult>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
-  const [scheduledFor, setScheduledFor] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
 
   // Sponsored-account (new recipient) support
   const [sponsorCreate, setSponsorCreate] = useState(false);
@@ -136,6 +138,22 @@ function SendPageClient() {
     { id: string }
   >("/api/payments", {
     invalidateKeys: [["dashboard", "payments"], ["payments", "onchain"], ["events", "onchain"]],
+  });
+
+  // Scheduled payments — created via the API (no wallet signing needed);
+  // the cron endpoint executes them when the date arrives.
+  const schedulePaymentMutation = useApiMutation<
+    {
+      amount: number;
+      assetCode: string;
+      assetIssuer?: string;
+      memo?: string;
+      destAddress: string;
+      scheduledAt: string;
+    },
+    { id: string }
+  >("/api/scheduled", {
+    invalidateKeys: [["scheduled"]],
   });
 
   // Records a DB Recurrence schedule when the user picks the recurring mode.
@@ -349,6 +367,11 @@ function SendPageClient() {
 
     // ── Scheduled flow: persist via the API, no wallet signing ──
     if (scheduleEnabled) {
+      if (!scheduledAt || new Date(scheduledAt).getTime() <= Date.now()) {
+        setValidationError("Scheduled time must be in the future.");
+        sendInFlightRef.current = false;
+        return;
+      }
       setStep("scheduling");
       try {
         const created = await schedulePaymentMutation.mutateAsync({
@@ -357,7 +380,7 @@ function SendPageClient() {
           assetIssuer: selectedAsset.issuer,
           memo: memo.trim() || undefined,
           destAddress: destination.trim(),
-          scheduledFor: new Date(scheduledFor).toISOString(),
+          scheduledAt: new Date(scheduledAt).toISOString(),
         });
         setStep("done");
         setResult({
@@ -365,7 +388,7 @@ function SendPageClient() {
           id: created.id,
           amount,
           destination: destination.trim(),
-          scheduledFor: new Date(scheduledFor).toISOString(),
+          scheduledAt: new Date(scheduledAt).toISOString(),
         });
         toast.success(
           "Payment scheduled",
@@ -810,7 +833,7 @@ function SendPageClient() {
             <div className="flex justify-between">
               <span className="text-sm text-gray-500 dark:text-gray-400">Scheduled for</span>
               <span className="text-sm font-mono text-gray-900 dark:text-white">
-                {formatDate(result.scheduledFor)}
+                {formatDate(result.scheduledAt)}
               </span>
             </div>
           </div>
@@ -1221,6 +1244,47 @@ function SendPageClient() {
           </p>
         </div>
 
+        {/* Schedule for later */}
+        {mode === "one-time" && (
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={scheduleEnabled}
+                onChange={(e) => setScheduleEnabled(e.target.checked)}
+                disabled={isSubmitting}
+                className="h-4 w-4 rounded border-gray-300 text-ophir-600 focus:ring-ophir-500"
+              />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Schedule this payment for later
+              </span>
+            </label>
+            {scheduleEnabled && (
+              <div className="mt-3">
+                <label
+                  htmlFor="scheduled-at"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5"
+                >
+                  Send on
+                </label>
+                <input
+                  id="scheduled-at"
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  disabled={isSubmitting}
+                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                  The payment is stored as a scheduled payment and executed
+                  automatically when the date arrives. No wallet signature is
+                  needed now — you can cancel it any time before it runs.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Sponsored account creation */}
         {mode === "one-time" && recipientStatus === "unfunded" && selectedAsset.type === "native" && (
           <div className="p-3 rounded-lg bg-ophir-50 dark:bg-ophir-950/30 border border-ophir-200 dark:border-ophir-800">
@@ -1312,11 +1376,13 @@ function SendPageClient() {
               </svg>
               {mode === "recurring"
                 ? "Schedule Recurring"
-                : isCrossAsset
-                  ? pathError
-                    ? "No Path Available"
-                    : `Send ${amount || "0"} ${selectedAsset.code} → ~${pathEstimate?.destinationAmount || "0"} ${destAsset.code}`
-                  : `Send ${selectedAsset.code}`}
+                : scheduleEnabled
+                  ? "Schedule Payment"
+                  : isCrossAsset
+                    ? pathError
+                      ? "No Path Available"
+                      : `Send ${amount || "0"} ${selectedAsset.code} → ~${pathEstimate?.destinationAmount || "0"} ${destAsset.code}`
+                    : `Send ${selectedAsset.code}`}
             </>
           )}
         </button>

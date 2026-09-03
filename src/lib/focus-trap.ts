@@ -16,18 +16,24 @@ const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [ta
  * Returns a cleanup function that removes the listeners and restores focus
  * to the element that was focused before the trap was created.
  */
-export function trapFocus(container: HTMLElement): () => void {
+export function trapFocus(
+  container: HTMLElement,
+  options?: { focusContainer?: boolean }
+): () => void {
   const previous = document.activeElement as HTMLElement | null;
 
   const getFocusables = () => container.querySelectorAll<HTMLElement>(FOCUSABLE);
 
-  // Focus the first focusable element, or the container itself
+  // Focus the first focusable element, or the container itself. Callers that
+  // render their own labelled dialog shell (a header with a close control)
+  // pass `focusContainer` so the dialog region receives focus first and its
+  // accessible name is announced before tabbing reaches the close button.
   const first = getFocusables()[0];
-  if (first) {
-    first.focus();
-  } else {
+  if (options?.focusContainer || !first) {
     container.setAttribute("tabindex", "-1");
     container.focus();
+  } else {
+    first.focus();
   }
 
   const onKeyDown = (e: KeyboardEvent) => {

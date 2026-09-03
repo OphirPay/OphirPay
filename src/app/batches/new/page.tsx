@@ -36,7 +36,6 @@ const BatchConfirmDialog = dynamic(
 );
 import Link from "next/link";
 import type { BatchRecipientInput } from "@/lib/stellar";
-import { downloadCsvTemplate } from "@/lib/csv-import";
 
 // ── Types ─────────────────────────────────────────────────────
 

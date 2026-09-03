@@ -12,7 +12,7 @@ export interface ScheduledPaymentRow {
   assetCode: string;
   destAddress: string;
   memo?: string | null;
-  scheduledFor: string;
+  scheduledAt: string;
   status: "SCHEDULED" | "PROCESSING" | "EXECUTED" | "FAILED" | "CANCELLED";
   transactionHash?: string | null;
   errorMessage?: string | null;
@@ -92,7 +92,7 @@ export default function ScheduledPaymentsList() {
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   To {shortenAddress(payment.destAddress, 6)} ·{" "}
-                  {formatDate(payment.scheduledFor)}
+                  {formatDate(payment.scheduledAt)}
                   {payment.memo ? ` · ${payment.memo}` : ""}
                 </p>
                 {payment.status === "FAILED" && payment.errorMessage && (

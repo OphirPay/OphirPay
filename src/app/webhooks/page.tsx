@@ -89,6 +89,14 @@ export default function WebhooksPage() {
     { method: "DELETE", invalidateKeys: [["webhooks"]] }
   );
 
+  const rotateMutation = useApiMutation<
+    { id: string },
+    { id: string; secret: string }
+  >(
+    (body) => `/api/webhooks?id=${body.id}`,
+    { method: "PATCH", invalidateKeys: [["webhooks"]] }
+  );
+
   const replayMutation = useApiMutation<{ webhookId: string }, ReplayResult>(
     (body) => `/api/webhooks/${body.webhookId}/replay`,
     { invalidateKeys: [["webhook-deliveries"]] }
@@ -336,11 +344,11 @@ export default function WebhooksPage() {
                         {expandedId === wh.id ? "Hide" : "Deliveries"}
                       </button>
                       <button
-                        onClick={() => handleReplay(wh.id)}
-                        disabled={replaying === wh.id || !wh.isActive}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-ophir-700 dark:text-ophir-300 hover:bg-ophir-50 dark:hover:bg-ophir-950/30 border border-ophir-200 dark:border-ophir-800 transition-colors disabled:opacity-50"
+                        onClick={() => startRotate(wh)}
+                        disabled={rotating}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-amber-200 dark:border-amber-800 transition-colors disabled:opacity-50"
                       >
-                        {replaying === wh.id ? "Replaying..." : "Replay"}
+                        Rotate Secret
                       </button>
                       <button
                         onClick={() => handleDelete(wh.id)}
@@ -350,21 +358,6 @@ export default function WebhooksPage() {
                         {deleting === wh.id ? "Deleting..." : "Delete"}
                       </button>
                     </div>
-                     <div className="flex items-center gap-2 shrink-0">
-                       <Link
-                         href={`/webhooks/${wh.id}`}
-                         className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-colors"
-                       >
-                         View
-                       </Link>
-                       <button
-                         onClick={() => handleDelete(wh.id)}
-                         disabled={deleting === wh.id}
-                         className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 border border-red-200 dark:border-red-800 transition-colors disabled:opacity-50"
-                       >
-                         {deleting === wh.id ? "Deleting..." : "Delete"}
-                       </button>
-                     </div>
                   </div>
                   {expandedId === wh.id && (
                     <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">

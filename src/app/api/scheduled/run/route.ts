@@ -14,6 +14,7 @@ import {
 import { ERROR_CODES } from "@/lib/error-codes";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 
 /**
  * Cron endpoint — executes due scheduled payments.
@@ -38,6 +39,12 @@ function isAuthorizedCron(request: Request): boolean {
 
 async function runCron(request: Request) {
   try {
+    // POST is the manual trigger; GET is the Vercel Cron invocation. CSRF
+    // is enforced for POST only (Bearer / x-cron-secret callers bypass
+    // inside verifyCsrf).
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     if (!isAuthorizedCron(request)) {
       return unauthorizedError("Invalid cron secret");
     }

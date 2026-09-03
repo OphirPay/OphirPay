@@ -21,7 +21,7 @@ export interface CsrfRouteEntry {
   description: string;
 }
 
-/** Every mutating route in the API tree (28 handlers across 24 paths). */
+/** Every mutating route in the API tree (40 handlers). */
 export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   // Auth
   { method: "POST", path: "/api/auth/session", routeFile: "auth/session/route.ts", description: "Login / session renewal" },
@@ -37,13 +37,21 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "PATCH", path: "/api/payments/[id]", routeFile: "payments/[id]/route.ts", description: "Update payment status" },
   { method: "DELETE", path: "/api/payments/[id]", routeFile: "payments/[id]/route.ts", description: "Soft-delete payment" },
   { method: "POST", path: "/api/payments/retry", routeFile: "payments/retry/route.ts", description: "Retry failed payment" },
+  { method: "POST", path: "/api/payments/cancel", routeFile: "payments/cancel/route.ts", description: "Cancel payment" },
 
   // Escrows, streams, batches, recurring, requests
   { method: "POST", path: "/api/escrows", routeFile: "escrows/route.ts", description: "Create escrow (client-side signing)" },
   { method: "POST", path: "/api/streams", routeFile: "streams/route.ts", description: "Create payment stream (client-side signing)" },
   { method: "POST", path: "/api/batches", routeFile: "batches/route.ts", description: "Create batch payment" },
+  { method: "POST", path: "/api/batches/[id]", routeFile: "batches/[id]/route.ts", description: "Bulk-cancel a batch's pending payments" },
   { method: "POST", path: "/api/recurring", routeFile: "recurring/route.ts", description: "Create recurring schedule" },
+  { method: "PATCH", path: "/api/recurring", routeFile: "recurring/route.ts", description: "Update recurrence settings" },
+  { method: "PATCH", path: "/api/recurring/[id]", routeFile: "recurring/[id]/route.ts", description: "Update recurring schedule" },
   { method: "POST", path: "/api/requests", routeFile: "requests/route.ts", description: "Create payment request" },
+
+  // Scheduled payments
+  { method: "POST", path: "/api/scheduled", routeFile: "scheduled/route.ts", description: "Create scheduled payment" },
+  { method: "DELETE", path: "/api/scheduled", routeFile: "scheduled/route.ts", description: "Cancel scheduled payment" },
 
   // Refunds
   { method: "POST", path: "/api/refunds", routeFile: "refunds/route.ts", description: "Create refund record" },
@@ -51,7 +59,11 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
 
   // Webhooks & hooks
   { method: "POST", path: "/api/webhooks", routeFile: "webhooks/route.ts", description: "Register webhook" },
+  { method: "PATCH", path: "/api/webhooks", routeFile: "webhooks/route.ts", description: "Update webhook" },
   { method: "DELETE", path: "/api/webhooks", routeFile: "webhooks/route.ts", description: "Revoke webhook" },
+  { method: "POST", path: "/api/webhooks/[id]/replay", routeFile: "webhooks/[id]/replay/route.ts", description: "Replay stored webhook events" },
+  { method: "POST", path: "/api/webhooks/[id]/test", routeFile: "webhooks/[id]/test/route.ts", description: "Send test webhook" },
+  { method: "POST", path: "/api/webhooks/[id]/deliveries/[deliveryId]/redeliver", routeFile: "webhooks/[id]/deliveries/[deliveryId]/redeliver/route.ts", description: "Redeliver a webhook payload" },
   { method: "POST", path: "/api/hooks", routeFile: "hooks/route.ts", description: "Register notification hook" },
   { method: "PATCH", path: "/api/hooks/[id]", routeFile: "hooks/[id]/route.ts", description: "Deactivate notification hook" },
 
@@ -66,6 +78,8 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "POST", path: "/api/multisig/approve", routeFile: "multisig/approve/route.ts", description: "Approve multisig payment" },
   { method: "POST", path: "/api/multisig/execute", routeFile: "multisig/execute/route.ts", description: "Execute multisig payment" },
 
-  // Jobs
+  // Jobs & cron
   { method: "POST", path: "/api/jobs/process-due-recurring", routeFile: "jobs/process-due-recurring/route.ts", description: "Recurring scheduler sweep (cron / worker)" },
+  { method: "POST", path: "/api/cron", routeFile: "cron/route.ts", description: "Scheduled payment execution sweep (cron)" },
+  { method: "POST", path: "/api/scheduled/run", routeFile: "scheduled/run/route.ts", description: "Trigger scheduled payment run (cron)" },
 ];

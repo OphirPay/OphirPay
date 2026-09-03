@@ -16,6 +16,7 @@ import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { incMetric } from "@/lib/metrics-counters";
+import crypto from "crypto";
 import {
   buildCursorWhere,
   computeNextCursor,
@@ -99,19 +100,7 @@ export const GET = withMetrics("GET /api/batches", withRequestLogging(async func
   }
 }));
 
-// ── POST /api/batches — Create a new batch (idempotent) ──────
-
-const IDEMPOTENCY_HEADER = "Idempotency-Key";
-
-/** True when `err` is a Prisma unique-constraint violation (P2002). */
-function isUniqueConstraintError(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: unknown }).code === "P2002"
-  );
-}
+// ── POST /api/batches — Create a new batch ──────────────────
 
 /**
  * True for a Prisma P2002 (unique constraint) error. Detected by code rather
@@ -163,25 +152,121 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
       );
     }
 
-    const batch = result.returnValue as Record<string, unknown>;
+    const body = await request.json();
 
-    // Optionally include batch payments
-    const { searchParams } = new URL(request.url);
-    if (searchParams.get("payments") === "true") {
-      const paymentsResult = await simulateContractCall(
-        DEFAULT_CONTRACT_ID,
-        "get_payments_by_batch",
-        CHAIN_READ_SOURCE,
-        [nativeToScVal(batchId, { type: "u64" })]
-      );
-      return successResponse({
-        ...batch,
-        payments: paymentsResult.status === "SIMULATION_FAILED" ? [] : paymentsResult.returnValue,
-      });
+    const parsed = createBatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return validationError(parsed.error);
     }
 
-    return successResponse(batch);
+    const { name, description, recipients: payments } =
+      parsed.data;
+    const { userId } = auth;
+
+    // Idempotency key (issue #170): the `Idempotency-Key` header takes
+    // precedence over the optional body field. A present-but-invalid header —
+    // including a whitespace-only value — is a validation error; it must never
+    // silently fall back to a fresh key, which would allow duplicate batches.
+    let idempotencyKey = parsed.data.idempotencyKey;
+    const headerKey = request.headers.get("idempotency-key");
+    if (headerKey !== null) {
+      const headerCheck = idempotencyKeySchema.safeParse(headerKey);
+      if (!headerCheck.success) {
+        return validationError(headerCheck.error);
+      }
+      idempotencyKey = headerCheck.data;
+    }
+
+    // Re-submission of an already-processed batch: same user + same key means
+    // no new batch. If the first attempt created the batch row but crashed
+    // before inserting its child payments (a partial write), the retry resumes
+    // by inserting only the missing payments.
+    if (idempotencyKey) {
+      const existing = await prisma.batch.findFirst({
+        where: { userId, idempotencyKey },
+        include: { payments: true },
+      });
+
+      if (existing) {
+        if (existing.payments.length === 0) {
+          await prisma.payment.createMany({
+            data: paymentCreateData(payments, existing.id, userId),
+          });
+          const resumed = await fetchBatchWithPayments(existing.id);
+          incMetric("batches_processed_total");
+          return successResponse(
+            resumed,
+            { deduplicated: true, resumed: true, timestamp: new Date().toISOString() },
+            200
+          );
+        }
+
+        incMetric("batches_processed_total");
+        return successResponse(
+          existing,
+          { deduplicated: true, timestamp: new Date().toISOString() },
+          200
+        );
+      }
+    }
+
+    // First submission (or a retry with a brand-new key): persist the batch and
+    // its child payments in one transaction so a keyed batch is never visible
+    // half-created — it either has all its payments or none.
+    let result;
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        const created = await tx.batch.create({
+          data: {
+            name,
+            description,
+            userId,
+            // Server-generated when the client sends no key, so every batch
+            // records an idempotency key. Deduplication only applies to
+            // client-supplied keys, which retries actually re-send.
+            idempotencyKey: idempotencyKey ?? crypto.randomUUID(),
+          },
+        });
+
+        await tx.payment.createMany({
+          data: paymentCreateData(payments, created.id, userId),
+        });
+
+        return tx.batch.findUnique({
+          where: { id: created.id },
+          include: { payments: true },
+        });
+      });
+    } catch (err) {
+      if (isUniqueConstraintViolation(err) && idempotencyKey) {
+        // A concurrent request won the race with the same key — serve the
+        // already-created batch instead of failing the retry.
+        const winner = await prisma.batch.findFirst({
+          where: { userId, idempotencyKey },
+          include: { payments: true },
+        });
+        if (winner) {
+          incMetric("batches_processed_total");
+          return successResponse(
+            winner,
+            { deduplicated: true, timestamp: new Date().toISOString() },
+            200
+          );
+        }
+        // A unique violation on the compound (userId, idempotencyKey) with no
+        // recoverable winner is a genuine data conflict — surface a 409 rather
+        // than failing the whole request.
+        return conflictError(
+          "A batch with this idempotency key already exists but could not be recovered."
+        );
+      }
+      throw err;
+    }
+
+    incMetric("batches_processed_total");
+
+    return successResponse(result, { timestamp: new Date().toISOString() }, 201);
   } catch (err) {
-    return handleApiError(err, "GET /api/batches/[id]");
+    return handleApiError(err, "POST /api/batches");
   }
 }));

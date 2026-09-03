@@ -15,6 +15,7 @@ import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
+import { validateIdParam } from "@/lib/validate-params";
 import { withRequestLogging } from "@/lib/request-logging";
 
 export const GET = withMetrics("GET /api/payments/[id]", withRequestLogging(async function GET(
@@ -29,7 +30,9 @@ export const GET = withMetrics("GET /api/payments/[id]", withRequestLogging(asyn
       );
     }
 
-    const { id } = await params;
+    const parsedId = await validateIdParam(params);
+    if (!parsedId.success) return parsedId.response;
+    const { id } = parsedId;
     // Only the owning user may read the payment (no IDOR across users), and
     // soft-deleted payments behave like they don't exist (consistent 404).
     const payment = await prisma.payment.findFirst({

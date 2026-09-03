@@ -8,6 +8,7 @@ import {
   recordWebhookDelivery,
   storeWebhookEvent,
 } from "@/lib/webhook-event-store";
+import { isSubscribedToEvent } from "@/lib/webhook-filter";
 
 /**
  * Dispatch a webhook event to subscribed endpoints.

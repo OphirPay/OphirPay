@@ -6,6 +6,7 @@ import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
 import { withRequestLogging } from "@/lib/request-logging";
+import { validateIdParam } from "@/lib/validate-params";
 
 /**
  * GET /api/escrows/[id] — single escrow lookup
@@ -23,12 +24,9 @@ export const GET = withMetrics("GET /api/escrows/[id]", withRequestLogging(async
       );
     }
 
-    const { id } = await params;
-    const escrowId = parseInt(id, 10);
-
-    if (isNaN(escrowId)) {
-      return notFoundError("Invalid escrow ID");
-    }
+    const parsed = await validateIdParam(params, "numeric");
+    if (!parsed.success) return parsed.response;
+    const escrowId = Number(parsed.id);
 
     const result = await simulateContractCall(
       DEFAULT_CONTRACT_ID,
@@ -38,7 +36,7 @@ export const GET = withMetrics("GET /api/escrows/[id]", withRequestLogging(async
     );
 
     if (result.status === "SIMULATION_FAILED" || !result.returnValue) {
-      return notFoundError(`Escrow ${id} not found`);
+      return notFoundError(`Escrow ${parsed.id} not found`);
     }
 
     return successResponse(result.returnValue);

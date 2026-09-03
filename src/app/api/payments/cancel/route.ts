@@ -12,6 +12,7 @@ import {
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 import { z } from "zod";
 
 const cancelPaymentSchema = z.object({
@@ -28,6 +29,9 @@ export const POST = withMetrics("POST /api/payments/cancel", withRequestLogging(
   request: Request
 ) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) {
       return unauthorizedError(
@@ -46,10 +50,12 @@ export const POST = withMetrics("POST /api/payments/cancel", withRequestLogging(
     });
     if (updated.count === 0) return notFoundError("Payment");
 
-    const payment = await prisma.payment.findUnique({ where: { id } });
+    const payment = await prisma.payment.findFirst({
+      where: { transactionHash: txHash, userId: auth.userId, deletedAt: null },
+    });
     if (!payment) return notFoundError("Payment");
 
-    logger.info("Payment cancelled", { id, status: payment.status });
+    logger.info("Payment cancelled", { id: payment.id, status: payment.status });
     return successResponse(payment);
   } catch (err) {
     return handleApiError(err, "POST /api/payments/cancel");

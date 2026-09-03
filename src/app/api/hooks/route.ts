@@ -52,8 +52,9 @@ export const GET = withMetrics("GET /api/hooks", withRequestLogging(async functi
 // ── POST /api/hooks ───────────────────────────────────────────
 
 /**
- * Update a notification hook ledger row AFTER the matching on-chain
- * transition (unregister_hook) succeeded, so the list reflects deactivation.
+ * Persist a notification hook row AFTER the on-chain register_hook succeeded.
+ * The on-chain id (captured from the tx return value) is stored so Deactivate
+ * can target unregister_hook at the correct contract record.
  */
 export const POST = withMetrics("POST /api/hooks", withRequestLogging(async function POST(request: Request) {
   try {
@@ -63,22 +64,27 @@ export const POST = withMetrics("POST /api/hooks", withRequestLogging(async func
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
 
-    const idParsed = await validateIdParam(params);
-    if (!idParsed.success) return idParsed.response;
-    const { id } = idParsed;
+    const parsed = await validateBody(request, createHookSchema);
+    if (!parsed.success) return parsed.response;
 
-    const bodyParsed = await validateBody(request, updateHookSchema);
-    if (!bodyParsed.success) return bodyParsed.response;
+    // SSRF guard — reject URLs targeting internal/private networks
+    if (!isSafeWebhookUrl(parsed.data.webhookUrl)) {
+      return badRequestError(
+        "Webhook URL must be a public http(s) endpoint — internal and private addresses are not allowed."
+      );
+    }
 
-    // Scoped update — only the owner can change their own hook row
-    const result = await prisma.notificationHook.updateMany({
-      where: { id, userId: auth.userId },
-      data: { active: bodyParsed.data.active },
+    const hook = await prisma.notificationHook.create({
+      data: {
+        eventType: parsed.data.eventType,
+        webhookUrl: parsed.data.webhookUrl,
+        onChainId: parsed.data.onChainId ?? null,
+        userId: auth.userId, // never trust a client-supplied userId
+      },
     });
-    if (result.count === 0) return badRequestError("Hook not found");
 
-    return successResponse({ updated: true });
+    return successResponse(hook, undefined, 201);
   } catch (err) {
-    return handleApiError(err, "PATCH /api/hooks/[id]");
+    return handleApiError(err, "POST /api/hooks");
   }
 }));

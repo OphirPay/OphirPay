@@ -8,9 +8,10 @@ import {
   validationError,
   badRequestError,
   unauthorizedError,
-  badRequestError,
+  notFoundError,
   handleApiError,
 } from "@/lib/api-response";
+import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
@@ -22,6 +23,7 @@ import { buildPaymentWhere } from "@/lib/payment-filters";
 import {
   buildCursorWhere,
   computeNextCursor,
+  computePagination,
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
@@ -60,8 +62,6 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
     // `status` and `search` (memo ILIKE + exact tx-hash, Issue #157) use the
     // shared helper so the list route and CSV export stay in lockstep.
     const baseWhere = buildPaymentWhere(auth.userId, { status, search });
-    // Soft-deleted rows are hidden by default (issue #50). `includeDeleted` is
-    // the explicit admin/debug opt-in to see them.
     if (!includeDeleted) baseWhere.deletedAt = null;
 
     // Keyset (cursor) pagination is the default for plain list requests — it
@@ -71,41 +71,50 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
     if (rawCursor && !cursor) {
       return badRequestError("Invalid cursor");
     }
+    if (cursor !== null && explicitPage !== null) {
+      return badRequestError("page and cursor cannot both be used");
+    }
 
-    const useCursor = cursor !== null || explicitPage === null;
-    const where = buildCursorWhere(baseWhere, cursor);
-
-    const [payments, total] = await Promise.all([
-      prisma.payment.findMany({
+    // Keyset mode (default): fetch limit + 1 rows to learn whether another
+    // page exists. The COUNT is expensive, so it only runs when the caller
+    // explicitly asks for meta.total via includeTotal=true.
+    if (cursor !== null || explicitPage === null) {
+      const where = buildCursorWhere(baseWhere, cursor);
+      const rows = await prisma.payment.findMany({
         where,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         // Fetch one extra row to learn whether another page exists.
-        ...(useCursor ? { take: limit + 1 } : prismaPagination(page, limit)),
+        take: limit + 1,
+      });
+      const visible = rows.slice(0, limit);
+      const { nextCursor, hasMore } = computeNextCursor(rows, limit);
+      const meta: Record<string, unknown> = { limit, nextCursor, hasMore };
+      if (searchParams.get("includeTotal") === "true") {
+        meta.total = await prisma.payment.count({ where: baseWhere });
+      }
+      return successResponse(visible, meta);
+    }
+
+    // Legacy offset mode: an explicit `page` param. Needs the COUNT to build
+    // the navigation meta (totalPages / hasNext / hasPrev).
+    const [payments, total] = await Promise.all([
+      prisma.payment.findMany({
+        where: baseWhere,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        ...prismaPagination(page, limit),
       }),
       prisma.payment.count({ where: baseWhere }),
     ]);
 
-    // Fetch one extra row to cheaply determine whether another page exists.
-    const rows = await prisma.payment.findMany({
-      where: keysetWhere,
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: limit + 1,
-    });
-
-    const visible = useCursor ? payments.slice(0, limit) : payments;
-    const pageInfo = useCursor
-      ? computeNextCursor(payments, limit)
-      : { nextCursor: null, hasMore: page * limit < total };
-
-    return successResponse(visible, {
-      page,
-      limit,
-      total,
-      nextCursor: pageInfo.nextCursor,
-      hasMore: pageInfo.hasMore,
+    return successResponse(payments, {
+      ...computePagination(page, limit, total),
+      // Keyset-shaped fields kept for consumers that page via hasMore;
+      // offset mode never returns a cursor.
+      nextCursor: null,
+      hasMore: page * limit < total,
     });
   } catch (err) {
-    return handleApiError(err, `GET /api/payments/[id]`);
+    return handleApiError(err, "GET /api/payments");
   }
 }));
 
@@ -121,15 +130,11 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
       );
     }
 
-    const parsed = await validateIdParam(params);
-    if (!parsed.success) return parsed.response;
-    const { id } = parsed;
+    const body = await request.json();
+    const parsed = createPaymentSchema.safeParse(body);
+    if (!parsed.success) return validationError(parsed.error);
 
-    const body = await request.json() as { status?: string; description?: string; memo?: string };
-
-    // updateMany scopes the write to the authenticated user's records
-    const updated = await prisma.payment.updateMany({
-      where: { id, userId: auth.userId },
+    const payment = await prisma.payment.create({
       data: {
         amount: parsed.data.amount,
         assetCode: parsed.data.assetCode,
@@ -145,64 +150,27 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
         // wrote a Stellar address into userId, breaking the relation).
         userId: auth.userId,
         sourceAccountId: parsed.data.sourceAccountId,
-        // Persist the destination Stellar address (not modeled as its own
-        // column) so payment-detail receipts can render the recipient.
-        metadata: parsed.data.destAddress
-          ? JSON.stringify({ destAddress: parsed.data.destAddress })
-          : undefined,
       },
     });
-    if (updated.count === 0) return notFoundError("Payment");
 
-    const payment = await prisma.payment.findUnique({ where: { id } });
-    if (!payment) return notFoundError("Payment");
+    logger.info("Payment created", { id: payment.id, amount: payment.amount });
 
-    logger.info("Payment updated", { id, status: payment.status });
-
-    if (body.status === "SIGNED") {
-      dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_SIGNED, {
+    dispatchWebhookEventAsync(
+      WEBHOOK_EVENTS.PAYMENT_CREATED,
+      {
         paymentId: payment.id,
         amount: payment.amount,
         assetCode: payment.assetCode,
         status: payment.status,
-        signedAt: new Date().toISOString(),
-      });
-    } else if (body.status === "SUBMITTED") {
-      dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_SUBMITTED, {
-        paymentId: payment.id,
-        amount: payment.amount,
-        assetCode: payment.assetCode,
-        transactionHash: payment.transactionHash,
-        submittedAt: new Date().toISOString(),
-      });
-    } else if (body.status === "CONFIRMED") {
-      dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_CONFIRMED, {
-        paymentId: payment.id,
-        amount: payment.amount,
-        assetCode: payment.assetCode,
-        transactionHash: payment.transactionHash,
-        confirmedAt: new Date().toISOString(),
-      });
-    } else if (body.status === "COMPLETED") {
-      dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_COMPLETED, {
-        paymentId: payment.id,
-        amount: payment.amount,
-        assetCode: payment.assetCode,
-        transactionHash: payment.transactionHash,
-        completedAt: payment.completedAt?.toISOString() ?? new Date().toISOString(),
-      });
-    } else if (body.status === "FAILED") {
-      dispatchWebhookEventAsync(WEBHOOK_EVENTS.PAYMENT_FAILED, {
-        paymentId: payment.id,
-        amount: payment.amount,
-        assetCode: payment.assetCode,
-        errorMessage: payment.errorMessage,
-        failedAt: new Date().toISOString(),
-      });
-    }
+        createdAt: payment.createdAt.toISOString(),
+      },
+      auth.userId
+    );
 
-    return successResponse(payment);
+    incMetric("payments_created_total");
+
+    return successResponse(payment, undefined, 201);
   } catch (err) {
-    return handleApiError(err, `PATCH /api/payments/[id]`);
+    return handleApiError(err, "POST /api/payments");
   }
 }));

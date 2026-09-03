@@ -10,6 +10,7 @@ import {
 import { ERROR_CODES } from "@/lib/error-codes";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 import {
   MAX_EXECUTION_ATTEMPTS,
   MAX_PAYMENTS_PER_RUN,
@@ -71,6 +72,11 @@ interface RunSummary {
 
 async function runScheduledPayments(request: Request) {
   try {
+    // GET is the Vercel Cron invocation; CSRF is enforced for POST only
+    // (Bearer / x-cron-secret callers bypass inside verifyCsrf).
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = authorizeCronRequest(request.headers, process.env.CRON_SECRET);
     if (!auth.ok) {
       if (auth.reason === "not-configured") {

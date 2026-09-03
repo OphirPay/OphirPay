@@ -7,7 +7,7 @@ import type { ScheduledPayment, ScheduledPaymentStatus } from "@prisma/client";
 
 /**
  * Scheduled (delayed) payments — one-off payments persisted with a future
- * `scheduledFor` timestamp. A cron endpoint calls `executeDueScheduledPayments`
+ * `scheduledAt` timestamp. A cron endpoint calls `executeDueScheduledPayments`
  * which picks due rows, submits each from the configured server account, and
  * records the outcome (EXECUTED with the tx hash, or FAILED with the error).
  *
@@ -86,7 +86,7 @@ export async function submitScheduledPayment(
 }
 
 /**
- * Select due scheduled payments: status SCHEDULED and `scheduledFor` in the
+ * Select due scheduled payments: status SCHEDULED and `scheduledAt` in the
  * past, oldest first.
  */
 export async function pickDueScheduledPayments(
@@ -96,9 +96,9 @@ export async function pickDueScheduledPayments(
   return prisma.scheduledPayment.findMany({
     where: {
       status: "SCHEDULED",
-      scheduledFor: { lte: now },
+      scheduledAt: { lte: now },
     },
-    orderBy: { scheduledFor: "asc" },
+    orderBy: { scheduledAt: "asc" },
     take,
   });
 }
@@ -119,7 +119,7 @@ export interface ScheduledPaymentRunSummary {
 /**
  * Execute all due scheduled payments:
  *
- *   1. pick due rows (SCHEDULED, scheduledFor <= now)
+ *   1. pick due rows (SCHEDULED, scheduledAt <= now)
  *   2. atomically claim each (SCHEDULED → PROCESSING) so overlapping cron
  *      runs never double-submit a payment
  *   3. submit from the server account, then mark EXECUTED (with tx hash) or

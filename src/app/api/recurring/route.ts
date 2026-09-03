@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
-import { successResponse, handleApiError, notFoundError, unauthorizedError } from "@/lib/api-response";
+import prisma from "@/lib/prisma";
+import { createRecurrenceSchema, paginationSchema } from "@/lib/validation-schemas";
+import {
+  successResponse,
+  validationError,
+  unauthorizedError,
+  handleApiError,
+} from "@/lib/api-response";
+import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
-import { verifyCsrf } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 import { z } from "zod";
 
 const updateRecurrenceSchema = z.object({
@@ -59,25 +67,45 @@ export const POST = withMetrics("POST /api/recurring", withRequestLogging(async 
       );
     }
 
-    const result = await simulateContractCall(
-      DEFAULT_CONTRACT_ID,
-      "get_recurring",
-      CHAIN_READ_SOURCE,
-      [nativeToScVal(recurringId, { type: "u64" })]
-    );
+    const body = await request.json();
+    const parsed = createRecurrenceSchema.safeParse(body);
+    if (!parsed.success) return validationError(parsed.error);
 
-    if (result.status === "SIMULATION_FAILED" || !result.returnValue) {
-      return notFoundError(`Recurring payment ${id} not found`);
+    const nextRunAt = new Date();
+    switch (parsed.data.frequency) {
+      case "DAILY": nextRunAt.setDate(nextRunAt.getDate() + 1); break;
+      case "WEEKLY": nextRunAt.setDate(nextRunAt.getDate() + 7); break;
+      case "BIWEEKLY": nextRunAt.setDate(nextRunAt.getDate() + 14); break;
+      case "MONTHLY": nextRunAt.setMonth(nextRunAt.getMonth() + 1); break;
+      case "QUARTERLY": nextRunAt.setMonth(nextRunAt.getMonth() + 3); break;
+      case "YEARLY": nextRunAt.setFullYear(nextRunAt.getFullYear() + 1); break;
     }
 
-    return successResponse(result.returnValue);
+    const recurrence = await prisma.recurrence.create({
+      data: {
+        name: parsed.data.name,
+        frequency: parsed.data.frequency,
+        amount: parsed.data.amount,
+        assetCode: parsed.data.assetCode,
+        destAddress: parsed.data.destAddress,
+        description: parsed.data.description,
+        nextRunAt,
+        userId: auth.userId,
+      },
+    });
+
+    logger.info("Recurring payment created", { id: recurrence.id });
+    return successResponse(recurrence, undefined, 201);
   } catch (err) {
-    return handleApiError(err, "GET /api/recurring/[id]");
+    return handleApiError(err, "POST /api/recurring");
   }
 }));
 
-export async function PATCH(request: Request) {
+export const PATCH = withMetrics("PATCH /api/recurring", withRequestLogging(async function PATCH(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) {
       return unauthorizedError(
@@ -111,4 +139,4 @@ export async function PATCH(request: Request) {
   } catch (err) {
     return handleApiError(err, "PATCH /api/recurring");
   }
-}
+}));

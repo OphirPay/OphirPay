@@ -63,20 +63,27 @@ export async function recordWebhookDelivery(
   status: DeliveryStatus,
   options?: {
     responseCode?: number;
+    latencyMs?: number;
+    attempts?: number;
+    errorMessage?: string;
     isReplay?: boolean;
     replayBatchId?: string;
   },
-): Promise<void> {
-  await prisma.webhookDelivery.create({
+): Promise<string> {
+  const row = await prisma.webhookDelivery.create({
     data: {
       webhookId,
       eventId,
       status,
       responseCode: options?.responseCode,
+      latencyMs: options?.latencyMs,
+      attempts: options?.attempts ?? 1,
+      errorMessage: options?.errorMessage,
       isReplay: options?.isReplay ?? false,
       replayBatchId: options?.replayBatchId,
     },
   });
+  return row.id;
 }
 
 /** Resolve and clamp replay window + limit to safe bounds. */

@@ -38,10 +38,20 @@ export function csrfCookieHeader(token: string, secure = true): string {
  * Uses timing-safe comparison to prevent timing attacks.
  * Returns true if tokens match, false otherwise.
  */
+const TOKEN_HEX_RE = /^[0-9a-f]+$/;
+
+/**
+ * Validate an incoming CSRF token against the cookie.
+ * Uses timing-safe comparison to prevent timing attacks.
+ * Returns true if tokens match, false otherwise.
+ */
 export function validateCsrfToken(cookieToken: string | null, headerToken: string | null): boolean {
   if (!cookieToken || !headerToken) return false;
   if (cookieToken.length !== TOKEN_BYTES * 2) return false;
   if (headerToken.length !== TOKEN_BYTES * 2) return false;
+  // Tokens are hex-encoded CSPRNG output — anything non-hex is malformed and
+  // decodes to an empty/garbage buffer, so reject it before comparing.
+  if (!TOKEN_HEX_RE.test(cookieToken) || !TOKEN_HEX_RE.test(headerToken)) return false;
 
   const cookieBuf = Buffer.from(cookieToken, "hex");
   const headerBuf = Buffer.from(headerToken, "hex");
@@ -83,6 +93,10 @@ export function verifyCsrf(request: Request): Response | null {
   // API keys are sent explicitly in headers — browsers never attach them on
   // cross-site requests, so CSRF does not apply to machine-to-machine calls.
   if (extractApiKey(request)) return null;
+  // Cron/scheduler secrets travel the same way (Authorization: Bearer or the
+  // `x-cron-secret` header) — custom headers can't be attached cross-site
+  // without CORS preflight, so they are equally safe from CSRF.
+  if (request.headers.get("x-cron-secret")) return null;
 
   const cookieToken = getCsrfTokenFromCookies(request.headers.get("cookie"));
   const headerToken = getCsrfTokenFromHeaders(request.headers);

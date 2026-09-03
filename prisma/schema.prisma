@@ -102,6 +102,8 @@ model User {
   /// On-chain notification-hook ledger rows owned by the user (see NotificationHook).
   notificationHooks NotificationHook[]
   webhookEvents     WebhookEvent[]
+  /// One-off scheduled payments owned by the user (see ScheduledPayment).
+  scheduledPayments ScheduledPayment[]
 }
 
 // ── Stellar Accounts ──────────────────────────────────────────
@@ -391,9 +393,10 @@ model ScheduledPayment {
   assetIssuer     String?
   destAddress     String
   memo            String?
+  description     String?
 
   // When to send (must be in the future at creation time)
-  scheduledFor    DateTime
+  scheduledAt     DateTime
 
   // Lifecycle
   status          ScheduledPaymentStatus @default(SCHEDULED)
@@ -401,13 +404,22 @@ model ScheduledPayment {
   errorMessage    String?
   executedAt      DateTime?
 
+  /// Execution lease. `lockedAt` is stamped when a run claims the row
+  /// (SCHEDULED → PROCESSING); `lockedBy` records which run holds it, for
+  /// tracing overlapping runs.
+  lockedAt        DateTime?
+  lockedBy        String?
+  /// Number of execution attempts. Submission is retried on later runs until
+  /// this reaches the scheduler's attempt cap, after which the row is FAILED.
+  attempts        Int                   @default(0)
+
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
   user            User                  @relation(fields: [userId], references: [id])
 
   @@index([userId])
-  @@index([status, scheduledFor])
+  @@index([status, scheduledAt])
 }
 
 enum ScheduledPaymentStatus {
@@ -521,6 +533,9 @@ model WebhookDelivery {
   eventId       String
   status        DeliveryStatus @default(FAILED)
   responseCode  Int?
+  latencyMs     Int?
+  attempts      Int            @default(1)
+  errorMessage  String?
   isReplay      Boolean        @default(false)
   replayBatchId String?
   deliveredAt   DateTime       @default(now())
@@ -698,6 +713,23 @@ model ApiKey {
   @@index([userId])
   /// Speeds up prefix-based identification lookups.
   @@index([prefix])
+}
+
+/// One recorded request made with an API key — used to aggregate usage by
+/// key and time window (see the `ApiKeyRequestLog` migration).
+model ApiKeyRequestLog {
+  /// Primary key — CUID generated at insert time.
+  id        String   @id @default(cuid())
+  /// Owning API key (see ApiKey).
+  keyId     String
+  /// When the request was made.
+  createdAt DateTime @default(now())
+
+  /// Owning key (see ApiKey). Cascade-deleted with the key.
+  key       ApiKey   @relation(fields: [keyId], references: [id], onDelete: Cascade)
+
+  /// Speeds up per-key usage windows ("requests in the last N days").
+  @@index([keyId, createdAt])
 }
 
 // ── Payment Status Sync (Horizon reconciliation job) ─────────

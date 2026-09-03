@@ -16,6 +16,7 @@ import {
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
 
 const UNAUTHORIZED_MESSAGE =
   "Authentication required. Connect your wallet or provide an API key.";
@@ -38,7 +39,7 @@ export const GET = withRequestLogging(async function GET(request: Request) {
     const [payments, total] = await Promise.all([
       prisma.scheduledPayment.findMany({
         where,
-        orderBy: { scheduledFor: "asc" },
+        orderBy: { scheduledAt: "asc" },
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -59,6 +60,9 @@ export const GET = withRequestLogging(async function GET(request: Request) {
 /** Create a scheduled payment. The date must be in the future. */
 export const POST = withRequestLogging(async function POST(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError(UNAUTHORIZED_MESSAGE);
 
@@ -74,7 +78,7 @@ export const POST = withRequestLogging(async function POST(request: Request) {
         assetIssuer: parsed.data.assetIssuer,
         destAddress: parsed.data.destAddress,
         memo: parsed.data.memo,
-        scheduledFor: new Date(parsed.data.scheduledFor),
+        scheduledAt: new Date(parsed.data.scheduledAt),
       },
     });
 
@@ -90,6 +94,9 @@ export const DELETE = withRequestLogging(async function DELETE(
   request: Request
 ) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError(UNAUTHORIZED_MESSAGE);
 

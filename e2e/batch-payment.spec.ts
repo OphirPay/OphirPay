@@ -6,8 +6,8 @@ test.describe('batch payment flow', () => {
     await expect(page.getByText(/connect.*wallet/i).first()).toBeVisible();
   });
 
-  test('batch API remains protected without a session', async ({ request }) => {
+  test('batch API remains protected without a session (CSRF gate → 403)', async ({ request }) => {
     const response = await request.post('/api/batches', { data: { recipients: [] } });
-    expect(response.status()).toBe(401);
+    expect(response.status()).toBe(403);
   });
 });

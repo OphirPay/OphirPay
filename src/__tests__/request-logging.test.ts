@@ -125,6 +125,41 @@ describe("withRequestLogging", () => {
     });
   });
 
+  it("reuses an inbound X-Request-Id header when present", async () => {
+    const spy = vi.spyOn(logger, "request").mockImplementation(() => {});
+    const handler = withRequestLogging(async () => new Response("ok"));
+
+    const response = await handler(
+      new Request("https://example.com/api/x", {
+        headers: { "X-Request-Id": "inbound-req-1" },
+      })
+    );
+
+    expect(response.headers.get(REQUEST_ID_HEADER)).toBe("inbound-req-1");
+    const [, , , , requestId] = spy.mock.calls[0];
+    expect(requestId).toBe("inbound-req-1");
+  });
+
+  it("logs non-Error thrown values without crashing", async () => {
+    const spy = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const handler = withRequestLogging(async () => {
+      // A thrown primitive (not an Error) must still be logged as a string.
+      throw { code: "E_BOOM" };
+    });
+
+    await expect(handler(new Request("https://example.com/api/x"))).rejects.toMatchObject({
+      code: "E_BOOM",
+    });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [, context] = spy.mock.calls[0];
+    expect(context).toMatchObject({
+      error: "[object Object]",
+      stack: undefined,
+      status: 500,
+    });
+  });
+
   it("makes the request id available to the handler via async context", async () => {
     let observed: string | undefined;
     const handler = withRequestLogging(async () => {

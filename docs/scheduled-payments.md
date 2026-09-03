@@ -17,8 +17,8 @@ User schedules a payment (send form, "Schedule this payment for later")
         ▼
 ScheduledPayment row  ── status: SCHEDULED
         │
-        │  Vercel cron (*/5 minutes)  →  GET/POST /api/scheduled/run
-        │  (Authorization: Bearer $CRON_SECRET)
+        │  GitHub Actions cron (*/5 minutes)  →  GET /api/cron
+        │  (x-cron-secret / Authorization: Bearer $CRON_SECRET)
         ▼
 Due rows (SCHEDULED + scheduledFor <= now) are claimed (→ PROCESSING),
 submitted from the server account ($SCHEDULED_PAYMENTS_SOURCE_SECRET), and
@@ -76,9 +76,8 @@ Already-executed payments cannot be cancelled.
 
 ### `GET|POST /api/scheduled/run` (cron)
 
-Executes all due payments. Protected by `CRON_SECRET` — Vercel cron sends it
-as `Authorization: Bearer $CRON_SECRET` automatically; the handler also
-accepts an `x-cron-secret` header.
+Executes all due payments. Protected by `CRON_SECRET`, sent as either
+`Authorization: Bearer $CRON_SECRET` or the `x-cron-secret` header.
 
 - Requires `SCHEDULED_PAYMENTS_SOURCE_SECRET`; returns **503** (without
   touching any records) when it is not configured.
@@ -93,7 +92,7 @@ accepts an `x-cron-secret` header.
 | `CRON_SECRET` | Shared secret that protects `/api/scheduled/run` |
 | `SCHEDULED_PAYMENTS_SOURCE_SECRET` | Stellar secret key of the account that signs & submits scheduled payments. Must be funded and hold enough balance for every due payment in a run. |
 
-Cron schedule: `*/5 * * * *` (every 5 minutes) in `vercel.json`.
+Cron schedule: `*/5 * * * *` (every 5 minutes) in `.github/workflows/scheduled-payments-cron.yml`, which pings `/api/cron` (see [Scheduled Payment Cron](scheduled-payment-cron.md)).
 
 ## Tests
 

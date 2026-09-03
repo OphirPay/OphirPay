@@ -117,7 +117,7 @@ Push to main → Vercel builds → Preview/Production URL
 - `npx prisma generate` runs automatically during build (configured in `vercel.json` → `buildCommand`)
 - The `installCommand` is `npm ci` for deterministic installs
 - Region is set to `iad1` (US East) — change in `vercel.json` if you need a different region
-- A cron job runs `/api/cron` every 5 minutes to execute due scheduled payments (`vercel.json` → `crons`). Set `CRON_SECRET` and `SCHEDULED_PAYMENTS_SOURCE_SECRET` or the endpoint returns `503` and does nothing — see [Scheduled Payment Cron](scheduled-payment-cron.md)
+- A cron job runs `/api/cron` every 5 minutes to execute due scheduled payments (`.github/workflows/scheduled-payments-cron.yml` → GitHub Actions schedule; a Vercel Cron entry would fail deployment on Hobby, which only allows daily schedules). Set `CRON_SECRET` (as both a GitHub Actions secret and a Vercel environment variable) and `SCHEDULED_PAYMENTS_SOURCE_SECRET` or the endpoint returns `503` and does nothing — see [Scheduled Payment Cron](scheduled-payment-cron.md)
 
 ### CLI Deploy (Alternative)
 

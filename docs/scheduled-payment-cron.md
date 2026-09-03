@@ -1,9 +1,9 @@
 # ⏱ Scheduled Payment Cron
 
 The scheduler that turns a **scheduled payment** — a payment persisted with a
-future date — into a submitted Stellar transaction. Vercel Cron calls one
-endpoint on a fixed interval; that endpoint claims every due payment, submits
-it, and records the outcome.
+future date — into a submitted Stellar transaction. GitHub Actions Cron calls
+one endpoint on a fixed interval; that endpoint claims every due payment,
+submits it, and records the outcome.
 
 > Related: the scheduling API and UI that create these rows are tracked in
 > issue #68. This document covers the execution trigger (issue #175).
@@ -13,9 +13,9 @@ it, and records the outcome.
 ## How a run works
 
 ```
-Vercel Cron (*/5 * * * *)
+GitHub Actions Cron (*/5 * * * *)
         │  GET /api/cron
-        │  Authorization: Bearer $CRON_SECRET
+        │  x-cron-secret: $CRON_SECRET
         ▼
 1. Authorize ────────────── missing CRON_SECRET → 503, bad secret → 401
 2. Check configuration ──── missing signing key → 503 (no row is touched)
@@ -123,20 +123,27 @@ curl -sS -H "Authorization: Bearer $CRON_SECRET" \
 
 | Env var | Purpose |
 |---|---|
-| `CRON_SECRET` | Shared secret protecting the endpoint. Generate with `openssl rand -hex 32`. Vercel injects it into cron invocations automatically once it is set on the project. |
+| `CRON_SECRET` | Shared secret protecting the endpoint. Generate with `openssl rand -hex 32`. The GitHub Actions cron sends it via the `x-cron-secret` header, so the same value must be set as both the `CRON_SECRET` GitHub Actions secret and the `CRON_SECRET` environment variable on the Vercel project. |
 | `SCHEDULED_PAYMENTS_SOURCE_SECRET` | Stellar secret key of the operator account that signs and submits due payments. It must be funded, and hold enough balance (plus trustlines for non-native assets) for every payment in a run. |
 
-Schedule — `vercel.json`:
+Schedule — `.github/workflows/scheduled-payments-cron.yml`:
 
-```json
-"crons": [{ "path": "/api/cron", "schedule": "*/5 * * * *" }]
+```yaml
+on:
+  schedule:
+    - cron: "*/5 * * * *"
 ```
+
+The workflow pings `https://ophirpay.vercel.app/api/cron` with the
+`x-cron-secret` header set to the `CRON_SECRET` GitHub Actions secret. (A
+Vercel Cron entry in `vercel.json` was the original trigger, but Vercel's
+Hobby plan only permits daily cron schedules — sub-daily intervals fail
+deployment — so the sweep moved to GitHub Actions, which allows 5-minute
+schedules on public repositories.)
 
 The interval bounds how late a payment can be: a payment due at 12:01 is
 submitted by the 12:05 run. Shorten it for tighter timing; every run is a
-no-op when nothing is due. Note that Vercel's Hobby plan permits daily cron
-schedules only — sub-daily intervals need a Pro plan or an external scheduler
-calling the same endpoint.
+no-op when nothing is due.
 
 ### Tuning
 

@@ -19,9 +19,11 @@ import { verifyCsrf } from "@/lib/csrf";
 /**
  * Cron endpoint — executes due scheduled payments.
  *
- * Invoked by the Vercel cron defined in vercel.json. Vercel sends
- * `Authorization: Bearer $CRON_SECRET` when the CRON_SECRET env var is set,
- * so the handler accepts either that header or `x-cron-secret`.
+ * The automated every-5-minute sweep now runs from GitHub Actions against
+ * `/api/cron` (see .github/workflows/scheduled-payments-cron.yml and
+ * docs/scheduled-payment-cron.md). This route is kept as an equivalent
+ * on-demand trigger: it accepts `Authorization: Bearer $CRON_SECRET` or the
+ * `x-cron-secret` header.
  *
  * If `SCHEDULED_PAYMENTS_SOURCE_SECRET` is not configured the endpoint
  * refuses to run (503) without touching any records, so a misconfigured

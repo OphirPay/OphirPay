@@ -26,8 +26,9 @@ import { publicKeyFromSecret, submitPaymentFromSecret } from "@/lib/stellar";
 /**
  * Scheduled payment execution (issue #175).
  *
- * Vercel Cron calls this endpoint on the schedule declared in `vercel.json`,
- * sending the project's `CRON_SECRET` as `Authorization: Bearer <secret>`.
+ * GitHub Actions Cron calls this endpoint every 5 minutes (see
+ * `.github/workflows/scheduled-payments-cron.yml`), sending the project's
+ * `CRON_SECRET` as an `x-cron-secret` header (Bearer is also accepted).
  * Each run:
  *
  *   1. selects scheduled payments whose due date has passed;

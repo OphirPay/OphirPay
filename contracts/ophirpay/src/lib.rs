@@ -3437,7 +3437,9 @@ impl OphirPayContract {
         let vested = compute_vested(stream.total_amount, stream.start_time, stream.end_time, now);
 
         let unvested = stream.total_amount.saturating_sub(vested);
+        let recipient_owed = vested.saturating_sub(stream.claimed_amount);
 
+        stream.claimed_amount = stream.claimed_amount.saturating_add(recipient_owed);
         stream.cancelled = true;
         env.storage()
             .persistent()
@@ -3446,10 +3448,15 @@ impl OphirPayContract {
             .persistent()
             .extend_ttl(&(STREAM_KEY, stream_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
 
+        let token_client = token::Client::new(&env, &stream.asset);
+        let contract_addr = env.current_contract_address();
+
+        if recipient_owed > 0 {
+            token_client.transfer(&contract_addr, &stream.recipient, &recipient_owed);
+            add_locked(&env, -recipient_owed);
+        }
+
         if unvested > 0 {
-            // Reentrancy-guarded transfer (MEDIUM-4)
-            let token_client = token::Client::new(&env, &stream.asset);
-            let contract_addr = env.current_contract_address();
             token_client.transfer(&contract_addr, &creator, &unvested);
             add_locked(&env, -unvested);
         }
@@ -6360,6 +6367,73 @@ mod tests {
         // 7. Claim Escrow 2 after deadline
         env.ledger().set_timestamp(1_060_000);
         client.claim_escrow(&payee2, &e2);
+        assert_eq!(client.get_locked_balance(), 0);
+    }
+
+    /// LOCK-2: cancelling a stream when the recipient has claimed LESS than the
+    /// vested amount must still make the recipient whole for the earned-but-
+    /// unclaimed portion. Conservation identity across a stream's full life:
+    ///   recipient_received + creator_refunded == total_deposited
+    /// and LOCKED_BALANCE returns to 0 with no tokens stranded in the contract.
+    #[test]
+    fn test_cancel_stream_settles_recipient_earned_portion() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let recipient = Address::generate(&env);
+
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        let token_client = token::Client::new(&env, &sac);
+        sac_client.mint(&creator, &3_000_000i128);
+
+        let _ = client.init(&owner);
+
+        // Stream 3_000_000 over [1_000_000, 1_001_000].
+        let memo = String::from_str(&env, "s");
+        let s1 = client.create_stream(
+            &creator,
+            &recipient,
+            &3_000_000i128,
+            &sac,
+            &1_000_000u64,
+            &1_001_000u64,
+            &memo,
+        );
+
+        // Recipient claims at 30% vested (900_000), i.e. BELOW the vested amount.
+        env.ledger().set_timestamp(1_000_300);
+        let claimed = client.claim_stream(&recipient, &s1);
+        assert_eq!(claimed, 900_000);
+
+        // Creator cancels at 50% vested. vested = 1_500_000, so the recipient has
+        // EARNED 1_500_000 but only claimed 900_000 -> 600_000 is still owed.
+        env.ledger().set_timestamp(1_000_500);
+        let refunded = client.cancel_stream(&creator, &s1);
+
+        // Creator is refunded only the unvested remainder.
+        assert_eq!(refunded, 1_500_000);
+
+        let recipient_bal = token_client.balance(&recipient);
+        let creator_bal = token_client.balance(&creator);
+        let contract_bal = token_client.balance(&contract_id);
+
+        // Conservation: nothing may be stranded in the contract.
+        assert_eq!(
+            recipient_bal + creator_bal,
+            3_000_000,
+            "recipient {} + creator {} must equal the 3_000_000 deposited; {} is stranded",
+            recipient_bal,
+            creator_bal,
+            contract_bal
+        );
+        // Recipient must have received their full earned entitlement (1_500_000).
+        assert_eq!(recipient_bal, 1_500_000);
+        assert_eq!(contract_bal, 0);
         assert_eq!(client.get_locked_balance(), 0);
     }
 

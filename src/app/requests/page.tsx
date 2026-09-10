@@ -22,9 +22,11 @@ interface RequestData {
   assetCode: string;
   status: string;
   description?: string;
+  expiresAt?: string;
   recipientAddress?: string;
   transactionHash?: string;
   createdAt: string;
+  expiresAt?: string | null;
   updatedAt: string;
 }
 
@@ -49,6 +51,7 @@ export default function RequestsPage() {
   const [formAsset, setFormAsset] = useState("XLM");
   const [formDescription, setFormDescription] = useState("");
   const [formAddress, setFormAddress] = useState("");
+  const [formDueDate, setFormDueDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -95,16 +98,13 @@ export default function RequestsPage() {
     setFormAsset("XLM");
     setFormDescription("");
     setFormAddress("");
+    setFormDueDate("");
     setFormError(null);
   };
 
   const getPaymentLink = (req: RequestData): string => {
-    return generatePaymentLink({
-      destination: req.recipientAddress || wallet.publicKey || "",
-      amount: req.amount.toString(),
-      assetCode: req.assetCode,
-      message: req.description,
-    });
+    const base = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
+    return `${base}/pay/${req.id}`;
   };
 
   const getQRUrl = (req: RequestData): string => {
@@ -322,6 +322,19 @@ export default function RequestsPage() {
               onChange={(e) => setFormAddress(e.target.value)}
               placeholder={wallet.publicKey || "G..."}
               className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+            />
+          </div>
+
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Due Date <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="date"
+              value={formDueDate}
+              onChange={(e) => setFormDueDate(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
             />
           </div>
 

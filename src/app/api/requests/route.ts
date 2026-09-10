@@ -58,6 +58,7 @@ export const POST = withMetrics("POST /api/requests", withRequestLogging(async f
         assetIssuer: parsed.data.assetIssuer,
         description: parsed.data.description,
         recipientAddress: parsed.data.recipientAddress,
+        expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
         userId: auth.userId,
       },
     });

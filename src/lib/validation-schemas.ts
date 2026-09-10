@@ -237,6 +237,7 @@ export const createPaymentRequestSchema = z.object({
   assetIssuer: z.string().optional(),
   description: z.string().max(500).optional(),
   recipientAddress: stellarAddress.optional(),
+  expiresAt: z.string().datetime().optional(),
 });
 
 // ── Pagination (moved from validations.ts) ────────────────────

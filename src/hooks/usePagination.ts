@@ -20,6 +20,29 @@ interface PaginationState {
 
 /**
  * Client-side pagination hook for tables and lists.
+ *
+ * @example
+ * Paginate a list of payments fetched from the API:
+ *
+ * ```tsx
+ * function PaymentsTable() {
+ *   const { page, limit, totalPages, hasNext, hasPrev, next, prev, goTo } =
+ *     usePagination({ total: 120, initialPage: 1, initialLimit: 20 });
+ *
+ *   const { data } = useApiQuery<Payment[]>(
+ *     ["payments", page, limit],
+ *     `/api/payments?page=${page}&limit=${limit}`,
+ *   );
+ *
+ *   return (
+ *     <>
+ *       {data?.map((p) => <Row key={p.id} payment={p} />)}
+ *       <button onClick={prev} disabled={!hasPrev}>Previous</button>
+ *       <button onClick={next} disabled={!hasNext}>Next</button>
+ *     </>
+ *   );
+ * }
+ * ```
  */
 export function usePagination({ total, initialPage = 1, initialLimit = 20 }: UsePaginationOptions) {
   const [page, setPage] = useState(initialPage);

@@ -37,7 +37,7 @@ export function BatchConfirmDialog({
     <Modal open={open} onClose={onCancel} title="Confirm Batch Payment" size="md">
       <div className="space-y-4">
         {/* Summary */}
-        <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4 space-y-2">
+        <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3 sm:p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-gray-500 dark:text-gray-400">Recipients</span>
             <span className="font-medium text-gray-900 dark:text-white">{recipients.length}</span>
@@ -59,7 +59,7 @@ export function BatchConfirmDialog({
             {visibleRecipients.map((r, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between px-3 py-2 bg-white dark:bg-gray-900"
+                className="flex items-center justify-between px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-900"
               >
                 <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
                   {shortenAddress(r.address, 8)}
@@ -78,11 +78,11 @@ export function BatchConfirmDialog({
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pt-2">
-          <Button variant="outline" onClick={onCancel}>
+        <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+          <Button variant="outline" onClick={onCancel} className="w-full sm:w-auto min-h-[44px]">
             Back
           </Button>
-          <Button variant="primary" onClick={onConfirm} data-testid="batch-confirm-send">
+          <Button variant="primary" onClick={onConfirm} data-testid="batch-confirm-send" className="w-full sm:w-auto min-h-[44px]">
             Confirm & Sign
           </Button>
         </div>

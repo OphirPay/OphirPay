@@ -9,6 +9,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
       count: vi.fn(),
       create: vi.fn(),
+      updateMany: vi.fn(),
     },
     refund: {
       findMany: vi.fn(),
@@ -41,7 +42,7 @@ import * as authSession from "@/lib/auth-session";
 import * as csrf from "@/lib/csrf";
 import * as contracts from "@/lib/contracts";
 import { GET as getRecurring, POST as postRecurring } from "@/app/api/recurring/route";
-import { GET as getRecurringById } from "@/app/api/recurring/[id]/route";
+import { GET as getRecurringById, PATCH as patchRecurringById } from "@/app/api/recurring/[id]/route";
 import { GET as getRefunds, POST as postRefunds } from "@/app/api/refunds/route";
 import { PATCH as patchRefundById } from "@/app/api/refunds/[id]/route";
 
@@ -181,6 +182,58 @@ describe("API Routes: Recurring & Refunds", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.data.id).toBe(5);
+    });
+  });
+
+  describe("PATCH /api/recurring/[id]", () => {
+    it("returns 403 when CSRF check fails", async () => {
+      vi.mocked(csrf.verifyCsrf).mockReturnValueOnce(
+        new Response(JSON.stringify({ success: false, error: { message: "CSRF invalid" } }), {
+          status: 403,
+        })
+      );
+      const res = await patchRecurringById(
+        new Request("http://localhost/api/recurring/rec_1", { method: "PATCH" }),
+        { params: Promise.resolve({ id: "rec_1" }) }
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 401 when unauthenticated", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(null);
+      const res = await patchRecurringById(
+        new Request("http://localhost/api/recurring/rec_1", { method: "PATCH" }),
+        { params: Promise.resolve({ id: "rec_1" }) }
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 when the recurrence is not found", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      vi.mocked(prisma.recurrence.updateMany).mockResolvedValueOnce({ count: 0 });
+      const res = await patchRecurringById(
+        new Request("http://localhost/api/recurring/rec_missing", { method: "PATCH" }),
+        { params: Promise.resolve({ id: "rec_missing" }) }
+      );
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error.message).toContain("not found");
+    });
+
+    it("cancels (deactivates) a recurring payment scoped to the owner", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      vi.mocked(prisma.recurrence.updateMany).mockResolvedValueOnce({ count: 1 });
+      const res = await patchRecurringById(
+        new Request("http://localhost/api/recurring/rec_1", { method: "PATCH" }),
+        { params: Promise.resolve({ id: "rec_1" }) }
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.data.cancelled).toBe(true);
+      expect(prisma.recurrence.updateMany).toHaveBeenCalledWith({
+        where: { id: "rec_1", userId: MOCK_AUTH.userId },
+        data: { isActive: false },
+      });
     });
   });
 

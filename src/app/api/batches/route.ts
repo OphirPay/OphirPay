@@ -14,7 +14,9 @@ import {
 } from "@/lib/api-response";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { incMetric } from "@/lib/metrics-counters";
+import crypto from "crypto";
 import {
   buildCursorWhere,
   computeNextCursor,
@@ -140,6 +142,9 @@ async function fetchBatchWithPayments(batchId: string) {
 
 export const POST = withMetrics("POST /api/batches", withRequestLogging(async function POST(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) {
       return unauthorizedError(
@@ -154,7 +159,8 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
       return validationError(parsed.error);
     }
 
-    const { name, description, recipients: payments } = parsed.data;
+    const { name, description, recipients: payments } =
+      parsed.data;
     const { userId } = auth;
 
     // Idempotency key (issue #170): the `Idempotency-Key` header takes

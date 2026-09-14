@@ -5,6 +5,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { trapFocus } from "@/lib/focus-trap";
 
 interface ModalProps {
   open: boolean;
@@ -47,6 +48,15 @@ export function Modal({
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  // title/description only decide where the focus trap starts when the dialog
+  // opens — read the latest values through a ref (same pattern as onCloseRef)
+  // so the trap effect below can stay keyed on `open` alone without focus
+  // churn when a caller changes the header mid-open.
+  const headerRef = useRef({ title, description });
+  useEffect(() => {
+    headerRef.current = { title, description };
+  });
+
   // Close the modal when the user presses the browser back button instead of
   // navigating away from the page. Opening the modal pushes a history entry;
   // pressing back pops it and fires `popstate`, which closes the modal.
@@ -73,15 +83,29 @@ export function Modal({
     };
   }, [open]);
 
-  // ESC to close + focus trap + body scroll lock + focus restore
+  // ESC to close + focus trap + body scroll lock + focus restore.
+  // Only depends on `open` — the close handler is read through `onCloseRef` so
+  // callers can pass a fresh `onClose` closure on every render (e.g. one that
+  // captures connection state) without tearing down this effect mid-open,
+  // which would briefly move focus back to the trigger (focus churn).
   useEffect(() => {
-    if (!open) return;
+    if (!open || !dialogRef.current) return;
 
-    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
+    // Moves focus into the dialog and restores it to the trigger element when
+    // released. Dialogs with a header (title/description + close control) put
+    // focus on the labelled region first so its name is announced; plain
+    // content dialogs move straight to the first interactive element.
+    const releaseTrap = trapFocus(dialogRef.current, {
+      focusContainer: Boolean(headerRef.current.title || headerRef.current.description),
+    });
+
+    // ESC to close
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !dialogRef.current) return;
@@ -104,19 +128,12 @@ export function Modal({
     };
     document.addEventListener("keydown", onKeyDown);
 
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    // Move focus into the dialog
-    requestAnimationFrame(() => dialogRef.current?.focus());
-
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = prevOverflow;
-      // Restore focus to the element that opened the dialog
-      previouslyFocused?.focus();
+      releaseTrap();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   // Guard against SSR — createPortal needs the client-side `document`
   if (!open || typeof document === "undefined") return null;

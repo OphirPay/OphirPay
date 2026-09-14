@@ -341,7 +341,7 @@ describe("API Routes: Webhooks, Hooks & Events", () => {
 
   describe("GET /api/events", () => {
     it("returns SSE response with event-stream content type", async () => {
-      const res = await getEvents();
+      const res = await getEvents(new Request("http://localhost/api/events"));
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toBe("text/event-stream");
       if (res.body) {

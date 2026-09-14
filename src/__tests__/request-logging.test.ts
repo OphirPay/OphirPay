@@ -41,6 +41,10 @@ describe("withRequestLogging", () => {
 
   it("records the actual duration of the handler", async () => {
     const spy = vi.spyOn(logger, "request").mockImplementation(() => {});
+    // Sleep 60ms (not 10ms): under load, a ~0.3ms clock skew between the
+    // jsdom performance clock and Node's timers occasionally made a 10ms
+    // sleep measure as ~9.7ms, flaking the assertion. 60ms keeps the
+    // "records the actual duration" semantics with real margin.
     const handler = withRequestLogging(async () => {
       // 50ms gives the assertion below a comfortable margin so the test is not
       // flaky when the suite runs with many parallel workers (10ms was racy).
@@ -118,6 +122,41 @@ describe("withRequestLogging", () => {
       status: 500,
       durationMs: expect.any(Number),
       error: "boom",
+    });
+  });
+
+  it("reuses an inbound X-Request-Id header when present", async () => {
+    const spy = vi.spyOn(logger, "request").mockImplementation(() => {});
+    const handler = withRequestLogging(async () => new Response("ok"));
+
+    const response = await handler(
+      new Request("https://example.com/api/x", {
+        headers: { "X-Request-Id": "inbound-req-1" },
+      })
+    );
+
+    expect(response.headers.get(REQUEST_ID_HEADER)).toBe("inbound-req-1");
+    const [, , , , requestId] = spy.mock.calls[0];
+    expect(requestId).toBe("inbound-req-1");
+  });
+
+  it("logs non-Error thrown values without crashing", async () => {
+    const spy = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const handler = withRequestLogging(async () => {
+      // A thrown primitive (not an Error) must still be logged as a string.
+      throw { code: "E_BOOM" };
+    });
+
+    await expect(handler(new Request("https://example.com/api/x"))).rejects.toMatchObject({
+      code: "E_BOOM",
+    });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [, context] = spy.mock.calls[0];
+    expect(context).toMatchObject({
+      error: "[object Object]",
+      stack: undefined,
+      status: 500,
     });
   });
 

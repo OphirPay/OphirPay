@@ -8,6 +8,20 @@ import { getFreighter } from "@/hooks/useFreighter"; // Legacy Freighter-specifi
 /**
  * Detects Freighter network changes (e.g., user switches from Testnet to Mainnet).
  * Calls onNetworkChange when the network differs from the initial value.
+ *
+ * @example
+ * Warn the user and invalidate on-chain data when the wallet network changes:
+ *
+ * ```tsx
+ * function NetworkGuard() {
+ *   const { wallet } = useWallet();
+ *   useNetworkChange(wallet.network, (nextNetwork) => {
+ *     toast.error("Wallet switched networks — refreshing balances");
+ *     queryClient.invalidateQueries();
+ *   });
+ *   return null;
+ * }
+ * ```
  */
 export function useNetworkChange(
   currentNetwork: string | null,
@@ -28,7 +42,17 @@ export function useNetworkChange(
 
 /**
  * Poll Freighter for network changes every `interval` ms.
- * Disconnects the wallet if Freighter network no longer matches.
+ * Warns (via console) when the Freighter network no longer matches.
+ *
+ * @example
+ * Keep the app in sync with the wallet's selected network while mounted:
+ *
+ * ```tsx
+ * function NetworkMonitor({ network }: { network: string }) {
+ *   useNetworkPoller(network, 15000);
+ *   return null;
+ * }
+ * ```
  */
 export function useNetworkPoller(
   expectedNetwork: string | null,

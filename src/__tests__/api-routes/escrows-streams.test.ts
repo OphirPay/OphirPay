@@ -14,6 +14,7 @@ vi.mock("@/lib/contracts", () => ({
 
 import * as authSession from "@/lib/auth-session";
 import * as contracts from "@/lib/contracts";
+import { generateCsrfToken } from "@/lib/csrf";
 import { GET as getEscrows, POST as postEscrows } from "@/app/api/escrows/route";
 import { GET as getEscrowById } from "@/app/api/escrows/[id]/route";
 import { GET as getStreams, POST as postStreams } from "@/app/api/streams/route";
@@ -23,6 +24,19 @@ const MOCK_AUTH = {
   userId: "user_123",
   publicKey: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
 };
+
+function csrfHeaders(): Record<string, string> {
+  const token = generateCsrfToken();
+  return { "x-csrf-token": token, cookie: `__Host-csrf=${token}` };
+}
+
+function postRequest(url: string, body?: unknown): Request {
+  return new Request(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+}
 
 describe("API Routes: Escrows & Streams", () => {
   beforeEach(() => {
@@ -90,19 +104,14 @@ describe("API Routes: Escrows & Streams", () => {
 
     it("POST returns 401 when unauthenticated", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(null);
-      const res = await postEscrows(
-        new Request("http://localhost/api/escrows", { method: "POST" })
-      );
+      const res = await postEscrows(postRequest("http://localhost/api/escrows"));
       expect(res.status).toBe(401);
     });
 
     it("POST returns 400 when required escrow parameters are missing", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
       const res = await postEscrows(
-        new Request("http://localhost/api/escrows", {
-          method: "POST",
-          body: JSON.stringify({ depositor: "G123" }),
-        })
+        postRequest("http://localhost/api/escrows", { depositor: "G123" })
       );
       expect(res.status).toBe(400);
     });
@@ -110,13 +119,10 @@ describe("API Routes: Escrows & Streams", () => {
     it("POST returns 202 with client signing instructions when parameters are valid", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
       const res = await postEscrows(
-        new Request("http://localhost/api/escrows", {
-          method: "POST",
-          body: JSON.stringify({
-            depositor: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-            beneficiary: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-            amount: "100",
-          }),
+        postRequest("http://localhost/api/escrows", {
+          depositor: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          beneficiary: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          amount: "100",
         })
       );
       expect(res.status).toBe(202);
@@ -134,12 +140,14 @@ describe("API Routes: Escrows & Streams", () => {
       expect(res.status).toBe(401);
     });
 
-    it("returns 404 when id is not a valid integer", async () => {
+    it("returns 400 when id is not a valid integer", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
       const res = await getEscrowById(new Request("http://localhost/api/escrows/invalid"), {
         params: Promise.resolve({ id: "invalid" }),
       });
-      expect(res.status).toBe(404);
+      // Shared param validation (validate-params.ts) rejects malformed ids
+      // with the standard 400 envelope before any contract read.
+      expect(res.status).toBe(400);
     });
 
     it("returns 404 when simulation fails", async () => {
@@ -206,10 +214,7 @@ describe("API Routes: Escrows & Streams", () => {
     it("POST returns 400 when creator or recipient is missing", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
       const res = await postStreams(
-        new Request("http://localhost/api/streams", {
-          method: "POST",
-          body: JSON.stringify({ creator: "G1" }),
-        })
+        postRequest("http://localhost/api/streams", { creator: "G1" })
       );
       expect(res.status).toBe(400);
     });
@@ -217,13 +222,10 @@ describe("API Routes: Escrows & Streams", () => {
     it("POST returns 202 on valid stream parameters", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
       const res = await postStreams(
-        new Request("http://localhost/api/streams", {
-          method: "POST",
-          body: JSON.stringify({
-            creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-            recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-            totalAmount: 500,
-          }),
+        postRequest("http://localhost/api/streams", {
+          creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          totalAmount: 500,
         })
       );
       expect(res.status).toBe(202);

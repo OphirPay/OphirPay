@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { randomBytes, timingSafeEqual } from "crypto";
+import { extractApiKey } from "@/lib/api-auth";
 
 const CSRF_COOKIE = "__Host-csrf";
 /** Plain-http dev fallback — `__Host-` cookies are rejected without Secure. */
@@ -28,9 +29,16 @@ export function generateCsrfToken(): string {
  */
 export function csrfCookieHeader(token: string, secure = true): string {
   const name = secure ? CSRF_COOKIE : CSRF_COOKIE_INSECURE;
-  const secureAttr = secure ? "; Secure" : "";
-  return `${name}=${token}; Path=/;${secureAttr} HttpOnly; SameSite=Strict; Max-Age=86400`;
+  const secureAttr = secure ? "Secure; " : "";
+  return `${name}=${token}; Path=/; ${secureAttr}HttpOnly; SameSite=Strict; Max-Age=86400`;
 }
+
+/**
+ * Validate an incoming CSRF token against the cookie.
+ * Uses timing-safe comparison to prevent timing attacks.
+ * Returns true if tokens match, false otherwise.
+ */
+const TOKEN_HEX_RE = /^[0-9a-f]+$/;
 
 /**
  * Validate an incoming CSRF token against the cookie.
@@ -41,6 +49,9 @@ export function validateCsrfToken(cookieToken: string | null, headerToken: strin
   if (!cookieToken || !headerToken) return false;
   if (cookieToken.length !== TOKEN_BYTES * 2) return false;
   if (headerToken.length !== TOKEN_BYTES * 2) return false;
+  // Tokens are hex-encoded CSPRNG output — anything non-hex is malformed and
+  // decodes to an empty/garbage buffer, so reject it before comparing.
+  if (!TOKEN_HEX_RE.test(cookieToken) || !TOKEN_HEX_RE.test(headerToken)) return false;
 
   const cookieBuf = Buffer.from(cookieToken, "hex");
   const headerBuf = Buffer.from(headerToken, "hex");
@@ -79,6 +90,14 @@ export function verifyCsrf(request: Request): Response | null {
   // Skip CSRF check for GET/HEAD/OPTIONS
   if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return null;
 
+  // API keys are sent explicitly in headers — browsers never attach them on
+  // cross-site requests, so CSRF does not apply to machine-to-machine calls.
+  if (extractApiKey(request)) return null;
+  // Cron/scheduler secrets travel the same way (Authorization: Bearer or the
+  // `x-cron-secret` header) — custom headers can't be attached cross-site
+  // without CORS preflight, so they are equally safe from CSRF.
+  if (request.headers.get("x-cron-secret")) return null;
+
   const cookieToken = getCsrfTokenFromCookies(request.headers.get("cookie"));
   const headerToken = getCsrfTokenFromHeaders(request.headers);
 
@@ -96,4 +115,78 @@ export function verifyCsrf(request: Request): Response | null {
   }
 
   return null;
+}
+
+/**
+ * Higher-order function to wrap API route handlers with CSRF protection.
+ * Automatically enforces CSRF for mutating methods.
+ * 
+ * Usage:
+ * ```typescript
+ * export const POST = withCsrf(async (request) => {
+ *   // ... handle request
+ * });
+ * ```
+ */
+export function withCsrf<TContext = undefined>(
+  handler: (request: Request, context?: TContext) => Promise<Response>
+) {
+  return async (request: Request, context?: TContext): Promise<Response> => {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+    return handler(request, context);
+  };
+}
+
+/**
+ * Audit helper: Check if a route handler has CSRF protection.
+ * This is a utility for tests and code review, not runtime enforcement.
+ */
+export function auditRouteProtection(
+  method: string,
+  hasProtection: boolean
+): { method: string; isMutating: boolean; isProtected: boolean } {
+  const isMutating = ["POST", "PATCH", "DELETE", "PUT"].includes(method.toUpperCase());
+  return {
+    method: method.toUpperCase(),
+    isMutating,
+    isProtected: isMutating ? hasProtection : true,
+  };
+}
+
+/**
+ * List of all API routes and their CSRF protection status.
+ * This is used by tests to verify no mutating route is unprotected.
+ * Add routes here as they are audited.
+ */
+export const CSRF_ROUTE_AUDIT = {
+  // Auth routes
+  "/api/auth/session": { POST: true, DELETE: true },
+  "/api/auth/challenge": { GET: true },
+  
+  // CSRF token minting
+  "/api/csrf": { GET: true },
+  
+  // Add more routes as they are audited:
+  // "/api/payments": { POST: true, PATCH: true, DELETE: true },
+  // "/api/webhooks": { POST: true, PATCH: true, DELETE: true },
+} as const;
+
+/**
+ * Find any mutating routes that lack CSRF protection.
+ * Returns an array of "METHOD /path" strings for unprotected routes.
+ */
+export function findUnprotectedRoutes(): string[] {
+  const unprotected: string[] = [];
+  
+  for (const [path, methods] of Object.entries(CSRF_ROUTE_AUDIT)) {
+    for (const [method, isProtected] of Object.entries(methods)) {
+      const audit = auditRouteProtection(method, isProtected);
+      if (audit.isMutating && !audit.isProtected) {
+        unprotected.push(`${audit.method} ${path}`);
+      }
+    }
+  }
+  
+  return unprotected;
 }

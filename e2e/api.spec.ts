@@ -6,8 +6,9 @@ const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 
 // Security model under test:
 //   • Public endpoints: /api/health, /api/metrics, /api/events
-//   • All data routes are auth-gated → 401 without a session/API key
+//   • GET data routes are auth-gated → 401 without a session/API key
 //     (wallet session cookie, Authorization: Bearer, or X-API-Key).
+//   • Mutating routes validate the CSRF token before auth → 403 without one.
 
 // ── Health ─────────────────────────────────────────────────────
 
@@ -90,11 +91,13 @@ test.describe("Auth gate on data routes", () => {
 // ── Batches (auth-gated) ───────────────────────────────────────
 
 test.describe("POST /api/batches", () => {
-  test("returns 401 without auth", async ({ request }) => {
+  test("returns 403 without a session (CSRF gate precedes auth)", async ({
+    request,
+  }) => {
     const res = await request.post(`${BASE_URL}/api/batches`, {
       data: { name: "Unauthed batch", recipients: [] },
     });
-    expect(res.status()).toBe(401);
+    expect(res.status()).toBe(403);
   });
 });
 

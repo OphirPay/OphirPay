@@ -26,10 +26,17 @@ export function buildPaymentWhere(
     where.status = filters.status as PaymentStatus;
   }
   if (filters.search) {
+    // Issue #157 — server-side reconciliation search:
+    //  - `memo` and `description` are substring matches, case-insensitive for
+    //    `memo` (the Postgres ILIKE equivalent via Prisma `mode`), because memo
+    //    text users type rarely matches on-chain casing;
+    //  - `transactionHash` is an EXACT match — hashes are emitted by the network
+    //    in a canonical case, and a partial match would produce false positives
+    //    across near-identical hashes.
     where.OR = [
       { description: { contains: filters.search } },
-      { memo: { contains: filters.search } },
-      { transactionHash: { contains: filters.search } },
+      { memo: { contains: filters.search, mode: "insensitive" } },
+      { transactionHash: { equals: filters.search } },
     ];
   }
   return where;

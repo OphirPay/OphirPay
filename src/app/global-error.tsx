@@ -4,6 +4,7 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/Button";
+import { reportRenderedError } from "@/lib/analytics-events";
 
 interface GlobalErrorProps {
   error: Error & { digest?: string };
@@ -13,6 +14,7 @@ interface GlobalErrorProps {
 export default function GlobalError({ error, reset }: GlobalErrorProps) {
   useEffect(() => {
     console.error("Global error boundary caught:", error);
+    reportRenderedError(error);
   }, [error]);
 
   return (

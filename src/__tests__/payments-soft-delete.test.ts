@@ -28,6 +28,12 @@ vi.mock("@/lib/auth-session", () => ({
 
 import { GET as ListGET } from "@/app/api/payments/route";
 import { GET, PATCH, DELETE } from "@/app/api/payments/[id]/route";
+import { generateCsrfToken } from "@/lib/csrf";
+
+function csrfHeaders(): Record<string, string> {
+  const token = generateCsrfToken();
+  return { "x-csrf-token": token, cookie: `__Host-csrf=${token}` };
+}
 
 const USER_ID = "user-1";
 const PAYMENT_ID = "cm0py0000000000000000001";
@@ -129,6 +135,7 @@ describe("accessing a soft-deleted payment", () => {
     const res = await PATCH(
       new Request("http://localhost/api/payments", {
         method: "PATCH",
+        headers: { "Content-Type": "application/json", ...csrfHeaders() },
         body: JSON.stringify({ status: "COMPLETED" }),
       }),
       { params: Promise.resolve({ id: PAYMENT_ID }) }

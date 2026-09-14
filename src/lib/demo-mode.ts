@@ -70,7 +70,7 @@ export function simulateBatchPayment(params: {
 export const DEMO_WALLET = {
   connected: true,
   // Valid-format Stellar testnet address (demo only — not a real funded account)
-  publicKey: "GBZX4364PEPQTDICMIQDZ56K4T75QGKCRFHSVJFVODVFBRR6XOQNFB2C",
+  publicKey: "GBH3O5IHGJ6GUKZCINS3UZGHVKDKYDLVIRKZY7GYA27B54WT3Q7H4KXO",
   network: "TESTNET",
   balance: "10,000.00",
   balanceLoading: false,

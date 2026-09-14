@@ -5,10 +5,10 @@
  */
 
 export const APP = {
-  NAME: "OphirPay",
-  VERSION: "0.1.0",
-  DESCRIPTION: "The Open-Source Payment Orchestration Layer for Stellar",
-  REPO: "https://github.com/OphirPay/OphirPay",
+  NAME:"OphirPay",
+  VERSION:"0.1.0",
+  DESCRIPTION:"The Open-Source Payment Orchestration Layer for Stellar",
+  REPO:"https://github.com/OphirPay/OphirPay",
 } as const;
 
 export const STELLAR = {
@@ -30,7 +30,7 @@ export const UI = {
   /** Maximum visible toasts */
   MAX_TOASTS: 4,
   /** Debounce delay for search inputs in ms */
-  SEARCH_DEBOUNCE: 300,
+  SEARCH_DEBOUNCE : 300,
   /** Polling interval for live data in ms */
   POLL_INTERVAL: 10_000,
 } as const;
@@ -42,4 +42,13 @@ export const API = {
   MAX_PAGE_SIZE: 100,
   /** Rate limit: requests per minute */
   RATE_LIMIT_RPM: 120,
+} as const;
+
+export const RECURRING = {
+  /** Recurring payment states */
+  STATUS: {
+    ACTIVE: 'active',
+    PAUSED: 'paused',
+    CANCELLED: 'cancelled',
+  },
 } as const;

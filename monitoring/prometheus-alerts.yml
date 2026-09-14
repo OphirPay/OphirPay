@@ -82,8 +82,8 @@ groups:
 
       - alert: WebhookDeliveryFailureRateHigh
         expr: |
-          rate(ophirpay_webhook_failures_total[15m]) /
-          rate(ophirpay_webhook_attempts_total[15m]) > 0.25
+          sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook",final_outcome="failure"}[15m])) /
+          clamp_min(sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook"}[15m])), 1) > 0.25
         for: 10m
         labels:
           severity: warning
@@ -91,8 +91,9 @@ groups:
         annotations:
           summary: "Webhook delivery failure rate > 25%"
           description: |
-            {{ $value | humanizePercentage }} of webhook deliveries are failing.
-            Check subscriber endpoints.
+            {{ $value | humanizePercentage }} of webhook deliveries have ended
+            in failure for at least 10 minutes. Check subscriber endpoints and
+            retry attempt distribution.
 
       - alert: WebhookQueueDepthHigh
         expr: ophirpay_webhook_queue_depth > 1000

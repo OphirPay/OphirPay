@@ -58,9 +58,19 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     setWallet((prev) => ({ ...prev, balanceLoading: true }));
     try {
       const balance = await fetchXlmBalance(publicKey);
-      setWallet((prev) => ({ ...prev, balance, balanceLoading: false }));
+      // Ignore stale responses: a balance fetch that resolves after a
+      // disconnect (or an account switch) must not repopulate the cache.
+      setWallet((prev) =>
+        prev.connected && prev.publicKey === publicKey
+          ? { ...prev, balance, balanceLoading: false }
+          : prev,
+      );
     } catch {
-      setWallet((prev) => ({ ...prev, balanceLoading: false }));
+      setWallet((prev) =>
+        prev.connected && prev.publicKey === publicKey
+          ? { ...prev, balanceLoading: false }
+          : prev,
+      );
     }
   }, []);
 
@@ -182,9 +192,18 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
   );
 
   const disconnect = useCallback(async () => {
-    if (wallet.activeWalletId) {
+    const walletId = wallet.activeWalletId;
+
+    // Reset wallet state synchronously — before any async cleanup — so every
+    // consumer (dashboard, header, pages) stops rendering the cached
+    // balance/account data the moment disconnect is requested.
+    setWallet(initialWalletState);
+    setActiveWalletId(null);
+    setError(null);
+
+    if (walletId) {
       try {
-        const connector = getWalletConnector(wallet.activeWalletId);
+        const connector = getWalletConnector(walletId);
         await connector.disconnect();
       } catch {
         // Best effort
@@ -192,9 +211,6 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     }
     // Revoke the server-side session cookie
     await revokeSession();
-    setWallet(initialWalletState);
-    setActiveWalletId(null);
-    setError(null);
   }, [wallet.activeWalletId]);
 
   // Auto-refresh balance every 30 seconds when connected
@@ -230,6 +246,37 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
 
 // ── Hook ──────────────────────────────────────────────────────
 
+/**
+ * Access the authenticated multi-wallet state and controls (Freighter, Albedo,
+ * xBull). Must be rendered inside a `MultiWalletProvider` — throwing otherwise.
+ *
+ * @example
+ * Connect a wallet, read the active account, and refresh its balance:
+ *
+ * ```tsx
+ * function WalletBar() {
+ *   const { wallet, connect, disconnect, fetchBalance, isConnecting } =
+ *     useWallet();
+ *
+ *   if (!wallet.connected) {
+ *     return (
+ *       <button onClick={() => connect("freighter")} disabled={isConnecting}>
+ *         Connect Wallet
+ *       </button>
+ *     );
+ *   }
+ *
+ *   return (
+ *     <div>
+ *       <span>{shortenAddress(wallet.publicKey!, 6)}</span>
+ *       <span>{wallet.balance} XLM</span>
+ *       <button onClick={fetchBalance}>Refresh</button>
+ *       <button onClick={disconnect}>Disconnect</button>
+ *     </div>
+ *   );
+ * }
+ * ```
+ */
 export function useWallet() {
   const context = useContext(WalletContext);
   if (!context) {

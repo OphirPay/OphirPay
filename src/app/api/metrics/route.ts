@@ -12,6 +12,12 @@ function escapeLabelValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function labels(labels: Record<string, string | number>): string {
+  return Object.entries(labels)
+    .map(([key, value]) => `${key}="${String(value)}"`)
+    .join(",");
+}
+
 function buildMetrics(): string {
   const c = getMetricsSnapshot();
 
@@ -39,6 +45,27 @@ function buildMetrics(): string {
     "# HELP ophirpay_webhooks_failed_total Total webhooks that failed delivery",
     "# TYPE ophirpay_webhooks_failed_total counter",
     `ophirpay_webhooks_failed_total ${c.webhooks_failed_total}`,
+    "",
+    "# HELP ophirpay_delivery_attempts_total Total delivery attempts by delivery type and attempt number",
+    "# TYPE ophirpay_delivery_attempts_total counter",
+    ...c.delivery_attempts.map(
+      (metric) =>
+        `ophirpay_delivery_attempts_total{${labels({
+          delivery_type: metric.delivery_type,
+          attempt_number: metric.attempt_number,
+        })}} ${metric.count}`
+    ),
+    "",
+    "# HELP ophirpay_delivery_final_outcomes_total Total terminal delivery outcomes by delivery type, final attempt number, and outcome",
+    "# TYPE ophirpay_delivery_final_outcomes_total counter",
+    ...c.delivery_final_outcomes.map(
+      (metric) =>
+        `ophirpay_delivery_final_outcomes_total{${labels({
+          delivery_type: metric.delivery_type,
+          attempt_number: metric.attempt_number,
+          final_outcome: metric.final_outcome,
+        })}} ${metric.count}`
+    ),
     "",
     "# HELP ophirpay_db_query_duration_seconds_sum Database query duration sum",
     "# TYPE ophirpay_db_query_duration_seconds_sum summary",
@@ -95,6 +122,29 @@ function buildMetrics(): string {
     "# HELP ophirpay_info OphirPay build information",
     "# TYPE ophirpay_info gauge",
     'ophirpay_info{version="1.0.0"} 1'
+  );
+
+  // ── Live gauges: process memory + open SSE connections ──────
+  // Sampled on scrape so load tests can assert memory stays bounded and
+  // that SSE connections are released after clients disconnect.
+  const mem = process.memoryUsage();
+  lines.push(
+    "",
+    "# HELP ophirpay_process_resident_set_bytes Process resident set size in bytes",
+    "# TYPE ophirpay_process_resident_set_bytes gauge",
+    `ophirpay_process_resident_set_bytes ${mem.rss}`,
+    "",
+    "# HELP ophirpay_process_heap_used_bytes Process heap used in bytes",
+    "# TYPE ophirpay_process_heap_used_bytes gauge",
+    `ophirpay_process_heap_used_bytes ${mem.heapUsed}`,
+    "",
+    "# HELP ophirpay_process_heap_total_bytes Process heap total in bytes",
+    "# TYPE ophirpay_process_heap_total_bytes gauge",
+    `ophirpay_process_heap_total_bytes ${mem.heapTotal}`,
+    "",
+    "# HELP ophirpay_sse_open_connections Currently open SSE event-stream connections",
+    "# TYPE ophirpay_sse_open_connections gauge",
+    `ophirpay_sse_open_connections ${c.sse_open_connections}`
   );
 
   return lines.join("\n") + "\n";

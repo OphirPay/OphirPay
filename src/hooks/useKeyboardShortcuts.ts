@@ -19,6 +19,21 @@ interface Shortcut {
  * Register global keyboard shortcuts.
  * Each shortcut is only active when no input/textarea/select is focused.
  *
+ * @example
+ * Wire up dashboard-wide shortcuts that open a search dialog and create a
+ * new payment:
+ *
+ * ```tsx
+ * function DashboardShortcuts() {
+ *   const { setIsSearchOpen } = useSearch();
+ *   useKeyboardShortcuts([
+ *     { key: "k", metaKey: true, handler: () => setIsSearchOpen(true) },
+ *     { key: "n", ctrlKey: true, handler: () => router.push("/send") },
+ *   ]);
+ *   return null;
+ * }
+ * ```
+ *
  * Usage:
  *   useKeyboardShortcuts([
  *     { key: "k", metaKey: true, handler: () => openSearch() },

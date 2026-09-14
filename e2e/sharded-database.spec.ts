@@ -7,7 +7,6 @@ import {
 } from "../src/lib/db/shard-router";
 import {
   ShardedTestFixtureManager,
-  ShardedPaymentRecord,
 } from "../src/lib/db/sharded-test-fixture";
 
 test.describe("E2E: Sharded Database Infrastructure & Lifecycle", () => {
@@ -46,7 +45,7 @@ test.describe("E2E: Sharded Database Infrastructure & Lifecycle", () => {
 
   test("Router initializes all configured shards with active health status", async () => {
     const shards = router.getAllShards();
-    expect(shards.length).toBe(3);
+    expect(shards).toHaveLength(3);
     expect(shards.map((s) => s.id)).toEqual([
       "shard-us-east",
       "shard-eu-west",
@@ -54,7 +53,7 @@ test.describe("E2E: Sharded Database Infrastructure & Lifecycle", () => {
     ]);
 
     const stats = router.getAllStats();
-    expect(stats.length).toBe(3);
+    expect(stats).toHaveLength(3);
     for (const stat of stats) {
       expect(stat.healthy).toBe(true);
       expect(stat.totalQueries).toBe(0);
@@ -135,13 +134,13 @@ test.describe("E2E: Sharded Database Infrastructure & Lifecycle", () => {
     );
 
     expect(result.status).toBe("committed");
-    expect(result.payments.length).toBe(3);
+    expect(result.payments).toHaveLength(3);
     expect(result.involvedShards.length).toBeGreaterThan(0);
 
     const crossResults = await fixtureManager.queryCrossShard(
       (rec) => rec.status === "completed"
     );
-    expect(crossResults.length).toBe(3);
+    expect(crossResults).toHaveLength(3);
   });
 
   test("Verifies even data distribution across shards under high load", async () => {

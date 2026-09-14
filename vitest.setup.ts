@@ -1,33 +1,36 @@
 import "@testing-library/jest-dom/vitest";
 
-if (typeof globalThis.localStorage === "undefined" || typeof globalThis.localStorage.clear !== "function") {
-  const store = new Map<string, string>();
-  const mockStorage: Storage = {
-    getItem: (key: string) => store.get(key) ?? null,
+const createLocalStorageMock = () => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] ?? null,
     setItem: (key: string, value: string) => {
-      store.set(key, String(value));
+      store[key] = String(value);
     },
     removeItem: (key: string) => {
-      store.delete(key);
+      delete store[key];
     },
     clear: () => {
-      store.clear();
+      store = {};
     },
-    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    key: (i: number) => Object.keys(store)[i] ?? null,
     get length() {
-      return store.size;
+      return Object.keys(store).length;
     },
   };
-  Object.defineProperty(globalThis, "localStorage", {
-    value: mockStorage,
+};
+
+const storageMock = createLocalStorageMock();
+Object.defineProperty(globalThis, "localStorage", {
+  value: storageMock,
+  writable: true,
+  configurable: true,
+});
+
+if (typeof window !== "undefined") {
+  Object.defineProperty(window, "localStorage", {
+    value: storageMock,
     writable: true,
     configurable: true,
   });
-  if (typeof window !== "undefined") {
-    Object.defineProperty(window, "localStorage", {
-      value: mockStorage,
-      writable: true,
-      configurable: true,
-    });
-  }
 }

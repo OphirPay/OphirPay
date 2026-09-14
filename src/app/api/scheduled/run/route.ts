@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: MIT
+
+import {
+  executeDueScheduledPayments,
+  getScheduledSourcePublicKey,
+  SCHEDULED_SOURCE_SECRET_ENV,
+} from "@/lib/scheduled-payments";
+import {
+  successResponse,
+  unauthorizedError,
+  errorResponse,
+  handleApiError,
+} from "@/lib/api-response";
+import { ERROR_CODES } from "@/lib/error-codes";
+import { logger } from "@/lib/logger";
+import { withRequestLogging } from "@/lib/request-logging";
+import { verifyCsrf } from "@/lib/csrf";
+
+/**
+ * Cron endpoint — executes due scheduled payments.
+ *
+ * The automated every-5-minute sweep now runs from GitHub Actions against
+ * `/api/cron` (see .github/workflows/scheduled-payments-cron.yml and
+ * docs/scheduled-payment-cron.md). This route is kept as an equivalent
+ * on-demand trigger: it accepts `Authorization: Bearer $CRON_SECRET` or the
+ * `x-cron-secret` header.
+ *
+ * If `SCHEDULED_PAYMENTS_SOURCE_SECRET` is not configured the endpoint
+ * refuses to run (503) without touching any records, so a misconfigured
+ * deployment never fails every due payment.
+ */
+
+const CRON_SECRET_ENV = "CRON_SECRET";
+
+function isAuthorizedCron(request: Request): boolean {
+  const secret = process.env[CRON_SECRET_ENV];
+  if (!secret) return false;
+  if (request.headers.get("authorization") === `Bearer ${secret}`) return true;
+  return request.headers.get("x-cron-secret") === secret;
+}
+
+async function runCron(request: Request) {
+  try {
+    // POST is the manual trigger; GET is the Vercel Cron invocation. CSRF
+    // is enforced for POST only (Bearer / x-cron-secret callers bypass
+    // inside verifyCsrf).
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
+    if (!isAuthorizedCron(request)) {
+      return unauthorizedError("Invalid cron secret");
+    }
+
+    let sourcePublicKey: string;
+    try {
+      sourcePublicKey = getScheduledSourcePublicKey();
+    } catch {
+      return errorResponse(
+        ERROR_CODES.CONFIG_ERROR,
+        `${SCHEDULED_SOURCE_SECRET_ENV} is not configured — scheduled payments cannot be executed`,
+        503
+      );
+    }
+
+    const summary = await executeDueScheduledPayments();
+    logger.info("Scheduled payments cron run", {
+      picked: summary.picked,
+      executed: summary.executed,
+      failed: summary.failed,
+    });
+
+    return successResponse({ ...summary, sourcePublicKey });
+  } catch (err) {
+    return handleApiError(err, "POST /api/scheduled/run");
+  }
+}
+
+export const GET = withRequestLogging(runCron);
+export const POST = withRequestLogging(runCron);

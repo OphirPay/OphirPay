@@ -98,13 +98,13 @@ test.describe("Contract Operations via API", () => {
     expect(res.status()).toBe(401);
   });
 
-  test("POST /api/escrows returns 401 without auth", async ({ request }) => {
+  test("POST /api/escrows returns 403 without a session", async ({ request }) => {
     const res = await request.post(`${BASE_URL}/api/escrows`, {
       data: { beneficiary: "GXXX", amount: "100" },
     });
-    // Auth check runs before validation, so an unauthenticated request
-    // with missing fields still returns 401 (not 400).
-    expect(res.status()).toBe(401);
+    // The CSRF gate runs before auth/validation on mutating routes, so an
+    // unauthenticated request without a token returns 403 (not 401 or 400).
+    expect(res.status()).toBe(403);
   });
 
   test("GET /api/stats returns 401 without auth", async ({ request }) => {
@@ -124,7 +124,8 @@ test.describe("Contract Operations via API", () => {
 
 test.describe("Escrow Lifecycle E2E", () => {
   test("full escrow flow requires authentication", async ({ request }) => {
-    // Without a session/API key the whole flow is blocked at the auth gate.
+    // Without a session/API key the whole flow is blocked at the CSRF gate
+    // (mutating routes validate the token before auth).
     const createRes = await request.post(`${BASE_URL}/api/escrows`, {
       data: {
         beneficiary:
@@ -135,6 +136,6 @@ test.describe("Escrow Lifecycle E2E", () => {
         metadata: "E2E test escrow",
       },
     });
-    expect(createRes.status()).toBe(401);
+    expect(createRes.status()).toBe(403);
   });
 });

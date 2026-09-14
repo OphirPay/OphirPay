@@ -7,6 +7,17 @@ import { useState, useEffect, useRef } from "react";
 /**
  * Returns true after the component has mounted on the client.
  * Useful for SSR guards to prevent hydration mismatches.
+ *
+ * @example
+ * Guard client-only UI (e.g. a rendered QrCode) from server HTML:
+ *
+ * ```tsx
+ * function ReceiptQr({ url }: { url: string }) {
+ *   const mounted = useIsMounted();
+ *   if (!mounted) return null;
+ *   return <QrCode value={url} />;
+ * }
+ * ```
  */
 export function useIsMounted(): boolean {
   const [mounted, setMounted] = useState(false);

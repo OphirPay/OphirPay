@@ -11,6 +11,7 @@ import {
 import { validateMemo } from "@/lib/validation-helpers";
 import { validateMemo as validateMemoTyped } from "@/lib/memo";
 import { toCsvString } from "@/lib/export-csv";
+import { getMemoErrorMessage } from "@/lib/stellar";
 
 // Valid 56-char Stellar address (G + 55 alphanumeric chars)
 const VALID_STELLAR = "G" + "A".repeat(55);
@@ -86,7 +87,10 @@ describe("memoField (server-side validation)", () => {
     ["NUL", "a\u0000b"],
     ["ESC", "\u001b[31m"],
     ["C1 control", "a\u0085b"],
-  ])("rejects %s control characters in a memo", (_name, memo) => {
+    ["bidi override", "pay\u202Enow"],
+    ["bidi isolate", "\u2066visa\u2069"],
+    ["zero-width", "pay\u200Bnow"],
+  ])("rejects %s characters in a memo", (_name, memo) => {
     const result = createPaymentSchema.safeParse({ ...paymentBase, memo });
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -235,5 +239,51 @@ describe("CSV export formula-injection guard", () => {
     const out = csvFor("=1,2");
     expect(out).toContain("'=1,2");
     expect(out).toContain('"');
+  });
+});
+
+// ─── getMemoErrorMessage (from stellar.ts, used by send page via parseSubmissionError) ──
+
+describe("getMemoErrorMessage", () => {
+  it("returns null for non-memo errors", () => {
+    expect(getMemoErrorMessage("op_underfunded")).toBeNull();
+    expect(getMemoErrorMessage("insufficient balance")).toBeNull();
+    expect(getMemoErrorMessage("network timeout")).toBeNull();
+  });
+
+  it("maps tx_memo_required to friendly memo-required message", () => {
+    const msg = getMemoErrorMessage("tx_memo_required");
+    expect(msg).toBe("This account requires a memo to receive payments. Please add a memo.");
+  });
+
+  it("maps tx_memo_required embedded in a Horizon error string", () => {
+    const msg = getMemoErrorMessage("Transaction failed: tx_memo_required — destination requires a memo");
+    expect(msg).toContain("requires a memo");
+  });
+
+  it("maps 'memo too long' error", () => {
+    const msg = getMemoErrorMessage("tx_memo_too_long: memo exceeds maximum length");
+    expect(msg).toContain("too long");
+    expect(msg).toContain("28 bytes");
+  });
+
+  it("maps 'memo invalid' error", () => {
+    const msg = getMemoErrorMessage("tx_bad_memo: memo is invalid");
+    expect(msg).toContain("Invalid memo format");
+  });
+
+  it("maps 'tx_bad_memo' error", () => {
+    const msg = getMemoErrorMessage("tx_bad_memo_type");
+    expect(msg).toContain("invalid memo");
+  });
+
+  it("maps 'op_bad_memo' error", () => {
+    const msg = getMemoErrorMessage("op_bad_memo: bad memo in operation");
+    expect(msg).toContain("memo format is invalid");
+  });
+
+  it("is case-insensitive", () => {
+    const msg = getMemoErrorMessage("TX_MEMO_TOO_LONG: memo exceeds maximum length");
+    expect(msg).toContain("too long");
   });
 });

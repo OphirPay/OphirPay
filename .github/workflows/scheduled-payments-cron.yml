@@ -1,0 +1,48 @@
+name: Scheduled Payments — Cron Sweep
+
+# The scheduled-payment sweep previously ran on Vercel Cron via a `crons`
+# entry in vercel.json. Vercel's Hobby plan only permits daily cron jobs, so
+# every deploy failed validation and the sweep never ran. The sweep therefore
+# moved here: GitHub Actions runs public-repo scheduled workflows as often as
+# every 5 minutes, and calling the deployed endpoint keeps the sweep on the
+# production database and Stellar network — the same behavior the Vercel cron
+# would have had.
+#
+# Requires a `CRON_SECRET` GitHub Actions secret holding the same value as the
+# `CRON_SECRET` environment variable on the Vercel project. Until it is set,
+# the run exits early with a warning instead of failing the sweep.
+
+on:
+  schedule:
+    # Every 5 minutes — matches the original vercel.json cadence.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-sweep:
+    name: "Execute due scheduled payments"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger /api/cron on production
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CRON_URL: https://ophirpay.vercel.app/api/cron
+        run: |
+          set -euo pipefail
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::warning::CRON_SECRET is not set as a GitHub Actions secret — sweep skipped"
+            exit 0
+          fi
+          http_code=$(curl -sS -o /tmp/cron-response.json -w "%{http_code}" \
+            -H "x-cron-secret: ${CRON_SECRET}" \
+            "$CRON_URL")
+          echo "HTTP $http_code"
+          cat /tmp/cron-response.json
+          echo ""
+          # 2xx means the sweep ran; anything else (401 wrong secret,
+          # 503 unconfigured) should surface as a failed run.
+          [ "${http_code:0:1}" = "2" ]

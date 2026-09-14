@@ -6,6 +6,7 @@ import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
 import { withRequestLogging } from "@/lib/request-logging";
+import { enforceLookupRateLimit } from "@/lib/lookup-rate-limit";
 
 /**
  * GET /api/rbac — look up role assignments from the Soroban contract.
@@ -21,6 +22,12 @@ export const GET = withMetrics("GET /api/rbac", withRequestLogging(async functio
 
     const { searchParams } = new URL(request.url);
     const addr = searchParams.get("addr");
+
+    // Enforce per-IP and per-address rate limiting to prevent enumeration
+    const rateLimited = await enforceLookupRateLimit(request, {
+      address: addr ? addr.trim() : undefined,
+    });
+    if (rateLimited) return rateLimited;
 
     if (!addr) {
       // Without a specific address, return contract availability

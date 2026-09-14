@@ -6,6 +6,7 @@ export const ROUTES = {
   SEND: "/send",
   PAYMENTS: "/payments",
   BATCHES: "/batches",
+  BATCH_DETAIL: "/batches/[id]",
   NEW_BATCH: "/batches/new",
   RECURRING: "/recurring",
   REQUESTS: "/requests",
@@ -31,6 +32,8 @@ export const API_ROUTES = {
   PAYMENTS: "/api/payments",
   BATCHES: "/api/batches",
   WEBHOOKS: "/api/webhooks",
+  WEBHOOK_REPLAY: "/api/webhooks", // append /[id]/replay
+  WEBHOOK_DELIVERIES: "/api/webhooks", // append /[id]/deliveries
   ANALYTICS: "/api/analytics",
   REQUESTS: "/api/requests",
   RECURRING: "/api/recurring",

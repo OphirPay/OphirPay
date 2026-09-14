@@ -39,6 +39,16 @@ export interface RateLimitStore {
   reset(key: string): Promise<void>;
 }
 
+/**
+ * Seconds (rounded up) until the current window resets.
+ *
+ * Used to populate the `Retry-After` header on 429 responses so clients can
+ * back off correctly. Never returns a negative value.
+ */
+export function getRetryAfterSeconds(result: RateLimitResult): number {
+  return Math.max(0, Math.ceil((result.resetAt - Date.now()) / 1000));
+}
+
 // ── In-Memory Store ────────────────────────────────────────────
 
 export class InMemoryRateLimitStore implements RateLimitStore {

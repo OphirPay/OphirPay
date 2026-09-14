@@ -3,7 +3,6 @@ import { withMetrics } from "@/lib/metrics-middleware";
 
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import {
   successResponse,
   validationError,
@@ -11,15 +10,19 @@ import {
   unauthorizedError,
   handleApiError,
 } from "@/lib/api-response";
+import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { incMetric } from "@/lib/metrics-counters";
+import { buildPaymentWhere } from "@/lib/payment-filters";
 import {
   buildCursorWhere,
   computeNextCursor,
+  computePagination,
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
@@ -54,19 +57,11 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
     // boundaries, the result is still scoped to the authenticated user.
     const includeDeleted = searchParams.get("includeDeleted") === "true";
 
-    // Always scope to the authenticated user — never expose other users' data
-    const baseWhere: Record<string, unknown> = {
-      userId: auth.userId,
-      ...(includeDeleted ? {} : { deletedAt: null }),
-    };
-    if (status) baseWhere.status = status;
-    if (search) {
-      baseWhere.OR = [
-        { description: { contains: search } },
-        { memo: { contains: search } },
-        { transactionHash: { contains: search } },
-      ];
-    }
+    // Always scope to the authenticated user — never expose other users' data.
+    // `status` and `search` (memo ILIKE + exact tx-hash, Issue #157) use the
+    // shared helper so the list route and CSV export stay in lockstep.
+    const baseWhere = buildPaymentWhere(auth.userId, { status, search });
+    if (!includeDeleted) baseWhere.deletedAt = null;
 
     // Keyset (cursor) pagination is the default for plain list requests — it
     // never deep-skips, so later pages stay fast as the table grows. Offset
@@ -75,33 +70,47 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
     if (rawCursor && !cursor) {
       return badRequestError("Invalid cursor");
     }
+    if (cursor !== null && explicitPage !== null) {
+      return badRequestError("page and cursor cannot both be used");
+    }
 
-    const useCursor = cursor !== null || explicitPage === null;
-    const where = buildCursorWhere(baseWhere, cursor);
-
-    const [payments, total] = await Promise.all([
-      prisma.payment.findMany({
+    // Keyset mode (default): fetch limit + 1 rows to learn whether another
+    // page exists. The COUNT is expensive, so it only runs when the caller
+    // explicitly asks for meta.total via includeTotal=true.
+    if (cursor !== null || explicitPage === null) {
+      const where = buildCursorWhere(baseWhere, cursor);
+      const rows = await prisma.payment.findMany({
         where,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         // Fetch one extra row to learn whether another page exists.
-        ...(useCursor ? { take: limit + 1 } : prismaPagination(page, limit)),
+        take: limit + 1,
+      });
+      const visible = rows.slice(0, limit);
+      const { nextCursor, hasMore } = computeNextCursor(rows, limit);
+      const meta: Record<string, unknown> = { limit, nextCursor, hasMore };
+      if (searchParams.get("includeTotal") === "true") {
+        meta.total = await prisma.payment.count({ where: baseWhere });
+      }
+      return successResponse(visible, meta);
+    }
+
+    // Legacy offset mode: an explicit `page` param. Needs the COUNT to build
+    // the navigation meta (totalPages / hasNext / hasPrev).
+    const [payments, total] = await Promise.all([
+      prisma.payment.findMany({
+        where: baseWhere,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        ...prismaPagination(page, limit),
       }),
       prisma.payment.count({ where: baseWhere }),
     ]);
 
-    logger.request("GET", `/api/payments?page=${page}&limit=${limit}`, 200, 0);
-
-    const visible = useCursor ? payments.slice(0, limit) : payments;
-    const pageInfo = useCursor
-      ? computeNextCursor(payments, limit)
-      : { nextCursor: null, hasMore: page * limit < total };
-
-    return successResponse(visible, {
-      page,
-      limit,
-      total,
-      nextCursor: pageInfo.nextCursor,
-      hasMore: pageInfo.hasMore,
+    return successResponse(payments, {
+      ...computePagination(page, limit, total),
+      // Keyset-shaped fields kept for consumers that page via hasMore;
+      // offset mode never returns a cursor.
+      nextCursor: null,
+      hasMore: page * limit < total,
     });
   } catch (err) {
     return handleApiError(err, "GET /api/payments");
@@ -110,6 +119,9 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
 
 export const POST = withMetrics("POST /api/payments", withRequestLogging(async function POST(request: Request) {
   try {
+    const csrfError = verifyCsrf(request);
+    if (csrfError) return csrfError;
+
     const auth = await getAuthContext(request);
     if (!auth) {
       return unauthorizedError(

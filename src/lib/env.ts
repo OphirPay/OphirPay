@@ -24,6 +24,8 @@ const envSchema = z.object({
   AUTH_RATE_LIMIT_WALLET_RPM: z.coerce.number().positive().default(10),
   REDIS_URL: z.string().url().optional(),
   AUTH_SECRET: z.string().min(32).optional(), // required in production (see auth-session.ts)
+  CRON_SECRET: z.string().min(16).optional(), // required for /api/cron (see app/api/cron/route.ts)
+  SCHEDULED_PAYMENTS_SOURCE_SECRET: z.string().optional(), // Stellar secret that signs scheduled payments
   NEXT_PUBLIC_DEMO_MODE: z.string().optional(),
   NEXT_PUBLIC_FEATURE_MULTI_ASSET: z.string().optional(),
   NEXT_PUBLIC_FEATURE_WEBHOOKS: z.string().optional(),
@@ -53,6 +55,8 @@ export function validateEnv(): Env {
       AUTH_RATE_LIMIT_IP_RPM: process.env.AUTH_RATE_LIMIT_IP_RPM,
       AUTH_RATE_LIMIT_WALLET_RPM: process.env.AUTH_RATE_LIMIT_WALLET_RPM,
       REDIS_URL: process.env.REDIS_URL,
+      CRON_SECRET: process.env.CRON_SECRET,
+      SCHEDULED_PAYMENTS_SOURCE_SECRET: process.env.SCHEDULED_PAYMENTS_SOURCE_SECRET,
       NEXT_PUBLIC_FEATURE_MULTI_ASSET: process.env.NEXT_PUBLIC_FEATURE_MULTI_ASSET,
       NEXT_PUBLIC_FEATURE_WEBHOOKS: process.env.NEXT_PUBLIC_FEATURE_WEBHOOKS,
       NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION,

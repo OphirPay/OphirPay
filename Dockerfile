@@ -4,7 +4,7 @@
 # NOTE: Use the Debian (glibc) image, not Alpine (musl). Tailwind v4's
 # `@tailwindcss/postcss` and its native `lightningcss`/`oxide` binaries crash
 # the Turbopack PostCSS loader on musl, which fails `next build` in Docker.
-FROM node:24-slim AS deps
+FROM node:20-slim AS deps
 RUN apt-get update -qq \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -18,7 +18,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 RUN npm ci
 
 # Stage 2: Builder
-FROM node:24-slim AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules

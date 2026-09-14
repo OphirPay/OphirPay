@@ -498,3 +498,41 @@ export async function getMultisigConfigHistory(sourcePublicKey: string) {
 export async function getPolicyFeeConfigHistory(sourcePublicKey: string) {
   return simulateContractCall(CONTRACT_ID, "get_fee_config_history", sourcePublicKey);
 }
+
+// ── Pause / Unpause Functions ──────────────────────────────────
+
+/**
+ * Check whether the contract is currently paused.
+ * Read-only simulation — no wallet signature required.
+ */
+export async function isPaused(sourcePublicKey: string): Promise<boolean> {
+  const result = await simulateContractCall(CONTRACT_ID, "is_paused", sourcePublicKey);
+  if (result.status === "SIMULATION_FAILED") return false;
+  return result.returnValue === true;
+}
+
+/**
+ * Emergency pause: pauses BOTH OphirPay AND the linked Emitter contract.
+ * Owner-only — requires wallet signing via Freighter.
+ */
+export async function emergencyPauseAll(
+  caller: string,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "emergency_pause_all", args);
+}
+
+/**
+ * Emergency unpause: unpauses BOTH OphirPay AND the linked Emitter contract.
+ * Owner-only — requires wallet signing via Freighter.
+ */
+export async function emergencyUnpauseAll(
+  caller: string,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "emergency_unpause_all", args);
+}

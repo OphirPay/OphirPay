@@ -24,7 +24,13 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: mockGetAuthContext,
 }));
 
+import { generateCsrfToken } from "@/lib/csrf";
 import { POST } from "@/app/api/payments/retry/route";
+
+function csrfHeaders(): Record<string, string> {
+  const token = generateCsrfToken();
+  return { "x-csrf-token": token, cookie: `__Host-csrf=${token}` };
+}
 
 const USER_ID = "user-1";
 const PAYMENT_ID = "cm0py0000000000000000001";
@@ -32,7 +38,7 @@ const PAYMENT_ID = "cm0py0000000000000000001";
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/api/payments/retry", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeaders() },
     body: JSON.stringify(body),
   });
 }

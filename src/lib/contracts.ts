@@ -423,6 +423,7 @@ export interface OnChainPayment {
   txHash: string;
   timestamp?: number;
   metadata?: string;
+  assetCode?: string;
 }
 
 /**
@@ -484,6 +485,7 @@ export async function fetchOnChainPayments(
         txHash: String(raw.tx_hash ?? ""),
         timestamp: raw.timestamp ? Number(raw.timestamp) : undefined,
         metadata: raw.metadata ? String(raw.metadata) : undefined,
+        assetCode: raw.asset_code ? String(raw.asset_code) : "XLM",
       };
     }
     return null;
@@ -500,4 +502,58 @@ export async function fetchOnChainPayments(
   }
 
   return { payments: payments.reverse(), total };
+}
+
+/**
+ * Read a single on-chain payment record by ID.
+ * Returns `null` when the record doesn't exist or can't be read.
+ * Public chain data — reads via Soroban simulation, no wallet signature required.
+ */
+export async function fetchOnChainPayment(
+  id: number
+): Promise<OnChainPayment | null> {
+  const contractId = OPHIRPAY_CONTRACT_ID;
+  const server = getSorobanServer();
+  const contract = new Contract(contractId);
+  const account = await server.getAccount(CHAIN_READ_SOURCE);
+
+  const tx = new TransactionBuilder(account, {
+    fee: "100000",
+    networkPassphrase: NETWORK_PASSPHRASE,
+    timebounds: { minTime: 0, maxTime: 0 },
+  })
+    .addOperation(
+      contract.call("get_payment", nativeToScVal(id, { type: "u64" }))
+    )
+    .build();
+
+  const sim = await server.simulateTransaction(tx);
+
+  // A failed simulation (RPC/network/host error) is a genuine read failure —
+  // surface it as an error so the detail page can offer retry instead of
+  // reporting an existing payment as "not found".
+  if ("error" in sim && sim.error) {
+    throw classifyContractError(new Error(String(sim.error)));
+  }
+
+  if ("result" in sim && sim.result) {
+    try {
+      const raw = scValToNative(sim.result.retval);
+      if (raw && typeof raw === "object" && "id" in raw) {
+        return {
+          id: Number(raw.id),
+          payer: String(raw.payer ?? ""),
+          payee: String(raw.payee ?? ""),
+          amountStroops: Number(raw.amount ?? 0),
+          txHash: String(raw.tx_hash ?? ""),
+          timestamp: raw.timestamp ? Number(raw.timestamp) : undefined,
+          metadata: raw.metadata ? String(raw.metadata) : undefined,
+        };
+      }
+    } catch {
+      // Unparseable retval (e.g. the error union for a missing record) — the
+      // payment does not exist; treated as not-found below.
+    }
+  }
+  return null;
 }

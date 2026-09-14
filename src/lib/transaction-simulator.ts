@@ -23,6 +23,8 @@ export async function simulatePayment(params: {
   sourcePublicKey: string;
   destination: string;
   amount: string;
+  assetCode?: string;
+  assetIssuer?: string;
 }): Promise<SimulateResult> {
   try {
     const server = getHorizonServer();
@@ -39,7 +41,9 @@ export async function simulatePayment(params: {
       .addOperation(
         Operation.payment({
           destination: params.destination,
-          asset: Asset.native(),
+        asset: params.assetCode && params.assetCode !== "XLM"
+          ? new Asset(params.assetCode, params.assetIssuer!)
+          : Asset.native(),
           amount: params.amount,
         })
       )

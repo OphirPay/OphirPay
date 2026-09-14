@@ -43,6 +43,14 @@ vi.mock("@/lib/fee-estimator", () => ({
   }),
 }));
 
+vi.mock("@/lib/transaction-simulator", () => ({
+  simulatePayment: vi.fn().mockResolvedValue({
+    success: true,
+    fee: "100",
+    operations: 1,
+  }),
+}));
+
 // Mock contracts
 vi.mock("@/lib/contracts", () => ({
   recordPaymentOnChain: vi.fn().mockResolvedValue({
@@ -53,6 +61,13 @@ vi.mock("@/lib/contracts", () => ({
 
 // Mock useApiMutation
 vi.mock("@/hooks/useApiQuery", () => ({
+  useApiQuery: () => ({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   useApiMutation: () => ({
     mutateAsync: vi.fn().mockResolvedValue({ id: "pay_123" }),
   }),

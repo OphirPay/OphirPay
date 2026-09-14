@@ -10,6 +10,11 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 4. Set up the database: `npx prisma db push && npx prisma generate`
 5. Start the dev server: `npm run dev`
 
+> 🛠️ **Setup trouble?** See the
+> [Troubleshooting Guide](docs/TROUBLESHOOTING.md) — it covers Freighter
+> detection, the Rust `wasm32` target, Prisma migrations, WASM builds,
+> Node version mismatches, and port conflicts.
+
 > 💡 **New to Stellar or Soroban?** Check out the
 > [Stellar & Soroban glossary](GLOSSARY.md) — it defines the terms used
 > throughout the codebase (XLM, testnet, friendbot, Horizon, Soroban, SAC,
@@ -21,6 +26,10 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 - **Branch naming**: `feat/feature-name`, `fix/bug-description`, `docs/what-changed`, `ci/what-changed`, `test/what-changed`
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org)
 - **Before submitting**: Run `npm run ci` (typecheck → lint → test → build)
+
+### Adding or changing an API endpoint
+
+Before adding or modifying an API endpoint, read the [API Endpoint Guide](docs/API_GUIDE.md). It documents the mandatory conventions: file structure, Zod validation, the error-handling pattern, auth middleware usage, the response envelope, rate-limit integration, a copy-pasteable worked example, and a pre-merge checklist.
 
 ## 15-Job CI/CD Pipeline
 
@@ -70,6 +79,7 @@ npm run test:watch    # Watch mode
 npm run coverage      # Coverage report
 npm run typecheck     # TypeScript check
 npm run lint          # ESLint
+npm run test:openapi  # OpenAPI spec ↔ implementation conformance (drift)
 ```
 
 ## Changelog

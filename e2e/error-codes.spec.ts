@@ -5,6 +5,13 @@ import { test, expect } from "@playwright/test";
 
 const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 
+// Security model under test:
+//   • GET data routes are auth-gated → 401 UNAUTHORIZED without a session/API key.
+//   • Mutating routes validate the CSRF token before auth, so a bare request
+//     without a token is rejected with 403 CSRF_INVALID (machine callers with
+//     an API key bypass CSRF and then hit the auth gate).
+//   • A few mutation-first routes (multisig, governance) check auth first → 401.
+
 // ── 400 — Bad Request / Validation ─────────────────────────────
 
 test.describe("400 — Bad Request", () => {
@@ -15,8 +22,9 @@ test.describe("400 — Bad Request", () => {
       headers: { "Content-Type": "application/json" },
       data: {},
     });
-    // Expect auth gate (401) in the absence of credentials, or validation error
-    expect([400, 401]).toContain(res.status());
+    // CSRF gate (403) or auth gate (401) runs before validation; a 400 means
+    // the request carried valid credentials and reached the body validator.
+    expect([400, 401, 403]).toContain(res.status());
     if (res.status() === 400) {
       const json = await res.json();
       expect(["BAD_REQUEST", "VALIDATION_ERROR"]).toContain(json.error.code);
@@ -37,7 +45,7 @@ test.describe("400 — Bad Request", () => {
 // ── 401 — Unauthorized ────────────────────────────────────────
 
 test.describe("401 — Unauthorized", () => {
-  test("unauthenticated request returns UNAUTHORIZED code", async ({
+  test("unauthenticated GET request returns UNAUTHORIZED code", async ({
     request,
   }) => {
     const res = await request.get(`${BASE_URL}/api/payments?page=1&limit=10`);
@@ -49,11 +57,12 @@ test.describe("401 — Unauthorized", () => {
     expect(json.error.message).toBeDefined();
   });
 
-  test("POST /api/batches without auth returns UNAUTHORIZED", async ({
+  test("POST /api/multisig/execute without auth returns UNAUTHORIZED", async ({
     request,
   }) => {
-    const res = await request.post(`${BASE_URL}/api/batches`, {
-      data: { name: "test" },
+    // Multisig handlers check auth before CSRF, so a bare mutation is 401.
+    const res = await request.post(`${BASE_URL}/api/multisig/execute`, {
+      data: { requestId: 99999 },
     });
     expect(res.status()).toBe(401);
     const json = await res.json();
@@ -99,14 +108,28 @@ test.describe("429 — Rate Limiting", () => {
   });
 });
 
-// ── 403 — Forbidden (authenticated but not authorized) ─────────
+// ── 403 — Forbidden ───────────────────────────────────────────
 
 test.describe("403 — Forbidden", () => {
+  test("POST /api/batches without a session is rejected by the CSRF gate", async ({
+    request,
+  }) => {
+    // Mutating routes validate the CSRF token before auth, so a bare request
+    // without a token is rejected with 403 CSRF_INVALID.
+    const res = await request.post(`${BASE_URL}/api/batches`, {
+      data: { name: "test" },
+    });
+    expect(res.status()).toBe(403);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe("CSRF_INVALID");
+  });
+
   test("protected endpoints require proper role/permissions", async ({
     request,
   }) => {
-    // Without auth, these return 401. With auth but wrong role, they'd return 403.
-    // Verifying the auth gate structure is correct.
+    // GET data routes are auth-gated → 401 without credentials. With auth but
+    // wrong role they'd return 403. Verifying the auth gate structure.
     const res = await request.get(`${BASE_URL}/api/audit-log`);
     expect([401, 403]).toContain(res.status());
   });
@@ -132,7 +155,7 @@ test.describe("409 — Conflict", () => {
       headers: { "Content-Type": "application/json" },
       data: { url: "https://example.com/hook", events: ["payment.created"] },
     });
-    // Expect 401 (no auth) or 409/400 if somehow authenticated
+    // Expect 403 (CSRF gate) without a session, or 409/400 if authenticated
     expect(res.status()).toBeGreaterThanOrEqual(400);
   });
 });
@@ -158,7 +181,7 @@ test.describe("500 — Internal Server Error", () => {
       headers: { "Content-Type": "application/json" },
       data: "not-valid-json{{{",
     });
-    // Auth gate returns 401 first, otherwise 400 for bad JSON
+    // CSRF gate (403) or auth gate (401) returns first, otherwise 400 for bad JSON
     expect(res.status()).toBeGreaterThanOrEqual(400);
   });
 });

@@ -3,6 +3,7 @@
 
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { shortenAddress, formatAmount } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
@@ -154,16 +155,21 @@ export function WalletButton() {
         </p>
       )}
 
-      {showSelector && (
-        <WalletSelector
-          availableWallets={availableWallets}
-          onSelect={handleSelectWallet}
-          isConnecting={isConnecting}
-          connectingWallet={connectingWallet}
-          error={error}
-          onClose={() => setShowSelector(false)}
-        />
-      )}
+      {showSelector &&
+        // Portaled to document.body: the header's backdrop-blur creates a
+        // containing block for fixed-position descendants, which would trap
+        // the modal inside the 64px header and push it off-screen.
+        createPortal(
+          <WalletSelector
+            availableWallets={availableWallets}
+            onSelect={handleSelectWallet}
+            isConnecting={isConnecting}
+            connectingWallet={connectingWallet}
+            error={error}
+            onClose={() => setShowSelector(false)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

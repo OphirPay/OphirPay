@@ -52,9 +52,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setWallet((prev) => ({ ...prev, balanceLoading: true }));
     try {
       const balance = await fetchXlmBalance(publicKey);
-      setWallet((prev) => ({ ...prev, balance, balanceLoading: false }));
+      // Ignore stale responses: a balance fetch that resolves after a
+      // disconnect (or an account switch) must not repopulate the cache.
+      setWallet((prev) =>
+        prev.connected && prev.publicKey === publicKey
+          ? { ...prev, balance, balanceLoading: false }
+          : prev,
+      );
     } catch {
-      setWallet((prev) => ({ ...prev, balanceLoading: false }));
+      setWallet((prev) =>
+        prev.connected && prev.publicKey === publicKey
+          ? { ...prev, balanceLoading: false }
+          : prev,
+      );
     }
   }, []);
 
@@ -158,6 +168,30 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
 // ── Hook ──────────────────────────────────────────────────────
 
+/**
+ * Access the legacy Freighter-only wallet state and controls.
+ * Must be rendered inside a `WalletProvider` — throwing otherwise.
+ * Prefer `useWallet` from `@/hooks/useMultiWallet` for new code, which also
+ * supports Albedo and xBull.
+ *
+ * @example
+ * Show a connect button or the connected public key:
+ *
+ * ```tsx
+ * function WalletStatus() {
+ *   const { wallet, connect, isConnecting } = useWallet();
+ *
+ *   return (
+ *     <button
+ *       onClick={() => connect()}
+ *       disabled={isConnecting}
+ *     >
+ *       {wallet.publicKey ?? "Connect Freighter"}
+ *     </button>
+ *   );
+ * }
+ * ```
+ */
 export function useWallet() {
   const context = useContext(WalletContext);
   if (!context) {

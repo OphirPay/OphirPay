@@ -9,6 +9,12 @@ import { isValidStellarAddress } from "@/lib/stellar";
  */
 export const MAX_BATCH_RECIPIENTS = 100;
 
+/**
+ * Maximum length of a payment memo in UTF-8 bytes (28), matching the
+ * on-chain `memoField` rules enforced by the batch API.
+ */
+export const MEMO_MAX_BYTES = 28;
+
 // ── CSV parsing ───────────────────────────────────────────────
 
 /**
@@ -268,8 +274,9 @@ export async function parseRecipientsCsv(file: File): Promise<{
       continue;
     }
 
-    // Memo validation mirrors the server-side memoField rules (max 28 UTF-8
-    // bytes, printable text only) so invalid memos are caught at import time
+    // Memo validation mirrors the server-side memoField rules (max
+    // MEMO_MAX_BYTES UTF-8 bytes, printable text only) so invalid memos are
+    // caught at import time
     // instead of being rejected later by the batch API.
     if (memo) {
       if (MEMO_CONTROL_CHARS.test(memo)) {
@@ -279,7 +286,7 @@ export async function parseRecipientsCsv(file: File): Promise<{
         });
         continue;
       }
-      if (new TextEncoder().encode(memo).length > 28) {
+      if (new TextEncoder().encode(memo).length > MEMO_MAX_BYTES) {
         errors.push({
           row,
           message: `Memo at row ${row} must be 28 bytes or fewer.`,
@@ -299,13 +306,220 @@ export async function parseRecipientsCsv(file: File): Promise<{
   return { recipients, errors };
 }
 
+// ── Legacy text parser (flexible headers, kept for compatibility) ──
+
+export interface CsvParseError {
+  row: number;
+  message: string;
+}
+
+export interface CsvParseResult {
+  recipients: BatchRecipient[];
+  errors: CsvParseError[];
+}
+
+/**
+ * Split a CSV row into fields, correctly handling quoted fields, commas inside
+ * quotes, and escaped quotes ("").
+ */
+export function splitCsvRow(row: string): string[] {
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < row.length) {
+    const char = row[i];
+
+    if (char === '"') {
+      if (inQuotes && row[i + 1] === '"') {
+        // Escaped quote
+        current += '"';
+        i += 2;
+        continue;
+      } else {
+        // Toggle quote mode
+        inQuotes = !inQuotes;
+        i++;
+        continue;
+      }
+    }
+
+    if (char === "," && !inQuotes) {
+      fields.push(current.trim());
+      current = "";
+      i++;
+      continue;
+    }
+
+    current += char;
+    i++;
+  }
+
+  fields.push(current.trim());
+  return fields;
+}
+
+/**
+ * Parse CSV text into batch payment recipients, accepting a 4-column
+ * `address,amount,assetCode,memo` layout or flexible named headers
+ * (`recipient`/`account`, `value`, `currency`/`asset`/`token`,
+ * `note`/`message`). Handles UTF-8 BOM, CRLF/CR line endings, quoted fields,
+ * and extra columns. Row-level errors carry the 1-based line number.
+ */
+export function parseRecipientsCsvText(raw: string): CsvParseResult {
+  const errors: CsvParseError[] = [];
+  const recipients: BatchRecipient[] = [];
+
+  try {
+    if (!raw || typeof raw !== "string") {
+      errors.push({ row: 0, message: "CSV content is empty." });
+      return { recipients, errors };
+    }
+
+    // Strip UTF-8 BOM (U+FEFF) and normalize line endings
+    const text = raw
+      .replace(/^\uFEFF/, "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n");
+    const lines = text.split("\n").filter((l) => l.trim().length > 0);
+
+    if (lines.length === 0) {
+      errors.push({ row: 0, message: "CSV content is empty." });
+      return { recipients, errors };
+    }
+
+    if (lines.length < 2) {
+      errors.push({
+        row: 0,
+        message: "CSV must have a header row and at least one data row.",
+      });
+      return { recipients, errors };
+    }
+
+    // Check header row
+    const headerCols = splitCsvRow(lines[0]).map((h) =>
+      h.toLowerCase().replace(/['"]/g, "")
+    );
+    const addressIdx = headerCols.findIndex(
+      (h) => h === "address" || h === "recipient" || h === "account"
+    );
+    const amountIdx = headerCols.findIndex(
+      (h) => h === "amount" || h === "value"
+    );
+    const assetIdx = headerCols.findIndex(
+      (h) => h === "assetcode" || h === "asset" || h === "currency" || h === "token"
+    );
+    const memoIdx = headerCols.findIndex(
+      (h) => h === "memo" || h === "note" || h === "message"
+    );
+
+    // Standard header check or fallback to position-based if valid columns
+    const hasNamedHeaders = addressIdx !== -1 && amountIdx !== -1;
+
+    for (let i = 1; i < lines.length; i++) {
+      const row = i + 1;
+      try {
+        const cols = splitCsvRow(lines[i]);
+
+        if (cols.length < 2) {
+          errors.push({
+            row,
+            message: `Row ${row}: Each row must have at least address and amount.`,
+          });
+          continue;
+        }
+
+        let address = "";
+        let amountStr = "";
+        let assetCode = "XLM";
+        let memo: string | undefined = undefined;
+
+        if (hasNamedHeaders) {
+          address = cols[addressIdx] || "";
+          amountStr = cols[amountIdx] || "";
+          if (assetIdx !== -1 && cols[assetIdx]) {
+            assetCode = cols[assetIdx];
+          }
+          if (memoIdx !== -1 && cols[memoIdx]) {
+            memo = cols[memoIdx];
+          }
+        } else {
+          // Positional fallback: 0: address, 1: amount, 2: assetCode, 3: memo
+          address = cols[0] || "";
+          amountStr = cols[1] || "";
+          if (cols.length > 2 && cols[2]) {
+            assetCode = cols[2];
+          }
+          if (cols.length > 3 && cols[3]) {
+            memo = cols[3];
+          }
+        }
+
+        address = address.trim();
+        amountStr = amountStr.trim();
+        assetCode = assetCode.trim();
+        if (memo !== undefined) {
+          memo = memo.trim();
+        }
+
+        if (!address) {
+          errors.push({ row, message: `Row ${row}: Missing address.` });
+          continue;
+        }
+
+        if (!/^G[A-Z0-9]{55}$/.test(address)) {
+          errors.push({
+            row,
+            message: `Row ${row}: Invalid Stellar address "${address}".`,
+          });
+          continue;
+        }
+
+        if (!amountStr) {
+          errors.push({ row, message: `Row ${row}: Missing amount.` });
+          continue;
+        }
+
+        const amount = parseFloat(amountStr);
+        if (isNaN(amount) || amount <= 0) {
+          errors.push({
+            row,
+            message: `Row ${row}: Invalid amount "${amountStr}". Must be a positive number.`,
+          });
+          continue;
+        }
+
+        recipients.push({
+          address,
+          amount,
+          assetCode: assetCode || "XLM",
+          memo: memo || undefined,
+        });
+      } catch (rowErr) {
+        errors.push({
+          row,
+          message: `Row ${row}: Failed to parse row due to unexpected formatting error (${rowErr instanceof Error ? rowErr.message : String(rowErr)}).`,
+        });
+      }
+    }
+  } catch (err) {
+    errors.push({
+      row: 0,
+      message: `Failed to parse CSV file (${err instanceof Error ? err.message : String(err)}).`,
+    });
+  }
+
+  return { recipients, errors };
+}
+
 // ── Template ──────────────────────────────────────────────────
 
 /**
  * Generate a CSV template for batch payment imports.
  */
 export function generateRecipientsCsvTemplate(): string {
-  return "address,amount,memo\nGXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX,100,optional memo\n";
+  return "address,amount,assetCode,memo\nGBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5,100,XLM,payroll\n";
 }
 
 /**

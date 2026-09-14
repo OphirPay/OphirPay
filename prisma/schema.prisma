@@ -101,6 +101,9 @@ model User {
   refunds         Refund[]
   /// On-chain notification-hook ledger rows owned by the user (see NotificationHook).
   notificationHooks NotificationHook[]
+  webhookEvents     WebhookEvent[]
+  /// One-off scheduled payments owned by the user (see ScheduledPayment).
+  scheduledPayments ScheduledPayment[]
 }
 
 // ── Stellar Accounts ──────────────────────────────────────────
@@ -375,6 +378,58 @@ enum Frequency {
   YEARLY
 }
 
+// ── Scheduled Payments ────────────────────────────────────────
+// One-off payments queued to be sent automatically once `scheduledFor`
+// passes. A Vercel cron hits /api/scheduled/run, which picks due rows,
+// submits them from the configured server account, and records the outcome.
+
+model ScheduledPayment {
+  id              String                @id @default(cuid())
+  userId          String
+
+  // Payment details
+  amount          Decimal               @db.Decimal(18, 7)
+  assetCode       String                @default("XLM")
+  assetIssuer     String?
+  destAddress     String
+  memo            String?
+  description     String?
+
+  // When to send (must be in the future at creation time)
+  scheduledAt     DateTime
+
+  // Lifecycle
+  status          ScheduledPaymentStatus @default(SCHEDULED)
+  transactionHash String?
+  errorMessage    String?
+  executedAt      DateTime?
+
+  /// Execution lease. `lockedAt` is stamped when a run claims the row
+  /// (SCHEDULED → PROCESSING); `lockedBy` records which run holds it, for
+  /// tracing overlapping runs.
+  lockedAt        DateTime?
+  lockedBy        String?
+  /// Number of execution attempts. Submission is retried on later runs until
+  /// this reaches the scheduler's attempt cap, after which the row is FAILED.
+  attempts        Int                   @default(0)
+
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  user            User                  @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status, scheduledAt])
+}
+
+enum ScheduledPaymentStatus {
+  SCHEDULED
+  PROCESSING
+  EXECUTED
+  FAILED
+  CANCELLED
+}
+
 // ── Payment Requests ──────────────────────────────────────────
 
 /// A shareable payment request / invoice-style link. Created by the payer,
@@ -450,10 +505,52 @@ model Webhook {
   updatedAt DateTime @updatedAt
 
   /// Owner of this webhook (see User).
-  user      User     @relation(fields: [userId], references: [id])
+  user        User              @relation(fields: [userId], references: [id])
+  deliveries  WebhookDelivery[]
 
   /// Speeds up "all webhooks for a user".
   @@index([userId])
+}
+
+model WebhookEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  event     String
+  timestamp DateTime
+  data      String   // JSON payload data
+  createdAt DateTime @default(now())
+
+  user       User              @relation(fields: [userId], references: [id])
+  deliveries WebhookDelivery[]
+
+  @@index([userId, createdAt])
+  @@index([userId, event, createdAt])
+}
+
+model WebhookDelivery {
+  id            String         @id @default(cuid())
+  webhookId     String
+  eventId       String
+  status        DeliveryStatus @default(FAILED)
+  responseCode  Int?
+  latencyMs     Int?
+  attempts      Int            @default(1)
+  errorMessage  String?
+  isReplay      Boolean        @default(false)
+  replayBatchId String?
+  deliveredAt   DateTime       @default(now())
+  createdAt     DateTime       @default(now())
+
+  webhook Webhook     @relation(fields: [webhookId], references: [id])
+  event   WebhookEvent @relation(fields: [eventId], references: [id])
+
+  @@index([webhookId, deliveredAt])
+  @@index([replayBatchId])
+}
+
+enum DeliveryStatus {
+  SUCCESS
+  FAILED
 }
 
 // ── Refunds ───────────────────────────────────────────────────
@@ -610,9 +707,65 @@ model ApiKey {
 
   /// Owner of this key (see User).
   user      User     @relation(fields: [userId], references: [id])
+  requestLogs ApiKeyRequestLog[]
 
   /// Speeds up "all keys for a user".
   @@index([userId])
   /// Speeds up prefix-based identification lookups.
   @@index([prefix])
+}
+
+/// One recorded request made with an API key — used to aggregate usage by
+/// key and time window (see the `ApiKeyRequestLog` migration).
+model ApiKeyRequestLog {
+  /// Primary key — CUID generated at insert time.
+  id        String   @id @default(cuid())
+  /// Owning API key (see ApiKey).
+  keyId     String
+  /// When the request was made.
+  createdAt DateTime @default(now())
+
+  /// Owning key (see ApiKey). Cascade-deleted with the key.
+  key       ApiKey   @relation(fields: [keyId], references: [id], onDelete: Cascade)
+
+  /// Speeds up per-key usage windows ("requests in the last N days").
+  @@index([keyId, createdAt])
+}
+
+// ── Payment Status Sync (Horizon reconciliation job) ─────────
+
+/// Ledger row recording a single run of the periodic job that reconciles
+/// submitted payments against their on-chain Horizon outcome. Persisting the
+/// run lets the admin view surface job results and history, and lets the job
+/// guard against overlapping runs.
+model PaymentSyncRun {
+  /// Primary key — CUID generated at insert time.
+  id           String   @id @default(cuid())
+  /// How the run was triggered: "cron" (scheduled) or "admin" (on demand).
+  trigger      String
+  /// Run lifecycle: "running" | "success" | "error".
+  status       String
+  /// Payments in SUBMITTED state with a tx hash (eligible for reconciliation).
+  scanned      Int      @default(0)
+  /// Successful on-chain → payment marked CONFIRMED.
+  confirmed    Int      @default(0)
+  /// Failed on-chain → payment marked FAILED.
+  failed       Int      @default(0)
+  /// Hash not yet ingested by Horizon → payment left untouched.
+  notFound     Int      @default(0)
+  /// Horizon lookups that errored → payment left untouched.
+  errors       Int      @default(0)
+  /// First error message when the run itself threw.
+  errorMessage String?
+  /// When the run started.
+  createdAt    DateTime @default(now())
+  /// When the run finished (NULL while still running).
+  completedAt  DateTime?
+
+  /// Speeds up "all cron-triggered runs vs on-demand runs".
+  @@index([trigger])
+  /// Speeds up overlap checks ("is a run in flight?").
+  @@index([status])
+  /// Speeds up "most recent runs" (admin view).
+  @@index([createdAt])
 }

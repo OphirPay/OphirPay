@@ -7,6 +7,7 @@ const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 // Security model under test:
 //   • Public endpoints (/api/health, /api/metrics) remain open.
 //   • Every data route is auth-gated → 401 without a session/API key.
+//   • Mutating routes validate the CSRF token before auth → 403 without one.
 //   • Pages render client-side regardless of wallet connection.
 
 // ── Payment Flow (Critical Path) ───────────────────────────────
@@ -65,16 +66,17 @@ test.describe("Auth gate on data routes", () => {
     expect(res.status()).toBe(401);
   });
 
-  test("POST /api/escrows returns 401 without auth (even with empty body)", async ({
+  test("POST /api/escrows returns 403 without a session (even with empty body)", async ({
     request,
   }) => {
+    // CSRF gate runs before auth on mutating routes → 403 without a token.
     const res = await request.post(`${BASE_URL}/api/escrows`, {
       data: {},
     });
-    expect(res.status()).toBe(401);
+    expect(res.status()).toBe(403);
   });
 
-  test("POST /api/escrows returns 401 without auth (even with valid fields)", async ({
+  test("POST /api/escrows returns 403 without a session (even with valid fields)", async ({
     request,
   }) => {
     const res = await request.post(`${BASE_URL}/api/escrows`, {
@@ -85,7 +87,7 @@ test.describe("Auth gate on data routes", () => {
         deadline: Math.floor(Date.now() / 1000) + 86400,
       },
     });
-    expect(res.status()).toBe(401);
+    expect(res.status()).toBe(403);
   });
 
   test("GET /api/streams returns 401 without auth", async ({ request }) => {
@@ -93,11 +95,11 @@ test.describe("Auth gate on data routes", () => {
     expect(res.status()).toBe(401);
   });
 
-  test("POST /api/streams returns 401 without auth", async ({ request }) => {
+  test("POST /api/streams returns 403 without a session", async ({ request }) => {
     const res = await request.post(`${BASE_URL}/api/streams`, {
       data: {},
     });
-    expect(res.status()).toBe(401);
+    expect(res.status()).toBe(403);
   });
 
   test("GET /api/fee-config returns 401 without auth", async ({
@@ -189,14 +191,15 @@ test.describe("Auth gate on data routes", () => {
     expect(res.status()).toBe(401);
   });
 
-  test("POST /api/payments with malformed JSON returns 401 without auth", async ({
+  test("POST /api/payments with malformed JSON returns 403 without a session", async ({
     request,
   }) => {
+    // The CSRF gate rejects before the body is even parsed.
     const res = await request.post(`${BASE_URL}/api/payments`, {
       headers: { "Content-Type": "application/json" },
       data: "not json",
     });
-    expect(res.status()).toBe(401);
+    expect(res.status()).toBe(403);
   });
 
   test("large pagination limit is blocked by auth gate", async ({
@@ -217,20 +220,20 @@ test.describe("Auth gate on data routes", () => {
     expect(res.status()).toBe(401);
   });
 
-  test("PATCH /api/payments/[id] returns 401 without auth", async ({
+  test("PATCH /api/payments/[id] returns 403 without a session", async ({
     request,
   }) => {
     const res = await request.patch(`${BASE_URL}/api/payments/1`, {
       data: { status: "COMPLETED" },
     });
-    expect(res.status()).toBe(401);
+    expect(res.status()).toBe(403);
   });
 
-  test("DELETE /api/payments/[id] returns 401 without auth", async ({
+  test("DELETE /api/payments/[id] returns 403 without a session", async ({
     request,
   }) => {
     const res = await request.delete(`${BASE_URL}/api/payments/1`);
-    expect(res.status()).toBe(401);
+    expect(res.status()).toBe(403);
   });
 
   test("GET /api/escrows/[id] returns 401 without auth", async ({

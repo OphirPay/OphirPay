@@ -1,3 +1,56 @@
+/**
+ * OphirPay CSV Export Builder
+ * Issue #161: Export the filtered payment list to CSV
+ */
+
+export interface PaymentRecord {
+  id: string;
+  amount: string | number;
+  currency: string;
+  status: string;
+  created_at?: string;
+  timestamp?: string;
+  memo?: string | null;
+  tx_hash?: string | null;
+  txHash?: string | null;
+}
+
+export function escapeCsvField(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+export function buildPaymentCsv(payments: PaymentRecord[]): string {
+  const headers = ['id', 'amount', 'currency', 'status', 'created_at', 'memo', 'tx_hash'];
+  const rows = [headers.join(',')];
+
+  for (const p of payments) {
+    const row = [
+      escapeCsvField(p.id),
+      escapeCsvField(p.amount),
+      escapeCsvField(p.currency),
+      escapeCsvField(p.status),
+      escapeCsvField(p.created_at || p.timestamp),
+      escapeCsvField(p.memo),
+      escapeCsvField(p.tx_hash || p.txHash)
+    ];
+    rows.push(row.join(','));
+  }
+
+  return rows.join('\n');
+}
+
+export function getExportFilename(prefix = 'payments-export', date = new Date()): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${prefix}-${yyyy}-${mm}-${dd}.csv`;
+}
+
 // SPDX-License-Identifier: MIT
 
 /**

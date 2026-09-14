@@ -17,10 +17,17 @@ export const apiKeyId = z.string().min(1, "API key ID is required");
 // memos are rejected with a user-facing validation error before they reach
 // persistence or transaction building.
 //
-// Charset: C0/C1 control characters (NUL, newlines, tabs, ESC, …) are
-// rejected outright — they are never legitimate memo content and rejecting
-// them keeps memos safe to render, log, and export.
-const MEMO_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/;
+// Charset: C0/C1 control characters (NUL, newlines, tabs, ESC, …) and Unicode
+// bidi-override / zero-width characters are rejected outright — they are never
+// legitimate memo content and rejecting them keeps memos safe to render, log,
+// and export (issue #397).
+export const MEMO_MAX_BYTES = 28;
+
+// Control chars (C0/C1), zero-width and bidi isolates/overrides/embeddings.
+// Covers: \u0000-\u001F \u007F-\u009F, ZWSP/ZWNJ/ZWJ/LRM/RLM (200B-200F),
+// LRE/RLE/PDF/LRO/RLO (202A-202E), LRI/RLI/FSI/PDI (2066-2069).
+const MEMO_CONTROL_CHARS =
+  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/;
 
 /** Error messages shown to users when a memo fails validation. */
 export const MEMO_ERROR_MESSAGES = {
@@ -41,10 +48,10 @@ export const memoField = z
   .refine((v) => !MEMO_CONTROL_CHARS.test(v), {
     message: MEMO_ERROR_MESSAGES.controlChars,
   })
-  .refine((v) => v.length <= 28, {
+  .refine((v) => v.length <= MEMO_MAX_BYTES, {
     message: MEMO_ERROR_MESSAGES.tooLong,
   })
-  .refine((v) => new TextEncoder().encode(v).length <= 28, {
+  .refine((v) => new TextEncoder().encode(v).length <= MEMO_MAX_BYTES, {
     message: MEMO_ERROR_MESSAGES.tooManyBytes,
   })
   .optional();
@@ -110,24 +117,26 @@ export const paymentExportParamsSchema = z.object({
 
 // ── Batch Schemas ─────────────────────────────────────────────
 
+/**
+ * Idempotency key shared by POST /api/batches (header or body field).
+ *
+ * The value is trimmed BEFORE validation so the validated value is exactly
+ * the value that gets persisted — a body key like `"  short  "` is rejected
+ * (its trimmed form is 5 chars) and `"  my-key-123  "` is stored as
+ * `"my-key-123"`, keeping header and body keys consistent.
+ */
+export const idempotencyKeySchema = z
+  .string("Idempotency key must be a string")
+  .trim()
+  .min(8, "Idempotency key must be at least 8 characters")
+  .max(255, "Idempotency key must be at most 255 characters");
+
 export const batchRecipientSchema = z.object({
   address: stellarAddress,
   amount: z.number().positive("Amount must be greater than zero"),
   assetCode: z.string().default("XLM"),
   memo: memoField,
 });
-
-/**
- * Idempotency key used to deduplicate batch submissions (issue #170).
- * Accepts either the `Idempotency-Key` header or an optional `idempotencyKey`
- * body field. `.trim()` runs before the length checks so a wrapped key is
- * normalized consistently and a whitespace-only value is rejected.
- */
-export const idempotencyKeySchema = z
-  .string()
-  .trim()
-  .min(8, "Idempotency key must be at least 8 characters")
-  .max(255, "Idempotency key must be at most 255 characters");
 
 export const createBatchSchema = z.object({
   name: z.string().min(1).max(100),
@@ -203,6 +212,16 @@ export const createWebhookSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+export const webhookReplaySchema = z.object({
+  since: z.string().datetime().optional(),
+  until: z.string().datetime().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const webhookDeliveriesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
 // ── API Key Schemas ───────────────────────────────────────────
 
 export const createApiKeySchema = z.object({
@@ -234,6 +253,28 @@ export const paginationSchema = z.object({
 export type PaginationParams = z.infer<typeof paginationSchema>;
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
+
+// ── Scheduled Payment Schemas ──────────────────────────────────
+
+export const createScheduledPaymentSchema = z.object({
+  amount: z.number().positive("Amount must be greater than 0"),
+  assetCode: z.string().default("XLM"),
+  assetIssuer: z.string().optional(),
+  destAddress: stellarAddress,
+  memo: z.string().max(28).optional(),
+  scheduledAt: z
+    .string()
+    .refine(
+      (value) => !Number.isNaN(new Date(value).getTime()),
+      "Scheduled date must be a valid date"
+    )
+    .refine(
+      (value) => new Date(value).getTime() > Date.now(),
+      "Scheduled date must be in the future"
+    ),
+});
+
+export type CreateScheduledPaymentInput = z.infer<typeof createScheduledPaymentSchema>;
 
 // ── Recurrence alias ───────────────────────────────────────────
 

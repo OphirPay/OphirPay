@@ -30,6 +30,7 @@
 | `/api/escrows` | POST | 👤 | — | Create escrow. Delegated to client-side signing. |
 | `/api/streams` | POST | 👤 | — | Create payment stream. Delegated to client-side signing. |
 | `/api/batches` | POST | 👤 | — | Create batch payment. Delegated to client-side signing. |
+| `/api/batches/[id]` | POST | 👤 | — | Bulk-cancel pending payments. User-scoped via `userId`. |
 | `/api/recurring` | POST | 👤 | — | Create recurring payment. Delegated to client-side signing. |
 | `/api/requests` | POST | 👤 | — | Create payment request. User-scoped. |
 | `/api/refunds` | POST | 👤 | — | Create refund request. User-scoped. |

@@ -9,24 +9,37 @@ const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [ta
 
 /**
  * Create a focus trap within a container element.
- * Returns a cleanup function.
+ * Focus moves to the first focusable element (or the container itself),
+ * Tab/Shift+Tab cycle within the container, and any attempt to focus an
+ * element outside the container is redirected back inside.
+ *
+ * Returns a cleanup function that removes the listeners and restores focus
+ * to the element that was focused before the trap was created.
  */
-export function trapFocus(container: HTMLElement): () => void {
+export function trapFocus(
+  container: HTMLElement,
+  options?: { focusContainer?: boolean }
+): () => void {
   const previous = document.activeElement as HTMLElement | null;
 
-  // Focus the first focusable element, or the container itself
-  const first = container.querySelector<HTMLElement>(FOCUSABLE);
-  if (first) {
-    first.focus();
-  } else {
+  const getFocusables = () => container.querySelectorAll<HTMLElement>(FOCUSABLE);
+
+  // Focus the first focusable element, or the container itself. Callers that
+  // render their own labelled dialog shell (a header with a close control)
+  // pass `focusContainer` so the dialog region receives focus first and its
+  // accessible name is announced before tabbing reaches the close button.
+  const first = getFocusables()[0];
+  if (options?.focusContainer || !first) {
     container.setAttribute("tabindex", "-1");
     container.focus();
+  } else {
+    first.focus();
   }
 
-  const handler = (e: KeyboardEvent) => {
+  const onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== "Tab") return;
 
-    const focusables = container.querySelectorAll<HTMLElement>(FOCUSABLE);
+    const focusables = getFocusables();
     if (focusables.length === 0) return;
 
     const firstEl = focusables[0];
@@ -41,10 +54,32 @@ export function trapFocus(container: HTMLElement): () => void {
     }
   };
 
-  container.addEventListener("keydown", handler);
+  // If focus lands outside the container (programmatic focus, or Tab when the
+  // active element is not a boundary), pull it back inside. Preserve the tab
+  // direction by wrapping from the edge the focus left from.
+  const onFocusIn = (e: FocusEvent) => {
+    if (container.contains(e.target as Node)) return;
+
+    const focusables = getFocusables();
+    if (focusables.length === 0) {
+      container.focus();
+      return;
+    }
+
+    const previousEl = e.relatedTarget as Node | null;
+    if (previousEl === focusables[focusables.length - 1]) {
+      focusables[0].focus();
+    } else {
+      focusables[focusables.length - 1].focus();
+    }
+  };
+
+  document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("focusin", onFocusIn);
 
   return () => {
-    container.removeEventListener("keydown", handler);
+    document.removeEventListener("keydown", onKeyDown);
+    document.removeEventListener("focusin", onFocusIn);
     previous?.focus();
   };
 }

@@ -1,0 +1,4 @@
+{
+  "ophirpay": { "maxBytes": 524288 },
+  "emitter": { "maxBytes": 262144 }
+}

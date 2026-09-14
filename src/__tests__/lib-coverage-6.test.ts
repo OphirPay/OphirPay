@@ -515,6 +515,23 @@ describe('focus-trap', () => {
       // Cleanup should not throw
       expect(true).toBe(true);
     });
+
+    it('redirects focus back inside when it escapes', () => {
+      const outside = document.createElement('button');
+      document.body.appendChild(outside);
+
+      const div = document.createElement('div');
+      div.innerHTML = '<button>Inside</button>';
+      document.body.appendChild(div);
+      const cleanup = trapFocus(div);
+
+      outside.focus();
+      expect(document.activeElement).not.toBe(outside);
+
+      cleanup();
+      document.body.removeChild(div);
+      document.body.removeChild(outside);
+    });
   });
 });
 

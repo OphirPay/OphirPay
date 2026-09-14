@@ -20,6 +20,7 @@ const HORIZON_ERROR_MESSAGES: Record<string, string> = {
   tx_too_early: "Transaction submitted too early. Check your device clock.",
   tx_insufficient_fee: "Transaction fee is too low. The network requires a higher fee.",
   tx_insufficient_balance: "Insufficient balance to cover the transaction fee.",
+  tx_memo_required: "This account requires a memo to receive payments. Please add a memo.",
 };
 
 /**

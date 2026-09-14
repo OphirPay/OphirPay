@@ -8,6 +8,18 @@ import { useState, useEffect } from "react";
  * Reactively tracks a CSS media query.
  * Returns true when the media query matches.
  *
+ * @example
+ * Conditionally render a compact mobile CTA bar alongside the desktop one:
+ *
+ * ```tsx
+ * function SendActions() {
+ *   const isMobile = useMediaQuery("(max-width: 768px)");
+ *
+ *   if (isMobile) return <MobileSendBar />;
+ *   return <DesktopSendButton />;
+ * }
+ * ```
+ *
  * Usage: const isMobile = useMediaQuery("(max-width: 768px)");
  */
 export function useMediaQuery(query: string): boolean {

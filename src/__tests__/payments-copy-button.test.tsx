@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@/components/ui/Toast";
 import PaymentsPage from "@/app/payments/page";
 
 vi.mock("next/navigation", () => ({
@@ -35,7 +36,9 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <PaymentsPage />
+      <ToastProvider>
+        <PaymentsPage />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

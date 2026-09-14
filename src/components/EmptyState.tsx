@@ -9,6 +9,8 @@ interface EmptyStateProps {
   description: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** Icon rendered inside the primary action button. Defaults to a plus icon. */
+  actionIcon?: React.ReactNode;
   className?: string;
 }
 
@@ -18,6 +20,7 @@ export function EmptyState({
   description,
   actionLabel,
   onAction,
+  actionIcon,
   className,
 }: EmptyStateProps) {
   return (
@@ -40,20 +43,22 @@ export function EmptyState({
         <Button
           onClick={onAction}
           leftIcon={
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
-              className="w-4 h-4"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 4.5v15m7.5-7.5h-15"
-              />
-            </svg>
+            actionIcon ?? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                className="w-4 h-4"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 4.5v15m7.5-7.5h-15"
+                />
+              </svg>
+            )
           }
         >
           {actionLabel}

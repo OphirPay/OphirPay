@@ -13,6 +13,14 @@ jobs:
   backup:
     name: Backup Postgres
     runs-on: ubuntu-latest
+    env:
+      DB_HOST: ${{ secrets.DB_HOST }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,19 +30,35 @@ jobs:
 
       - name: Create backup
         run: |
+          set -euo pipefail
+          : "${DB_HOST:?DB_HOST secret not set — add it to GitHub Actions secrets}"
+          : "${DB_USER:?DB_USER secret not set}"
+          : "${DB_PASSWORD:?DB_PASSWORD secret not set}"
+          : "${DB_NAME:?DB_NAME secret not set}"
+
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
           BACKUP_FILE="ophirpay-${TIMESTAMP}.sql.gz"
           echo "Backup file: ${BACKUP_FILE}"
           echo "BACKUP_FILE=${BACKUP_FILE}" >> $GITHUB_ENV
 
-          PGPASSWORD="${{ secrets.DB_PASSWORD }}" pg_dump \
-            -h "${{ secrets.DB_HOST }}" \
-            -U "${{ secrets.DB_USER }}" \
-            -d "${{ secrets.DB_NAME }}" \
+          # pipefail so a pg_dump failure fails this step instead of being
+          # masked by gzip's exit 0 (which used to upload empty backups).
+          PGPASSWORD="$DB_PASSWORD" pg_dump \
+            -h "$DB_HOST" \
+            -U "$DB_USER" \
+            -d "$DB_NAME" \
             --no-owner --no-acl \
             | gzip > "${BACKUP_FILE}"
 
+          test -s "${BACKUP_FILE}" || { echo "::error::pg_dump produced an empty backup"; exit 1; }
+          gzip -t "${BACKUP_FILE}" || { echo "::error::backup is not a valid gzip file"; exit 1; }
           echo "Backup created: $(du -h ${BACKUP_FILE} | cut -f1)"
+
+      - name: Validate AWS credentials
+        run: |
+          : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID secret not set — add it to GitHub Actions secrets}"
+          : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY secret not set}"
+          : "${AWS_REGION:?AWS_REGION secret not set}"
 
       - name: Upload to S3
         uses: aws-actions/configure-aws-credentials@v4
@@ -45,6 +69,7 @@ jobs:
 
       - name: Push to S3
         run: |
+          : "${BACKUP_FILE:?Create backup step did not run}"
           aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_FILE}" \
             --storage-class STANDARD_IA
 

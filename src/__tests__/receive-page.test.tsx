@@ -128,6 +128,7 @@ describe("ReceivePage", () => {
         expect.any(Object)
       )
     );
+    await screen.findByRole("img", { name: /receive qr code/i });
     expect(
       screen.getByText(`web+stellar:pay?destination=${ADDRESS_B}`)
     ).toBeInTheDocument();
@@ -136,6 +137,7 @@ describe("ReceivePage", () => {
   it("copies the address with the copy button", async () => {
     setWallet(ADDRESS_A);
     render(<ReceivePage />);
+    await screen.findByRole("img", { name: /receive qr code/i });
 
     fireEvent.click(screen.getByRole("button", { name: /copy address/i }));
 
@@ -144,9 +146,10 @@ describe("ReceivePage", () => {
     );
   });
 
-  it("links the address to the Stellar account explorer", () => {
+  it("links the address to the Stellar account explorer", async () => {
     setWallet(ADDRESS_A);
     render(<ReceivePage />);
+    await screen.findByRole("img", { name: /receive qr code/i });
 
     const link = screen.getByRole("link", { name: /view on explorer/i });
     expect(link).toHaveAttribute(
@@ -163,6 +166,7 @@ describe("ReceivePage", () => {
     });
 
     render(<ReceivePage />);
+    await screen.findByRole("img", { name: /receive qr code/i });
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Wallet account changed");
@@ -191,6 +195,7 @@ describe("ReceivePage", () => {
       getAddress: () => Promise.resolve(ADDRESS_B),
     });
     const { rerender } = render(<ReceivePage />);
+    await screen.findByRole("img", { name: /receive qr code/i });
 
     const reconnect = await screen.findByRole("button", { name: /reconnect/i });
     fireEvent.click(reconnect);
@@ -202,6 +207,7 @@ describe("ReceivePage", () => {
       getAddress: () => Promise.resolve(ADDRESS_B),
     });
     rerender(<ReceivePage />);
+    await screen.findByRole("img", { name: /receive qr code/i });
 
     // The live-account check is async — wait for the warning to clear.
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());

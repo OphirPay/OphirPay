@@ -9,7 +9,7 @@ info:
     **Authentication** — two modes:
     - `Authorization: Bearer <api-key>` (recommended)
     - `X-API-Key: <api-key>`
-    
+
     API keys are generated at `POST /api/keys` and shown only once.
 
     **Conventions** — see [docs/API_GUIDE.md](./API_GUIDE.md) for the
@@ -1809,7 +1809,7 @@ paths:
       summary: Subscribe to real-time payment events
       description: |
         Server-Sent Events stream. Polls the Stellar emitter contract every 10 seconds.
-        
+
         Events:
         - `connected` — stream established
         - `heartbeat` — keep-alive every 15s

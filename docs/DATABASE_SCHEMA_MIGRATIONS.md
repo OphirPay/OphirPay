@@ -92,7 +92,7 @@ In production PostgreSQL databases, creating an index with standard `CREATE INDE
 To prevent downtime on high-traffic tables (such as `Payment`), use **`CREATE INDEX CONCURRENTLY`**.
 
 #### Critical Transaction Rule:
-> **`CREATE INDEX CONCURRENTLY` CANNOT run inside a transaction block (`BEGIN ... COMMIT`).**  
+> **`CREATE INDEX CONCURRENTLY` CANNOT run inside a transaction block (`BEGIN ... COMMIT`).**
 > Prisma wraps migration files in a transaction block by default.
 
 #### How to Author a Concurrent Index Migration Safely:
@@ -102,7 +102,7 @@ To prevent downtime on high-traffic tables (such as `Payment`), use **`CREATE IN
 3. Example valid syntax:
    ```sql
    -- Execute outside of BEGIN/COMMIT blocks
-   CREATE INDEX CONCURRENTLY IF NOT EXISTS "Payment_userId_status_idx" 
+   CREATE INDEX CONCURRENTLY IF NOT EXISTS "Payment_userId_status_idx"
    ON "Payment"("userId", "status");
    ```
 

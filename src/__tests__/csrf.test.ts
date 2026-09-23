@@ -31,7 +31,7 @@ describe("CSRF Protection", () => {
     it("creates secure cookie header for production", () => {
       const token = generateCsrfToken();
       const header = csrfCookieHeader(token, true);
-      
+
       expect(header).toContain("__Host-csrf=");
       expect(header).toContain("Secure");
       expect(header).toContain("HttpOnly");
@@ -42,7 +42,7 @@ describe("CSRF Protection", () => {
     it("creates insecure cookie header for development", () => {
       const token = generateCsrfToken();
       const header = csrfCookieHeader(token, false);
-      
+
       expect(header).toContain("csrf=");
       expect(header).not.toContain("Secure");
       expect(header).toContain("HttpOnly");
@@ -199,7 +199,7 @@ describe("CSRF Protection", () => {
         new Response(JSON.stringify({ success: true }), { status: 200 })
       );
       const wrapped = withCsrf(handler);
-      
+
       const token = generateCsrfToken();
       const request = new Request("http://localhost/api/test", {
         method: "POST",
@@ -208,7 +208,7 @@ describe("CSRF Protection", () => {
           "x-csrf-token": token,
         },
       });
-      
+
       const response = await wrapped(request);
       expect(handler).toHaveBeenCalled();
       expect(response.status).toBe(200);
@@ -219,11 +219,11 @@ describe("CSRF Protection", () => {
         new Response(JSON.stringify({ success: true }), { status: 200 })
       );
       const wrapped = withCsrf(handler);
-      
+
       const request = new Request("http://localhost/api/test", {
         method: "POST",
       });
-      
+
       const response = await wrapped(request);
       expect(handler).not.toHaveBeenCalled();
       expect(response.status).toBe(403);
@@ -242,13 +242,13 @@ describe("CSRF Protection", () => {
         isMutating: true,
         isProtected: true,
       });
-      
+
       expect(auditRouteProtection("POST", false)).toEqual({
         method: "POST",
         isMutating: true,
         isProtected: false,
       });
-      
+
       expect(auditRouteProtection("GET", true)).toEqual({
         method: "GET",
         isMutating: false,

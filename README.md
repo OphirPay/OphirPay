@@ -14,10 +14,10 @@
   <br />
 
   <p>
-    <strong>🌐 Languages:</strong> 
-    <strong>🇬🇧 English</strong> · 
-    <a href="README.es.md">🇪🇸 Español</a> · 
-    <a href="README.fr.md">🇫🇷 Français</a> · 
+    <strong>🌐 Languages:</strong>
+    <strong>🇬🇧 English</strong> ·
+    <a href="README.es.md">🇪🇸 Español</a> ·
+    <a href="README.fr.md">🇫🇷 Français</a> ·
     <a href="README.ja.md">🇯🇵 日本語</a>
   </p>
 

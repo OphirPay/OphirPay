@@ -31,7 +31,7 @@ export default function FeeConfigPage() {
   const toast = useToast();
   const { wallet } = useWallet();
   const queryClient = useQueryClient();
-  
+
   // State declarations - THESE WERE MISSING
   const [collector, setCollector] = useState<string | null>(null);
   const [showFeeModal, setShowFeeModal] = useState(false);
@@ -63,11 +63,11 @@ export default function FeeConfigPage() {
   }, [config]);
 
   const handleFeeSubmit = async () => {
-    if (!wallet.publicKey) { 
-      toast.error("Connect your wallet first"); 
-      return; 
+    if (!wallet.publicKey) {
+      toast.error("Connect your wallet first");
+      return;
     }
-    
+
     // Validate fees before submission
     const validation = validateFeeConfig(formPaymentFee, formEscrowFee, formStreamFee);
     if (!validation.isValid) {
@@ -75,22 +75,22 @@ export default function FeeConfigPage() {
       toast.error(validation.errors[0]);
       return;
     }
-    
+
     setValidationErrors([]);
     setSubmitting(true);
     setTxStatus(null);
-    
+
     try {
       const result = await setFeeConfig(
         wallet.publicKey,
-        formPaymentFee, 
-        formEscrowFee, 
+        formPaymentFee,
+        formEscrowFee,
         formStreamFee,
-        formBatchBase, 
-        formBatchPerItem, 
+        formBatchBase,
+        formBatchPerItem,
         formEnabled,
       );
-      
+
       if (result.success) {
         setTxStatus({
           type: "success",
@@ -120,19 +120,19 @@ export default function FeeConfigPage() {
   };
 
   const handleCollectorSubmit = async () => {
-    if (!wallet.publicKey) { 
-      toast.error("Connect your wallet first"); 
-      return; 
+    if (!wallet.publicKey) {
+      toast.error("Connect your wallet first");
+      return;
     }
-    
+
     if (!formCollector || formCollector.length < 10) {
       toast.error("Please enter a valid collector address");
       return;
     }
-    
+
     setSubmitting(true);
     setTxStatus(null);
-    
+
     try {
       const result = await setFeeCollector(wallet.publicKey, formCollector);
       if (result.success) {
@@ -190,10 +190,10 @@ export default function FeeConfigPage() {
 
       {/* Transaction Status */}
       {txStatus && (
-        <div 
+        <div
           className={`rounded-lg p-4 border ${
-            txStatus.type === "success" 
-              ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700" 
+            txStatus.type === "success"
+              ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700"
               : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700"
           }`}
           role="alert"
@@ -229,15 +229,15 @@ export default function FeeConfigPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            onClick={() => setShowFeeModal(true)} 
+          <Button
+            onClick={() => setShowFeeModal(true)}
             variant="primary"
             aria-label="Edit Fees"
           >
             ⚙ Edit Fees
           </Button>
-          <Button 
-            onClick={() => setShowCollectorModal(true)} 
+          <Button
+            onClick={() => setShowCollectorModal(true)}
             variant="secondary"
             aria-label="Set Collector"
           >
@@ -323,21 +323,21 @@ export default function FeeConfigPage() {
               </ul>
             </div>
           )}
-          
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Payment Fee (bps)
               </label>
-              <input 
-                type="number" 
-                min={0} 
-                max={MAX_FEE_BPS} 
+              <input
+                type="number"
+                min={0}
+                max={MAX_FEE_BPS}
                 value={formPaymentFee}
                 onChange={(e) => setFormPaymentFee(Number(e.target.value))}
                 className={`w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 ${
                   !validateFeeBps(formPaymentFee) ? "border-red-500" : ""
-                }`} 
+                }`}
                 aria-label="Payment Fee (bps)"
               />
               <span className="text-xs text-gray-400">{bpsToPercent(formPaymentFee)}%</span>
@@ -346,15 +346,15 @@ export default function FeeConfigPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Escrow Fee (bps)
               </label>
-              <input 
-                type="number" 
-                min={0} 
-                max={MAX_FEE_BPS} 
+              <input
+                type="number"
+                min={0}
+                max={MAX_FEE_BPS}
                 value={formEscrowFee}
                 onChange={(e) => setFormEscrowFee(Number(e.target.value))}
                 className={`w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 ${
                   !validateFeeBps(formEscrowFee) ? "border-red-500" : ""
-                }`} 
+                }`}
                 aria-label="Escrow Fee (bps)"
               />
               <span className="text-xs text-gray-400">{bpsToPercent(formEscrowFee)}%</span>
@@ -363,60 +363,60 @@ export default function FeeConfigPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Stream Fee (bps)
               </label>
-              <input 
-                type="number" 
-                min={0} 
-                max={MAX_FEE_BPS} 
+              <input
+                type="number"
+                min={0}
+                max={MAX_FEE_BPS}
                 value={formStreamFee}
                 onChange={(e) => setFormStreamFee(Number(e.target.value))}
                 className={`w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 ${
                   !validateFeeBps(formStreamFee) ? "border-red-500" : ""
-                }`} 
+                }`}
                 aria-label="Stream Fee (bps)"
               />
               <span className="text-xs text-gray-400">{bpsToPercent(formStreamFee)}%</span>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Batch Base Fee (stroops)
               </label>
-              <input 
-                type="number" 
-                min={0} 
+              <input
+                type="number"
+                min={0}
                 value={formBatchBase}
                 onChange={(e) => setFormBatchBase(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" 
+                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Per-Item Fee (stroops)
               </label>
-              <input 
-                type="number" 
-                min={0} 
+              <input
+                type="number"
+                min={0}
                 value={formBatchPerItem}
                 onChange={(e) => setFormBatchPerItem(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700" 
+                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
               />
             </div>
           </div>
-          
+
           <label className="flex items-center gap-2">
-            <input 
-              type="checkbox" 
-              checked={formEnabled} 
-              onChange={(e) => setFormEnabled(e.target.checked)} 
+            <input
+              type="checkbox"
+              checked={formEnabled}
+              onChange={(e) => setFormEnabled(e.target.checked)}
             />
             <span className="text-sm text-gray-700 dark:text-gray-300">Enable fee collection</span>
           </label>
-          
-          <Button 
-            onClick={handleFeeSubmit} 
-            loading={submitting} 
+
+          <Button
+            onClick={handleFeeSubmit}
+            loading={submitting}
             className="w-full"
             disabled={!validateFeeBps(formPaymentFee) || !validateFeeBps(formEscrowFee) || !validateFeeBps(formStreamFee)}
           >
@@ -437,17 +437,17 @@ export default function FeeConfigPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Collector Address
             </label>
-            <input 
+            <input
               value={formCollector}
               onChange={(e) => setFormCollector(e.target.value)}
               className="w-full px-3 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700 font-mono text-xs"
-              placeholder="GABC..." 
+              placeholder="GABC..."
               aria-label="Collector Address"
             />
           </div>
-          <Button 
-            onClick={handleCollectorSubmit} 
-            loading={submitting} 
+          <Button
+            onClick={handleCollectorSubmit}
+            loading={submitting}
             className="w-full"
             disabled={!formCollector || formCollector.length < 10}
           >

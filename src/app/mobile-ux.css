@@ -2,7 +2,7 @@
 
 /* 48px minimum touch targets (WCAG 2.5.5) */
 @media (max-width: 768px) {
-  button, 
+  button,
   a[role="button"],
   .touch-target {
     min-height: 48px;

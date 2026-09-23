@@ -6,13 +6,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
-  // In CI the suite is sharded across parallel runners; each shard emits a
-  // blob report that the `e2e-report` job merges into a single combined
-  // report (see .github/workflows/ci.yml). Locally the html + list reporters
-  // behave as before.
-  reporter: process.env.CI
-    ? [["blob", { outputDir: "blob-report" }], ["html", { open: "never" }], ["list"]]
-    : [["html", { open: "never" }], ["list"]],
+  // Generate HTML report without auto-opening browser, and list reporter for terminal output.
+  reporter: [["html", { open: "never" }], ["list"]],
   use: {
     baseURL: process.env.E2E_BASE_URL || "http://localhost:3000",
     trace: "on-first-retry",
@@ -37,6 +32,7 @@ export default defineConfig({
       use: { ...devices["Pixel 5"] },
     },
   ],
-  // No webServer — E2E runs against live Vercel deployment.
-  // Set E2E_BASE_URL env var to override (default: localhost for local dev).
+  // Intentionally no `webServer` block — E2E runs against a live Vercel deployment
+  // or local dev server. Running `npm run test:e2e` requires a server already
+  // listening on E2E_BASE_URL (defaults to http://localhost:3000 for local dev).
 });

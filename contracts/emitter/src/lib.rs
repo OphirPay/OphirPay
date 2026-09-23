@@ -18,6 +18,9 @@ const PENDING_OWNER: Symbol = symbol_short!("PND_OWN");
 const OWNER_PROPOSED_AT: Symbol = symbol_short!("OWN_PAT");
 const ALLOWED_SOURCE: Symbol = symbol_short!("ALW_SRC");
 
+/// 24-hour upgrade / ownership timelock delay (seconds).
+const TMLOCK_DELAY: u64 = 86400;
+
 // Event schema version. Bump when the emitted event shape changes.
 const EVENT_SCHEMA_VERSION: u32 = 1;
 
@@ -291,7 +294,7 @@ impl PaymentEventEmitter {
         if caller != owner {
             return Err(EmitterError::Unauthorized);
         }
-        let unlock_at = env.ledger().timestamp() + 86400;
+        let unlock_at = env.ledger().timestamp().saturating_add(TMLOCK_DELAY);
         env.storage().instance().set(&UPGRADE_HASH, &new_wasm_hash);
         env.storage().instance().set(&UPGRADE_TIMELOCK, &unlock_at);
         env.storage().instance().extend_ttl(5000, 50000);
@@ -799,5 +802,34 @@ mod tests {
             }
         }
         assert_eq!(all_ids.len(), 25);
+    }
+
+    #[test]
+    fn test_propose_upgrade_unlock_does_not_wrap_at_extreme_timestamp() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+        let owner = Address::generate(&env);
+
+        let extreme = u64::MAX - 100;
+        env.ledger().set_timestamp(extreme);
+        let _ = client.init(&owner);
+
+        let hash = soroban_sdk::BytesN::from_array(&env, &[7u8; 32]);
+        client.propose_upgrade(&owner, &hash);
+
+        let unlock_at: u64 = env.as_contract(&addr, || {
+            env.storage()
+                .instance()
+                .get(&UPGRADE_TIMELOCK)
+                .expect("upgrade timelock must be set")
+        });
+
+        assert_eq!(unlock_at, extreme.saturating_add(TMLOCK_DELAY));
+        assert!(
+            unlock_at >= extreme,
+            "unlock_at wrapped below timestamp: unlock_at={unlock_at} extreme={extreme}"
+        );
     }
 }

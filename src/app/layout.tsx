@@ -5,6 +5,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "./mobile-ux.css";
 import { AppShell } from "@/components/AppShell";
+import { ARIA } from "@/lib/aria-labels";
 
 export { reportWebVitals } from "@/lib/web-vitals";
 
@@ -114,12 +115,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100`}
       >
-        {/* Skip-to-content link for keyboard users */}
+        {/* Skip-to-content link for keyboard users — first focusable element */}
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-ophir-600 focus:text-white focus:rounded-lg focus:outline-none"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-ophir-600 focus:text-white focus:rounded-lg focus:outline-none focus:ring-2 focus:ring-ophir-400"
         >
-          Skip to main content
+          {ARIA.SKIP_TO_CONTENT}
         </a>
         <AppShell>{children}</AppShell>
       </body>

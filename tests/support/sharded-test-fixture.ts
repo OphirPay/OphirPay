@@ -7,7 +7,10 @@
  * cross-shard data assertion utilities, and atomic teardown for Playwright/Jest E2E suites.
  */
 
-import { ShardedDatabaseRouter, ShardConfig } from "./shard-router";
+import {
+  ShardedDatabaseRouter,
+  ShardConfig,
+} from "../../src/lib/db/shard-router";
 
 export interface ShardedPaymentRecord {
   id: string;

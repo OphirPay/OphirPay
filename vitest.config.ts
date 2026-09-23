@@ -29,9 +29,6 @@ export default defineConfig({
         "src/lib/stellar.ts",
         "src/lib/rpc-failover.ts",
         "src/lib/events/event-source.ts",
-        // Sharded database support is exercised by the Playwright E2E suite;
-        // excluding its in-memory fixtures keeps unit coverage meaningful.
-        "src/lib/db/**",
         "src/lib/api-auth.ts",
         "src/lib/api-client.ts",
         "src/lib/rate-limit.ts",
@@ -67,7 +64,6 @@ export default defineConfig({
         "src/lib/soft-delete.ts",
         "src/components/ui/index.ts",
         "src/hooks/index.ts",
-        "src/lib/test-factory.ts",
         "src/lib/time.ts",
         "src/lib/trustline.ts",
         "src/lib/trustline-simulator.ts",

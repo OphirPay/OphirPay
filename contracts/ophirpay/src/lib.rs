@@ -2726,7 +2726,7 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
-        let unlock_at = env.ledger().timestamp() + 86400; // 24 hours
+        let unlock_at = env.ledger().timestamp().saturating_add(TMLOCK_DELAY);
         env.storage().instance().set(&UPGRADE_HASH, &new_wasm_hash);
         env.storage().instance().set(&UPGRADE_TIMELOCK, &unlock_at);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -5632,6 +5632,38 @@ mod tests {
 
         let history = client.get_multisig_config_history();
         assert_eq!(history.len(), 2);
+    }
+
+    // ── Upgrade Timelock Overflow Guard (issue #692) ───
+
+    #[test]
+    fn test_propose_upgrade_unlock_does_not_wrap_at_extreme_timestamp() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        let extreme = u64::MAX - 100;
+        env.ledger().set_timestamp(extreme);
+        let _ = client.init(&owner);
+
+        let hash = soroban_sdk::BytesN::from_array(&env, &[7u8; 32]);
+        client.propose_upgrade(&owner, &hash);
+
+        let unlock_at: u64 = env.as_contract(&contract_id, || {
+            env.storage()
+                .instance()
+                .get(&UPGRADE_TIMELOCK)
+                .expect("upgrade timelock must be set")
+        });
+
+        // Must use saturating arithmetic: never wrap below the proposal timestamp.
+        assert_eq!(unlock_at, extreme.saturating_add(TMLOCK_DELAY));
+        assert!(
+            unlock_at >= extreme,
+            "unlock_at wrapped below timestamp: unlock_at={unlock_at} extreme={extreme}"
+        );
     }
 
     // ── Two-Step Ownership Tests ───────────────────────────

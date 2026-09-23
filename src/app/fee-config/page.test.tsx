@@ -62,7 +62,7 @@ describe("FeeConfigPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     mocks.useWallet.mockReturnValue({ wallet: mockWallet });
     mocks.useApiQuery.mockReturnValue({
       data: mockConfig,
@@ -73,7 +73,7 @@ describe("FeeConfigPage", () => {
 
   it("renders fee configuration with on-chain values", () => {
     render(<FeeConfigPage />);
-    
+
     expect(screen.getByText("Fee Configuration")).toBeInTheDocument();
     expect(screen.getByText("1.00%")).toBeInTheDocument(); // 100 bps
     expect(screen.getByText("2.00%")).toBeInTheDocument(); // 200 bps
@@ -91,14 +91,14 @@ describe("FeeConfigPage", () => {
     });
 
     render(<FeeConfigPage />);
-    
+
     // Open fee modal
     fireEvent.click(screen.getByText("⚙ Edit Fees"));
-    
+
     // Update payment fee
     const paymentInput = screen.getByLabelText("Payment Fee (bps)");
     fireEvent.change(paymentInput, { target: { value: "150" } });
-    
+
     // Submit form
     const submitButton = screen.getByText("Save Fee Configuration");
     fireEvent.click(submitButton);
@@ -120,35 +120,35 @@ describe("FeeConfigPage", () => {
 
   it("validates fee bps limits and disables submit", async () => {
     render(<FeeConfigPage />);
-    
+
     // Open fee modal
     fireEvent.click(screen.getByText("⚙ Edit Fees"));
-    
+
     // Try to set fee above max
     const paymentInput = screen.getByLabelText("Payment Fee (bps)");
     fireEvent.change(paymentInput, { target: { value: "1500" } });
-    
+
     // Submit button should be disabled
     const submitButton = screen.getByText("Save Fee Configuration");
     expect(submitButton).toBeDisabled();
-    
+
     // Input should show error styling
     expect(paymentInput).toHaveClass("border-red-500");
   });
 
   it("shows validation errors when submitting invalid fees", async () => {
     render(<FeeConfigPage />);
-    
+
     // Open fee modal
     fireEvent.click(screen.getByText("⚙ Edit Fees"));
-    
+
     // Set invalid fees
     const paymentInput = screen.getByLabelText("Payment Fee (bps)");
     fireEvent.change(paymentInput, { target: { value: "1500" } });
-    
+
     const escrowInput = screen.getByLabelText("Escrow Fee (bps)");
     fireEvent.change(escrowInput, { target: { value: "-10" } });
-    
+
     // Submit should not be called
     expect(mocks.setFeeConfig).not.toHaveBeenCalled();
   });
@@ -160,10 +160,10 @@ describe("FeeConfigPage", () => {
     });
 
     render(<FeeConfigPage />);
-    
+
     // Open fee modal
     fireEvent.click(screen.getByText("⚙ Edit Fees"));
-    
+
     // Submit form with valid values
     const submitButton = screen.getByText("Save Fee Configuration");
     fireEvent.click(submitButton);
@@ -181,14 +181,14 @@ describe("FeeConfigPage", () => {
     });
 
     render(<FeeConfigPage />);
-    
+
     // Open collector modal
     fireEvent.click(screen.getByText("💰 Set Collector"));
-    
+
     // Enter collector address
     const collectorInput = screen.getByLabelText("Collector Address");
     fireEvent.change(collectorInput, { target: { value: "GCOLLECTOR123456789" } });
-    
+
     // Submit
     const submitButton = screen.getByRole("button", { name: "Set Fee Collector" });
     fireEvent.click(submitButton);
@@ -203,12 +203,12 @@ describe("FeeConfigPage", () => {
   });
 
   it("shows wallet connection warning when disconnected", () => {
-    mocks.useWallet.mockReturnValue({ 
-      wallet: { connected: false, publicKey: null } 
+    mocks.useWallet.mockReturnValue({
+      wallet: { connected: false, publicKey: null }
     });
 
     render(<FeeConfigPage />);
-    
+
     expect(screen.getByText("Wallet not connected")).toBeInTheDocument();
     expect(screen.getByText("Connect your wallet to update fee configuration on-chain.")).toBeInTheDocument();
   });
@@ -221,7 +221,7 @@ describe("FeeConfigPage", () => {
     });
 
     render(<FeeConfigPage />);
-    
+
     // Should show skeleton loading
     const skeletonElements = document.querySelectorAll(".animate-pulse");
     expect(skeletonElements.length).toBeGreaterThan(0);
@@ -235,7 +235,7 @@ describe("FeeConfigPage", () => {
     });
 
     render(<FeeConfigPage />);
-    
+
     expect(screen.getByText("No Fee Config Set")).toBeInTheDocument();
     expect(screen.getByText("Configure your protocol fee structure on-chain.")).toBeInTheDocument();
   });

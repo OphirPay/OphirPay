@@ -120,7 +120,7 @@ export function verifyCsrf(request: Request): Response | null {
 /**
  * Higher-order function to wrap API route handlers with CSRF protection.
  * Automatically enforces CSRF for mutating methods.
- * 
+ *
  * Usage:
  * ```typescript
  * export const POST = withCsrf(async (request) => {
@@ -163,10 +163,10 @@ export const CSRF_ROUTE_AUDIT = {
   // Auth routes
   "/api/auth/session": { POST: true, DELETE: true },
   "/api/auth/challenge": { GET: true },
-  
+
   // CSRF token minting
   "/api/csrf": { GET: true },
-  
+
   // Add more routes as they are audited:
   // "/api/payments": { POST: true, PATCH: true, DELETE: true },
   // "/api/webhooks": { POST: true, PATCH: true, DELETE: true },
@@ -178,7 +178,7 @@ export const CSRF_ROUTE_AUDIT = {
  */
 export function findUnprotectedRoutes(): string[] {
   const unprotected: string[] = [];
-  
+
   for (const [path, methods] of Object.entries(CSRF_ROUTE_AUDIT)) {
     for (const [method, isProtected] of Object.entries(methods)) {
       const audit = auditRouteProtection(method, isProtected);
@@ -187,6 +187,6 @@ export function findUnprotectedRoutes(): string[] {
       }
     }
   }
-  
+
   return unprotected;
 }

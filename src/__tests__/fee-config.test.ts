@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect } from "vitest";
-import { 
-  validateFeeBps, 
-  validateFeeConfig, 
+import {
+  validateFeeBps,
+  validateFeeConfig,
   MAX_FEE_BPS,
 } from "@/lib/fee-config";
 
@@ -56,7 +56,7 @@ describe("Fee Configuration Validation", () => {
     it("accepts boundary values", () => {
       const result = validateFeeConfig(0, 0, 0);
       expect(result.isValid).toBe(true);
-      
+
       const maxResult = validateFeeConfig(1000, 1000, 1000);
       expect(maxResult.isValid).toBe(true);
     });

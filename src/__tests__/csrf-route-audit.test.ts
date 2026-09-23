@@ -20,7 +20,7 @@ describe("CSRF Route Audit", () => {
 
   it("protects all mutating methods", () => {
     const mutatingMethods = ["POST", "PATCH", "DELETE", "PUT"];
-    
+
     for (const [path, methods] of Object.entries(CSRF_ROUTE_AUDIT)) {
       for (const [method, isProtected] of Object.entries(methods)) {
         if (mutatingMethods.includes(method)) {

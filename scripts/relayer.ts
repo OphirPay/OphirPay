@@ -1,14 +1,14 @@
 /**
  * OphirPay Webhook Relayer
- * 
+ *
  * Polls Prisma for active notification hooks AND queries the Soroban OphirPayContract
  * for new audit log entries. When a hook's event type matches a new audit entry,
  * the relayer delivers a signed webhook to the subscriber URL.
- * 
+ *
  * Dual-source: Prisma hooks (fast local query) + Soroban audit log (immutable on-chain truth)
- * 
+ *
  * Usage: npx tsx scripts/relayer.ts
- * 
+ *
  * Environment variables:
  *   POLL_INTERVAL_MS — polling interval in ms (default: 30000)
  *   NEXT_PUBLIC_CONTRACT_ID — Soroban OphirPay contract address

@@ -2,10 +2,10 @@
 
 /**
  * Demo mode utilities.
- * 
+ *
  * When NEXT_PUBLIC_DEMO_MODE=true, transactions are simulated instantly
  * without requiring real XLM or Freighter wallet connection.
- * 
+ *
  * Perfect for hackathon demos, CI previews, and reviewer walkthroughs.
  */
 

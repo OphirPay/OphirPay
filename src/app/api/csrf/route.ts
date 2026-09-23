@@ -6,12 +6,12 @@ import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/csrf
- * 
+ *
  * Mints a new CSRF token and sets it as an HttpOnly cookie.
  * The token is also returned in the response body for the client
  * to store in memory and send as the x-csrf-token header on
  * mutating requests.
- * 
+ *
  * Security:
  * - Token is cryptographically random (256 bits)
  * - Cookie is HttpOnly, Secure (prod), SameSite=Strict

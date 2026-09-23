@@ -1,69 +1,72 @@
-"use client";
-// SPDX-License-Identifier: MIT
+'use client';
 
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { trackError } from '@/hooks/useErrorTracker';
 
-import { Component, type ReactNode } from "react";
-
-interface Props {
+export interface ErrorBoundaryProps {
   children: ReactNode;
-  fallback?: ReactNode;
+  fallback?: ReactNode | ((props: { error: Error; reset: () => void }) => ReactNode);
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+  segment?: string;
+  name?: string;
 }
 
-interface State {
+interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("[OphirPay ErrorBoundary]", error.message, errorInfo.componentStack);
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    const segment = this.props.segment || this.props.name || 'unknown';
+    trackError(error, { segment, extra: { componentStack: errorInfo.componentStack } });
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+    }
   }
+
+  reset = () => {
+    this.setState({ hasError: false, error: null });
+  };
 
   render() {
     if (this.state.hasError) {
-      if (this.props.fallback) return this.props.fallback;
+      if (this.props.fallback) {
+        if (typeof this.props.fallback === 'function') {
+          return this.props.fallback({
+            error: this.state.error || new Error('Unknown error'),
+            reset: this.reset,
+          });
+        }
+        return this.props.fallback;
+      }
 
       return (
-        <div className="min-h-[400px] flex items-center justify-center p-8 animate-fade-in">
-          <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-8 text-center">
-            <div className="h-16 w-16 mx-auto rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-8 h-8 text-red-600 dark:text-red-400"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
-                />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-              Something went wrong
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {this.state.error?.message || "An unexpected error occurred."}
+        <div className="p-6 rounded-lg border border-red-200 bg-red-50 text-red-900 my-4" data-testid="error-boundary-fallback">
+          <h3 className="text-lg font-semibold mb-2">Something went wrong</h3>
+          <p className="text-sm text-red-700 mb-4">
+            {this.state.error?.message || 'An unexpected error occurred in this component.'}
+          </p>
+          {this.props.segment && (
+            <p className="text-xs text-red-500 mb-4" data-testid="error-segment">
+              Segment: {this.props.segment}
             </p>
-            <button
-              onClick={() => this.setState({ hasError: false, error: null })}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
+          )}
+          <button
+            onClick={this.reset}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium transition-colors"
+          >
+            Try again
+          </button>
         </div>
       );
     }

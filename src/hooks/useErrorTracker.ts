@@ -1,52 +1,39 @@
-"use client";
-// SPDX-License-Identifier: MIT
-
-
 import { useCallback } from "react";
-import { captureError, captureMessage } from "@/lib/sentry";
 
-/**
- * React hook wrapping the error tracking integration.
- * Provides a stable callback for capturing errors from component event handlers.
- *
- * @example
- * Capture a failed wallet-connect attempt with extra context:
- *
- * ```tsx
- * function ConnectButton() {
- *   const { trackError } = useErrorTracker("ConnectButton");
- *   const { connect } = useWallet();
- *
- *   return (
- *     <button
- *       onClick={async () => {
- *         try {
- *           await connect("freighter");
- *         } catch (err) {
- *           trackError(err as Error, { attempt: "freighter" });
- *         }
- *       }}
- *     >
- *       Connect
- *     </button>
- *   );
- * }
- * ```
- */
-export function useErrorTracker(component?: string) {
-  const trackError = useCallback(
-    (error: Error, extra?: Record<string, unknown>) => {
-      captureError(error, { component, extra });
-    },
-    [component]
-  );
+export interface ErrorReportOptions {
+  segment?: string;
+  component?: string;
+  tags?: Record<string, string>;
+  extra?: Record<string, unknown>;
+}
 
-  const trackMessage = useCallback(
-    (message: string, level: "info" | "warning" | "error" = "error") => {
-      captureMessage(message, level);
-    },
-    []
-  );
+export function trackError(error: unknown, options?: ErrorReportOptions | string) {
+  const opts: ErrorReportOptions =
+    typeof options === "string" ? { segment: options } : options || {};
+  const segment = opts.segment || "global";
 
-  return { trackError, trackMessage };
+  if (process.env.NODE_ENV !== "test") {
+    console.error(`[ErrorTracker] [Segment: ${segment}]`, error, opts);
+  }
+
+  try {
+    if (typeof window !== "undefined" && (window as any).Sentry) {
+      (window as any).Sentry.captureException(error, {
+        tags: { segment, ...opts.tags },
+        extra: opts.extra,
+      });
+    }
+  } catch {
+    // Ignore reporting errors
+  }
+
+  return { error, segment, options: opts };
+}
+
+export function useErrorTracker() {
+  const logError = useCallback((error: unknown, options?: ErrorReportOptions | string) => {
+    return trackError(error, options);
+  }, []);
+
+  return { trackError: logError };
 }

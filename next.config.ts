@@ -46,6 +46,15 @@ const nextConfig: NextConfig = {
         { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
       ],
     },
+    {
+      source: "/.well-known/stellar.toml",
+      headers: [
+        { key: "Access-Control-Allow-Origin", value: "*" },
+        { key: "Access-Control-Allow-Methods", value: "GET, OPTIONS" },
+        { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        { key: "Content-Type", value: "text/plain; charset=utf-8" },
+      ],
+    },
   ],
 
   // Image optimization for Stellar Explorer and other external sources

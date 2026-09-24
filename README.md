@@ -604,6 +604,11 @@ policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md#coverage-ratchet).
 | `multisig.spec.ts` | Multisig propose/approve flows |
 | `governance.spec.ts` | Proposal lifecycle |
 
+Running the suite locally needs a server you start yourself (the config has
+no `webServer`) and a seeded database — see
+[docs/testing/e2e-local.md](docs/testing/e2e-local.md) for the procedure and
+the `npm run test:e2e:local` shortcut.
+
 ### Visual Regression Tests (Playwright) — critical pages
 
 Screenshot-based visual coverage for the core pages at desktop width in **both

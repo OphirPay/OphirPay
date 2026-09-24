@@ -37,34 +37,29 @@ jobs:
       - run: npm run lint -- --max-warnings 0
 
   # ══════════════════════════════════════════════════════════════
-  # 2. TYPECHECK — TypeScript strict type-checking
+  # 2. VERIFY — the single definition of "green" (issue #728)
+  # Runs the exact command contributors run locally: npm run verify
+  # → scripts/check-submission.sh (typecheck → lint → prisma →
+  # tests → build → deploy config). Supersedes the former separate
+  # `typecheck` and `unit-tests` jobs so CI and local share one gate.
+  # SKIP_CONTRACTS=1: the Rust contract tests run in the dedicated
+  # `contract-wasm` job below (pinned toolchain + WASM build) and are
+  # intentionally not duplicated here.
+  # See CONTRIBUTING.md § "Verify before you push".
   # ══════════════════════════════════════════════════════════════
-  typecheck:
-    name: "2️⃣ Frontend — TypeCheck (tsc)"
+  verify:
+    name: "2️⃣ Frontend — Verify (npm run verify)"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
+    env:
+      # Contract tests are covered by the `contract-wasm` job.
+      SKIP_CONTRACTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
-      - run: npx prisma generate
-      - run: npx tsc --noEmit
-
-  # ══════════════════════════════════════════════════════════════
-  # 3. UNIT TESTS — Vitest (800 frontend tests)
-  # ══════════════════════════════════════════════════════════════
-  unit-tests:
-    name: "3️⃣ Frontend — Unit Tests (Vitest)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npx vitest run --reporter=verbose
+      - run: npm run verify
 
   # ══════════════════════════════════════════════════════════════
   # 4. NEXT.JS BUILD — Production build verification (issue #677)

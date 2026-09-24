@@ -37,9 +37,30 @@ export const GET = withMetrics("GET /api/streams", withRequestLogging(async func
 
     const countResult = await simulateContractCall(DEFAULT_CONTRACT_ID, "get_stream_count", CHAIN_READ_SOURCE);
     if (countResult.status === "SIMULATION_FAILED") {
-      return successResponse({ count: 0, available: false });
+      return successResponse({ count: 0, available: false, items: [], streams: [] });
     }
-    return successResponse({ count: countResult.returnValue ?? 0 });
+    const count = Number(countResult.returnValue ?? 0);
+    const populate = searchParams.get("populate") === "true" || searchParams.get("includeItems") === "true";
+    let items: unknown[] = [];
+
+    if (populate && count > 0) {
+      const limit = Math.min(50, count);
+      const start = Math.max(1, count - limit + 1);
+      const promises = [];
+      for (let i = count; i >= start; i--) {
+        promises.push(
+          simulateContractCall(DEFAULT_CONTRACT_ID, "get_stream", CHAIN_READ_SOURCE, [
+            nativeToScVal(i, { type: "u64" }),
+          ])
+            .then((res) => (res.status !== "SIMULATION_FAILED" && res.returnValue ? res.returnValue : null))
+            .catch(() => null)
+        );
+      }
+      const results = await Promise.all(promises);
+      items = results.filter(Boolean);
+    }
+
+    return successResponse({ count, items, streams: items });
   } catch (err) {
     return handleApiError(err, "GET /api/streams");
   }

@@ -8,7 +8,7 @@ OphirPay streams **live blockchain events** to browsers and integrations via
 **Server-Sent Events (SSE)** at `GET /api/events`. The endpoint polls the
 deployed `PaymentEventEmitter` Soroban contract and forwards normalized
 events. A **WebSocket channel** (`/api/events` on port `8787`, see
-[Reconnection & transport](#-reconnection--transport)) delivers the *same*
+[Reconnection & transport](#reconnection--transport)) delivers the *same*
 events with lower latency; the official client prefers it and falls back to
 SSE automatically.
 

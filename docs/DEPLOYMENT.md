@@ -6,16 +6,16 @@
 
 ## Table of Contents
 
-- [Prerequisites](#-prerequisites)
-- [Environment Variables](#-environment-variables)
-- [Option 1: Vercel (Recommended)](#-option-1-vercel-recommended)
-- [Option 2: Docker](#-option-2-docker)
-- [Option 3: Standalone Node.js](#-option-3-standalone-nodejs)
-- [Option 4: Kubernetes (Helm)](#-option-4-kubernetes-helm)
-- [Soroban Contract Deployment](#-soroban-contract-deployment)
-- [Database Setup](#-database-setup)
-- [Post-Deployment Verification](#-post-deployment-verification)
-- [Troubleshooting](#-troubleshooting)
+- [Prerequisites](#prerequisites)
+- [Environment Variables](#environment-variables)
+- [Option 1: Vercel (Recommended)](#option-1-vercel-recommended)
+- [Option 2: Docker](#option-2-docker)
+- [Option 3: Standalone Node.js](#option-3-standalone-nodejs)
+- [Option 4: Kubernetes (Helm)](#option-4-kubernetes-helm)
+- [Soroban Contract Deployment](#soroban-contract-deployment)
+- [Database Setup](#database-setup)
+- [Post-Deployment Verification](#post-deployment-verification)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -97,7 +97,7 @@ Vercel is the easiest way to deploy OphirPay. The project includes a pre-configu
 2. Go to [vercel.com/new](https://vercel.com/new)
 3. Import your forked repository
 4. Vercel auto-detects Next.js — no configuration needed
-5. Add environment variables in the Vercel dashboard (see [Environment Variables](#-environment-variables))
+5. Add environment variables in the Vercel dashboard (see [Environment Variables](#environment-variables))
 6. Click **Deploy**
 
 ### GitHub Integration

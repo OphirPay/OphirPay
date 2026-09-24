@@ -59,7 +59,7 @@ La plupart des outils de paiement blockchain sont soit des SDKs orientés dével
 | **Actions admin avec timelock** (délai de 24h) | ✅ | ❌ |
 | **Gouvernance DAO** (proposer→voter→exécuter) | ✅ | ❌ |
 
-> Toutes les fonctionnalités ci-dessus ont des pages d'interface dans le tableau de bord. Voir la [feuille de route](#-feuille-de-route) pour plus de détails.
+> Toutes les fonctionnalités ci-dessus ont des pages d'interface dans le tableau de bord. Voir la [feuille de route](ROADMAP.md) pour plus de détails.
 
 ---
 
@@ -137,7 +137,7 @@ La plupart des outils de paiement blockchain sont soit des SDKs orientés dével
 
 ---
 
-## ⚡ Démarrage Rapide (60 secondes)
+## ⚡ Démarrage Rapide
 
 ```bash
 git clone https://github.com/OphirPay/OphirPay.git && cd OphirPay

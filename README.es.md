@@ -59,7 +59,7 @@ La mayoría de las herramientas de pago en blockchain son SDKs orientados a desa
 | **Acciones de admin con timelock** (retraso de 24h) | ✅ | ❌ |
 | **Gobernanza DAO** (proponer→votar→ejecutar) | ✅ | ❌ |
 
-> Todas las características anteriores tienen páginas de interfaz en el panel de control. Consulta la [hoja de ruta](#-hoja-de-ruta) para más detalles.
+> Todas las características anteriores tienen páginas de interfaz en el panel de control. Consulta la [hoja de ruta](ROADMAP.md) para más detalles.
 
 ---
 
@@ -137,7 +137,7 @@ La mayoría de las herramientas de pago en blockchain son SDKs orientados a desa
 
 ---
 
-## ⚡ Inicio Rápido (60 segundos)
+## ⚡ Inicio Rápido
 
 ```bash
 git clone https://github.com/OphirPay/OphirPay.git && cd OphirPay

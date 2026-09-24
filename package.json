@@ -55,7 +55,8 @@
     "audit:deps": "node scripts/audit-dependencies.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:a11y": "playwright test e2e/accessibility.spec.ts"
+    "test:a11y": "playwright test e2e/accessibility.spec.ts",
+    "docs:check-links": "node scripts/check-doc-links.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

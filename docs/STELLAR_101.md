@@ -6,19 +6,19 @@
 
 ## Table of Contents
 
-- [TL;DR](#-tldr)
-- [Accounts](#-accounts)
-- [XLM — Stellar's Native Currency](#-xlm--stellars-native-currency)
-- [Operations](#-operations)
-- [Transactions](#-transactions)
-- [Signatures & Signing](#-signatures--signing)
-- [Memos](#-memos)
-- [Testnet & Friendbot](#-testnet--friendbot)
-- [Horizon — Stellar's REST API](#-horizon--stellars-rest-api)
-- [Soroban — Smart Contracts on Stellar](#-soroban--smart-contracts-on-stellar)
-- [Minimal Working Example: Send XLM](#-minimal-working-example-send-xlm)
-- [Glossary](#-glossary)
-- [Further Reading](#-further-reading)
+- [TL;DR](#tldr)
+- [Accounts](#accounts)
+- [XLM — Stellar's Native Currency](#xlm--stellars-native-currency)
+- [Operations](#operations)
+- [Transactions](#transactions)
+- [Signatures & Signing](#signatures--signing)
+- [Memos](#memos)
+- [Testnet & Friendbot](#testnet--friendbot)
+- [Horizon — Stellar's REST API](#horizon--stellars-rest-api)
+- [Soroban — Smart Contracts on Stellar](#soroban--smart-contracts-on-stellar)
+- [Minimal Working Example: Send XLM](#minimal-working-example-send-xlm)
+- [Glossary](#glossary)
+- [Further Reading](#further-reading)
 
 ---
 

@@ -1,53 +1,89 @@
-// SPDX-License-Identifier: MIT
-
 /**
- * Safe URL query parameter parsing utilities.
- * Provides typed extraction with defaults and validation.
+ * Utility functions for parsing and building query parameters used by the
+ * payments list page.  These helpers keep the URL in sync with the UI state
+ * (search, sort, status filter, cursor) and provide a single source of truth
+ * for validation and defaults.
+ *
+ * The functions are intentionally lightweight and pure so they can be used
+ * both on the client (Next.js) and the server (API routes).
  */
 
-/** Extract a string query parameter with a default. */
-export function getStringParam(
-  searchParams: URLSearchParams,
-  key: string,
-  defaultValue = ""
-): string {
-  return searchParams.get(key) ?? defaultValue;
+export type QueryParams = {
+  /** Free‑text search term */
+  search?: string;
+  /** Sort key, e.g. "createdAt" or "-amount" */
+  sort?: string;
+  /** Array of status filters, e.g. ["pending", "failed"] */
+  status?: string[];
+  /** Cursor for pagination (opaque string) */
+  cursor?: string;
+};
+
+/**
+ * Default values used when a query parameter is missing or invalid.
+ */
+export const DEFAULT_QUERY_PARAMS: QueryParams = {
+  search: '',
+  sort: 'createdAt',
+  status: [],
+  cursor: undefined,
+};
+
+/**
+ * Parse a raw query string (e.g. "?search=foo&sort=-amount") into a
+ * {@link QueryParams} object.  Invalid values are replaced with the defaults.
+ *
+ * @param rawQuery - The raw query string from `window.location.search` or
+ *   `URLSearchParams.toString()`.
+ */
+export function parseQueryParams(rawQuery: string): QueryParams {
+  const params = new URLSearchParams(rawQuery);
+  const search = params.get('search') ?? DEFAULT_QUERY_PARAMS.search;
+  const sort = params.get('sort') ?? DEFAULT_QUERY_PARAMS.sort;
+  const statusRaw = params.getAll('status');
+  const status = statusRaw.length > 0 ? statusRaw : DEFAULT_QUERY_PARAMS.status;
+  const cursor = params.get('cursor') ?? DEFAULT_QUERY_PARAMS.cursor;
+
+  // Basic validation: ensure sort is a non‑empty string
+  const validatedSort = typeof sort === 'string' && sort.trim() !== '' ? sort : DEFAULT_QUERY_PARAMS.sort;
+
+  return {
+    search,
+    sort: validatedSort,
+    status,
+    cursor: cursor ?? undefined,
+  };
 }
 
-/** Extract a numeric query parameter with bounds checking. */
-export function getNumberParam(
-  searchParams: URLSearchParams,
-  key: string,
-  defaultValue: number,
-  min = -Infinity,
-  max = Infinity
-): number {
-  const raw = searchParams.get(key);
-  if (raw === null) return defaultValue;
-  const num = parseFloat(raw);
-  if (isNaN(num)) return defaultValue;
-  return Math.max(min, Math.min(max, num));
-}
+/**
+ * Build a query string from a {@link QueryParams} object.  Empty values are
+ * omitted to keep the URL clean.
+ *
+ * @param params - The query parameters to encode.
+ * @returns A string suitable for use in `router.replace` or `URLSearchParams`.
+ */
+export function buildQueryParams(params: QueryParams): string {
+  const qs = new URLSearchParams();
 
-/** Extract a boolean query parameter (true for "1", "true", "yes"). */
-export function getBoolParam(
-  searchParams: URLSearchParams,
-  key: string,
-  defaultValue = false
-): boolean {
-  const raw = searchParams.get(key);
-  if (raw === null) return defaultValue;
-  return raw === "1" || raw.toLowerCase() === "true" || raw.toLowerCase() === "yes";
-}
+  if (params.search && params.search.trim() !== '') {
+    qs.set('search', params.search.trim());
+  }
 
-/** Extract an enum query parameter with validation. */
-export function getEnumParam<T extends string>(
-  searchParams: URLSearchParams,
-  key: string,
-  allowed: readonly T[],
-  defaultValue: T
-): T {
-  const raw = searchParams.get(key);
-  if (raw && (allowed as readonly string[]).includes(raw)) return raw as T;
-  return defaultValue;
+  if (params.sort && params.sort.trim() !== '') {
+    qs.set('sort', params.sort.trim());
+  }
+
+  if (params.status && params.status.length > 0) {
+    params.status.forEach((s) => {
+      if (s.trim() !== '') {
+        qs.append('status', s.trim());
+      }
+    });
+  }
+
+  if (params.cursor) {
+    qs.set('cursor', params.cursor);
+  }
+
+  return qs.toString();
 }

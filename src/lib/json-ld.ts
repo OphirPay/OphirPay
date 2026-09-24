@@ -5,7 +5,7 @@
  * Adds schema.org markup for WebApplication, Organization, etc.
  */
 
-interface OphirPayStructuredData {
+export interface OphirPayStructuredData {
   "@context": "https://schema.org";
   "@type": "WebApplication";
   name: string;
@@ -25,13 +25,16 @@ interface OphirPayStructuredData {
  * Include this in the <head> via a <script type="application/ld+json"> tag.
  */
 export function getStructuredData(): OphirPayStructuredData {
+  const rawUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const url = (rawUrl || "https://ophirpay.vercel.app").replace(/\/+$/, "");
+
   return {
     "@context": "https://schema.org",
     "@type": "WebApplication",
     name: "OphirPay",
     description:
       "The Open-Source Payment Orchestration Layer for Stellar — send, batch, schedule, and track blockchain payments.",
-    url: process.env.NEXT_PUBLIC_APP_URL || "https://ophirpay.vercel.app",
+    url,
     applicationCategory: "FinanceApplication",
     operatingSystem: "All",
     offers: {

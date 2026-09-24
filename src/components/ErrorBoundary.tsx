@@ -1,12 +1,15 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
 import { Component, type ReactNode } from "react";
+import { captureError, type ErrorReport } from "@/lib/sentry";
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  componentName?: string;
+  optInPii?: boolean;
+  onError?: (error: Error, errorInfo: React.ErrorInfo, report: ErrorReport) => void;
 }
 
 interface State {
@@ -25,6 +28,18 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    const report = captureError(error, {
+      component: this.props.componentName || "ErrorBoundary",
+      optInPii: this.props.optInPii,
+      extra: {
+        componentStack: errorInfo.componentStack,
+      },
+    });
+
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo, report);
+    }
+
     console.error("[OphirPay ErrorBoundary]", error.message, errorInfo.componentStack);
   }
 

@@ -21,8 +21,17 @@ const nextConfig: NextConfig = {
   // Compress responses for better performance
   compress: true,
 
-  // Production source maps disabled for security
-  productionBrowserSourceMaps: false,
+  // Production source maps disabled by default for security; enabled when uploading to Sentry
+  productionBrowserSourceMaps: Boolean(process.env.SENTRY_UPLOAD_SOURCE_MAPS),
+
+  // Expose release version to client and server bundles for error tracking & telemetry
+  env: {
+    NEXT_PUBLIC_RELEASE:
+      process.env.NEXT_PUBLIC_RELEASE ||
+      process.env.NEXT_PUBLIC_APP_VERSION ||
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      "0.1.0",
+  },
 
   // Security headers applied to all responses
   headers: async () => [

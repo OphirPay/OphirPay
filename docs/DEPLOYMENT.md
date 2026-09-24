@@ -343,12 +343,20 @@ helm upgrade --install ophirpay ./helm/ophirpay \
   --set image.tag=latest \
   --set ingress.hosts[0].host=ophirpay.com \
   --set config.NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
-  --set config.NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org \
-  --set config.NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban.stellar.org \
+  --set config.NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \
+  --set config.NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org:443 \
   --set config.DATABASE_PROVIDER=postgresql \
   --set config.NODE_ENV=production \
   --wait
 ```
+
+### Build-Time vs Runtime Configuration (`NEXT_PUBLIC_*`)
+
+Next.js inlines `NEXT_PUBLIC_*` variables into client-side JavaScript bundles during build time (`npm run build` / `docker build`).
+
+- **Server-side runtime**: Variables defined in `config` (ConfigMap) or `secrets` (Secret) are available to server-side code (Node.js API routes, Server Components) at runtime.
+- **Client-side bundle**: Prebuilt client components in container images retain whatever `NEXT_PUBLIC_*` values were baked in at image build time. Modifying `NEXT_PUBLIC_*` in the Helm `ConfigMap` will not alter client-side behavior for a prebuilt image.
+- **Consequence**: When switching networks (e.g. from Testnet to Mainnet), the container image must be built with the matching `NEXT_PUBLIC_*` build arguments, or runtime code must proxy client calls through server-side routes.
 
 ### Verify
 

@@ -5,6 +5,12 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ophirpay.labels" . | nindent 4 }}
+{{- if hasKey .Values.config "NEXT_PUBLIC_HORIZON_URL" }}
+{{- fail "Deprecated key config.NEXT_PUBLIC_HORIZON_URL is not supported. Use config.NEXT_PUBLIC_STELLAR_HORIZON_URL to match .env.example." }}
+{{- end }}
+{{- if hasKey .Values.config "NEXT_PUBLIC_SOROBAN_RPC_URL" }}
+{{- fail "Deprecated key config.NEXT_PUBLIC_SOROBAN_RPC_URL is not supported. Use config.NEXT_PUBLIC_STELLAR_RPC_URL to match .env.example." }}
+{{- end }}
 data:
   {{- range $key, $val := .Values.config }}
   {{ $key }}: {{ $val | quote }}

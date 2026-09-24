@@ -131,18 +131,20 @@ Duplicate approvals from the same signer MUST be rejected.
 
 ---
 
-### INV-7: Pause Blocks All Mutations
+### INV-7: Scoped and Global Pause Blocks Mutations
 
-**Statement:** When the contract is paused (`PAUSED = true`), all
-state-mutating functions MUST return `ContractPaused`. Read-only functions
-(getters) SHALL continue to work.
+**Statement:**
+1. **Global Emergency Pause (`PAUSED = true`):** When the contract is globally paused via `emergency_pause_all()`, all state-mutating functions across all scopes MUST return `PaymentError::ContractPaused`. Read-only functions (getters) SHALL continue to work.
+2. **Scoped Pause (`(P_SCOPE, scope) = true`):** The contract supports granular scoped pausing for specific feature domains (`payments`, `escrows`, `streams`, `recurring`, `refunds`, `governance`, `hooks`, `batches`). When a specific scope is paused via `set_scope_paused(caller, scope, true)`, only mutating functions belonging to that scope MUST return `PaymentError::ContractPaused`. Mutating functions in unpaused scopes and all read-only getters continue to function normally.
+3. **Global Override:** If the global pause is active, it unconditionally overrides all scope states.
 
-**Code evidence:** `require_not_paused()` is called at the beginning of every
-write function. It reads the `PAUSED` instance key and returns
-`ContractPaused` if true.
+**Code evidence:** `require_not_paused(env, scope)` is invoked at the entrypoint of every mutating function with its respective domain symbol. It first verifies the global `PAUSED` flag, then inspects `(P_SCOPE, scope)`. Owner-only administration is provided by `set_scope_paused()`, `emergency_pause_all()`, and `emergency_unpause_all()`.
 
-**Test:** `test_pause_blocks_writes` — verifies all mutating functions reject
-when paused, and all getters still return data.
+**Tests:**
+- `test_paused_contract_blocks_payments`: verifies global emergency pause blocks operations.
+- `test_scoped_pause_isolation_and_getters`: verifies scoped pause isolates blocked domains while leaving other domains and getters functional.
+- `test_scoped_pause_global_override`: verifies that global pause overrides scope unpaused status.
+- `test_scoped_pause_unknown_scope`: verifies pausing an arbitrary scope does not affect standard scopes.
 
 ---
 

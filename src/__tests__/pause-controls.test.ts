@@ -25,7 +25,14 @@ vi.mock("@/lib/wallets", () => ({
 }));
 
 // Import after mocks
-import { isPaused, emergencyPauseAll, emergencyUnpauseAll } from "@/lib/contract-advanced";
+import {
+  isPaused,
+  emergencyPauseAll,
+  emergencyUnpauseAll,
+  setScopePaused,
+  isScopePaused,
+  getPausedScopes,
+} from "@/lib/contract-advanced";
 import {
   simulateContractCall,
   invokeContractFunction,
@@ -164,6 +171,101 @@ describe("Pause Controls", () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain("No wallet available");
       expect(invokeContractFunction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("setScopePaused", () => {
+    it("invokes set_scope_paused with owner, scope symbol, and status", async () => {
+      mockSuccessfulSignAndSubmit();
+
+      const result = await setScopePaused(OWNER_KEY, "escrows", true);
+
+      expect(result.success).toBe(true);
+      expect(result.txHash).toBe(MOCK_TX_HASH);
+
+      const invokeArgs = vi.mocked(invokeContractFunction).mock.calls[0];
+      expect(invokeArgs[0]).toBe(DEFAULT_CONTRACT_ID);
+      expect(invokeArgs[1]).toBe("set_scope_paused");
+      expect(invokeArgs[2]).toBe(OWNER_KEY);
+      const args = invokeArgs[3] as xdr.ScVal[];
+      expect(args).toHaveLength(3);
+
+      expect(getActiveWalletConnector).toHaveBeenCalled();
+    });
+
+    it("returns error when wallet is not connected", async () => {
+      vi.mocked(getActiveWalletConnector).mockReturnValue(null);
+
+      const result = await setScopePaused(OWNER_KEY, "escrows", true);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("No wallet available");
+      expect(invokeContractFunction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("isScopePaused", () => {
+    it("returns true when scope is paused", async () => {
+      vi.mocked(simulateContractCall).mockResolvedValue({
+        status: "SIMULATED",
+        returnValue: true,
+      });
+
+      const result = await isScopePaused("escrows");
+
+      expect(result).toBe(true);
+      expect(simulateContractCall).toHaveBeenCalledWith(
+        DEFAULT_CONTRACT_ID,
+        "is_scope_paused",
+        expect.any(String),
+        expect.any(Array)
+      );
+    });
+
+    it("returns false when scope is active", async () => {
+      vi.mocked(simulateContractCall).mockResolvedValue({
+        status: "SIMULATED",
+        returnValue: false,
+      });
+
+      const result = await isScopePaused("escrows");
+
+      expect(result).toBe(false);
+    });
+
+    it("returns false on simulation failure", async () => {
+      vi.mocked(simulateContractCall).mockResolvedValue({
+        status: "SIMULATION_FAILED",
+        returnValue: null,
+      });
+
+      const result = await isScopePaused("escrows");
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("getPausedScopes", () => {
+    it("returns array of paused scopes", async () => {
+      vi.mocked(simulateContractCall).mockResolvedValue({
+        status: "SIMULATED",
+        returnValue: ["escrows", "refunds"],
+      });
+
+      const result = await getPausedScopes();
+
+      expect(result).toEqual(["escrows", "refunds"]);
+    });
+
+    it("returns empty array on simulation failure", async () => {
+      vi.mocked(simulateContractCall).mockResolvedValue({
+        status: "SIMULATION_FAILED",
+        returnValue: null,
+      });
+
+      const result = await getPausedScopes();
+
+      expect(result).toEqual([]);
     });
   });
 });

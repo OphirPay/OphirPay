@@ -3,9 +3,11 @@
 # OphirPay — Pre-Submission Verification
 # ══════════════════════════════════════════════════════════════════
 # Runs the full quality gate in one shot and prints a pass/fail
-# summary. Mirrors the CI pipeline:
+# summary. This is the single definition of "green" — the same script
+# is what `npm run verify` and the CI `verify` job execute, so CI and
+# local development can no longer drift apart.
 #
-#   typecheck → lint → prisma → tests → build → contract tests
+#   typecheck → lint → prisma → tests → build → contract tests → deploy config
 #
 # Usage:
 #   bash scripts/check-submission.sh                 # full check
@@ -14,6 +16,7 @@
 #
 # Skippable steps (set to "1" to skip):
 #   SKIP_TYPECHECK SKIP_LINT SKIP_PRISMA SKIP_TESTS SKIP_BUILD SKIP_CONTRACTS
+#   SKIP_DEPLOY_CONFIG
 #
 # Exit code: 0 if everything passed, 1 otherwise.
 set -uo pipefail
@@ -28,11 +31,14 @@ SKIP_PRISMA="${SKIP_PRISMA:-0}"
 SKIP_TESTS="${SKIP_TESTS:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 SKIP_CONTRACTS="${SKIP_CONTRACTS:-0}"
+SKIP_DEPLOY_CONFIG="${SKIP_DEPLOY_CONFIG:-0}"
 
 # prisma validate only parses the schema; it never connects to the DB,
-# so a placeholder URL is enough when DATABASE_URL is not exported.
-DATABASE_URL="${DATABASE_URL:-postgresql://user:pass@localhost:5432/ophirpay}"
-export DATABASE_URL
+# so a placeholder URL is enough when DATABASE_URL is not exported. It is
+# scoped to the prisma steps below — exporting it globally would leak a
+# fake DATABASE_URL into the test environment (breaking env-validation
+# tests that assert it is absent).
+PRISMA_DATABASE_URL="${DATABASE_URL:-postgresql://user:pass@localhost:5432/ophirpay}"
 
 PASS=0
 FAIL=0
@@ -77,8 +83,8 @@ fi
 if [ "$SKIP_PRISMA" = "1" ]; then
   echo "ℹ️  Skipping prisma"
 else
-  run_step "Prisma validate" npx prisma validate
-  run_step "Prisma generate" npx prisma generate
+  run_step "Prisma validate" env DATABASE_URL="$PRISMA_DATABASE_URL" npx prisma validate
+  run_step "Prisma generate" env DATABASE_URL="$PRISMA_DATABASE_URL" npx prisma generate
 fi
 
 # ── 4. Unit tests ──────────────────────────────────────────────
@@ -103,6 +109,13 @@ elif ! command -v cargo >/dev/null 2>&1; then
 else
   run_step "Contract tests (ophirpay)" bash -c "cd contracts/ophirpay && cargo test --quiet"
   run_step "Contract tests (emitter)" bash -c "cd contracts/emitter && cargo test --quiet"
+fi
+
+# ── 7. Deploy config (mainnet safety guard) ────────────────────
+if [ "$SKIP_DEPLOY_CONFIG" = "1" ]; then
+  echo "ℹ️  Skipping deploy config validation"
+else
+  run_step "Deploy config (mainnet guard)" bash scripts/validate-deploy-config.sh
 fi
 
 # ── Summary ────────────────────────────────────────────────────

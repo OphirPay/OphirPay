@@ -2,6 +2,8 @@
 
 import prisma from "@/lib/prisma";
 import { deliverWebhook } from "@/lib/webhook-deliver";
+import { RETRY_CONFIG } from "@/lib/retry-config";
+import { moveToDeadLetter } from "@/lib/webhook-delivery-service";
 import { logger } from "@/lib/logger";
 import type { WebhookEventType } from "@/app/api/webhooks/event-types";
 import {
@@ -61,10 +63,18 @@ export async function dispatchWebhookEvent(
       webhooks.map(async (wh) => {
         const result = await deliverWebhook(wh.url, wh.secret, payload);
         if (storedEventId) {
-          await recordWebhookDelivery(wh.id, storedEventId, result.success ? "SUCCESS" : "FAILED", {
+          const deliveryId = await recordWebhookDelivery(wh.id, storedEventId, result.success ? "SUCCESS" : "FAILED", {
             responseCode: result.statusCode,
             isReplay: false,
           });
+          if (!result.success && result.attempts >= RETRY_CONFIG.webhook.maxAttempts) {
+            await moveToDeadLetter(
+              deliveryId,
+              result.failureReason === "timeout"
+                ? `Delivery timed out on all ${result.attempts} attempts`
+                : (result.errorMessage ?? "Delivery exhausted retries"),
+            );
+          }
         }
         return result.success;
       }),

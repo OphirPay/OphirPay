@@ -12,8 +12,7 @@ interface CsvOptions {
 /**
  * Convert array of objects to CSV string and trigger download.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function exportToCsv<T extends Record<string, any>>(
+export function exportToCsv<T extends object>(
   data: T[],
   columns: { key: keyof T; header: string }[],
   options: CsvOptions = {}

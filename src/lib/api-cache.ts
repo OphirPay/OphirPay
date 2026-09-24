@@ -151,9 +151,22 @@ function ensureRedis(): Promise<void> {
     try {
       // Dynamic import — ioredis is an optional dependency, and the app must
       // build and run without it installed.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mod: any = await import("ioredis");
-      const client = new (mod.Redis ?? mod.default)(url, {
+      type RedisConstructor = new (
+        url: string,
+        options: Record<string, unknown>
+      ) => RedisLike & {
+        on?: (event: string, handler: () => void) => void;
+        connect: () => Promise<void>;
+      };
+      const mod = (await import("ioredis")) as unknown as {
+        Redis?: RedisConstructor;
+        default?: RedisConstructor;
+      };
+      const RedisCtor = mod.Redis ?? mod.default;
+      if (!RedisCtor) {
+        throw new Error("ioredis does not export a Redis constructor");
+      }
+      const client = new RedisCtor(url, {
         maxRetriesPerRequest: 3,
         lazyConnect: true,
         enableOfflineQueue: false,
@@ -164,7 +177,7 @@ function ensureRedis(): Promise<void> {
       // treats a Redis failure as a miss, so just record it quietly here.
       client.on?.("error", () => {});
       await client.connect();
-      redis = client as RedisLike;
+      redis = client;
       console.log("[api-cache] Using Redis backend");
     } catch (err) {
       redisUnavailable = true;

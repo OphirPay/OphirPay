@@ -2,13 +2,70 @@ import { globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+/**
+ * Custom rule plugin enforcing that every eslint-disable comment
+ * includes a justification reason (e.g. `// eslint-disable-next-line <rule> -- <reason>`).
+ * Addresses OphirPay issue #764: "Add a CI check that fails on a new eslint-disable without a justification comment".
+ */
+const suppressionGuardPlugin = {
+  meta: {
+    name: "suppression-guard",
+    version: "1.0.0",
+  },
+  rules: {
+    "require-description": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "Require justification comment after '-- <reason>' for any eslint-disable directive",
+        },
+        schema: [],
+        messages: {
+          missingDescription:
+            "eslint-disable comments must include a justification after '-- <reason>' (issue #764)",
+        },
+      },
+      create(context) {
+        const sourceCode = context.sourceCode;
+        return {
+          Program() {
+            const comments = sourceCode.getAllComments();
+            for (const comment of comments) {
+              const text = comment.value.trim();
+              if (
+                text.startsWith("eslint-disable") ||
+                text.startsWith("eslint-disable-next-line") ||
+                text.startsWith("eslint-disable-line")
+              ) {
+                const parts = text.split("--");
+                if (parts.length < 2 || parts[1].trim().length === 0) {
+                  context.report({
+                    loc: comment.loc,
+                    messageId: "missingDescription",
+                  });
+                }
+              }
+            }
+          },
+        };
+      },
+    },
+  },
+};
+
 // eslint-config-next >= 16 ships native flat config arrays via its
 // `core-web-vitals` and `typescript` subpath exports — no FlatCompat needed.
 const eslintConfig = [
   ...nextVitals,
   ...nextTs,
   {
+    plugins: {
+      "suppression-guard": suppressionGuardPlugin,
+    },
     rules: {
+      "@typescript-eslint/no-explicit-any": "error",
+      "suppression-guard/require-description": "error",
       "@typescript-eslint/no-unused-vars": [
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },

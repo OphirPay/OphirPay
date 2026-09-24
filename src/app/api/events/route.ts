@@ -81,8 +81,7 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
       // when the stream is cancelled/errored at the consumer end (Node >= 20
       // exposes it on ReadableStreamDefaultController). The request signal is
       // a fallback for runtimes that surface the drop differently.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- controller.signal is not yet in the TS Streams typings (same pattern as the audit-log SSE route).
-      (controller as any).signal?.addEventListener("abort", teardown, { once: true });
+      (controller as unknown as { signal?: AbortSignal }).signal?.addEventListener("abort", teardown, { once: true });
       request.signal.addEventListener("abort", teardown, { once: true });
     },
   });

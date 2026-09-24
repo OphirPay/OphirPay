@@ -223,8 +223,8 @@ async function main() {
   const envContent = [
     `# OphirPay Testnet Deployment — ${new Date().toISOString()}`,
     `NEXT_PUBLIC_STELLAR_NETWORK=TESTNET`,
-    `NEXT_PUBLIC_HORIZON_URL=https://horizon-testnet.stellar.org`,
-    `NEXT_PUBLIC_SOROBAN_RPC_URL=${RPC_URL}`,
+    `NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org`,
+    `NEXT_PUBLIC_STELLAR_RPC_URL=${RPC_URL}`,
     `NEXT_PUBLIC_CONTRACT_ID=${ophirpay.contractId}`,
     `NEXT_PUBLIC_EMITTER_CONTRACT_ID=${emitter.contractId}`,
     `# Deployer public: ${keypair.publicKey()}`,

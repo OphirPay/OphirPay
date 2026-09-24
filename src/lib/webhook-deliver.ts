@@ -19,6 +19,7 @@ export interface WebhookDeliveryResult {
   latencyMs: number;
   attempts: number;
   errorMessage?: string;
+  responseBody?: string;
 }
 
 /**
@@ -79,6 +80,7 @@ export async function deliverWebhook(
 
   let lastStatusCode: number | undefined;
   let lastError: string | undefined;
+  let lastResponseBody: string | undefined;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -100,6 +102,19 @@ export async function deliverWebhook(
       clearTimeout(timeout);
       lastStatusCode = response.status;
 
+      let responseText: string | undefined;
+      try {
+        if (typeof response.text === "function") {
+          const text = await response.text();
+          if (text) {
+            responseText = text.length > 500 ? text.slice(0, 500) + "…" : text;
+          }
+        }
+      } catch {
+        // ignore reading error
+      }
+      lastResponseBody = responseText;
+
       if (response.ok) {
         logger.info("Webhook delivered", { url, event: payload.event, attempt });
         incMetric("webhooks_delivered_total");
@@ -108,6 +123,7 @@ export async function deliverWebhook(
           statusCode: response.status,
           latencyMs: Date.now() - startedAt,
           attempts: attempt,
+          responseBody: responseText,
         };
       }
 
@@ -131,5 +147,6 @@ export async function deliverWebhook(
     latencyMs: Date.now() - startedAt,
     attempts: maxRetries,
     errorMessage: lastError ?? "Delivery exhausted retries",
+    responseBody: lastResponseBody,
   };
 }

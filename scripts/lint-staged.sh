@@ -1,19 +1,18 @@
-#!/bin/bash
-# Pre-commit lint-staged script.
-# Install with: npx husky add .husky/pre-commit "bash scripts/lint-staged.sh"
+#!/usr/bin/env bash
+# This script runs linting and formatting checks on staged files.
+# It uses `git diff --cached --name-only --diff-filter=ACM` to get the list of staged files.
+# Only files that match the patterns in the lint-staged config are checked.
 
-echo "🔍 Running pre-commit checks..."
+set -euo pipefail
 
-# TypeScript check
-echo "  → TypeScript..."
-npx tsc --noEmit || { echo "❌ TypeScript errors found"; exit 1; }
+# Get staged files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
 
-# Lint (flat config — `next lint` was removed in Next.js 16)
-echo "  → Lint..."
-npx eslint . --max-warnings 0 || { echo "⚠️  Lint warnings (non-blocking)"; }
+if [ -z "$STAGED_FILES" ]; then
+  echo "No staged files to lint."
+  exit 0
+fi
 
-# Tests
-echo "  → Tests..."
-npx vitest run --reporter=verbose || { echo "❌ Tests failed"; exit 1; }
-
-echo "✅ All pre-commit checks passed!"
+# Run lint-staged via npm script
+# This will use the configuration in package.json
+npx lint-staged

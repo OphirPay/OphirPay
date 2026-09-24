@@ -18,30 +18,39 @@ export default defineConfig({
       provider: "v8",
       include: ["src/lib/**", "src/components/ui/**", "src/hooks/**", "src/app/api/**"],
       exclude: [
+        // Test suite files and TypeScript declaration files
         "src/__tests__/**",
         "src/types/**",
         "**/*.d.ts",
+        // Browser wallet extension integration modules
         "src/lib/wallets/**",
+        // Library & component barrel re-export index files
         "src/lib/index.ts",
+        "src/components/ui/index.ts",
+        "src/hooks/index.ts",
+        // Soroban smart contract & Stellar RPC infrastructure
         "src/lib/contracts.ts",
         "src/lib/contract-advanced.ts",
         "src/lib/contract-events.ts",
         "src/lib/stellar.ts",
         "src/lib/rpc-failover.ts",
+        "src/lib/deploy-verify.ts",
+        "src/lib/trustline.ts",
+        // Event streaming & delivery subsystems
         "src/lib/events/event-source.ts",
-        // Sharded database support is exercised by the Playwright E2E suite;
-        // excluding its in-memory fixtures keeps unit coverage meaningful.
-        "src/lib/db/**",
         "src/lib/api-auth.ts",
         "src/lib/api-client.ts",
         "src/lib/rate-limit.ts",
         "src/lib/webhook-dispatcher.ts",
         "src/lib/webhook-deliver.ts",
-        "src/lib/demo-mode.ts",
-        "src/lib/instrumentation.ts",
+        // Database fixture modules tested via E2E Playwright suite
+        "src/lib/db/**",
+        // Server initialization, instrumentation & Sentry setup
+        "src/instrumentation.ts",
         "src/lib/startup.ts",
+        "src/lib/demo-mode.ts",
         "src/lib/sentry.ts",
-        "src/lib/deploy-verify.ts",
+        // React UI hooks exercised via browser integration tests
         "src/hooks/useMultiWallet.tsx",
         "src/hooks/useFreighter.tsx",
         "src/hooks/useTheme.tsx",
@@ -51,6 +60,7 @@ export default defineConfig({
         "src/hooks/useErrorTracker.ts",
         "src/hooks/useKeyboardShortcuts.ts",
         "src/hooks/useLocalStorage.ts",
+        // Utility helpers & feature flag modules
         "src/lib/ab-test.ts",
         "src/lib/address-book.ts",
         "src/lib/api-cache.ts",
@@ -60,17 +70,12 @@ export default defineConfig({
         "src/lib/client-auth.ts",
         "src/lib/client-version.ts",
         "src/lib/csv-import.ts",
-        "src/lib/deploy-verify.ts",
         "src/lib/payment-link.ts",
         "src/lib/prisma-logger.ts",
         "src/lib/query-params.ts",
         "src/lib/soft-delete.ts",
-        "src/components/ui/index.ts",
-        "src/hooks/index.ts",
         "src/lib/test-factory.ts",
         "src/lib/time.ts",
-        "src/lib/trustline.ts",
-        "src/lib/trustline-simulator.ts",
         "src/lib/version-script.ts",
         "src/lib/web-vitals.ts",
       ],

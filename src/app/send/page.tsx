@@ -134,6 +134,7 @@ function SendPageClient() {
       memo?: string;
       sourceAccountId: string;
       destAddress: string;
+      idempotencyKey?: string;
     },
     { id: string }
   >("/api/payments", {
@@ -490,18 +491,20 @@ function SendPageClient() {
       const response = await submitSignedTx(signedXdr);
 
       // 4. Record the payment on-chain via Soroban contract
+      const idempotencyKey = crypto.randomUUID();
       setStep("recording");
       const onChain = await recordPaymentOnChain({
         payer: wallet.publicKey,
         payee: destination.trim(),
         amountStroops: Math.round(parseFloat(amount) * XLM_STROOPS),
         txHash: response.hash,
+        idempotencyKey,
         signTransaction: (xdrToSign, opts) => connector.signTransaction(xdrToSign, opts),
         network: STELLAR_NETWORK,
         networkPassphrase: NETWORK_PASSPHRASE,
       });
 
-      // 5. Create DB payment record
+      // 5. Create DB payment record with the same idempotency key for 1:1 reconciliation
       try {
         await recordPaymentMutation.mutateAsync({
           amount: parseFloat(amount),
@@ -510,6 +513,7 @@ function SendPageClient() {
           memo: memo.trim() || undefined,
           sourceAccountId: wallet.publicKey,
           destAddress: destination.trim(),
+          idempotencyKey,
         });
       } catch {
         // Best-effort: payment already settled on-chain

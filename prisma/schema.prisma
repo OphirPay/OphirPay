@@ -233,6 +233,8 @@ model Payment {
   @@index([sourceAccountId])
   /// Speeds up account-centric queries.
   @@index([destAccountId])
+  /// Speeds up deduplication lookups by idempotency key.
+  @@index([idempotencyKey])
 }
 
 /// Lifecycle of a Payment row. CREATED → SIGNED → SUBMITTED → CONFIRMED →

@@ -89,6 +89,7 @@ fn test_payment_recording_and_retrieval_flow() {
         &fix.token_id,
         &tx_hash_1,
         &meta_1,
+        &None,
     );
     assert_eq!(id_1, 1);
 
@@ -102,6 +103,7 @@ fn test_payment_recording_and_retrieval_flow() {
         &fix.token_id,
         &tx_hash_2,
         &meta_2,
+        &None,
     );
     assert_eq!(id_2, 2);
 
@@ -147,6 +149,7 @@ fn test_payment_cancellation_lifecycle() {
         &fix.token_id,
         &tx_hash,
         &meta,
+        &None,
     );
 
     // Stranger cannot cancel payment
@@ -224,7 +227,7 @@ fn test_paused_contract_blocks_payments() {
     let meta = String::from_str(&fix.env, "meta");
     let res = fix
         .client
-        .try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+        .try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta, &None);
     assert!(res.is_err());
 
     // Unpause contract
@@ -233,7 +236,7 @@ fn test_paused_contract_blocks_payments() {
 
     let pid = fix
         .client
-        .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+        .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta, &None);
     assert_eq!(pid, 1);
 }
 
@@ -385,6 +388,7 @@ fn test_refund_lifecycle_approval_and_processing() {
         &fix.token_id,
         &tx_hash,
         &meta,
+        &None,
     );
 
     // Requester (payer) requests refund
@@ -448,6 +452,7 @@ fn test_refund_rejection_and_guards() {
         &fix.token_id,
         &tx_hash,
         &meta,
+        &None,
     );
 
     // Stranger cannot request refund
@@ -509,6 +514,7 @@ fn test_refund_reason_code_analytics() {
         &fix.token_id,
         &tx_hash,
         &meta,
+        &None,
     );
 
     // Create refunds with various reason codes
@@ -753,3 +759,72 @@ fn test_cross_contract_emergency_pause_orchestration() {
         emitter_client.emit_payment(&fix.owner, &source, &payer, &payee, &100i128, &tx_hash);
     assert_eq!(evt_id, 1);
 }
+
+#[test]
+fn test_record_payment_idempotency_integration() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    let key1 = String::from_str(&fix.env, "idem-int-key-1");
+    let key2 = String::from_str(&fix.env, "idem-int-key-2");
+    let tx_1 = String::from_str(&fix.env, "0xidem_tx_1");
+    let tx_1_retry = String::from_str(&fix.env, "0xidem_tx_1_retry");
+    let meta_1 = String::from_str(&fix.env, "meta_1");
+    let meta_1_retry = String::from_str(&fix.env, "meta_1_retry");
+
+    // 1. First submission with key1
+    let id_1 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &5_000_000i128,
+        &fix.token_id,
+        &tx_1,
+        &meta_1,
+        &Some(key1.clone()),
+    );
+    assert_eq!(id_1, 1);
+    assert_eq!(fix.client.get_payment_count(), 1);
+
+    // 2. Duplicate submission with SAME key1: returns id 1 and does not create second record
+    let id_1_dup = fix.client.record_payment(
+        &payer,
+        &payee,
+        &9_999_999i128,
+        &fix.token_id,
+        &tx_1_retry,
+        &meta_1_retry,
+        &Some(key1.clone()),
+    );
+    assert_eq!(id_1_dup, 1);
+    assert_eq!(fix.client.get_payment_count(), 1);
+
+    // Verify original record is unchanged
+    let payment_1 = fix.client.get_payment(&1);
+    assert_eq!(payment_1.amount, 5_000_000);
+    assert_eq!(payment_1.tx_hash, tx_1);
+    assert_eq!(payment_1.idempotency_key, Some(key1.clone()));
+
+    // Verify lookup queries by idempotency key
+    assert_eq!(fix.client.get_payment_id_by_idempotency_key(&key1), Some(1));
+    let looked_up = fix.client.get_payment_by_idempotency_key(&key1);
+    assert_eq!(looked_up.id, 1);
+    assert_eq!(looked_up.amount, 5_000_000);
+
+    // 3. Submission with distinct key2 creates new payment #2
+    let tx_2 = String::from_str(&fix.env, "0xidem_tx_2");
+    let meta_2 = String::from_str(&fix.env, "meta_2");
+    let id_2 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &2_500_000i128,
+        &fix.token_id,
+        &tx_2,
+        &meta_2,
+        &Some(key2.clone()),
+    );
+    assert_eq!(id_2, 2);
+    assert_eq!(fix.client.get_payment_count(), 2);
+    assert_eq!(fix.client.get_payment_id_by_idempotency_key(&key2), Some(2));
+}
+

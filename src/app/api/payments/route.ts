@@ -133,6 +133,31 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
     const parsed = createPaymentSchema.safeParse(body);
     if (!parsed.success) return validationError(parsed.error);
 
+    // Resolve idempotency key: header takes precedence over body, fallback to server-generated UUID
+    let idempotencyKey = parsed.data.idempotencyKey;
+    const headerKey = request.headers.get("idempotency-key");
+    if (headerKey !== null) {
+      const trimmed = headerKey.trim();
+      if (trimmed.length > 0) {
+        idempotencyKey = trimmed;
+      }
+    }
+
+    // Deduplication check: if payment with this key was already created for user, return existing record
+    if (idempotencyKey) {
+      const existing = await prisma.payment.findFirst({
+        where: {
+          userId: auth.userId,
+          idempotencyKey,
+        },
+      });
+      if (existing) {
+        return successResponse(existing, { deduplicated: true }, 200);
+      }
+    }
+
+    const finalKey = idempotencyKey || crypto.randomUUID();
+
     const payment = await prisma.payment.create({
       data: {
         amount: parsed.data.amount,
@@ -140,9 +165,7 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
         assetIssuer: parsed.data.assetIssuer,
         description: parsed.data.description,
         memo: parsed.data.memo,
-        // Server-generated idempotency key — every attempt (original or
-        // retried) carries its own key, so attempts are never confused.
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: finalKey,
         status: "CREATED",
         // The authenticated user owns the record; sourceAccountId is a
         // Stellar account reference, NOT the User FK (previously this

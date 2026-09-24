@@ -17,6 +17,7 @@ const PAUSED: Symbol = symbol_short!("PAUSED");
 const PENDING_OWNER: Symbol = symbol_short!("PND_OWN");
 const OWNER_PROPOSED_AT: Symbol = symbol_short!("OWN_PAT");
 const ALLOWED_SOURCE: Symbol = symbol_short!("ALW_SRC");
+const EVT_IDEMPOTENCY_KEY: Symbol = symbol_short!("EVT_IDEM");
 
 // Event schema version. Bump when the emitted event shape changes.
 const EVENT_SCHEMA_VERSION: u32 = 1;
@@ -117,7 +118,35 @@ impl PaymentEventEmitter {
         amount: i128,
         tx_hash: String,
     ) -> Result<u64, EmitterError> {
+        Self::emit_payment_idempotent(env, caller, source, payer, payee, amount, tx_hash, None)
+    }
+
+    /// Record an external payment event with idempotency support.
+    /// If an event with the given idempotency key was already emitted,
+    /// returns the existing event ID without creating a duplicate record.
+    pub fn emit_payment_idempotent(
+        env: Env,
+        caller: Address,
+        source: String,
+        payer: Address,
+        payee: Address,
+        amount: i128,
+        tx_hash: String,
+        idempotency_key: Option<String>,
+    ) -> Result<u64, EmitterError> {
         caller.require_auth();
+
+        if let Some(ref key) = idempotency_key {
+            if key.len() > 0 {
+                if let Some(existing_id) = env
+                    .storage()
+                    .persistent()
+                    .get::<_, u64>(&(EVT_IDEMPOTENCY_KEY, key.clone()))
+                {
+                    return Ok(existing_id);
+                }
+            }
+        }
 
         if let Some(allowed) = env.storage().instance().get::<_, Address>(&ALLOWED_SOURCE) {
             let owner: Address = env
@@ -152,6 +181,17 @@ impl PaymentEventEmitter {
         env.storage().persistent().set(&count, &event);
         env.storage().persistent().extend_ttl(&count, 5000, 50000);
 
+        if let Some(ref key) = idempotency_key {
+            if key.len() > 0 {
+                env.storage()
+                    .persistent()
+                    .set(&(EVT_IDEMPOTENCY_KEY, key.clone()), &count);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&(EVT_IDEMPOTENCY_KEY, key.clone()), 5000, 50000);
+            }
+        }
+
         env.storage().instance().set(&EVENT_COUNT, &count);
         env.storage().instance().extend_ttl(5000, 50000);
 
@@ -166,6 +206,16 @@ impl PaymentEventEmitter {
         );
 
         Ok(count)
+    }
+
+    /// Query event ID by idempotency key
+    pub fn get_event_id_by_idempotency_key(
+        env: Env,
+        idempotency_key: String,
+    ) -> Option<u64> {
+        env.storage()
+            .persistent()
+            .get(&(EVT_IDEMPOTENCY_KEY, idempotency_key))
     }
 
     /// Get event by ID with legacy backward compatibility.
@@ -799,5 +849,64 @@ mod tests {
             }
         }
         assert_eq!(all_ids.len(), 25);
+    }
+
+    #[test]
+    fn test_emit_payment_idempotent_duplicate_and_distinct() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+
+        let owner = Address::generate(&env);
+        let _ = client.init(&owner);
+
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let source = String::from_str(&env, "OphirPay");
+        let tx_hash = String::from_str(&env, "0xemit_idem_1");
+        let key1 = String::from_str(&env, "emitter-key-1");
+        let key2 = String::from_str(&env, "emitter-key-2");
+
+        // 1. Initial emission with key1 -> event ID 1
+        let id1 = client.emit_payment_idempotent(
+            &owner,
+            &source,
+            &payer,
+            &payee,
+            &1_000_000i128,
+            &tx_hash,
+            &Some(key1.clone()),
+        );
+        assert_eq!(id1, 1);
+        assert_eq!(client.get_event_count(), 1);
+
+        // 2. Duplicate emission with key1 -> returns ID 1 without incrementing count
+        let id1_dup = client.emit_payment_idempotent(
+            &owner,
+            &source,
+            &payer,
+            &payee,
+            &2_000_000i128,
+            &String::from_str(&env, "0xretry"),
+            &Some(key1.clone()),
+        );
+        assert_eq!(id1_dup, 1);
+        assert_eq!(client.get_event_count(), 1);
+        assert_eq!(client.get_event_id_by_idempotency_key(&key1), Some(1));
+
+        // 3. Distinct key2 -> event ID 2
+        let id2 = client.emit_payment_idempotent(
+            &owner,
+            &source,
+            &payer,
+            &payee,
+            &3_000_000i128,
+            &String::from_str(&env, "0xemit_idem_2"),
+            &Some(key2.clone()),
+        );
+        assert_eq!(id2, 2);
+        assert_eq!(client.get_event_count(), 2);
+        assert_eq!(client.get_event_id_by_idempotency_key(&key2), Some(2));
     }
 }

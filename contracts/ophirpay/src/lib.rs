@@ -59,6 +59,7 @@ const FEE_VER_CNT: Symbol = symbol_short!("FE_VER");
 const MSIG_VER_CNT: Symbol = symbol_short!("MS_VER");
 const PENDING_OWNER: Symbol = symbol_short!("PND_OWN");
 const OWNER_PROPOSED_AT: Symbol = symbol_short!("OWN_PAT");
+const IDEMPOTENCY_KEY: Symbol = symbol_short!("IDEM_KEY");
 
 // ── Per-counter storage keys (replaces ContractStats monolith) ─
 // Gas-optimized: each counter is a single u64/i128 instance key.
@@ -126,6 +127,7 @@ pub struct Payment {
     pub timestamp: u64,
     pub metadata: String,
     pub cancelled: bool,
+    pub idempotency_key: Option<String>,
 }
 
 /// An escrow that locks funds until released by the owner, claimed after
@@ -798,10 +800,16 @@ pub enum PaymentError {
 
 // ── Native Events ──────────────────────────────────────────────
 
-fn emit_payment_event(env: &Env, payer: &Address, payee: &Address, amount: &i128) {
+fn emit_payment_event(
+    env: &Env,
+    payer: &Address,
+    payee: &Address,
+    amount: &i128,
+    idempotency_key: &Option<String>,
+) {
     env.events().publish(
         (Symbol::new(env, "payment"), payer.clone(), payee.clone()),
-        *amount,
+        (*amount, idempotency_key.clone()),
     );
 }
 
@@ -1321,6 +1329,7 @@ impl OphirPayContract {
             timestamp: env.ledger().timestamp(),
             metadata: String::from_str(&env, "multisig"),
             cancelled: false,
+            idempotency_key: None,
         };
 
         env.storage()
@@ -2110,6 +2119,7 @@ impl OphirPayContract {
             timestamp: env.ledger().timestamp(),
             metadata,
             cancelled: false,
+            idempotency_key: None,
         };
 
         env.storage()
@@ -2121,7 +2131,7 @@ impl OphirPayContract {
         env.storage().instance().set(&PAYMENT_COUNT, &count);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
 
-        emit_payment_event(&env, &payer, &payee, &amount);
+        emit_payment_event(&env, &payer, &payee, &amount, &None);
         inc_counter(&env, &STAT_PAYMENTS);
         record_audit(
             &env,
@@ -2893,6 +2903,10 @@ impl OphirPayContract {
 
     /// Record an off-chain payment on the Soroban ledger.
     /// Anyone can call — this just stores a record, no tokens move.
+    ///
+    /// Accepts an optional idempotency key. If a payment was already recorded
+    /// with the same idempotency key, the existing payment ID is returned
+    /// without charging another fee or creating a duplicate record.
     pub fn record_payment(
         env: Env,
         payer: Address,
@@ -2901,11 +2915,26 @@ impl OphirPayContract {
         asset: Address,
         tx_hash: String,
         metadata: String,
+        idempotency_key: Option<String>,
     ) -> Result<u64, PaymentError> {
         payer.require_auth();
         require_not_paused(&env)?;
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
+        }
+
+        // Deduplication check: if idempotency key is already recorded,
+        // return the existing payment ID without creating a duplicate record or recharging fee.
+        if let Some(ref key) = idempotency_key {
+            if key.len() > 0 {
+                if let Some(existing_id) = env
+                    .storage()
+                    .persistent()
+                    .get::<_, u64>(&(IDEMPOTENCY_KEY, key.clone()))
+                {
+                    return Ok(existing_id);
+                }
+            }
         }
 
         // Collect protocol fee before recording.  If fee transfer fails
@@ -2926,6 +2955,7 @@ impl OphirPayContract {
             timestamp: env.ledger().timestamp(),
             metadata,
             cancelled: false,
+            idempotency_key: idempotency_key.clone(),
         };
 
         env.storage()
@@ -2934,11 +2964,24 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .extend_ttl(&(PAYMENT_KEY, count), BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        // Store idempotency mapping
+        if let Some(ref key) = idempotency_key {
+            if key.len() > 0 {
+                env.storage()
+                    .persistent()
+                    .set(&(IDEMPOTENCY_KEY, key.clone()), &count);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&(IDEMPOTENCY_KEY, key.clone()), BUMP_MIN_TTL, BUMP_MAX_TTL);
+            }
+        }
+
         env.storage().instance().set(&PAYMENT_COUNT, &count);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
 
-        // Native event
-        emit_payment_event(&env, &payer, &payee, &amount);
+        // Native event (surfaces amount and idempotency key for indexers)
+        emit_payment_event(&env, &payer, &payee, &amount, &idempotency_key);
 
         inc_counter(&env, &STAT_PAYMENTS);
 
@@ -2953,6 +2996,29 @@ impl OphirPayContract {
             .persistent()
             .get(&(PAYMENT_KEY, payment_id))
             .ok_or(PaymentError::PaymentNotFound)
+    }
+
+    /// Get payment ID by idempotency key
+    pub fn get_payment_id_by_idempotency_key(
+        env: Env,
+        idempotency_key: String,
+    ) -> Option<u64> {
+        env.storage()
+            .persistent()
+            .get(&(IDEMPOTENCY_KEY, idempotency_key))
+    }
+
+    /// Get payment record by idempotency key
+    pub fn get_payment_by_idempotency_key(
+        env: Env,
+        idempotency_key: String,
+    ) -> Result<Payment, PaymentError> {
+        let payment_id: u64 = env
+            .storage()
+            .persistent()
+            .get(&(IDEMPOTENCY_KEY, idempotency_key))
+            .ok_or(PaymentError::PaymentNotFound)?;
+        Self::get_payment(env, payment_id)
     }
 
     /// Get total payment count
@@ -3588,6 +3654,7 @@ impl OphirPayContract {
             timestamp: now,
             metadata: String::from_str(&env, "recurring"),
             cancelled: false,
+            idempotency_key: None,
         };
 
         env.storage()
@@ -3604,6 +3671,7 @@ impl OphirPayContract {
             &recurring.creator,
             &recurring.payee,
             &recurring.amount,
+            &None,
         );
 
         // Update recurring state
@@ -4182,6 +4250,7 @@ impl OphirPayContract {
                 timestamp: env.ledger().timestamp(),
                 metadata: String::from_str(&env, "batch"),
                 cancelled: false,
+                idempotency_key: None,
             };
 
             env.storage()
@@ -4191,7 +4260,7 @@ impl OphirPayContract {
                 .persistent()
                 .extend_ttl(&(PAYMENT_KEY, pay_count), BUMP_MIN_TTL, BUMP_MAX_TTL);
 
-            emit_payment_event(&env, &creator, &payee_addr, &amount);
+            emit_payment_event(&env, &creator, &payee_addr, &amount, &None);
         }
 
         let successful = actual_recipients;
@@ -4383,6 +4452,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_hash_abc"),
             &String::from_str(&env, "test payment"),
+            &None,
         );
         assert_eq!(id, 1);
         assert_eq!(client.get_payment_count(), 1);
@@ -4393,6 +4463,81 @@ mod tests {
         assert_eq!(payment.amount, 1000);
         assert_eq!(payment.tx_hash, String::from_str(&env, "tx_hash_abc"));
         assert!(payment.timestamp > 0);
+    }
+
+    #[test]
+    fn test_record_payment_idempotency_duplicate_and_distinct() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+
+        let key1 = String::from_str(&env, "idem-key-1001");
+        let key2 = String::from_str(&env, "idem-key-1002");
+
+        // 1. Initial submission with key1: creates payment #1
+        let id1 = client.record_payment(
+            &payer,
+            &payee,
+            &1000i128,
+            &sac,
+            &String::from_str(&env, "tx_1"),
+            &String::from_str(&env, "payment 1"),
+            &Some(key1.clone()),
+        );
+        assert_eq!(id1, 1);
+        assert_eq!(client.get_payment_count(), 1);
+
+        // 2. Duplicate submission with SAME key1: returns existing ID 1, payment count remains 1
+        let id1_dup = client.record_payment(
+            &payer,
+            &payee,
+            &2000i128,
+            &sac,
+            &String::from_str(&env, "tx_1_retry"),
+            &String::from_str(&env, "payment 1 retry"),
+            &Some(key1.clone()),
+        );
+        assert_eq!(id1_dup, 1);
+        assert_eq!(client.get_payment_count(), 1);
+
+        // Verify record content reflects original payment (not overwritten)
+        let payment1 = client.get_payment(&1);
+        assert_eq!(payment1.amount, 1000);
+        assert_eq!(payment1.tx_hash, String::from_str(&env, "tx_1"));
+        assert_eq!(payment1.idempotency_key, Some(key1.clone()));
+
+        // Verify idempotency lookup queries
+        assert_eq!(client.get_payment_id_by_idempotency_key(&key1), Some(1));
+        let looked_up = client.get_payment_by_idempotency_key(&key1);
+        assert_eq!(looked_up.id, 1);
+        assert_eq!(looked_up.amount, 1000);
+
+        // 3. Distinct key submission with key2: creates payment #2
+        let id2 = client.record_payment(
+            &payer,
+            &payee,
+            &3000i128,
+            &sac,
+            &String::from_str(&env, "tx_2"),
+            &String::from_str(&env, "payment 2"),
+            &Some(key2.clone()),
+        );
+        assert_eq!(id2, 2);
+        assert_eq!(client.get_payment_count(), 2);
+        assert_eq!(client.get_payment_id_by_idempotency_key(&key2), Some(2));
+
+        // 4. Missing/unkeyed lookup returns None / Error
+        let unknown_key = String::from_str(&env, "non-existent-key");
+        assert_eq!(client.get_payment_id_by_idempotency_key(&unknown_key), None);
+        assert!(client.try_get_payment_by_idempotency_key(&unknown_key).is_err());
     }
 
     #[test]
@@ -4415,6 +4560,7 @@ mod tests {
                 &sac,
                 &String::from_str(&env, "tx"),
                 &String::from_str(&env, ""),
+                &None,
             ),
             Err(Ok(PaymentError::InvalidAmount))
         );
@@ -4439,6 +4585,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, ""),
+            &None,
         );
 
         client.cancel_payment(&owner, &1);
@@ -4788,6 +4935,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, ""),
+            &None,
         );
         assert!(result.is_err());
 
@@ -4802,6 +4950,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx2"),
             &String::from_str(&env, ""),
+            &None,
         );
         assert_eq!(id, 1);
     }
@@ -4885,6 +5034,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, ""),
+            &None,
         );
 
         client.cancel_payment(&owner, &1);
@@ -5071,6 +5221,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, "audit"),
+            &None,
         );
 
         let count = client.get_audit_log_count();
@@ -5319,6 +5470,7 @@ mod tests {
             &asset,
             &String::from_str(&env, "tx_refund_test"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         let rid = client.request_refund(
@@ -5357,6 +5509,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_approve"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         let rid = client.request_refund(
@@ -5405,6 +5558,7 @@ mod tests {
             &asset,
             &String::from_str(&env, "tx_unauth_refund"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         // A stranger (neither payer nor payee) must not be able to request a refund
@@ -5473,6 +5627,7 @@ mod tests {
             &asset,
             &String::from_str(&env, "tx_analytics"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         client.request_refund(
@@ -5881,6 +6036,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_hash"),
             &String::from_str(&env, "refundable payment"),
+            &None,
         );
 
         // Request refund
@@ -5934,6 +6090,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         client.request_refund(
@@ -6419,6 +6576,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx1"),
             &String::from_str(&env, "meta1"),
+            &None,
         );
 
         // Bump the payment range.
@@ -6499,6 +6657,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_a"),
             &String::from_str(&env, "m_a"),
+            &None,
         );
         client.record_payment(
             &payer,
@@ -6507,6 +6666,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_b"),
             &String::from_str(&env, "m_b"),
+            &None,
         );
 
         let mut payees = Vec::new(&env);

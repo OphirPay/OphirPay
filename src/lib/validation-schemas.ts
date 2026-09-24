@@ -66,6 +66,7 @@ export const createPaymentSchema = z.object({
   assetIssuer: z.string().optional(),
   description: z.string().max(200).optional(),
   memo: memoField,
+  idempotencyKey: z.string().trim().min(1).max(255).optional(),
 });
 
 /** Body for POST /api/payments/retry — which failed payment to retry. */

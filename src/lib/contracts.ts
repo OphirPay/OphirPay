@@ -345,6 +345,7 @@ export async function recordPaymentOnChain(params: {
   amountStroops: number;
   txHash: string;
   metadata?: string;
+  idempotencyKey?: string;
   signTransaction: (
     xdr: string,
     opts?: { network?: string; networkPassphrase?: string }
@@ -358,6 +359,7 @@ export async function recordPaymentOnChain(params: {
     amountStroops,
     txHash,
     metadata = "",
+    idempotencyKey,
     signTransaction,
     network = "TESTNET",
     networkPassphrase,
@@ -365,7 +367,7 @@ export async function recordPaymentOnChain(params: {
 
   try {
     // Matches the contract's `record_payment(payer, payee, amount, asset,
-    // tx_hash, metadata)` signature — payer is the auth'd caller.
+    // tx_hash, metadata, idempotency_key)` signature — payer is the auth'd caller.
     const args: xdr.ScVal[] = [
       nativeToScVal(payer, { type: "address" }), // payer (require_auth)
       nativeToScVal(payee, { type: "address" }), // payee
@@ -373,6 +375,9 @@ export async function recordPaymentOnChain(params: {
       nativeToScVal(Asset.native().contractId(NETWORK_PASSPHRASE), { type: "address" }), // asset
       nativeToScVal(txHash, { type: "string" }), // tx_hash
       nativeToScVal(metadata, { type: "string" }), // metadata
+      idempotencyKey
+        ? nativeToScVal(idempotencyKey, { type: "string" })
+        : xdr.ScVal.scvVoid(), // idempotency_key: Option<String>
     ];
 
     const txInfo = await invokeContractFunction(

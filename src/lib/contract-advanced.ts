@@ -536,3 +536,85 @@ export async function emergencyUnpauseAll(
   ];
   return signAndSubmit(caller, CONTRACT_ID, "emergency_unpause_all", args);
 }
+
+// ── On-Chain Idempotency Helpers ───────────────────────────────
+
+/**
+ * Record an off-chain payment on the Soroban ledger with explicit idempotency key.
+ *
+ * Calls OphirPayContract.record_payment with:
+ * (payer, payee, amount, asset, tx_hash, metadata, idempotency_key).
+ * If the key was previously submitted on-chain, returns the existing payment ID
+ * without creating a duplicate record or recharging fee.
+ */
+export async function recordPaymentOnChainIdempotent(
+  caller: string,
+  payee: string,
+  amountStroops: number | bigint,
+  asset: string,
+  txHash: string,
+  metadata = "",
+  idempotencyKey?: string,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(payee, { type: "address" }),
+    nativeToScVal(amountStroops, { type: "i128" }),
+    nativeToScVal(asset, { type: "address" }),
+    nativeToScVal(txHash, { type: "string" }),
+    nativeToScVal(metadata, { type: "string" }),
+    idempotencyKey
+      ? nativeToScVal(idempotencyKey, { type: "string" })
+      : xdr.ScVal.scvVoid(),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "record_payment", args);
+}
+
+/**
+ * Emit an external payment event via PaymentEventEmitter with idempotency support.
+ */
+export async function emitPaymentIdempotent(
+  caller: string,
+  source: string,
+  payer: string,
+  payee: string,
+  amount: number | bigint,
+  txHash: string,
+  idempotencyKey?: string,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(source, { type: "string" }),
+    nativeToScVal(payer, { type: "address" }),
+    nativeToScVal(payee, { type: "address" }),
+    nativeToScVal(amount, { type: "i128" }),
+    nativeToScVal(txHash, { type: "string" }),
+    idempotencyKey
+      ? nativeToScVal(idempotencyKey, { type: "string" })
+      : xdr.ScVal.scvVoid(),
+  ];
+  return signAndSubmit(caller, EMITTER_ID, "emit_payment_idempotent", args);
+}
+
+/**
+ * Query on-chain payment ID by idempotency key (read-only simulation).
+ */
+export async function getPaymentIdByIdempotencyKey(
+  sourcePublicKey: string,
+  idempotencyKey: string,
+) {
+  const args: xdr.ScVal[] = [nativeToScVal(idempotencyKey, { type: "string" })];
+  return simulateContractCall(CONTRACT_ID, "get_payment_id_by_idempotency_key", sourcePublicKey, args);
+}
+
+/**
+ * Query on-chain payment record by idempotency key (read-only simulation).
+ */
+export async function getPaymentByIdempotencyKey(
+  sourcePublicKey: string,
+  idempotencyKey: string,
+) {
+  const args: xdr.ScVal[] = [nativeToScVal(idempotencyKey, { type: "string" })];
+  return simulateContractCall(CONTRACT_ID, "get_payment_by_idempotency_key", sourcePublicKey, args);
+}
+

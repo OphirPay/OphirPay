@@ -1,17 +1,6 @@
 apiVersion: v2
 name: ophirpay
-description: OphirPay — Production-grade Stellar payment infrastructure
+description: A Helm chart for OphirPay
 type: application
-version: 1.0.0
+version: 0.1.0
 appVersion: "1.0.0"
-keywords:
-  - stellar
-  - soroban
-  - payments
-  - blockchain
-home: https://ophirpay.com
-sources:
-  - https://github.com/OphirPay/OphirPay
-maintainers:
-  - name: OphirPay Team
-    email: team@ophirpay.com

@@ -5,6 +5,15 @@ on:
   schedule:
     - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+# Neither trigger is ref-scoped, so the workflow shares a single group. Publishing
+# the Scorecard result to the security tab needs the run to finish, so
+# cancel-in-progress is false.
+# See CONTRIBUTING.md § "Workflow concurrency convention".
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions: read-all
 
 jobs:

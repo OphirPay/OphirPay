@@ -7,6 +7,15 @@ on:
       - 'scripts/check-contract-regressions.mjs'
       - '.github/workflows/contract-regression.yml'
 
+# ── Global Concurrency — cancel stale runs on same ref ────────
+# Everything here is triggered per-PR (or per-push), so key the group on the ref:
+# a rapid follow-up push cancels the superseded run rather than stacking a second
+# Cargo/Docker build whose result nobody reads.
+# See CONTRIBUTING.md § "Workflow concurrency convention".
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   contract-regression:
     runs-on: ubuntu-latest

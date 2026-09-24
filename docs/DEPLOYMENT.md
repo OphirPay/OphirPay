@@ -478,7 +478,10 @@ curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/
 curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/api/health
 # Expected: 200
 
-# 4. Verify database connectivity
+# 4. Verify security headers (see docs/SECURITY_HEADERS.md for complete runbook)
+curl -sI https://your-domain.com | grep -Ei "^(content-security-policy|x-content-type-options|x-frame-options|x-xss-protection|strict-transport-security)"
+
+# 5. Verify database connectivity
 curl -s https://your-domain.com/api/health | jq .database
 # Expected: "connected"
 ```

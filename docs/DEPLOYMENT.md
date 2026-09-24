@@ -460,6 +460,34 @@ DATABASE_PROVIDER=sqlite npx prisma db push
 
 > ⚠️ SQLite is for local development only. Production must use PostgreSQL.
 
+### Automated Backups & Disaster Recovery Restore Drills
+
+OphirPay enforces automated backups and routine restore validation to ensure disaster recovery reliability:
+
+1. **Daily Automated Backups**:
+   - Scheduled via `.github/workflows/db-backup.yml` at 03:00 UTC.
+   - Creates a compressed PostgreSQL dump (`ophirpay-<TIMESTAMP>.sql.gz`) with `--no-owner --no-acl`.
+   - Validates non-empty output and gzip archive integrity before uploading to S3 with `STANDARD_IA` storage tier.
+   - Enforces a 30-day retention policy, pruning expired snapshots.
+
+2. **Automated Disaster Recovery Restore Drills**:
+   - Executes weekly on Sundays at 04:00 UTC and on-demand via `workflow_dispatch` in `.github/workflows/db-backup.yml`.
+   - Validates negative failure modes: deliberately corrupted, truncated, or missing backups fail the drill loudly with exit code 1.
+   - Spins up an ephemeral PostgreSQL instance (`postgres:16-alpine`) in an isolated environment.
+   - Atomically restores the backup snapshot via `psql -v ON_ERROR_STOP=1 --single-transaction`.
+   - Asserts query accessibility and row counts across core models: `User`, `Account`, `Payment`, `Batch`, `PaymentRequest`, `Webhook`, `ApiKey`.
+   - Validates schema parity against repository migrations using `npx prisma migrate status`.
+   - Cleans up ephemeral containers and temporary files via an unconditional `EXIT` trap.
+
+3. **Running the Drill Locally or in Staging**:
+   ```bash
+   # Run against the latest S3 backup
+   ./scripts/restore-drill.sh
+
+   # Run against a specific backup file
+   ./scripts/restore-drill.sh ./ophirpay-backup.sql.gz
+   ```
+
 ---
 
 ## Post-Deployment Verification

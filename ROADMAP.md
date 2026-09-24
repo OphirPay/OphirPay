@@ -43,7 +43,7 @@ fully-green repository.
 - [ ] Mainnet deployment with $1M+ TVL target
 - [ ] Token-weighted governance (governance token + snapshot system)
 - [ ] Mobile wallet SDK (React Native)
-- [ ] Fiat on-ramp integration (Kado, MoonPay)
+- [x] Fiat on-ramp integration (SEP-24 interactive anchor deposit & withdrawal flow)
 - [ ] Cross-chain bridge support (Sep-38 anchors)
 - [ ] Real-time WebSocket API (replace SSE polling)
 - [ ] Automated market maker for fee distribution

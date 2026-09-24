@@ -23,7 +23,7 @@
 //
 //   1. Swap the datasource: uncomment the sqlite block below and comment out
 //      the postgresql block.
-//   2. Drop all four `@db.Decimal(18, 7)` annotations — SQLite has no
+//   2. Drop all eight `@db.Decimal(18, 7)` annotations — SQLite has no
 //      fixed-precision numeric type, so Prisma stores Decimal as its own
 //      arbitrary-precision text representation.
 //

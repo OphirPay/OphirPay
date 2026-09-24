@@ -1,62 +1,128 @@
-// SPDX-License-Identifier: MIT
-
 /**
- * Cache-control header utilities for API and static responses.
+ * Central cache abstraction used throughout the application.
+ *
+ * It prefers a Redis backend when `REDIS_URL` is defined, otherwise it falls
+ * back to an in‑memory store so the application continues to work without a
+ * Redis instance (e.g. during local development or CI).
+ *
+ * The API mirrors the subset of Redis commands we need: `GET`, `SET` with TTL,
+ * `DEL` and a simple prefix‑based invalidation helper.
+ *
+ * All methods are async to keep the same signature regardless of the backend.
  */
 
-interface CacheConfig {
-  maxAge?: number;
-  staleWhileRevalidate?: number;
-  immutable?: boolean;
-  isPrivate?: boolean;
+import type { Redis } from 'ioredis';
+
+// -----------------------------------------------------------------------------
+// Backend selection
+// -----------------------------------------------------------------------------
+let redisClient: Redis | null = null;
+
+if (process.env.REDIS_URL) {
+  // Dynamically require ioredis so the package remains optional.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const IORedis = require('ioredis') as typeof import('ioredis');
+  redisClient = new IORedis(process.env.REDIS_URL);
+}
+
+// -----------------------------------------------------------------------------
+// In‑memory fallback (simple TTL map)
+// -----------------------------------------------------------------------------
+type MemoryEntry = {
+  value: string;
+  expiresAt: number; // epoch ms
+};
+
+const memoryStore = new Map<string, MemoryEntry>();
+
+// -----------------------------------------------------------------------------
+// Helper utilities
+// -----------------------------------------------------------------------------
+function now(): number {
+  return Date.now();
 }
 
 /**
- * Generate a Cache-Control header value for API responses.
+ * Delete a list of keys from the in‑memory store.
  */
-export function cacheControl(config: CacheConfig = {}): string {
-  const {
-    maxAge = 0,
-    staleWhileRevalidate,
-    immutable = false,
-    isPrivate = false,
-  } = config;
-
-  const directives: string[] = [];
-
-  if (isPrivate) {
-    directives.push("private");
-  } else {
-    directives.push("public");
+function deleteFromMemory(keys: string[]) {
+  for (const key of keys) {
+    memoryStore.delete(key);
   }
-
-  directives.push(`max-age=${maxAge}`);
-
-  if (staleWhileRevalidate) {
-    directives.push(`stale-while-revalidate=${staleWhileRevalidate}`);
-  }
-
-  if (immutable) {
-    directives.push("immutable");
-  }
-
-  if (maxAge === 0) {
-    return "no-cache, no-store, must-revalidate";
-  }
-
-  return directives.join(", ");
 }
 
 /**
- * Standard cache settings for different response types.
+ * Retrieve all keys that start with a given prefix from the in‑memory store.
  */
-export const CACHE_PRESETS = {
-  /** Dynamic data — never cache (default for API) */
-  dynamic: "no-cache, no-store, must-revalidate",
-  /** Semi-static data — cache for 1 minute, stale for 5 */
-  short: "public, max-age=60, stale-while-revalidate=300",
-  /** Static data — cache for 1 hour */
-  long: "public, max-age=3600, stale-while-revalidate=86400",
-  /** Immutable assets (fingerprinted files) */
-  immutable: "public, max-age=31536000, immutable",
-} as const;
+function keysWithPrefixFromMemory(prefix: string): string[] {
+  const result: string[] = [];
+  for (const key of memoryStore.keys()) {
+    if (key.startsWith(prefix)) result.push(key);
+  }
+  return result;
+}
+
+// -----------------------------------------------------------------------------
+// Exported cache object
+// -----------------------------------------------------------------------------
+export const cache = {
+  /**
+   * Get a cached value. Returns `null` if the key does not exist or has expired.
+   */
+  async get(key: string): Promise<string | null> {
+    if (redisClient) {
+      return await redisClient.get(key);
+    }
+
+    const entry = memoryStore.get(key);
+    if (!entry) return null;
+
+    if (now() > entry.expiresAt) {
+      memoryStore.delete(key);
+      return null;
+    }
+    return entry.value;
+  },
+
+  /**
+   * Set a cached value with a TTL (in seconds).
+   */
+  async set(key: string, value: string, ttlSeconds: number): Promise<void> {
+    if (redisClient) {
+      await redisClient.set(key, value, 'EX', ttlSeconds);
+      return;
+    }
+
+    const expiresAt = now() + ttlSeconds * 1000;
+    memoryStore.set(key, { value, expiresAt });
+  },
+
+  /**
+   * Delete a single key.
+   */
+  async del(key: string): Promise<void> {
+    if (redisClient) {
+      await redisClient.del(key);
+      return;
+    }
+    memoryStore.delete(key);
+  },
+
+  /**
+   * Invalidate every key that starts with the supplied prefix.
+   *
+   * This is used by mutation endpoints to purge stale read‑only responses.
+   */
+  async invalidatePrefix(prefix: string): Promise<void> {
+    if (redisClient) {
+      const keys = await redisClient.keys(`${prefix}*`);
+      if (keys.length) {
+        await redisClient.del(...keys);
+      }
+      return;
+    }
+
+    const keys = keysWithPrefixFromMemory(prefix);
+    deleteFromMemory(keys);
+  },
+};

@@ -237,7 +237,7 @@ export default function PaymentDetailPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 print:block">
             {/* Details */}
             <Card className="lg:col-span-3 p-6">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">

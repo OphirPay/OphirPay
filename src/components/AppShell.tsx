@@ -21,7 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <InstallPrompt />
           <div className="flex min-h-screen">
             <Sidebar />
-            <div className="flex-1 lg:ml-64">
+            <div className="flex-1 lg:ml-64 print-reset-offset">
               <Header />
               <main id="main-content" className="p-4 md:p-6">{children}</main>
             </div>

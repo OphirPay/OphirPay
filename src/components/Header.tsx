@@ -11,7 +11,7 @@ export function Header() {
   const isDark = resolved === "dark";
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
+    <header className="sticky top-0 z-30 h-16 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 print-hide">
       <div className="flex items-center justify-between h-full px-4 md:px-6">
         {/* Left: Page title / breadcrumb area */}
         <div className="flex items-center gap-4">

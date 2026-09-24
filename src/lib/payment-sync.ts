@@ -164,7 +164,7 @@ export async function runPaymentStatusSync(
       if (outcome === "success") {
         await prisma.payment.update({
           where: { id: payment.id },
-          data: { status: "CONFIRMED" },
+          data: { status: "CONFIRMED", reconciliationSource: "poll" },
         });
         dispatchWebhookEventAsync(
           WEBHOOK_EVENTS.PAYMENT_CONFIRMED,
@@ -181,7 +181,11 @@ export async function runPaymentStatusSync(
       } else if (outcome === "failed") {
         await prisma.payment.update({
           where: { id: payment.id },
-          data: { status: "FAILED", errorMessage: ON_CHAIN_FAILED_MESSAGE },
+          data: {
+            status: "FAILED",
+            errorMessage: ON_CHAIN_FAILED_MESSAGE,
+            reconciliationSource: "poll",
+          },
         });
         dispatchWebhookEventAsync(
           WEBHOOK_EVENTS.PAYMENT_FAILED,

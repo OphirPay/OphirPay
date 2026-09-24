@@ -149,9 +149,19 @@ export async function initRateLimitStore(): Promise<void> {
 
   if (redisUrl) {
     try {
-      // Dynamic import — ioredis is an optional peer dependency.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const RedisModule: any = await import("ioredis");
+      type RedisInstance = {
+        incr: (key: string) => Promise<number>;
+        expire: (key: string, seconds: number) => Promise<unknown>;
+        del: (key: string) => Promise<unknown>;
+        connect: () => Promise<void>;
+      };
+      type RedisConstructor = new (
+        url: string,
+        options: Record<string, unknown>
+      ) => RedisInstance;
+      const RedisModule = (await import("ioredis")) as unknown as {
+        Redis: RedisConstructor;
+      };
       const redis = new RedisModule.Redis(redisUrl, {
         maxRetriesPerRequest: 3,
         lazyConnect: true,

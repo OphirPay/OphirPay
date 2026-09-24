@@ -358,7 +358,7 @@ export default function RequestsPage() {
         {selectedRequest && (
           <div className="space-y-4 text-center">
             <div className="bg-white rounded-xl p-4 inline-block border border-gray-200 dark:border-gray-700">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- Dynamic data URL or external QR code not optimizable via next/image */}
               <img
                 src={getQRUrl(selectedRequest)}
                 alt="Payment QR Code"

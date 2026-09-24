@@ -21,10 +21,8 @@ interface Metric {
 /**
  * Report Web Vitals to console in development, or to analytics in production.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function reportWebVitals(metric: any): void {
-  // Cast to Metric for type safety
-  const m = metric as Metric;
+export function reportWebVitals(metric: Metric): void {
+  const m = metric;
 
   if (process.env.NODE_ENV === "development") {
     console.debug(
@@ -35,8 +33,7 @@ export function reportWebVitals(metric: any): void {
 
   // Production: send to Vercel Analytics or Google Analytics
   if (typeof window !== "undefined" && "gtag" in window) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).gtag?.("event", "web_vitals", {
+    window.gtag?.("event", "web_vitals", {
       metric_name: m.name,
       metric_value: m.value,
       metric_rating: m.rating,

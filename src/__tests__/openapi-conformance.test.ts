@@ -27,8 +27,20 @@ interface Operation {
   operation: Record<string, unknown>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let spec: any;
+interface OpenApiSpec {
+  openapi?: string;
+  info?: { title?: string; [key: string]: unknown };
+  paths?: Record<string, Record<string, unknown>>;
+  components?: {
+    schemas?: Record<string, unknown>;
+    securitySchemes?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  security?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+let spec: OpenApiSpec;
 let operations: Operation[];
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -71,14 +83,13 @@ function listRouteFiles(dir = API_DIR): string[] {
 }
 
 /** Collect every `$ref` value in a spec subtree. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function collectRefs(node: any, out: string[] = []): string[] {
+function collectRefs(node: unknown, out: string[] = []): string[] {
   if (Array.isArray(node)) {
     for (const n of node) collectRefs(n, out);
     return out;
   }
   if (node && typeof node === "object") {
-    for (const [k, v] of Object.entries(node)) {
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
       if (k === "$ref") out.push(v as string);
       else collectRefs(v, out);
     }
@@ -92,17 +103,24 @@ function resolveRef(ref: string): unknown {
     .replace(/^#\//, "")
     .split("/")
     .reduce<unknown>((cur, part) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (cur as any)?.[part];
+      if (cur && typeof cur === "object" && part in (cur as Record<string, unknown>)) {
+        return (cur as Record<string, unknown>)[part];
+      }
+      return undefined;
     }, spec);
 }
 
 /** Path parameters declared (path-level + operation-level) for an operation. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function declaredPathParams(op: any, pathItem: any): string[] {
+function declaredPathParams(
+  op: Record<string, unknown>,
+  pathItem: unknown
+): string[] {
+  const pItem = (pathItem && typeof pathItem === "object") ? (pathItem as Record<string, unknown>) : {};
+  const opParams = Array.isArray(op.parameters) ? op.parameters : [];
+  const pathParams = Array.isArray(pItem.parameters) ? pItem.parameters : [];
   const all = [
-    ...(pathItem.parameters ?? []),
-    ...(op.parameters ?? []),
+    ...pathParams,
+    ...opParams,
   ] as Array<{ name?: string; in?: string; required?: boolean }>;
   return all
     .filter((p) => p.in === "path" && p.required === true)
@@ -110,7 +128,7 @@ function declaredPathParams(op: any, pathItem: any): string[] {
 }
 
 beforeAll(() => {
-  spec = load(readFileSync(SPEC_PATH, "utf8"));
+  spec = (load(readFileSync(SPEC_PATH, "utf8")) as OpenApiSpec) || {};
   operations = [];
   for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
     const item = (pathItem ?? {}) as Record<string, unknown>;

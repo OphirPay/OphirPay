@@ -139,7 +139,7 @@ async function relayerLoop(): Promise<void> {
   const lastDelivered: Record<string, number> = {};
   let lastSorobanPoll = Date.now(); // track last Soroban query time
 
-  // eslint-disable-next-line no-constant-condition
+  // eslint-disable-next-line no-constant-condition -- Infinite background daemon polling loop
   while (true) {
     try {
       const hooks = await prisma.notificationHook.findMany({

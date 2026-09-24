@@ -217,6 +217,19 @@ jobs:
       - run: bash scripts/validate-deploy-config.sh
 
   # ══════════════════════════════════════════════════════════════
+  # 6. MONITORING — validate the shipped Grafana artifact
+  # ══════════════════════════════════════════════════════════════
+  grafana-dashboard:
+    name: "6️⃣ Infra — Grafana Dashboard"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: node scripts/validate-grafana-dashboard.mjs
+
+  # ══════════════════════════════════════════════════════════════
   # 8. HELM LINT — chart lint + render assertions (issue #684)
   #    Proves the autoscaling / pdb / networkPolicy / serviceAccount
   #    values actually produce objects instead of being inert.
@@ -316,4 +329,3 @@ jobs:
           
           # Compare the keys. If there's a difference, fail.
           diff -u /tmp/env.keys /tmp/cm.keys || { echo "::error::ConfigMap keys do not match .env.example"; exit 1; }
-

@@ -5,14 +5,24 @@ header on incoming webhook deliveries.
 
 - [`node/verify.mjs`](node/verify.mjs) — Node.js (ESM, no dependencies)
 - [`python/verify.py`](python/verify.py) — Python 3 (stdlib only)
+- [`go/main.go`](go/main.go) — Go (stdlib only)
 - [`sample-payload.json`](sample-payload.json) — sample signed payload
 
 Full guidance (canonical form, replay protection, pitfalls) lives in
 [`docs/webhook-verification.md`](../../docs/webhook-verification.md).
 
+## Canonicalization Rule
+
+To verify signatures identically across languages:
+1. Parse the received JSON body.
+2. Set the `signature` field to `""` (empty string) — do **NOT** remove the `signature` key; the canonical string must include `"signature":""`.
+3. Preserve the exact key order of the original object without adding superfluous whitespace (compact separators `","` and `":"`).
+4. Compute HMAC-SHA256 in hexadecimal over the resulting UTF-8 bytes using your webhook secret.
+5. Use constant-time byte comparison against the `X-OphirPay-Signature` header to prevent timing attacks.
+
 ## Quick start (sample payload)
 
-Both scripts read the body from `--body-file` (or stdin), verify the HMAC,
+All scripts read the body from `--body-file` (or stdin), verify the HMAC,
 then print `VALID` (exit 0) or `INVALID: <reason>` (exit 1).
 
 ```bash
@@ -24,6 +34,12 @@ node node/verify.mjs \
 
 # Python
 python3 python/verify.py \
+  --secret test-secret-0123456789 \
+  --signature 647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64 \
+  --body-file sample-payload.json
+
+# Go
+go run go/main.go \
   --secret test-secret-0123456789 \
   --signature 647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64 \
   --body-file sample-payload.json

@@ -753,3 +753,23 @@ fn test_cross_contract_emergency_pause_orchestration() {
         emitter_client.emit_payment(&fix.owner, &source, &payer, &payee, &100i128, &tx_hash);
     assert_eq!(evt_id, 1);
 }
+
+#[test]
+fn test_cross_contract_propose_upgrade_timestamp_saturation() {
+    let fix = TestFixture::new();
+    let (_emitter_id, emitter_client) = fix.setup_emitter();
+
+    let extreme = u64::MAX - 100;
+    fix.env.ledger().set_timestamp(extreme);
+
+    let dummy_hash = soroban_sdk::BytesN::from_array(&fix.env, &[42u8; 32]);
+
+    fix.client.propose_upgrade(&fix.owner, &dummy_hash);
+    emitter_client.propose_upgrade(&fix.owner, &dummy_hash);
+
+    let ophir_res = fix.client.try_execute_upgrade();
+    assert_eq!(ophir_res, Err(Ok(PaymentError::UpgradeTimelockActive)));
+
+    let emitter_res = emitter_client.try_execute_upgrade();
+    assert_eq!(emitter_res, Err(Ok(EmitterError::UpgradeTimelockActive)));
+}

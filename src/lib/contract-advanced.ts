@@ -19,8 +19,10 @@ import {
   simulateContractCall,
   DEFAULT_CONTRACT_ID,
   EMITTER_CONTRACT_ID,
+  CHAIN_READ_SOURCE,
   classifyContractError,
 } from "@/lib/contracts";
+import { normalizeEscrow, type EscrowRecord } from "@/lib/escrows";
 import { getActiveWalletConnector } from "@/lib/wallets";
 import { NETWORK_PASSPHRASE, STELLAR_NETWORK } from "@/lib/stellar";
 
@@ -536,3 +538,148 @@ export async function emergencyUnpauseAll(
   ];
   return signAndSubmit(caller, CONTRACT_ID, "emergency_unpause_all", args);
 }
+
+// ── Escrow Functions ───────────────────────────────────────────
+
+/**
+ * Create an on-chain escrow locking funds until release or deadline.
+ *
+ * @param depositor - Wallet depositing and locking funds
+ * @param beneficiary - Wallet that can claim funds after deadline or on release
+ * @param arbiter - Optional dispute resolver address (or null)
+ * @param amount - Amount in stroops (i128)
+ * @param asset - Asset address
+ * @param deadline - Ledger timestamp when beneficiary can self-claim
+ * @param metadata - Escrow description or agreement memo
+ */
+export async function createEscrow(
+  depositor: string,
+  beneficiary: string,
+  arbiter: string | null,
+  amount: bigint | number | string,
+  asset: string,
+  deadline: number,
+  metadata: string = ""
+): Promise<ContractCallResult> {
+  const amountStr = typeof amount === "bigint" ? amount.toString() : String(amount);
+  const arbiterVal = arbiter ? nativeToScVal(arbiter, { type: "address" }) : xdr.ScVal.scvVoid();
+
+  const args: xdr.ScVal[] = [
+    nativeToScVal(depositor, { type: "address" }),
+    nativeToScVal(beneficiary, { type: "address" }),
+    arbiterVal,
+    nativeToScVal(amountStr, { type: "i128" }),
+    nativeToScVal(asset, { type: "address" }),
+    nativeToScVal(BigInt(deadline), { type: "u64" }),
+    nativeToScVal(metadata, { type: "string" }),
+  ];
+  return signAndSubmit(depositor, CONTRACT_ID, "create_escrow", args);
+}
+
+/**
+ * Release escrow funds early to the beneficiary.
+ * Owner/Depositor-only authorization required.
+ */
+export async function releaseEscrow(
+  owner: string,
+  escrowId: number
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(owner, { type: "address" }),
+    nativeToScVal(BigInt(escrowId), { type: "u64" }),
+  ];
+  return signAndSubmit(owner, CONTRACT_ID, "release_escrow", args);
+}
+
+/**
+ * Resolve dispute and release escrow as designated arbiter.
+ *
+ * @param arbiter - Designated arbiter address
+ * @param escrowId - Escrow identifier
+ * @param releaseToBeneficiary - If true, funds go to beneficiary; if false, refunded to depositor
+ */
+export async function releaseByArbiter(
+  arbiter: string,
+  escrowId: number,
+  releaseToBeneficiary: boolean
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(arbiter, { type: "address" }),
+    nativeToScVal(BigInt(escrowId), { type: "u64" }),
+    nativeToScVal(releaseToBeneficiary, { type: "bool" }),
+  ];
+  return signAndSubmit(arbiter, CONTRACT_ID, "release_by_arbiter", args);
+}
+
+/**
+ * Beneficiary claims locked escrow after deadline timestamp.
+ */
+export async function claimEscrow(
+  beneficiary: string,
+  escrowId: number
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(beneficiary, { type: "address" }),
+    nativeToScVal(BigInt(escrowId), { type: "u64" }),
+  ];
+  return signAndSubmit(beneficiary, CONTRACT_ID, "claim_escrow", args);
+}
+
+/**
+ * Read single escrow from contract storage via simulation.
+ */
+export async function getEscrow(
+  escrowId: number,
+  sourcePublicKey?: string
+): Promise<EscrowRecord | null> {
+  const caller = sourcePublicKey || CHAIN_READ_SOURCE;
+  const result = await simulateContractCall(CONTRACT_ID, "get_escrow", caller, [
+    nativeToScVal(BigInt(escrowId), { type: "u64" }),
+  ]);
+  if (result.status === "SIMULATION_FAILED" || !result.returnValue) {
+    return null;
+  }
+  return normalizeEscrow(result.returnValue);
+}
+
+/**
+ * Fetch total count of escrows created.
+ */
+export async function getEscrowCount(sourcePublicKey?: string): Promise<number> {
+  const caller = sourcePublicKey || CHAIN_READ_SOURCE;
+  const result = await simulateContractCall(CONTRACT_ID, "get_escrow_count", caller);
+  if (result.status === "SIMULATION_FAILED" || result.returnValue == null) {
+    return 0;
+  }
+  return Number(result.returnValue);
+}
+
+/**
+ * Enumerate recent escrows.
+ */
+export async function listEscrows(
+  sourcePublicKey?: string,
+  limit: number = 20
+): Promise<EscrowRecord[]> {
+  const total = await getEscrowCount(sourcePublicKey);
+  if (total <= 0) return [];
+
+  const start = Math.max(1, total - limit + 1);
+  const ids: number[] = [];
+  for (let i = total; i >= start; i--) {
+    ids.push(i);
+  }
+
+  const escrows: EscrowRecord[] = [];
+  for (const id of ids) {
+    try {
+      const escrow = await getEscrow(id, sourcePublicKey);
+      if (escrow) escrows.push(escrow);
+    } catch {
+      // Continue on non-existent escrow
+    }
+  }
+
+  return escrows;
+}
+

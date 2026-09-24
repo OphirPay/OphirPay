@@ -4,6 +4,9 @@ Every webhook delivery OphirPay sends is an HTTP `POST` to your registered
 endpoint with an HMAC-SHA256 signature, so you can prove the request really
 came from OphirPay and was not tampered with in transit.
 
+For no-code/low-code setup notes, event tables and lifecycle payload examples, see [`automation-platform-webhooks.md`](./automation-platform-webhooks.md).
+
+
 ```
 POST /hooks HTTP/1.1
 Content-Type: application/json

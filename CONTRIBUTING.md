@@ -82,6 +82,42 @@ npm run lint          # ESLint
 npm run test:openapi  # OpenAPI spec ↔ implementation conformance (drift)
 ```
 
+## Keeping dependencies up to date
+
+Dependabot runs weekly via [`.github/dependabot.yml`](.github/dependabot.yml) and
+covers all three dependency surfaces: npm (`package-lock.json`), Cargo
+(`contracts/ophirpay` and `contracts/emitter`) and the pinned `uses:` refs across
+`.github/workflows`.
+
+**Update PRs target `integration/staging`, not `main`.** This is deliberate:
+`main` carries `.github/workflows/enforce-integration-branch.yml`, which fails any
+PR opened against `main` while `integration/staging` exists, so without the
+`target-branch` key every update PR would be red on arrival.
+
+**Grouping.** Minor and patch bumps are batched into a single PR per ecosystem
+(split further by production/development for npm). Majors are left ungrouped
+because they are the ones that need individual attention. A grouped PR listing
+several bumps is expected — review and merge it as a unit rather than splitting
+it.
+
+**Reviewing an update PR:**
+
+- Confirm CI is green, then skim the release notes for anything marked breaking.
+  A semver-minor bump is not a guarantee of unchanged behaviour.
+- Cargo updates touch the contract crates. The `contract-wasm` job and the
+  checked-in `contracts/expected-wasm-hashes.sha256` both matter; if a WASM hash
+  moves, the checked-in hash must move with it in the same PR.
+- `github-actions` bumps change CI itself — check for deprecated inputs before
+  merging.
+- `npm` production bumps reach the deployed app; `npm` development bumps are
+  tooling only.
+
+`.github/CODEOWNERS` assigns every Dependabot path to `@OphirPay/devops`, so the
+right reviewers are requested automatically.
+
+To update by hand instead, run `npm update` or `cargo update` in the relevant
+directory — the same `integration/staging` target applies.
+
 ## Changelog
 
 Every user-facing change must be recorded in [`CHANGELOG.md`](CHANGELOG.md).

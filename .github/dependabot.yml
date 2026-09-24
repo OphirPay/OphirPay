@@ -1,0 +1,120 @@
+# ──────────────────────────────────────────────────────────────────────
+# Dependabot configuration
+#
+# Covers all three dependency surfaces in this repository:
+#   1. npm           — package-lock.json (Next.js app, Prisma, tooling)
+#   2. cargo         — contracts/ophirpay and contracts/emitter (Soroban)
+#   3. github-actions — the pinned `uses:` refs across .github/workflows
+#
+# `target-branch` is `integration/staging`, not `main`. This repository is in
+# batch-integration mode: `main` carries
+# .github/workflows/enforce-integration-branch.yml, which FAILS any PR opened
+# against `main` while `integration/staging` exists. Dependabot opens PRs with
+# the same rules as a human, so without this key every update PR would be red on
+# arrival. See CONTRIBUTING.md § "Keeping dependencies up to date".
+#
+# Grouping: minor + patch bumps are batched per ecosystem so a week of updates
+# is one reviewable PR instead of fifteen. Major bumps stay ungrouped because
+# they are the ones that actually need individual attention and release notes.
+#
+# GitHub routes review via .github/CODEOWNERS, which already assigns
+# .github/dependabot.yml to @OphirPay/devops — so `reviewers` is not set here.
+# ──────────────────────────────────────────────────────────────────────
+
+version: 2
+updates:
+  # ── npm ─────────────────────────────────────────────────────────────
+  # Weekly, Monday. Split into production and development groups: a Prisma or
+  # Next.js bump deserves its own review context, whereas tooling churn can be
+  # waved through together.
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "integration/staging"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    versioning-strategy: "increase"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "📦 dependencies"
+      - "ci"
+    groups:
+      npm-production-minor-patch:
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      npm-development-minor-patch:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # ── cargo: main contract ────────────────────────────────────────────
+  # Tuesday, so the Cargo.lock churn does not land in the same CI window as the
+  # npm group. `contracts/ophirpay` and `contracts/emitter` are independent
+  # crates (neither declares a workspace), so each needs its own entry.
+  - package-ecosystem: "cargo"
+    directory: "/contracts/ophirpay"
+    target-branch: "integration/staging"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "📦 dependencies"
+      - "📦 contracts"
+      - "ci"
+    groups:
+      cargo-ophirpay-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # ── cargo: emitter fixture contract ─────────────────────────────────
+  - package-ecosystem: "cargo"
+    directory: "/contracts/emitter"
+    target-branch: "integration/staging"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "📦 dependencies"
+      - "📦 contracts"
+      - "ci"
+    groups:
+      cargo-emitter-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # ── github-actions ──────────────────────────────────────────────────
+  # Wednesday. Also the only ecosystem that would otherwise drift silently: the
+  # workflows pin `@v4`-style tags, and nothing in CI checks whether a newer
+  # major of actions/checkout or actions/setup-node exists.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "integration/staging"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "📦 dependencies"
+      - "ci"
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]

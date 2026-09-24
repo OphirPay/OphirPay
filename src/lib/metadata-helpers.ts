@@ -2,11 +2,15 @@
 
 import type { Metadata } from "next";
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://ophirpay.vercel.app";
+import { canonicalUrl } from "./seo";
 
-interface PageMeta {
-  title: string;
-  description: string;
+export const DEFAULT_TITLE = "OphirPay — Stellar Payment Orchestration";
+export const DEFAULT_DESCRIPTION =
+  "The Open-Source Payment Orchestration Layer for Stellar — send, batch, schedule, and track blockchain payments.";
+
+export interface PageMeta {
+  title?: string;
+  description?: string;
   path?: string;
   noIndex?: boolean;
 }
@@ -15,20 +19,24 @@ interface PageMeta {
  * Generate consistent page metadata for SEO.
  */
 export function generateMetadata({
-  title,
-  description,
+  title = DEFAULT_TITLE,
+  description = DEFAULT_DESCRIPTION,
   path = "",
   noIndex = false,
-}: PageMeta): Metadata {
+}: PageMeta = {}): Metadata {
+  const finalTitle = title?.trim() || DEFAULT_TITLE;
+  const finalDescription = description?.trim() || DEFAULT_DESCRIPTION;
+  const url = canonicalUrl(path);
+
   return {
-    title,
-    description,
-    alternates: { canonical: `${BASE_URL}${path}` },
+    title: finalTitle,
+    description: finalDescription,
+    alternates: { canonical: url },
     robots: noIndex ? { index: false, follow: false } : { index: true, follow: true },
     openGraph: {
-      title,
-      description,
-      url: `${BASE_URL}${path}`,
+      title: finalTitle,
+      description: finalDescription,
+      url,
       siteName: "OphirPay",
       type: "website",
     },

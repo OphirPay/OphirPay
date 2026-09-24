@@ -71,8 +71,12 @@ cp .env.example .env.local
 | `REDIS_URL` | — | Redis URL for distributed rate limiting |
 | `NEXT_PUBLIC_SENTRY_DSN` | — | Sentry error tracking DSN |
 | `NEXT_PUBLIC_DEMO_MODE` | `false` | Enable demo mode |
-| `NEXT_PUBLIC_FEATURE_MULTI_ASSET` | `false` | Enable multi-asset support |
-| `NEXT_PUBLIC_FEATURE_WEBHOOKS` | `false` | Enable webhook features |
+| `NEXT_PUBLIC_FEATURE_MULTI_ASSET` | `true` | Enable multi-asset support (enabled unless set to `"false"`) |
+| `NEXT_PUBLIC_FEATURE_RECURRING` | `true` | Enable recurring payment scheduler (enabled unless set to `"false"`) |
+| `NEXT_PUBLIC_FEATURE_WEBHOOKS` | `true` | Enable webhook features (enabled unless set to `"false"`) |
+| `NEXT_PUBLIC_FEATURE_ADVANCED_ANALYTICS` | `false` | Enable advanced analytics (disabled unless set to `"true"`) |
+| `NEXT_PUBLIC_FEATURE_API_KEYS` | `true` | Enable API key management (enabled unless set to `"false"`) |
+| *Note on Feature Flags* | — | See [Feature Flags Guide](FEATURE_FLAGS.md). Inlined at build time; changing in production requires a rebuild. |
 | `CRON_SECRET` | — | Shared secret protecting `/api/cron`. Required to run the scheduled-payment cron — see [Scheduled Payment Cron](scheduled-payment-cron.md) |
 | `SCHEDULED_PAYMENTS_SOURCE_SECRET` | — | Stellar secret key of the funded operator account that signs due scheduled payments |
 

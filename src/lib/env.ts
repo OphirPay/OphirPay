@@ -28,7 +28,10 @@ const envSchema = z.object({
   SCHEDULED_PAYMENTS_SOURCE_SECRET: z.string().optional(), // Stellar secret that signs scheduled payments
   NEXT_PUBLIC_DEMO_MODE: z.string().optional(),
   NEXT_PUBLIC_FEATURE_MULTI_ASSET: z.string().optional(),
+  NEXT_PUBLIC_FEATURE_RECURRING: z.string().optional(),
   NEXT_PUBLIC_FEATURE_WEBHOOKS: z.string().optional(),
+  NEXT_PUBLIC_FEATURE_ADVANCED_ANALYTICS: z.string().optional(),
+  NEXT_PUBLIC_FEATURE_API_KEYS: z.string().optional(),
   NEXT_PUBLIC_APP_VERSION: z.string().optional(),
 });
 
@@ -58,7 +61,10 @@ export function validateEnv(): Env {
       CRON_SECRET: process.env.CRON_SECRET,
       SCHEDULED_PAYMENTS_SOURCE_SECRET: process.env.SCHEDULED_PAYMENTS_SOURCE_SECRET,
       NEXT_PUBLIC_FEATURE_MULTI_ASSET: process.env.NEXT_PUBLIC_FEATURE_MULTI_ASSET,
+      NEXT_PUBLIC_FEATURE_RECURRING: process.env.NEXT_PUBLIC_FEATURE_RECURRING,
       NEXT_PUBLIC_FEATURE_WEBHOOKS: process.env.NEXT_PUBLIC_FEATURE_WEBHOOKS,
+      NEXT_PUBLIC_FEATURE_ADVANCED_ANALYTICS: process.env.NEXT_PUBLIC_FEATURE_ADVANCED_ANALYTICS,
+      NEXT_PUBLIC_FEATURE_API_KEYS: process.env.NEXT_PUBLIC_FEATURE_API_KEYS,
       NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION,
     });
   } catch (error) {

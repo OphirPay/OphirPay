@@ -50,6 +50,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:openapi": "vitest run src/__tests__/openapi-conformance.test.ts",
+    "docs:openapi:examples": "node scripts/update-openapi-examples.mjs",
     "typecheck": "tsc --noEmit",
     "ci": "npm run typecheck && npm run lint -- --max-warnings 0 && npm test && npm run build && bash scripts/validate-deploy-config.sh",
     "audit:deps": "node scripts/audit-dependencies.mjs",

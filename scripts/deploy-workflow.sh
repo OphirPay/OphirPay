@@ -167,6 +167,25 @@ else
   echo -e "${YELLOW}  ⚠ Contract may already be initialized${NC}"
 fi
 
+# ── Step 4b: Configure emitter allow-list (AUDIT.md MEDIUM-3) ──
+if [ -n "$EMITTER_ID" ]; then
+  echo -e "${YELLOW}[4b/5] Configuring emitter ALLOWED_SOURCE to ${CONTRACT_ID}...${NC}"
+  ALLOW_TX=$($STELLAR_CLI contract invoke \
+    --id "$EMITTER_ID" \
+    --source-account "$SECRET_KEY" \
+    --rpc-url "$RPC_URL" \
+    --network-passphrase "$NETWORK_PASSPHRASE" \
+    $NETWORK_FLAG \
+    --quiet \
+    -- set_allowed_source --caller "$OWNER_KEY" --source "$CONTRACT_ID" 2>/dev/null || echo "")
+
+  if [ -n "$ALLOW_TX" ]; then
+    echo -e "${GREEN}  ✓ Emitter allow-list set: ${ALLOW_TX}${NC}"
+  else
+    echo -e "${YELLOW}  ⚠ Unable to auto-set emitter allow-list (ensure deployer has owner permissions)${NC}"
+  fi
+fi
+
 # ── Step 5: Verify ───────────────────────────────────────────
 echo -e "${YELLOW}[5/5] Verifying deployment...${NC}"
 OWNER_RESULT=$($STELLAR_CLI contract invoke \
@@ -180,6 +199,13 @@ OWNER_RESULT=$($STELLAR_CLI contract invoke \
   -- get_owner 2>/dev/null || echo "N/A")
 
 echo -e "${GREEN}  ✓ Owner: ${OWNER_RESULT}${NC}"
+
+if [ -n "$EMITTER_ID" ]; then
+  echo -e "${YELLOW}  Verifying emitter allow-list & ownership alignment...${NC}"
+  bash "$(dirname "$0")/verify-emitter-allowlist.sh" "$CONTRACT_ID" "$EMITTER_ID" "$OWNER_KEY" || {
+    echo -e "${RED}✗ Emitter allow-list verification failed! Review remediations above.${NC}"
+  }
+fi
 
 # ── Summary ──────────────────────────────────────────────────
 if [ "$NETWORK_MODE" = "PUBLIC" ]; then

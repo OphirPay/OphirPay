@@ -209,6 +209,38 @@
     -- init --owner <OWNER_PUBLIC_KEY> --emitter <EMITTER_CONTRACT_ID>
   ```
 
+### 2.3 Configure emitter allow-list (CRITICAL)
+
+> 🔐 **Security & Operational Requirement (AUDIT.md MEDIUM-3)**:
+> Following the deployment and initialization of both contracts, the emitter
+> **must** be explicitly configured with `set_allowed_source` to allow-list the
+> deployed `<CONTRACT_ID>`.
+>
+> ⚠️ **Call Order & Ownership Rules**:
+> 1. Deploy & init `PaymentEventEmitter` with `--owner <OWNER_PUBLIC_KEY>`.
+> 2. Deploy & init `OphirPayContract` with `--owner <OWNER_PUBLIC_KEY> --emitter <EMITTER_CONTRACT_ID>`.
+> 3. Call `set_allowed_source` on the emitter to set `source = <CONTRACT_ID>`.
+> 4. Ensure **emitter owner strictly matches orchestrator owner** (`<OWNER_PUBLIC_KEY>`).
+>
+> ⚠️ **Consequences of Skipping**:
+> - If `set_allowed_source` is omitted or unset, `ALLOWED_SOURCE` defaults to `None`.
+> - Because `<CONTRACT_ID>` is not the emitter owner, any cross-contract call from `OphirPayContract` to `emit_payment` will revert with `EmitterError::Unauthorized (code 4)`.
+> - All payment execution operations that emit events will fail on-chain, halting transaction recording and breaking the SSE stream (`/api/events`), webhook dispatching, and audit logging.
+> - If ownership is misaligned between contracts, multi-contract emergency operations like `emergency_pause_all` will fail cross-contract authorization.
+
+- [ ] **Configure emitter allow-list** (signed by `<OWNER_SECRET_KEY>`):
+
+  ```bash
+  stellar contract invoke \
+    --id <EMITTER_CONTRACT_ID> \
+    --source <OWNER_SECRET_KEY> \
+    --rpc-url "https://soroban.stellar.org:443" \
+    --network-passphrase "Public Global Stellar Network ; September 2015" \
+    --network public \
+    --fee 10000000 \
+    -- set_allowed_source --caller <OWNER_PUBLIC_KEY> --source <CONTRACT_ID>
+  ```
+
 - [ ] **Record the deployer's remaining balance** — used later to confirm fee
   accounting:
 
@@ -247,6 +279,28 @@
     --network public \
     --send no \
     -- get_owner
+  ```
+
+- [ ] **Emitter ALLOWED_SOURCE matches `<CONTRACT_ID>`**:
+
+  ```bash
+  stellar contract invoke \
+    --id <EMITTER_CONTRACT_ID> \
+    --source <MAINNET_SECRET_KEY> \
+    --rpc-url "https://soroban.stellar.org:443" \
+    --network-passphrase "Public Global Stellar Network ; September 2015" \
+    --network public \
+    --send no \
+    -- get_allowed_source
+  # Expected: "<CONTRACT_ID>"
+  ```
+
+- [ ] **Run automated allow-list & ownership verification script**:
+
+  ```bash
+  NETWORK_MODE=PUBLIC \
+    ./scripts/verify-emitter-allowlist.sh <CONTRACT_ID> <EMITTER_CONTRACT_ID> <OWNER_PUBLIC_KEY>
+  # Expected: "✓ All post-deployment emitter verification checks PASSED." (exit code 0)
   ```
 
 - [ ] **Payment counter is 0** on a fresh deployment (or matches the prior

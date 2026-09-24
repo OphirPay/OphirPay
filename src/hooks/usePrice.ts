@@ -16,6 +16,8 @@ export interface UseXlmPriceReturn {
   isLoading: boolean;
   isError: boolean;
   isUnavailable: boolean;
+  isStale: boolean;
+  staleReason: PriceResult["staleReason"];
   error: string | null;
   lastUpdated: Date | null;
   refetch: (forceRefresh?: boolean) => Promise<PriceResult>;
@@ -31,6 +33,8 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
 
   const [price, setPrice] = useState<number | null>(null);
   const [source, setSource] = useState<PriceResult["source"]>(null);
+  const [isStale, setIsStale] = useState<boolean>(false);
+  const [staleReason, setStaleReason] = useState<PriceResult["staleReason"]>(null);
   const [isLoading, setIsLoading] = useState<boolean>(enabled);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -45,6 +49,8 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
         if (isMountedRef.current) {
           setPrice(result.price);
           setSource(result.source);
+          setIsStale(Boolean(result.isStale));
+          setStaleReason(result.staleReason ?? null);
           setError(result.error ?? null);
           if (result.price !== null) {
             setLastUpdated(result.timestamp ? new Date(result.timestamp) : new Date());
@@ -56,9 +62,11 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
         const errMsg = err instanceof Error ? err.message : "Failed to fetch price";
         if (isMountedRef.current) {
           setError(errMsg);
+          setIsStale(true);
+          setStaleReason("upstream_error");
           setIsLoading(false);
         }
-        return { price: null, source: null, error: errMsg };
+        return { price: null, source: null, isStale: true, staleReason: "upstream_error", error: errMsg };
       }
     },
     [ttlMs]
@@ -88,6 +96,8 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
     isLoading,
     isError: error !== null && price === null,
     isUnavailable: price === null && !isLoading,
+    isStale,
+    staleReason,
     error,
     lastUpdated,
     refetch: loadPrice,

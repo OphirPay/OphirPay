@@ -22,8 +22,10 @@
  *    - When price source is unreachable, returns null / "Unavailable" / fallback string.
  */
 
-export const PRICE_CACHE_TTL_MS = 60_000; // 60 seconds
+export const PRICE_CACHE_TTL_MS = 60_000; // 60 seconds (fresh TTL)
+export const PRICE_STALE_THRESHOLD_MS = 300_000; // 5 minutes (stale threshold)
 export const DEFAULT_PRICE_TIMEOUT_MS = 5_000; // 5 seconds
+export const RATE_LIMIT_COOLDOWN_MS = 30_000; // 30 seconds backoff on HTTP 429
 
 export const ROUNDING_RULES = {
   USD_STANDARD_DECIMALS: 2,
@@ -38,6 +40,8 @@ export interface PriceResult {
   source: "coingecko" | "coinbase" | "cached" | null;
   error?: string;
   timestamp?: number;
+  isStale?: boolean;
+  staleReason?: "rate_limited" | "upstream_error" | "expired" | null;
 }
 
 interface CacheEntry {
@@ -48,13 +52,17 @@ interface CacheEntry {
 
 let priceCache: CacheEntry | null = null;
 let pendingPriceFetch: Promise<PriceResult> | null = null;
+let coingeckoRateLimitedUntil = 0;
+let coinbaseRateLimitedUntil = 0;
 
 /**
- * Clear cached price. Primarily for testing or manual cache busting.
+ * Clear cached price and rate-limit states. Primarily for testing or manual cache busting.
  */
 export function clearPriceCache(): void {
   priceCache = null;
   pendingPriceFetch = null;
+  coingeckoRateLimitedUntil = 0;
+  coinbaseRateLimitedUntil = 0;
 }
 
 /**
@@ -81,20 +89,32 @@ export function setCachedPrice(
 export async function fetchXlmPrice(options?: {
   forceRefresh?: boolean;
   ttlMs?: number;
+  staleThresholdMs?: number;
   timeoutMs?: number;
+  apiKey?: string;
   signal?: AbortSignal;
 }): Promise<PriceResult> {
   const ttl = options?.ttlMs ?? PRICE_CACHE_TTL_MS;
+  const staleThreshold = options?.staleThresholdMs ?? PRICE_STALE_THRESHOLD_MS;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_PRICE_TIMEOUT_MS;
+  const apiKey =
+    options?.apiKey ??
+    (typeof process !== "undefined"
+      ? process.env?.NEXT_PUBLIC_COINGECKO_API_KEY
+      : undefined);
   const now = Date.now();
 
   // 1. Check in-memory cache
-  if (!options?.forceRefresh && priceCache && now - priceCache.timestamp < ttl) {
-    return {
-      price: priceCache.price,
-      source: "cached",
-      timestamp: priceCache.timestamp,
-    };
+  if (!options?.forceRefresh && priceCache) {
+    const age = now - priceCache.timestamp;
+    if (age < ttl) {
+      return {
+        price: priceCache.price,
+        source: "cached",
+        timestamp: priceCache.timestamp,
+        isStale: false,
+      };
+    }
   }
 
   // 2. Deduplicate concurrent requests
@@ -103,84 +123,140 @@ export async function fetchXlmPrice(options?: {
   }
 
   const fetchPromise = (async (): Promise<PriceResult> => {
-    // Primary: CoinGecko
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      const combinedSignal = options?.signal
-        ? anySignal([options.signal, controller.signal])
-        : controller.signal;
+    let lastErrorReason: "rate_limited" | "upstream_error" | null = null;
 
-      const res = await fetch(
-        "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd",
-        {
+    // Primary: CoinGecko (unless currently in 429 rate-limit cooldown)
+    if (Date.now() >= coingeckoRateLimitedUntil) {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        const combinedSignal = options?.signal
+          ? anySignal([options.signal, controller.signal])
+          : controller.signal;
+
+        const headers: Record<string, string> = { Accept: "application/json" };
+        if (apiKey) {
+          headers["x-cg-demo-api-key"] = apiKey;
+        }
+
+        const res = await fetch(
+          "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd",
+          {
+            headers,
+            signal: combinedSignal,
+          }
+        );
+
+        if (res.status === 429) {
+          lastErrorReason = "rate_limited";
+          const retryAfter = res.headers?.get?.("retry-after");
+          const cooldownSeconds = retryAfter ? parseInt(retryAfter, 10) : NaN;
+          const cooldownMs =
+            !isNaN(cooldownSeconds) && cooldownSeconds > 0
+              ? cooldownSeconds * 1000
+              : RATE_LIMIT_COOLDOWN_MS;
+          coingeckoRateLimitedUntil = Date.now() + cooldownMs;
+        } else if (res.ok) {
+          const data = await res.json();
+          const price = data?.stellar?.usd;
+          if (typeof price === "number" && !isNaN(price) && price > 0) {
+            priceCache = { price, source: "coingecko", timestamp: Date.now() };
+            return {
+              price,
+              source: "coingecko",
+              timestamp: priceCache.timestamp,
+              isStale: false,
+            };
+          }
+        } else {
+          lastErrorReason = "upstream_error";
+        }
+      } catch {
+        lastErrorReason = "upstream_error";
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      }
+    } else {
+      lastErrorReason = "rate_limited";
+    }
+
+    // Secondary: Coinbase (unless in cooldown)
+    if (Date.now() >= coinbaseRateLimitedUntil) {
+      let secondaryTimeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const controller = new AbortController();
+        secondaryTimeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        const combinedSignal = options?.signal
+          ? anySignal([options.signal, controller.signal])
+          : controller.signal;
+
+        const res = await fetch("https://api.coinbase.com/v2/prices/XLM-USD/spot", {
           headers: { Accept: "application/json" },
           signal: combinedSignal,
-        }
-      );
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        const price = data?.stellar?.usd;
-        if (typeof price === "number" && !isNaN(price) && price > 0) {
-          priceCache = { price, source: "coingecko", timestamp: Date.now() };
-          return { price, source: "coingecko", timestamp: priceCache.timestamp };
+        if (res.status === 429) {
+          lastErrorReason = "rate_limited";
+          coinbaseRateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+        } else if (res.ok) {
+          const data = await res.json();
+          const priceStr = data?.data?.amount;
+          const price = typeof priceStr === "string" ? parseFloat(priceStr) : Number(priceStr);
+          if (typeof price === "number" && !isNaN(price) && price > 0) {
+            priceCache = { price, source: "coinbase", timestamp: Date.now() };
+            return {
+              price,
+              source: "coinbase",
+              timestamp: priceCache.timestamp,
+              isStale: false,
+            };
+          }
+        } else if (!lastErrorReason) {
+          lastErrorReason = "upstream_error";
         }
-      }
-    } catch {
-      // Fall through to secondary source
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+      } catch {
+        if (!lastErrorReason) {
+          lastErrorReason = "upstream_error";
+        }
+      } finally {
+        if (secondaryTimeoutId) {
+          clearTimeout(secondaryTimeoutId);
+        }
       }
     }
 
-    // Secondary: Coinbase
-    let secondaryTimeoutId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const controller = new AbortController();
-      secondaryTimeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      const combinedSignal = options?.signal
-        ? anySignal([options.signal, controller.signal])
-        : controller.signal;
-
-      const res = await fetch("https://api.coinbase.com/v2/prices/XLM-USD/spot", {
-        headers: { Accept: "application/json" },
-        signal: combinedSignal,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const priceStr = data?.data?.amount;
-        const price = typeof priceStr === "string" ? parseFloat(priceStr) : Number(priceStr);
-        if (typeof price === "number" && !isNaN(price) && price > 0) {
-          priceCache = { price, source: "coinbase", timestamp: Date.now() };
-          return { price, source: "coinbase", timestamp: priceCache.timestamp };
-        }
-      }
-    } catch {
-      // All sources failed
-    } finally {
-      if (secondaryTimeoutId) {
-        clearTimeout(secondaryTimeoutId);
-      }
-    }
-
-    // If cache has a stale price, return it with error indication rather than complete failure if available
+    // Fallback: If cache has a previous price, return it with defined staleness markers
     if (priceCache) {
+      const age = Date.now() - priceCache.timestamp;
+      const isPastThreshold = age >= staleThreshold;
       return {
         price: priceCache.price,
         source: "cached",
-        error: "Price sources currently unreachable, using last known price",
+        isStale: true,
+        staleReason: lastErrorReason ?? (isPastThreshold ? "expired" : age >= ttl ? "expired" : null),
+        error:
+          lastErrorReason === "rate_limited"
+            ? "Price sources rate-limited (HTTP 429), using last known price"
+            : isPastThreshold
+              ? "Price sources currently unreachable, price exceeds staleness threshold"
+              : "Price sources currently unreachable, using last known price",
         timestamp: priceCache.timestamp,
       };
     }
 
+    // Complete failure: no cache available
     return {
       price: null,
       source: null,
-      error: "XLM/USD price sources unavailable",
+      isStale: true,
+      staleReason: lastErrorReason ?? "upstream_error",
+      error:
+        lastErrorReason === "rate_limited"
+          ? "Price feeds rate-limited (HTTP 429)"
+          : "XLM/USD price sources unavailable",
     };
   })();
 
@@ -190,6 +266,55 @@ export async function fetchXlmPrice(options?: {
   } finally {
     pendingPriceFetch = null;
   }
+}
+
+/**
+ * Format a balance or price display, showing formatted fiat if fresh price is available,
+ * or gracefully falling back to displaying the asset unit if price is unavailable or stale.
+ */
+export function formatPriceOrAsset(
+  amount: number | string,
+  priceResult: PriceResult | null | undefined,
+  assetUnit = "XLM"
+): {
+  display: string;
+  isStale: boolean;
+  isFiat: boolean;
+} {
+  const numAmount = typeof amount === "string" ? parseFloat(amount) : amount;
+  if (isNaN(numAmount)) {
+    return { display: `— ${assetUnit}`, isStale: false, isFiat: false };
+  }
+
+  if (!priceResult || priceResult.price === null) {
+    return {
+      display: `${numAmount} ${assetUnit}`,
+      isStale: true,
+      isFiat: false,
+    };
+  }
+
+  const isStale = Boolean(
+    priceResult.isStale ||
+      (priceResult.timestamp &&
+        Date.now() - priceResult.timestamp >= PRICE_STALE_THRESHOLD_MS)
+  );
+
+  const fiatValue = convertXlmToUsd(numAmount, priceResult.price);
+  if (fiatValue === null) {
+    return {
+      display: `${numAmount} ${assetUnit}`,
+      isStale: true,
+      isFiat: false,
+    };
+  }
+
+  const formattedFiat = formatFiatAmount(fiatValue, { showApprox: true });
+  return {
+    display: isStale ? `${numAmount} ${assetUnit} (${formattedFiat} stale)` : formattedFiat,
+    isStale,
+    isFiat: !isStale,
+  };
 }
 
 /**

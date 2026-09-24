@@ -354,12 +354,18 @@ paths:
           description: Fetch a single escrow by on-chain id
       responses:
         "200":
-          description: Escrow list or single escrow
+          description: Escrow list count or single escrow details
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  count: 14
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
       tags: [Escrows]
-      summary: Create an on-chain escrow
+      summary: Validate and prepare on-chain escrow creation
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       requestBody:
         required: true
@@ -367,17 +373,40 @@ paths:
           application/json:
             schema:
               type: object
-              required: [payee, amount]
+              required: [depositor, beneficiary, amount]
               properties:
-                payee: { type: string, description: "Recipient Stellar address" }
+                depositor: { type: string, description: "Depositor Stellar address" }
+                beneficiary: { type: string, description: "Beneficiary Stellar address" }
                 amount: { type: number, description: "Amount in stroops" }
-                assetCode: { type: string, default: XLM }
-                releaseAfter: { type: integer, description: "Unix timestamp" }
-                releaseTo: { type: string, description: "Stellar address, defaults to caller" }
-                memo: { type: string, maxLength: 28 }
+                asset: { type: string, default: native, description: "Token contract address or native" }
+                deadline: { type: integer, description: "Unix timestamp when beneficiary can claim" }
+                arbiter: { type: string, description: "Optional arbiter Stellar address" }
+                metadata: { type: string, description: "Optional metadata" }
+            example:
+              depositor: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+              beneficiary: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+              arbiter: "GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2"
+              amount: 50000000
+              asset: "native"
+              deadline: 1729000000
+              metadata: "Milestone delivery escrow"
       responses:
-        "201":
-          description: Escrow created
+        "202":
+          description: Escrow parameters validated; client wallet signing required
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  message: "Escrow creation requires wallet signing via the client-side createEscrow flow."
+                  params:
+                    depositor: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+                    beneficiary: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                    arbiter: "GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2"
+                    amount: "50000000"
+                    asset: "native"
+                    deadline: 1729000000
+                    metadata: "Milestone delivery escrow"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -396,6 +425,21 @@ paths:
       responses:
         "200":
           description: Escrow details
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: 1
+                  depositor: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+                  beneficiary: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                  arbiter: "GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2"
+                  amount: "50000000"
+                  asset: "native"
+                  deadline: 1729000000
+                  released: false
+                  claimed: false
+                  metadata: "Milestone delivery escrow"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -412,12 +456,18 @@ paths:
           description: Fetch a single stream by on-chain id
       responses:
         "200":
-          description: Stream list or single stream
+          description: Stream list count or single stream details
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  count: 8
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
       tags: [Streams]
-      summary: Create an on-chain payment stream
+      summary: Validate and prepare on-chain payment stream creation
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       requestBody:
         required: true
@@ -425,17 +475,40 @@ paths:
           application/json:
             schema:
               type: object
-              required: [payee, amount]
+              required: [creator, recipient, totalAmount]
               properties:
-                payee: { type: string, description: "Recipient Stellar address" }
-                amount: { type: number, description: "Total amount in stroops" }
-                assetCode: { type: string, default: XLM }
-                startTime: { type: integer, description: "Unix timestamp" }
-                endTime: { type: integer, description: "Unix timestamp" }
-                memo: { type: string, maxLength: 28 }
+                creator: { type: string, description: "Creator Stellar address" }
+                recipient: { type: string, description: "Recipient Stellar address" }
+                totalAmount: { type: number, description: "Total tokens to vest in stroops" }
+                asset: { type: string, default: native, description: "Token contract address or native" }
+                startTime: { type: integer, description: "Unix timestamp when vesting begins" }
+                endTime: { type: integer, description: "Unix timestamp when vesting completes" }
+                metadata: { type: string, description: "Optional metadata" }
+            example:
+              creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+              recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+              totalAmount: 1000000000
+              asset: "native"
+              startTime: 1727200000
+              endTime: 1729800000
+              metadata: "Quarterly grant stream"
       responses:
-        "201":
-          description: Stream created
+        "202":
+          description: Stream parameters validated; client wallet signing required
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  message: "Stream creation requires wallet signing via the client-side createStream flow."
+                  params:
+                    creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+                    recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                    totalAmount: "1000000000"
+                    asset: "native"
+                    startTime: 1727200000
+                    endTime: 1729800000
+                    metadata: "Quarterly grant stream"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -454,6 +527,21 @@ paths:
       responses:
         "200":
           description: Stream details
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: 3
+                  creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+                  recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                  total_amount: "1000000000"
+                  claimed_amount: "250000000"
+                  asset: "native"
+                  start_time: 1727200000
+                  end_time: 1729800000
+                  cancelled: false
+                  metadata: "Quarterly grant stream"
         "404":
           $ref: "#/components/responses/NotFound"
 

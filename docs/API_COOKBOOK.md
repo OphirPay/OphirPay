@@ -374,45 +374,63 @@ curl -X POST "https://api.ophirpay.com/api/requests" \
 
 ## 6. On-Chain Escrows
 
-### Create a Smart Contract Escrow
+> ℹ️ **API-Only Feature:** Currently no frontend UI exists for escrows (tracked in [#798](https://github.com/OphirPay/OphirPay/issues/798)). See [ESCROWS_AND_STREAMS.md](ESCROWS_AND_STREAMS.md) for full state machine, role permissions, and Soroban contract execution recipes.
+
+### Validate & Prepare an Escrow Creation
 ```bash
 curl -X POST "https://api.ophirpay.com/api/escrows" \
-  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f" \
   -H "Content-Type: application/json" \
   -d '{
+    "depositor": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
     "beneficiary": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
     "arbiter": "GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2",
-    "amount": "5000.00",
-    "asset": "USDC",
-    "releaseTimeoutDays": 14,
-    "conditions": "Completion of security audit milestone"
+    "amount": "50000000",
+    "asset": "native",
+    "deadline": 1729000000,
+    "metadata": "Milestone delivery escrow"
   }'
 ```
-**Response (`201 Created`):**
+**Response (`202 Accepted`):**
 ```json
 {
-  "id": "escrow_019a48f2",
-  "contractAddress": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-  "status": "FUNDED",
-  "amount": "5000.00",
-  "asset": "USDC",
-  "beneficiary": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-  "createdAt": "2026-08-26T18:45:00.000Z"
+  "success": true,
+  "data": {
+    "message": "Escrow creation requires wallet signing via the client-side createEscrow flow.",
+    "params": {
+      "depositor": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "beneficiary": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "arbiter": "GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2",
+      "amount": "50000000",
+      "asset": "native",
+      "deadline": 1729000000,
+      "metadata": "Milestone delivery escrow"
+    }
+  }
 }
 ```
 
-### Release Escrow Funds to Beneficiary
+### Fetch Escrow Details by ID
 ```bash
-curl -X POST "https://api.ophirpay.com/api/escrows/escrow_019a48f2/release" \
-  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+curl -X GET "https://api.ophirpay.com/api/escrows/1" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f"
 ```
 **Response (`200 OK`):**
 ```json
 {
-  "id": "escrow_019a48f2",
-  "status": "RELEASED",
-  "transactionHash": "5a1982fc44e0b3c8917d23a1ef90c8b7412e0f5a6b7c8d9e0f1a2b3c4d5e6f7a",
-  "releasedAt": "2026-08-26T18:46:00.000Z"
+  "success": true,
+  "data": {
+    "id": 1,
+    "depositor": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "beneficiary": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    "arbiter": "GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2",
+    "amount": "50000000",
+    "asset": "native",
+    "deadline": 1729000000,
+    "released": false,
+    "claimed": false,
+    "metadata": "Milestone delivery escrow"
+  }
 }
 ```
 
@@ -420,30 +438,63 @@ curl -X POST "https://api.ophirpay.com/api/escrows/escrow_019a48f2/release" \
 
 ## 7. On-Chain Payment Streams
 
-### Initialize a Continuous Payment Stream
+> ℹ️ **API-Only Feature:** Currently no frontend UI exists for payment streams (tracked in [#799](https://github.com/OphirPay/OphirPay/issues/799)). See [ESCROWS_AND_STREAMS.md](ESCROWS_AND_STREAMS.md) for linear vesting formula, cancellation rules, and Soroban contract execution recipes.
+
+### Validate & Prepare a Payment Stream
 ```bash
 curl -X POST "https://api.ophirpay.com/api/streams" \
-  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f" \
   -H "Content-Type: application/json" \
   -d '{
+    "creator": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
     "recipient": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-    "depositAmount": "1000.00",
-    "asset": "USDC",
-    "ratePerSecond": "0.0003858",
-    "startTime": "2026-09-01T00:00:00.000Z",
-    "stopTime": "2026-10-01T00:00:00.000Z"
+    "totalAmount": "1000000000",
+    "asset": "native",
+    "startTime": 1727200000,
+    "endTime": 1729800000,
+    "metadata": "Quarterly grant stream"
   }'
 ```
-**Response (`201 Created`):**
+**Response (`202 Accepted`):**
 ```json
 {
-  "id": "stream_4418a99b",
-  "status": "ACTIVE",
-  "streamAddress": "CCQ75YJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC019",
-  "totalDeposit": "1000.00",
-  "ratePerSecond": "0.0003858",
-  "withdrawnAmount": "0.00",
-  "createdAt": "2026-08-26T18:50:00.000Z"
+  "success": true,
+  "data": {
+    "message": "Stream creation requires wallet signing via the client-side createStream flow.",
+    "params": {
+      "creator": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "recipient": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      "totalAmount": "1000000000",
+      "asset": "native",
+      "startTime": 1727200000,
+      "endTime": 1729800000,
+      "metadata": "Quarterly grant stream"
+    }
+  }
+}
+```
+
+### Fetch Stream Details by ID
+```bash
+curl -X GET "https://api.ophirpay.com/api/streams/3" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f"
+```
+**Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 3,
+    "creator": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "recipient": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    "total_amount": "1000000000",
+    "claimed_amount": "250000000",
+    "asset": "native",
+    "start_time": 1727200000,
+    "end_time": 1729800000,
+    "cancelled": false,
+    "metadata": "Quarterly grant stream"
+  }
 }
 ```
 

@@ -179,7 +179,7 @@ Notes:
 
 How it works in this repo:
 
-- Next.js replaces every `process.env.NEXT_PUBLIC_*` reference during `next build`. The client bundle has no access to the pod's environment, so the value must be baked in when the image is built. `src/lib/stellar.ts` reads `NEXT_PUBLIC_STELLAR_NETWORK`, `NEXT_PUBLIC_STELLAR_RPC_URL` and `NEXT_PUBLIC_STELLAR_HORIZON_URL` at module scope; `src/lib/contracts.ts` reads the contract IDs the same way.
+- Next.js inlines the `process.env.NEXT_PUBLIC_*` references it knows at `next build` — the names present in the build environment (or loaded from `.env*` files in the build context). **Inlining is per key**: a name that was *not* set at build time is left as a plain `process.env` read in server code, while the browser bundle has no access to the pod's environment at all — so a ConfigMap can never configure a `NEXT_PUBLIC_*` value for the client. `src/lib/stellar.ts` reads `NEXT_PUBLIC_STELLAR_NETWORK`, `NEXT_PUBLIC_STELLAR_RPC_URL` and `NEXT_PUBLIC_STELLAR_HORIZON_URL` at module scope; `src/lib/contracts.ts` reads the contract IDs the same way.
 - The bundled `Dockerfile` declares **no `NEXT_PUBLIC_*` build args** — it runs `next build` with whatever is in the build environment (plus `.env*` files present in the build context). Build it without those variables and the image bakes in the compile-time defaults (testnet URLs) regardless of what your ConfigMap says.
 
 Consequences:
@@ -223,7 +223,7 @@ Sanity check after a build (replace the sentinel with one of your real values): 
 grep -r "horizon.stellar.org" .next/server .next/static | head
 ```
 
-**Verified against this repo (Next.js 16.3.4):** an image built with sentinel `NEXT_PUBLIC_STELLAR_*` values and then run with *different* values in its environment still reported the **build-time** values from `/api/health` — the runtime environment was ignored server-side too, and the sentinel string was present in `.next/static` (client bundle). Treat these values as immutable per image.
+**Verified against this repo (Next.js 16.3.4):** an image built with sentinel `NEXT_PUBLIC_STELLAR_HORIZON_URL` / `NEXT_PUBLIC_STELLAR_RPC_URL` values and then run with *different* values in its environment still reported the **build-time** URLs from `/api/health`, and the sentinel strings sit in `.next/static` (client bundle) — those names were set at build, so they are frozen everywhere. The compiled output shows the per-key rule directly: the frozen keys became string literals in the server chunk while an unset name stayed a literal `process.env.NEXT_PUBLIC_STELLAR_NETWORK` read — and setting *that* name at runtime did change the reported network (server-side only). Practical rule: **bake every `NEXT_PUBLIC_*` value you rely on at build time**; never depend on the cluster to set one.
 
 ---
 

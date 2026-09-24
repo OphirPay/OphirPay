@@ -1,13 +1,13 @@
-# Default values for OphirPay Helm chart
+# Default values for ophirpay.
+# This is a Helm chart for OphirPay.
 
-replicaCount: 2
+replicaCount: 1
 
 image:
-  repository: ghcr.io/ophirpay/ophirpay
-  tag: latest
-  pullPolicy: Always
+  repository: ophirpay/ophirpay
+  pullPolicy: IfNotPresent
+  tag: "latest"
 
-imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
@@ -16,97 +16,48 @@ serviceAccount:
   annotations: {}
   name: ""
 
-podAnnotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "3000"
-  prometheus.io/path: "/api/metrics"
+podAnnotations: {}
 
-podSecurityContext:
-  fsGroup: 1001
+podSecurityContext: {}
 
-securityContext:
-  allowPrivilegeEscalation: false
-  runAsNonRoot: true
-  runAsUser: 1001
-  capabilities:
-    drop:
-      - ALL
+securityContext: {}
 
 service:
   type: ClusterIP
-  port: 80
-  targetPort: 3000
+  port: 3000
 
 ingress:
-  enabled: true
-  className: nginx
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  enabled: false
+  className: ""
+  annotations: {}
   hosts:
-    - host: ophirpay.com
+    - host: chart-example.local
       paths:
         - path: /
-          pathType: Prefix
-  tls:
-    - secretName: ophirpay-tls
-      hosts:
-        - ophirpay.com
+          pathType: ImplementationSpecific
+  tls: []
 
-resources:
-  requests:
-    cpu: 250m
-    memory: 256Mi
-  limits:
-    cpu: 1000m
-    memory: 512Mi
-
-autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 70
-  targetMemoryUtilizationPercentage: 80
-
-pdb:
-  enabled: true
-  minAvailable: 1
-
-networkPolicy:
-  enabled: true
-
-config:
-  NEXT_PUBLIC_STELLAR_NETWORK: "TESTNET"
-  NEXT_PUBLIC_HORIZON_URL: "https://horizon-testnet.stellar.org"
-  NEXT_PUBLIC_SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
-  DATABASE_PROVIDER: "postgresql"
-  NODE_ENV: "production"
-
-secrets:
-  DATABASE_URL: ""
-  REDIS_URL: ""
-  NEXT_PUBLIC_CONTRACT_ID: ""
-  NEXT_PUBLIC_EMITTER_CONTRACT_ID: ""
-
-livenessProbe:
-  httpGet:
-    path: /api/health
-    port: 3000
-  initialDelaySeconds: 30
-  periodSeconds: 15
-  timeoutSeconds: 5
-  failureThreshold: 3
-
-readinessProbe:
-  httpGet:
-    path: /api/health
-    port: 3000
-  initialDelaySeconds: 10
-  periodSeconds: 10
-  timeoutSeconds: 3
-  failureThreshold: 2
+resources: {}
 
 nodeSelector: {}
+
 tolerations: []
+
 affinity: {}
+
+# Application configuration environment variables.
+#
+# IMPORTANT NOTICE REGARDING FRONTEND ENVIRONMENT VARIABLES:
+# NEXT_PUBLIC_* variables (such as NEXT_PUBLIC_STELLAR_HORIZON_URL and NEXT_PUBLIC_STELLAR_RPC_URL)
+# are inlined into the client-side JavaScript bundle at Next.js BUILD TIME.
+# Setting or updating NEXT_PUBLIC_* values in this ConfigMap at runtime will NOT affect
+# a pre-built Docker image. To point the application frontend at a different network (e.g. mainnet),
+# the container image must be built with those NEXT_PUBLIC_* build arguments set during `docker build`.
+# ConfigMap values are supplied for server-side reference and documentation.
+config:
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  NEXT_PUBLIC_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org"
+  NEXT_PUBLIC_CONTRACT_ID: "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET"
+  NEXT_PUBLIC_EMITTER_CONTRACT_ID: "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN"
+  NEXT_PUBLIC_CHAIN_READ_SOURCE: "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU"
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"

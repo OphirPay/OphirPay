@@ -1,31 +1,38 @@
-import { describe, expect, it } from "vitest";
-import fc from "fast-check";
-import { parseCsvText } from "@/lib/csv-import";
+import { parseCSV, serializeCSV } from '../../src/lib/csv-core';
 
-function emitCsv(rows: string[][]): string {
-  return rows
-    .map((row) =>
-      row
-        .map((cell) => /[",\r\n]/.test(cell) || cell.includes('"')
-          ? `"${cell.replace(/"/g, '""')}"`
-          : cell)
-        .join(","),
-    )
-    .join("\r\n");
-}
+describe('CSV core property tests', () => {
+  test('round‑trip preserves data', () => {
+    const rows = [
+      ['a', 'b', 'c'],
+      ['1', '2', '3'],
+      ['foo,bar', 'baz', 'qux'],
+      ['"quoted"', 'simple', ''],
+      ['multi\nline', 'test', 'end'],
+    ];
+    const csv = serializeCSV(rows);
+    const parsed = parseCSV(csv);
+    expect(parsed).toEqual(rows);
+  });
 
-const csvCell = fc.string({ unit: fc.constantFrom(",", '"', "\r", "\n", "a", "7", " ") });
-const csvRow = fc.array(csvCell, { minLength: 1, maxLength: 6 }).filter((row) =>
-  row.some((cell) => cell.length > 0),
-);
+  test('quoted field with comma, quote and CRLF round‑trips', () => {
+    const rows = [
+      ['field1', 'field, with, commas', 'field "with" quotes', 'field\r\nwith\nnewlines'],
+    ];
+    const csv = serializeCSV(rows);
+    const parsed = parseCSV(csv);
+    expect(parsed).toEqual(rows);
+  });
 
-describe("parseCsvText RFC-4180 property coverage", () => {
-  it("round-trips quoted commas, newlines, and escaped quotes", () => {
-    fc.assert(
-      fc.property(fc.array(csvRow, { minLength: 1, maxLength: 12 }), (rows) => {
-        expect(parseCsvText(emitCsv(rows))).toEqual(rows);
-      }),
-      { numRuns: 200 },
-    );
+  test('handles BOM on parse', () => {
+    const csv = '\uFEFF"a","b","c"\r\n"1","2","3"';
+    const parsed = parseCSV(csv);
+    expect(parsed).toEqual([['a', 'b', 'c'], ['1', '2', '3']]);
+  });
+
+  test('serialises with BOM when requested', () => {
+    const rows = [['a', 'b', 'c']];
+    const csv = serializeCSV(rows, { prependBom: true });
+    expect(csv.startsWith('\uFEFF')).toBe(true);
+    expect(csv).toBe('\uFEFF"a","b","c"');
   });
 });

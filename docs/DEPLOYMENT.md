@@ -75,6 +75,11 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_FEATURE_WEBHOOKS` | `false` | Enable webhook features |
 | `CRON_SECRET` | — | Shared secret protecting `/api/cron`. Required to run the scheduled-payment cron — see [Scheduled Payment Cron](scheduled-payment-cron.md) |
 | `SCHEDULED_PAYMENTS_SOURCE_SECRET` | — | Stellar secret key of the funded operator account that signs due scheduled payments |
+| `STELLAR_TIMEOUT_MS` | `10000` | Outbound Stellar Horizon & Soroban RPC call timeout (ms) |
+| `PRICE_TIMEOUT_MS` | `5000` | Price oracle feed fetch timeout (ms) |
+| `WEBHOOK_TIMEOUT_MS` | `5000` | Outbound webhook HTTP delivery timeout (ms) |
+| `RPC_PROBE_TIMEOUT_MS` | `3000` | RPC failover health check probe timeout (ms) |
+| `DEFAULT_TIMEOUT_MS` | `10000` | Default timeout for generic outbound calls (ms) |
 
 ### Testnet vs Mainnet
 

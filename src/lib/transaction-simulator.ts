@@ -6,6 +6,7 @@ import {
   Asset,
 } from "@stellar/stellar-sdk";
 import { getHorizonServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import { withTimeout, STELLAR_TIMEOUT_MS } from "@/lib/timeout";
 
 interface SimulateResult {
   success: boolean;
@@ -28,10 +29,18 @@ export async function simulatePayment(params: {
 }): Promise<SimulateResult> {
   try {
     const server = getHorizonServer();
-    const sourceAccount = await server.loadAccount(params.sourcePublicKey);
+    const sourceAccount = await withTimeout(
+      server.loadAccount(params.sourcePublicKey),
+      STELLAR_TIMEOUT_MS,
+      "Stellar Horizon loadAccount timed out"
+    );
 
     const now = Math.floor(Date.now() / 1000);
-    const baseFee = await server.fetchBaseFee();
+    const baseFee = await withTimeout(
+      server.fetchBaseFee(),
+      STELLAR_TIMEOUT_MS,
+      "Stellar Horizon fetchBaseFee timed out"
+    );
 
     const tx = new TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),

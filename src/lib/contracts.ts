@@ -9,6 +9,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import { getHorizonServer, getSorobanServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import { withTimeout, STELLAR_TIMEOUT_MS, isTimeoutError, TimeoutError } from "@/lib/timeout";
 
 // ── Contract Configuration ─────────────────────────────────────
 
@@ -52,15 +53,17 @@ export const CHAIN_READ_SOURCE =
 // Legacy alias
 export const DEFAULT_CONTRACT_ID = OPHIRPAY_CONTRACT_ID;
 
-// ── 3 Error Types ──────────────────────────────────────────────
+// ── 4 Error Types ──────────────────────────────────────────────
 
 export enum ContractErrorType {
-  /** Network connectivity issues (RPC down, timeout, DNS failure) */
+  /** Network connectivity issues (RPC down, DNS failure) */
   NETWORK = "NETWORK",
   /** Contract execution errors (HostError, SCError, panic, bad args) */
   CONTRACT = "CONTRACT",
   /** User declined the Freighter signature prompt */
   USER_REJECTION = "USER_REJECTION",
+  /** Soroban RPC or network call timed out */
+  TIMEOUT = "TIMEOUT",
 }
 
 export class ContractError extends Error {
@@ -72,7 +75,7 @@ export class ContractError extends Error {
   }
 }
 
-/** Classify any thrown error into one of three contract error types */
+/** Classify any thrown error into one of four contract error types */
 export function classifyContractError(err: unknown): ContractError {
   const msg = err instanceof Error ? err.message : String(err);
   if (
@@ -94,6 +97,18 @@ export function classifyContractError(err: unknown): ContractError {
     return new ContractError(
       `Smart contract execution failed: ${msg}`,
       ContractErrorType.CONTRACT
+    );
+  }
+  if (
+    err instanceof TimeoutError ||
+    (typeof err === "object" && err !== null && (err as { code?: string }).code === "TIMEOUT") ||
+    (isTimeoutError(err) && !msg.toLowerCase().includes("network")) ||
+    msg.includes("TimeoutError") ||
+    msg.includes("AbortError")
+  ) {
+    return new ContractError(
+      `Soroban RPC request timed out: ${msg}. Please check network connectivity and try again.`,
+      ContractErrorType.TIMEOUT
     );
   }
   if (
@@ -140,7 +155,11 @@ export async function simulateContractCall(
 
   try {
     const contract = new Contract(contractId);
-    const account = await server.getAccount(sourcePublicKey);
+    const account = await withTimeout(
+      server.getAccount(sourcePublicKey),
+      STELLAR_TIMEOUT_MS,
+      "Soroban RPC account fetch timed out"
+    );
 
     const tx = new TransactionBuilder(account, {
       fee: "100000",
@@ -150,7 +169,11 @@ export async function simulateContractCall(
       .addOperation(contract.call(functionName, ...args))
       .build();
 
-    const simResponse = await server.simulateTransaction(tx);
+    const simResponse = await withTimeout(
+      server.simulateTransaction(tx),
+      STELLAR_TIMEOUT_MS,
+      "Soroban RPC simulateTransaction timed out"
+    );
 
     if ("error" in simResponse && simResponse.error) {
       return {
@@ -191,7 +214,11 @@ export async function invokeContractFunction(
 
   try {
     const contract = new Contract(contractId);
-    const account = await server.getAccount(sourcePublicKey);
+    const account = await withTimeout(
+      server.getAccount(sourcePublicKey),
+      STELLAR_TIMEOUT_MS,
+      "Soroban RPC account fetch timed out"
+    );
 
     const tx = new TransactionBuilder(account, {
       fee: "100000",
@@ -204,7 +231,11 @@ export async function invokeContractFunction(
       .addOperation(contract.call(functionName, ...args))
       .build();
 
-    const prepared = await server.prepareTransaction(tx);
+    const prepared = await withTimeout(
+      server.prepareTransaction(tx),
+      STELLAR_TIMEOUT_MS,
+      "Soroban RPC prepareTransaction timed out"
+    );
 
     return {
       status: "AWAITING_SIGNATURE",
@@ -237,8 +268,13 @@ export async function submitContractInvocation(signedXdr: string): Promise<{
     const txHash = tx.hash().toString("hex");
 
     try {
-      await server.sendTransaction(tx);
+      await withTimeout(
+        server.sendTransaction(tx),
+        STELLAR_TIMEOUT_MS,
+        "Soroban RPC sendTransaction timed out"
+      );
     } catch (err) {
+      if (isTimeoutError(err)) throw err;
       // SDK v13 cannot deserialize protocol-27 RPC responses ("Bad union
       // switch"). This is a parsing limitation, not a tx failure — the
       // response contains a valid result. Fall through to Horizon to confirm.
@@ -252,8 +288,13 @@ export async function submitContractInvocation(signedXdr: string): Promise<{
     let result: Awaited<ReturnType<typeof server.getTransaction>> | undefined;
     let parseError = false;
     try {
-      result = await server.getTransaction(txHash);
+      result = await withTimeout(
+        server.getTransaction(txHash),
+        STELLAR_TIMEOUT_MS,
+        "Soroban RPC getTransaction timed out"
+      );
     } catch (err) {
+      if (isTimeoutError(err)) throw err;
       parseError = err instanceof Error && err.message.includes("Bad union switch");
       if (!parseError) throw err;
     }
@@ -263,8 +304,13 @@ export async function submitContractInvocation(signedXdr: string): Promise<{
       while (result.status === "NOT_FOUND" && attempts < 30) {
         await new Promise((r) => setTimeout(r, 1000));
         try {
-          result = await server.getTransaction(txHash);
+          result = await withTimeout(
+            server.getTransaction(txHash),
+            STELLAR_TIMEOUT_MS,
+            "Soroban RPC getTransaction timed out"
+          );
         } catch (err) {
+          if (isTimeoutError(err)) throw err;
           parseError = err instanceof Error && err.message.includes("Bad union switch");
           if (!parseError) throw err;
           break;
@@ -297,10 +343,15 @@ export async function submitContractInvocation(signedXdr: string): Promise<{
     let status = "PENDING";
     for (let i = 0; i < 30; i++) {
       try {
-        const htx = await horizon.transactions().transaction(txHash).call();
+        const htx = await withTimeout(
+          horizon.transactions().transaction(txHash).call(),
+          STELLAR_TIMEOUT_MS,
+          "Horizon transaction confirmation timed out"
+        );
         status = htx.successful ? "SUCCESS" : "FAILED";
         break;
       } catch (err) {
+        if (isTimeoutError(err)) throw err;
         // NotFoundError (HTTP 404) = not ingested yet — keep polling.
         // Anything else is unexpected; surface it as PENDING.
         const isNotFound =
@@ -432,13 +483,18 @@ export interface OnChainPayment {
  */
 export async function fetchOnChainPayments(
   limit = 20,
-  sourcePublicKey?: string
+  sourcePublicKey?: string,
+  cursorId?: number
 ): Promise<{ payments: OnChainPayment[]; total: number }> {
   const src = sourcePublicKey || CHAIN_READ_SOURCE;
   const contractId = OPHIRPAY_CONTRACT_ID;
   const server = getSorobanServer();
   const contract = new Contract(contractId);
-  const account = await server.getAccount(src);
+  const account = await withTimeout(
+    server.getAccount(src),
+    STELLAR_TIMEOUT_MS,
+    "Soroban RPC account fetch timed out"
+  );
 
   const readCount = async (): Promise<number> => {
     const tx = new TransactionBuilder(account, {
@@ -448,7 +504,11 @@ export async function fetchOnChainPayments(
     })
       .addOperation(contract.call("get_payment_count"))
       .build();
-    const sim = await server.simulateTransaction(tx);
+    const sim = await withTimeout(
+      server.simulateTransaction(tx),
+      STELLAR_TIMEOUT_MS,
+      "Soroban RPC get_payment_count timed out"
+    );
     if ("error" in sim && sim.error) return 0;
     if ("result" in sim && sim.result) {
       const val = scValToNative(sim.result.retval);
@@ -458,9 +518,18 @@ export async function fetchOnChainPayments(
   };
 
   const total = await readCount();
+  if (total === 0) {
+    return { payments: [], total: 0 };
+  }
+
+  const maxId = typeof cursorId === "number" ? Math.min(total, cursorId - 1) : total;
+  if (maxId < 1) {
+    return { payments: [], total };
+  }
+
   const payments: OnChainPayment[] = [];
-  const start = Math.max(1, total - limit + 1);
-  const ids = Array.from({ length: total - start + 1 }, (_, i) => start + i);
+  const start = Math.max(1, maxId - limit + 1);
+  const ids = Array.from({ length: maxId - start + 1 }, (_, i) => start + i);
 
   const readPayment = async (id: number): Promise<OnChainPayment | null> => {
     const tx = new TransactionBuilder(account, {
@@ -473,7 +542,11 @@ export async function fetchOnChainPayments(
       )
       .build();
 
-    const sim = await server.simulateTransaction(tx);
+    const sim = await withTimeout(
+      server.simulateTransaction(tx),
+      STELLAR_TIMEOUT_MS,
+      "Soroban RPC get_payment timed out"
+    );
     if ("error" in sim && sim.error) return null;
     if ("result" in sim && sim.result) {
       const raw = scValToNative(sim.result.retval);
@@ -515,7 +588,11 @@ export async function fetchOnChainPayment(
   const contractId = OPHIRPAY_CONTRACT_ID;
   const server = getSorobanServer();
   const contract = new Contract(contractId);
-  const account = await server.getAccount(CHAIN_READ_SOURCE);
+  const account = await withTimeout(
+    server.getAccount(CHAIN_READ_SOURCE),
+    STELLAR_TIMEOUT_MS,
+    "Soroban RPC account fetch timed out"
+  );
 
   const tx = new TransactionBuilder(account, {
     fee: "100000",
@@ -527,7 +604,11 @@ export async function fetchOnChainPayment(
     )
     .build();
 
-  const sim = await server.simulateTransaction(tx);
+  const sim = await withTimeout(
+    server.simulateTransaction(tx),
+    STELLAR_TIMEOUT_MS,
+    "Soroban RPC get_payment timed out"
+  );
 
   // A failed simulation (RPC/network/host error) is a genuine read failure —
   // surface it as an error so the detail page can offer retry instead of

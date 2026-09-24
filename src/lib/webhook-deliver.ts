@@ -3,6 +3,7 @@
 import { logger } from "@/lib/logger";
 import { incMetric } from "@/lib/metrics-counters";
 import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
+import { WEBHOOK_TIMEOUT_MS, isTimeoutError } from "@/lib/timeout";
 import crypto from "crypto";
 
 export interface WebhookPayload {
@@ -83,7 +84,7 @@ export async function deliverWebhook(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+      const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
 
       const response = await fetch(url, {
         method: "POST",
@@ -114,7 +115,11 @@ export async function deliverWebhook(
       lastError = `HTTP ${response.status}`;
       logger.warn("Webhook delivery failed", { url, status: response.status, attempt });
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
+      if (isTimeoutError(err)) {
+        lastError = `Webhook delivery timed out after ${WEBHOOK_TIMEOUT_MS}ms`;
+      } else {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
       logger.warn("Webhook delivery error", { url, error: lastError, attempt });
     }
 

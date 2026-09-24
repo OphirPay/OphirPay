@@ -9,6 +9,9 @@ import {
   setCachedPrice,
   ROUNDING_RULES,
   PRICE_CACHE_TTL_MS,
+  PRICE_STALE_THRESHOLD_MS,
+  PRICE_BACKOFF_MS,
+  formatPriceUnavailableFallback,
 } from "@/lib/price";
 
 describe("Price Utility & Precision Rules", () => {
@@ -158,6 +161,59 @@ describe("Price Utility & Precision Rules", () => {
       expect(result.price).toBeNull();
       expect(result.error).toBeDefined();
     });
+
+    it("marks cached values older than the stale threshold after upstream failure", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-09-24T12:00:00Z"));
+      setCachedPrice(0.12, "coingecko");
+      vi.setSystemTime(new Date("2026-09-24T12:06:00Z"));
+
+      const mockFetch = vi.fn().mockRejectedValue(new Error("Network down"));
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice({ forceRefresh: true, staleThresholdMs: 5 * 60_000 });
+      expect(result.price).toBe(0.12);
+      expect(result.source).toBe("cached");
+      expect(result.isStale).toBe(true);
+      expect(result.staleAgeMs).toBe(6 * 60_000);
+      expect(formatPriceUnavailableFallback(10, result)).toBe("10 XLM (USD price unavailable)");
+      vi.useRealTimers();
+    });
+
+    it("backs off after a 429 and serves cached data without another upstream hit", async () => {
+      setCachedPrice(0.12, "coingecko");
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 429 })
+        .mockRejectedValueOnce(new Error("secondary unavailable"));
+      global.fetch = mockFetch;
+
+      const first = await fetchXlmPrice({ forceRefresh: true });
+      expect(first.price).toBe(0.12);
+      expect(first.rateLimited).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      const second = await fetchXlmPrice({ ttlMs: 0 });
+      expect(second.price).toBe(0.12);
+      expect(second.rateLimited).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("passes optional provider API key as an Authorization header", async () => {
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ stellar: { usd: 0.14 } }),
+      });
+      global.fetch = mockFetch;
+
+      await fetchXlmPrice({ apiKey: "test-key" });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: "Bearer test-key" }),
+        })
+      );
+    });
   });
 
   describe("convertXlmToUsd", () => {
@@ -221,6 +277,8 @@ describe("Price Utility & Precision Rules", () => {
       expect(ROUNDING_RULES.XLM_MIN_DECIMALS).toBe(2);
       expect(ROUNDING_RULES.XLM_MAX_DECIMALS).toBe(7);
       expect(PRICE_CACHE_TTL_MS).toBe(60_000);
+      expect(PRICE_STALE_THRESHOLD_MS).toBe(5 * 60_000);
+      expect(PRICE_BACKOFF_MS).toBe(30_000);
     });
   });
 });

@@ -206,6 +206,33 @@ are the contract for payout — the PR must satisfy them exactly.
   work; keep the description detailed so reviewers can verify every
   acceptance criterion.
 
+### Bounty issues and the stale bot
+
+Bounty work is deliberately exempt from the automated stale/close sweep, so
+an issue is never closed on a timer while a wave round is still running or
+while someone is working on it. The exemption lives in
+[`.github/workflows/stale.yml`](.github/workflows/stale.yml) and covers:
+
+| Exemption | Effect |
+|---|---|
+| `bounty` label | Never auto-closed, regardless of age |
+| `Stellar Wave` label | Never auto-closed, regardless of age |
+| `long-running` label | Never auto-closed (for epics that outlive a wave) |
+| Any assignee | Never auto-closed once claimed |
+| `pinned`, `security`, `blocked`, `good first issue`, `help wanted` | Never auto-closed (pre-existing list) |
+
+Everything else still goes stale after **60 days** without activity and is
+closed **14 days** later. PRs are unaffected by the issue exemption and go
+stale after 30 days, then close 7 days later.
+
+> Maintainers: this table must stay in sync with `exempt-issue-labels` and
+> `exempt-issue-assignees` in `stale.yml`. Adding a wave label means editing
+> both.
+
+If a bounty issue is closed in error, reopening it clears the `stale` label
+and the next run leaves it alone — the exempt labels are checked again on
+every run.
+
 ## Definition of Done (DoD) for PRs
 
 A PR is **done** — ready for review and merge — when **all** of the following
@@ -243,8 +270,8 @@ and the 11 required CI checks.
 
 ### Checklist before opening the PR
 
-- [ ] Branch is based on current `main` and named `feat/…`, `fix/…`,
-      `docs/…`, `ci/…`, or `test/…`
+- [ ] Branch is based on the target branch (bounty work: `integration/staging`)
+      and named `feat/…`, `fix/…`, `docs/…`, `ci/…`, or `test/…`
 - [ ] `npm run ci` passes locally (typecheck → lint → test → build)
 - [ ] PR description explains **what** changed and **why**, references the
       issue with `Closes #…`, and includes a test plan

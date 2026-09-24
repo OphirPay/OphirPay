@@ -27,8 +27,8 @@ This guide walks through deploying OphirPay to Stellar Mainnet with PostgreSQL, 
 ```env
 # Network
 NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC
-NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org
-NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban.stellar.org
+NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org
+NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org
 
 # Database
 DATABASE_URL=postgresql://user:password@host:5432/ophirpay
@@ -244,16 +244,24 @@ kubectl create secret generic ophirpay-secrets \
   --from-literal=NEXT_PUBLIC_EMITTER_CONTRACT_ID="<emitter-id>"
 ```
 
+> ℹ️ Using the Helm chart? Supply these values through Helm (`-f` / `--set`) instead —
+> the chart renders its own Secret and overwrites it on upgrade, so a `kubectl`-created
+> Secret is not consumed (see [KUBERNETES.md](KUBERNETES.md) §4); the command above
+> targets the plain manifests in `k8s/`. Run migrations before the rollout (§6), and note
+> that `NEXT_PUBLIC_*` values are inlined at build time — rebuild the image to change
+> them (§5).
+
 ### 4.2 Deploy with Helm
 
 ```bash
 helm upgrade --install ophirpay ./helm/ophirpay \
   --namespace ophirpay \
+  --set fullnameOverride=ophirpay \
   --set image.tag=v1.0.0 \
   --set ingress.hosts[0].host=ophirpay.com \
   --set config.NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
-  --set config.NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org \
-  --set config.NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban.stellar.org \
+  --set config.NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \
+  --set config.NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org \
   --set config.DATABASE_PROVIDER=postgresql \
   --set config.NODE_ENV=production \
   --wait

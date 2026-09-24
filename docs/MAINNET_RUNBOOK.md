@@ -402,6 +402,7 @@
   ```bash
   helm upgrade --install ophirpay ./helm/ophirpay \
     --namespace ophirpay \
+    --set fullnameOverride=ophirpay \
     --set image.tag=v1.0.0 \
     --set ingress.hosts[0].host=ophirpay.com \
     --set config.NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
@@ -420,6 +421,10 @@
   `NEXT_PUBLIC_STELLAR_HORIZON_URL` set, then confirm the running bundle
   targets mainnet before continuing. `helm upgrade` prints this warning via
   `helm/ophirpay/templates/NOTES.txt`.
+
+  > 📖 Full Kubernetes/Helm path — required values, secret provisioning, migrations,
+  > probes, pre-flight checklist — is in [KUBERNETES.md](KUBERNETES.md).
+  > `NEXT_PUBLIC_*` values are inlined at build time; rebuild the image to change them (§5).
 
 ---
 

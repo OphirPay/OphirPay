@@ -15,7 +15,12 @@ All notable changes to OphirPay will be documented in this file.
 ## [Unreleased] — 2026-08-26
 
 ### Added
+- **Kubernetes & Helm deployment guide**: new `docs/KUBERNETES.md` documents the bundled chart end to end — required values, secret provisioning, the database migration step, the build-time `NEXT_PUBLIC_*` caveat, ingress/TLS, probe tuning, and a pre-flight checklist (`helm lint`, `helm template --debug`, `kubeconform`); referenced from `docs/DEPLOYMENT.md`
 - **Request-id + duration structured request logging**: every API request now emits a single structured log line with the request id, HTTP method, path, response status, and duration in ms. `withRequestLogging()` wraps every route handler (the proxy cannot observe a handler's final status/duration), the proxy threads the `X-Request-Id` it mints into the downstream request headers so handlers and error logs correlate with the response header, and `logger.request()`/`handleApiError()` now include the request id in their structured context. Rate-limited (429) rejections are logged from the proxy with the same request id.
+
+### Fixed
+- **Helm/Kubernetes config keys**: `helm/ophirpay/values.yaml`, `k8s/namespace-config.yaml` and the deployment docs set `NEXT_PUBLIC_HORIZON_URL` / `NEXT_PUBLIC_SOROBAN_RPC_URL`, which the app never reads — corrected to the schema names (`NEXT_PUBLIC_STELLAR_HORIZON_URL` / `NEXT_PUBLIC_STELLAR_RPC_URL`, see `src/lib/env.ts`), so the values are no longer silently ignored
+- **Chart ServiceAccount**: the chart referenced a ServiceAccount it never rendered while `values.serviceAccount.create` defaulted to `true` — a fresh install produced pods that could not schedule; `helm/ophirpay/templates/serviceaccount.yaml` now renders it
 
 ## [Unreleased] — 2026-08-12 (submission hardening pass)
 

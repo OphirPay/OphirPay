@@ -78,6 +78,12 @@ kubectl create secret generic ophirpay-secrets \
   --from-literal=NEXT_PUBLIC_EMITTER_CONTRACT_ID="..."
 ```
 
+> ℹ️ The `kubectl create secret` above targets the plain manifests in `k8s/`. With the
+> Helm chart, the Secret is rendered from Helm values (`helm/ophirpay/values.yaml` →
+> `secrets:`), so supply values via `-f` / `--set` instead and use
+> `--set fullnameOverride=ophirpay` to keep the `ophirpay-secrets` name — see
+> [KUBERNETES.md](KUBERNETES.md) §4.
+
 Referenced in:
 - `k8s/deployment.yaml` → `secretRef: ophirpay-secrets`
 - `helm/ophirpay/templates/config.yaml` → `kind: Secret`

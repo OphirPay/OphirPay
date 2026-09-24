@@ -58,6 +58,16 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
         lastUsed: true,
         createdAt: true,
         expiresAt: true,
+        supersededById: true,
+        rotationExpiresAt: true,
+        revokedAt: true,
+        supersededBy: {
+          select: {
+            id: true,
+            name: true,
+            prefix: true,
+          },
+        },
       },
     });
     return successResponse(keys);

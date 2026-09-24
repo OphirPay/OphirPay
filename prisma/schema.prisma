@@ -705,6 +705,17 @@ model ApiKey {
   /// Optional expiry — the key stops working after this time.
   expiresAt DateTime?
 
+  /// If this key was rotated, points to the replacement key.
+  supersededById     String?
+  /// The replacement key (see ApiKey).
+  supersededBy       ApiKey?   @relation("KeyRotation", fields: [supersededById], references: [id], onDelete: SetNull)
+  /// Keys that were rotated into this key.
+  rotations          ApiKey[]  @relation("KeyRotation")
+  /// Overlap grace period expiration — after this timestamp the old key is rejected.
+  rotationExpiresAt  DateTime?
+  /// Explicit retirement or revocation timestamp.
+  revokedAt          DateTime?
+
   /// Owner of this key (see User).
   user      User     @relation(fields: [userId], references: [id])
   requestLogs ApiKeyRequestLog[]
@@ -713,6 +724,8 @@ model ApiKey {
   @@index([userId])
   /// Speeds up prefix-based identification lookups.
   @@index([prefix])
+  /// Speeds up rotation relationship lookups.
+  @@index([supersededById])
 }
 
 /// One recorded request made with an API key — used to aggregate usage by

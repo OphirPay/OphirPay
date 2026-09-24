@@ -5,6 +5,8 @@
 > satisfies issue #562 — audit secrets and rotation workflow.
 >
 > **Last audited:** 2026-08-29
+>
+> **Customer API Keys:** For developer API key rotation with zero-downtime dual-key overlap windows and automated grace expiry, see the [Customer API Key Rotation Guide](./API_KEY_ROTATION.md).
 
 ---
 

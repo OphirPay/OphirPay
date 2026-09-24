@@ -18,7 +18,7 @@ import {
 } from "@/lib/stellar";
 import { formatAmount, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
-import { estimateBatchFee } from "@/lib/fee-estimator";
+import { estimateBatchFee, getRecommendedFee, type FeeRecommendation } from "@/lib/fee-estimator";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { AddressBookMultiSelect } from "@/components/batches/AddressBookMultiSelect";
 import { mergeAddressBookSelections } from "@/lib/address-book";
@@ -83,7 +83,27 @@ export default function NewBatchPage() {
   const [csvValid, setCsvValid] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
+  const [feeRecommendation, setFeeRecommendation] = useState<FeeRecommendation | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const updateFee = () => {
+      getRecommendedFee({ numOperations: recipients.length })
+        .then((rec) => {
+          if (!mounted) return;
+          setFeeRecommendation(rec);
+        })
+        .catch(() => {});
+    };
+
+    updateFee();
+    const interval = setInterval(updateFee, 30_000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [recipients.length]);
 
   // ── CSV import wiring ────────────────────────────────────
 
@@ -303,6 +323,7 @@ export default function NewBatchPage() {
       const { xdr } = await buildBatchPaymentTx({
         sourcePublicKey: wallet.publicKey,
         recipients: batchRecipients,
+        baseFee: feeRecommendation?.baseFee,
       });
 
       setStep("signing");
@@ -899,7 +920,10 @@ export default function NewBatchPage() {
           amount: r.amount,
         }))}
         totalAmount={totalAmount}
-        estimatedFee={estimateBatchFee(recipients.length)}
+        estimatedFee={feeRecommendation?.totalFee || estimateBatchFee(recipients.length)}
+        feeBasis={feeRecommendation?.basisDescription}
+        networkCongestion={feeRecommendation?.congestion}
+        isFallback={feeRecommendation?.isFallback}
         onConfirm={handleConfirmSend}
         onCancel={() => setShowConfirm(false)}
       />

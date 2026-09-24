@@ -15,6 +15,9 @@ interface BatchConfirmDialogProps {
   recipients: BatchRecipient[];
   totalAmount: number;
   estimatedFee: string;
+  feeBasis?: string;
+  networkCongestion?: "low" | "medium" | "high";
+  isFallback?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -26,6 +29,9 @@ export function BatchConfirmDialog({
   recipients,
   totalAmount,
   estimatedFee,
+  feeBasis,
+  networkCongestion,
+  isFallback,
   onConfirm,
   onCancel,
 }: BatchConfirmDialogProps) {
@@ -48,8 +54,25 @@ export function BatchConfirmDialog({
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-500 dark:text-gray-400">Estimated Fee</span>
-            <span className="font-medium text-gray-900 dark:text-white">{feeXlm}</span>
+            <div className="text-right">
+              <span className="font-medium text-gray-900 dark:text-white">{feeXlm}</span>
+              <span className="text-xs text-gray-400 block font-mono">({estimatedFee} stroops)</span>
+            </div>
           </div>
+          {feeBasis && (
+            <div className="pt-1.5 border-t border-gray-200/60 dark:border-gray-700/60 flex items-start justify-between text-xs gap-2">
+              <span className="text-gray-500 dark:text-gray-400">Fee Basis</span>
+              <span className="text-right font-medium text-gray-700 dark:text-gray-300">
+                {feeBasis}
+              </span>
+            </div>
+          )}
+          {isFallback && (
+            <div className="p-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+              <span>⚠️</span>
+              <span>Horizon unreachable — estimated using fallback rate (100 stroops/op).</span>
+            </div>
+          )}
         </div>
 
         {/* Recipient list */}

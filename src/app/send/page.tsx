@@ -24,7 +24,7 @@ import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
 import { recordPaymentOnChain } from "@/lib/contracts";
 import { downloadReceiptPdf } from "@/lib/receipt-pdf";
-import { estimateTransactionFee } from "@/lib/fee-estimator";
+import { estimateTransactionFee, type FeePolicy } from "@/lib/fee-estimator";
 import { useToast } from "@/components/ui/Toast";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useApiMutation } from "@/hooks/useApiQuery";
@@ -92,7 +92,15 @@ function SendPageClient() {
 
   const [destination, setDestination] = useState("");
   const [amount, setAmount] = useState("");
-  const [feeEstimate, setFeeEstimate] = useState<{ baseFee: string; congestion: string } | null>(null);
+  const [feeEstimate, setFeeEstimate] = useState<{
+    baseFee: string;
+    congestion: "low" | "medium" | "high";
+    basis?: string;
+    basisDescription?: string;
+    isFallback?: boolean;
+    policy?: FeePolicy;
+  } | null>(null);
+  const [feePolicy, setFeePolicy] = useState<FeePolicy>("standard");
   const [memo, setMemo] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<AssetInfo>(XLM_ASSET);
   const [destAsset, setDestAsset] = useState<AssetInfo>(XLM_ASSET);
@@ -172,12 +180,32 @@ function SendPageClient() {
     invalidateKeys: [["recurring"]],
   });
 
-  // Fetch live fee estimate on mount
+  // Fetch live fee estimate on mount and policy change, refreshing on interval
   useEffect(() => {
-    estimateTransactionFee(1)
-      .then((fee) => setFeeEstimate({ baseFee: fee.baseFee, congestion: fee.networkCongestion }))
-      .catch(() => {});
-  }, []);
+    let mounted = true;
+    const updateFee = () => {
+      estimateTransactionFee(1, feePolicy)
+        .then((fee) => {
+          if (!mounted) return;
+          setFeeEstimate({
+            baseFee: fee.baseFee,
+            congestion: fee.networkCongestion,
+            basis: fee.basis,
+            basisDescription: fee.basisDescription,
+            isFallback: fee.isFallback,
+            policy: fee.policy,
+          });
+        })
+        .catch(() => {});
+    };
+
+    updateFee();
+    const timer = setInterval(updateFee, 30_000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [feePolicy]);
 
   // Pre-fill the form from a shareable payment link (?dest=...&amount=...&memo=...&asset=...)
   useEffect(() => {
@@ -456,6 +484,7 @@ function SendPageClient() {
           destAssetIssuer: destAsset.issuer,
           path: pathEstimate.path,
           memo: memo.trim() || undefined,
+          baseFee: feeEstimate?.baseFee,
         });
         xdr = res.xdr;
       } else {
@@ -468,6 +497,7 @@ function SendPageClient() {
           assetCode: selectedAsset.code,
           assetIssuer: selectedAsset.issuer,
           sponsorCreate,
+          baseFee: feeEstimate?.baseFee,
         });
         xdr = res.xdr;
       }
@@ -1129,17 +1159,62 @@ function SendPageClient() {
           </div>
 
           {feeEstimate && (
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="text-gray-500 dark:text-gray-400">
-                Network fee: ~{feeEstimate.baseFee} stroops
-              </span>
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                feeEstimate.congestion === "low" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                feeEstimate.congestion === "medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-              }`}>
-                {feeEstimate.congestion}
-              </span>
+            <div className="mt-2.5 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-700 dark:text-gray-300">
+                    Network fee: ~{feeEstimate.baseFee} stroops
+                  </span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                      feeEstimate.congestion === "low"
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        : feeEstimate.congestion === "medium"
+                        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    }`}
+                  >
+                    {feeEstimate.congestion}
+                  </span>
+                </div>
+                {/* Aggressiveness policy selector */}
+                <div
+                  className="flex items-center gap-1 bg-white dark:bg-gray-700 p-0.5 rounded border border-gray-200 dark:border-gray-600 text-[10px]"
+                  role="group"
+                  aria-label="Fee aggressiveness policy"
+                >
+                  {(["conservative", "standard", "aggressive"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setFeePolicy(p)}
+                      className={`px-1.5 py-0.5 rounded capitalize transition-colors ${
+                        feePolicy === p
+                          ? "bg-ophir-600 text-white font-semibold shadow-xs"
+                          : "text-gray-500 hover:text-gray-800 dark:text-gray-300"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Basis description and fallback indicator */}
+              <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                {feeEstimate.isFallback ? (
+                  <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-medium">
+                    <span>⚠️</span> Horizon unreachable — using fallback base fee
+                  </span>
+                ) : (
+                  <span>
+                    Basis: {feeEstimate.basisDescription || "Horizon fee statistics"}
+                  </span>
+                )}
+                <span className="text-[10px] text-gray-400">
+                  Refreshes every 30s
+                </span>
+              </div>
             </div>
           )}
         </div>

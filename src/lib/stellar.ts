@@ -371,6 +371,7 @@ export async function buildPaymentTx(params: {
   destAssetIssuer?: string;
   destMin?: string;
   path?: Asset[];
+  baseFee?: string;
 }): Promise<BuildTxResult> {
   const {
     sourcePublicKey,
@@ -385,6 +386,7 @@ export async function buildPaymentTx(params: {
     destAssetIssuer,
     destMin,
     path,
+    baseFee,
   } = params;
 
   const isCrossAsset =
@@ -403,6 +405,7 @@ export async function buildPaymentTx(params: {
       destAssetIssuer,
       path,
       memo,
+      baseFee,
     });
   }
 
@@ -411,9 +414,10 @@ export async function buildPaymentTx(params: {
   const now = Math.floor(Date.now() / 1000);
 
   const paymentAsset = createAsset(assetCode, assetIssuer);
+  const feeToUse = baseFee ?? (await server.fetchBaseFee()).toString();
 
   let builder = new TransactionBuilder(sourceAccount, {
-    fee: (await server.fetchBaseFee()).toString(),
+    fee: feeToUse,
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,
@@ -465,6 +469,7 @@ export async function buildPathPaymentStrictSendTx(params: {
   destAssetIssuer?: string;
   path?: Asset[];
   memo?: string;
+  baseFee?: string;
 }): Promise<BuildTxResult> {
   const {
     sourcePublicKey,
@@ -477,6 +482,7 @@ export async function buildPathPaymentStrictSendTx(params: {
     destAssetIssuer,
     path = [],
     memo,
+    baseFee,
   } = params;
 
   const server = getHorizonServer();
@@ -485,9 +491,10 @@ export async function buildPathPaymentStrictSendTx(params: {
 
   const sendAsset = createAsset(sourceAssetCode, sourceAssetIssuer);
   const destAsset = createAsset(destAssetCode, destAssetIssuer);
+  const feeToUse = baseFee ?? (await server.fetchBaseFee()).toString();
 
   let builder = new TransactionBuilder(sourceAccount, {
-    fee: (await server.fetchBaseFee()).toString(),
+    fee: feeToUse,
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,
@@ -519,17 +526,18 @@ export async function buildPathPaymentStrictSendTx(params: {
 export async function buildBatchPaymentTx(params: {
   sourcePublicKey: string;
   recipients: BatchRecipientInput[];
+  baseFee?: string;
 }): Promise<BuildTxResult> {
-  const { sourcePublicKey, recipients } = params;
+  const { sourcePublicKey, recipients, baseFee } = params;
   const server = getHorizonServer();
 
   const sourceAccount = await server.loadAccount(sourcePublicKey);
 
   const now = Math.floor(Date.now() / 1000);
-  const baseFee = (await server.fetchBaseFee()).toString();
+  const feeToUse = baseFee ?? (await server.fetchBaseFee()).toString();
 
   let builder = new TransactionBuilder(sourceAccount, {
-    fee: baseFee,
+    fee: feeToUse,
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,

@@ -21,6 +21,18 @@ set -euo pipefail
 BACKUP_BUCKET="${BACKUP_BUCKET:-ophirpay-backups}"
 EPHEMERAL_PORT=5433
 EPHEMERAL_NAME="ophirpay-restore-drill-$$"
+LATEST=""
+
+cleanup() {
+  echo ""
+  echo "→ Cleaning up ephemeral resources..."
+  docker stop "${EPHEMERAL_NAME}" > /dev/null 2>&1 || true
+  docker rm "${EPHEMERAL_NAME}" > /dev/null 2>&1 || true
+  if [[ -n "${LATEST}" && -f "./${LATEST}" ]]; then
+    rm -f "./${LATEST}"
+  fi
+}
+trap cleanup EXIT
 
 echo "=== OphirPay Restore Drill ==="
 echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -65,41 +77,38 @@ done
 
 # ── 3. Restore backup ──────────────────────────────────────
 echo ""
-echo "→ Restoring ${LATEST} ..."
+echo "→ Restoring ${LATEST} with single-transaction and ON_ERROR_STOP ..."
 gunzip -c "./${LATEST}" | docker exec -i "${EPHEMERAL_NAME}" \
-  psql -U postgres -d ophirpay_drill
+  psql -U postgres -d ophirpay_drill --single-transaction --set ON_ERROR_STOP=1
 
 echo "✓ Restore complete"
 
 # ── 4. Assert row counts ───────────────────────────────────
 echo ""
-echo "→ Asserting key table row counts..."
+echo "→ Asserting key table row counts against canonical Prisma schema..."
 
-TABLES=("Payment" "Escrow" "Stream" "Batch" "WebhookEndpoint" "PaymentRequest")
+TABLES=("User" "Account" "Payment" "Batch" "PaymentRequest" "Webhook" "ApiKey")
 PASS=true
 
 for table in "${TABLES[@]}"; do
   COUNT=$(docker exec "${EPHEMERAL_NAME}" \
-    psql -U postgres -d ophirpay_drill -t -c "SELECT COUNT(*) FROM \"${table}\";" 2>/dev/null | xargs || echo "0")
+    psql -U postgres -d ophirpay_drill -t -c "SELECT COUNT(*) FROM \"${table}\";" 2>/dev/null | xargs || true)
 
   if [[ "$COUNT" =~ ^[0-9]+$ ]]; then
     echo "  ✓ ${table}: ${COUNT} rows"
   else
-    echo "  ⚠ ${table}: query failed (table may not exist)"
+    echo "  ✕ ${table}: query failed (table may not exist or database corrupted)"
+    PASS=false
   fi
 done
 
 # ── 5. Teardown ────────────────────────────────────────────
-echo ""
-echo "→ Tearing down ephemeral Postgres ..."
-docker stop "${EPHEMERAL_NAME}" > /dev/null 2>&1
-docker rm "${EPHEMERAL_NAME}" > /dev/null 2>&1
-rm -f "./${LATEST}"
-
+# Note: cleanup trap will stop and remove container and temp files upon exit.
 echo ""
 echo "=== Restore Drill Complete ==="
 if [[ "$PASS" == "true" ]]; then
   echo "✓ All assertions passed"
+  exit 0
 else
   echo "✕ Some assertions failed — check the output above"
   exit 1

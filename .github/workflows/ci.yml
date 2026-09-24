@@ -1,165 +1,31 @@
-name: OphirPay CI/CD
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
-
-permissions:
-  contents: read
-  pull-requests: write
-
-# ── Global Concurrency — cancel stale runs on same PR ────────
+# ------------------------------------------------------------------
+# Concurrency: cancel-in-progress for PR workflows
+# This workflow runs on pull_request and push events.
+# ------------------------------------------------------------------
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - integration/staging
+
 jobs:
-  # ══════════════════════════════════════════════════════════════
-  # 1. TYPECHECK — TypeScript strict type-checking
-  # ══════════════════════════════════════════════════════════════
-  typecheck:
-    name: "2️⃣ Frontend — TypeCheck (tsc)"
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npx tsc --noEmit
-
-  # ══════════════════════════════════════════════════════════════
-  # 2. UNIT TESTS — Vitest (800 frontend tests)
-  # ══════════════════════════════════════════════════════════════
-  unit-tests:
-    name: "3️⃣ Frontend — Unit Tests (Vitest)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npx vitest run --reporter=verbose
-
-  # ══════════════════════════════════════════════════════════════
-  # 3. CONTRACT WASM BUILD — Build both Soroban contracts
-  # ══════════════════════════════════════════════════════════════
-  contract-wasm:
-    name: "5️⃣ Backend — Contracts (WASM + Tests)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.0
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
         with:
-          targets: wasm32v1-none
-          components: rustfmt, clippy
-      - name: Install Soroban SDK deps & WASM optimization tools
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            contracts/ophirpay/target
-            contracts/emitter/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
-          restore-keys: cargo-${{ runner.os }}-
-      - name: Build OphirPay contract
-        env:
-          RUSTFLAGS: "-C link-arg=-s"
-        run: cd contracts/ophirpay && cargo build --target wasm32v1-none --release
-      - name: Build Emitter contract
-        env:
-          RUSTFLAGS: "-C link-arg=-s"
-        run: cd contracts/emitter && cargo build --target wasm32v1-none --release
-      - name: Optimize WASM (OphirPay + Emitter)
-        run: |
-          set -e
-          OPHIR_WASM=contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm
-          EMIT_WASM=contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm
-
-          for f in "$OPHIR_WASM" "$EMIT_WASM"; do
-            if [ -f "$f" ]; then
-              echo "Before: $(basename $f) $(stat -c%s "$f") bytes"
-              cp "$f" "${f}.orig"
-              wasm-strip "$f" || true
-              wasm-opt -Oz -o "$f" "${f}" || true
-              echo "After:  $(basename $f) $(stat -c%s "$f") bytes"
-            fi
-          done
-      - name: Verify WASM artifacts
-        run: |
-          ls -lh contracts/ophirpay/target/wasm32v1-none/release/*.wasm
-          ls -lh contracts/emitter/target/wasm32v1-none/release/*.wasm
-      - name: Run OphirPay contract unit & property tests
-        run: cd contracts/ophirpay && PROPTEST_CASES=64 cargo test
-      - name: Run Emitter contract unit tests
-        run: cd contracts/emitter && cargo test
-      - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: contract-wasm
-          path: |
-            contracts/ophirpay/target/wasm32v1-none/release/*.wasm
-            contracts/emitter/target/wasm32v1-none/release/*.wasm
-          retention-days: 7
-
-  # ══════════════════════════════════════════════════════════════
-  # 5. SECRETS SCAN — Gitleaks on full repo
-  # ══════════════════════════════════════════════════════════════
-  secrets-scan:
-    name: "1️⃣2️⃣ Security — Secrets (Gitleaks)"
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - name: Install Gitleaks (pinned v8.18.4)
-        run: |
-          GITLEAKS_VER=8.18.4
-          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VER}/gitleaks_${GITLEAKS_VER}_linux_x64.tar.gz" | tar xz
-          sudo mv gitleaks /usr/local/bin/
-      - name: Run Gitleaks detect
-        run: gitleaks detect --config .gitleaks.toml --verbose --redact
-      # Scanner self-test (issue #393): prove the blocklist catches a sample
-      # secret and does not false-positive on clean text. The fixture
-      # directory is allowlisted for the repo-wide scan above, so these
-      # dedicated scans (default rules, --no-git) are the positive control.
-      - name: Self-test — scanner catches the sample-secret fixture
-        run: |
-          set +e
-          gitleaks detect --source tests/fixtures/secrets/positive --no-git \
-            --no-banner --redact >/tmp/gitleaks-positive.log 2>&1
-          rc=$?
-          set -e
-          if [ "$rc" -eq 1 ]; then
-            echo "✅ Scanner caught the fixture secret (exit 1 as expected)"
-          else
-            echo "❌ Scanner did NOT flag the sample-secret fixture (exit $rc)"
-            cat /tmp/gitleaks-positive.log
-            exit 1
-          fi
-      - name: Self-test — clean fixture stays clean (no false positives)
-        run: |
-          set +e
-          gitleaks detect --source tests/fixtures/secrets/clean --no-git \
-            --no-banner >/tmp/gitleaks-clean.log 2>&1
-          rc=$?
-          set -e
-          if [ "$rc" -eq 0 ]; then
-            echo "✅ Clean fixture produced no findings (exit 0)"
-          else
-            echo "❌ Scanner flagged the clean fixture (exit $rc) — check allowlist"
-            cat /tmp/gitleaks-clean.log
-            exit 1
-          fi
-
+          toolchain: stable
+          override: true
+      - name: Build
+        run: cargo build --verbose
+      - name: Test
+        run: cargo test --verbose

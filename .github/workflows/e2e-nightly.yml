@@ -1,0 +1,126 @@
+name: E2E Nightly
+
+on:
+  schedule:
+    # Run every day at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Start Server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the application
+        run: npm run build
+
+      - name: Start the server
+        # The app is built with Next.js. We start it in production mode.
+        run: |
+          npm run start &
+          echo "Waiting for server to be ready..."
+          # Wait until port 3000 is listening
+          for i in {1..30}; do
+            nc -z localhost 3000 && break
+            sleep 1
+          done
+          if ! nc -z localhost 3000; then
+            echo "Server failed to start"
+            exit 1
+          fi
+        env:
+          NODE_ENV: production
+          PORT: 3000
+          # Add any other required environment variables here
+          # e.g. DATABASE_URL, NEXT_PUBLIC_* etc.
+          # These can be stored as repository secrets if needed
+          # For example:
+          # DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+
+  e2e:
+    name: Run Playwright Tests (Shard ${{ matrix.shard }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright tests
+        run: npx playwright test --shard=${{ matrix.shard }}/3 --reporter=dot,json,html
+        env:
+          BASE_URL: http://localhost:3000
+          # If your tests rely on other env variables, expose them here
+          # e.g. NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+
+      - name: Upload shard report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: playwright-report
+
+  merge-report:
+    name: Merge Playwright Reports
+    needs: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download shard 1 report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-1
+          path: report-1
+
+      - name: Download shard 2 report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-2
+          path: report-2
+
+      - name: Download shard 3 report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-3
+          path: report-3
+
+      - name: Merge reports
+        run: |
+          mkdir -p merged-report
+          # Copy all files from each shard into the merged folder
+          # Playwright's html reporter writes a single index.html per shard,
+          # so we keep the latest one (shard 3) as the final report.
+          cp -r report-1/* merged-report/
+          cp -r report-2/* merged-report/
+          cp -r report-3/* merged-report/
+
+      - name: Upload merged report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: merged-report

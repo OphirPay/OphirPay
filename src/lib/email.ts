@@ -1,48 +1,84 @@
-// SPDX-License-Identifier: MIT
+import nodemailer, { Transporter } from 'nodemailer';
+import { EMAIL_TEMPLATES } from './templates';
+import { logger } from './logger';
 
-/**
- * Email notification service placeholder.
- * In production, integrate with Resend, SendGrid, or SES to send transactional emails
- * for payment confirmations, webhook failures, and account notifications.
- */
+const {
+  EMAIL_HOST,
+  EMAIL_PORT,
+  EMAIL_USER,
+  EMAIL_PASS,
+  EMAIL_FROM,
+  EMAIL_RETRY_COUNT = '3',
+  EMAIL_RETRY_DELAY_MS = '1000',
+} = process.env;
 
-interface EmailPayload {
+if (!EMAIL_HOST || !EMAIL_PORT || !EMAIL_USER || !EMAIL_PASS || !EMAIL_FROM) {
+  // In production we want to fail fast. The startup validation will also catch this,
+  // but we guard here to avoid silent failures if sendEmail is called before startup.
+  throw new Error(
+    'Missing required email configuration. Please set EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, and EMAIL_FROM.',
+  );
+}
+
+const transporter: Transporter = nodemailer.createTransport({
+  host: EMAIL_HOST,
+  port: Number(EMAIL_PORT),
+  secure: Number(EMAIL_PORT) === 465, // true for 465, false for other ports
+  auth: {
+    user: EMAIL_USER,
+    pass: EMAIL_PASS,
+  },
+});
+
+export interface EmailOptions {
   to: string;
   subject: string;
-  html: string;
-  text?: string;
-}
-
-export async function sendEmail(payload: EmailPayload): Promise<boolean> {
-  if (process.env.NODE_ENV === "development") {
-    console.log("[Email Dev]", {
-      to: payload.to,
-      subject: payload.subject,
-    });
-    return true;
-  }
-
-  // Production: integrate with email provider
-  // const { data, error } = await resend.emails.send({ from: "OphirPay <payments@ophirpay.com>", ...payload });
-  // return !error;
-
-  return false;
+  template: keyof typeof EMAIL_TEMPLATES;
+  data: Record<string, unknown>;
 }
 
 /**
- * Predefined email templates for common notifications.
+ * Send an email using the configured SMTP provider.
+ *
+ * @param options EmailOptions
+ * @returns Promise<boolean> - true if the provider accepted the message, false otherwise
  */
-export const EMAIL_TEMPLATES = {
-  paymentSent: (amount: string, txHash: string) => ({
-    subject: `Payment of ${amount} sent on Stellar`,
-    html: `<p>Your payment of <strong>${amount}</strong> has been sent.</p><p>TX: ${txHash}</p>`,
-  }),
-  paymentReceived: (amount: string, from: string) => ({
-    subject: `You received ${amount} on Stellar`,
-    html: `<p>You received <strong>${amount}</strong> from ${from}.</p>`,
-  }),
-  webhookFailed: (url: string, event: string) => ({
-    subject: `Webhook delivery failed: ${event}`,
-    html: `<p>Failed to deliver <strong>${event}</strong> to ${url}.</p><p>Check the webhook configuration.</p>`,
-  }),
-};
+export async function sendEmail(options: EmailOptions): Promise<boolean> {
+  const { to, subject, template, data } = options;
+  const templateFn = EMAIL_TEMPLATES[template];
+  if (!templateFn) {
+    logger.warn(`Email template ${template} not found`);
+    return false;
+  }
+
+  const { html, text } = templateFn(data);
+
+  const mailOptions = {
+    from: EMAIL_FROM,
+    to,
+    subject,
+    text,
+    html,
+  };
+
+  const retryCount = Number(EMAIL_RETRY_COUNT);
+  const retryDelay = Number(EMAIL_RETRY_DELAY_MS);
+
+  for (let attempt = 1; attempt <= retryCount; attempt++) {
+    try {
+      await transporter.sendMail(mailOptions);
+      logger.info(`Email sent to ${to} (subject: ${subject})`);
+      return true;
+    } catch (err: any) {
+      logger.error(
+        `Attempt ${attempt} to send email to ${to} failed: ${err.message}`,
+      );
+      if (attempt < retryCount) {
+        await new Promise((res) => setTimeout(res, retryDelay));
+      } else {
+        return false;
+      }
+    }
+  }
+  return false;
+}

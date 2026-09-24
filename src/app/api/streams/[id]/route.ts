@@ -46,3 +46,40 @@ export const GET = withMetrics("GET /api/streams/[id]", withRequestLogging(async
     return handleApiError(err, "GET /api/streams/[id]");
   }
 }));
+
+/**
+ * POST /api/streams/[id] — action handler (claim / cancel action dispatch)
+ */
+export const POST = withMetrics("POST /api/streams/[id]", withRequestLogging(async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await getAuthContext(request);
+    if (!auth) {
+      return unauthorizedError("Authentication required.");
+    }
+
+    const { id } = await params;
+    const streamId = parseInt(id, 10);
+    if (isNaN(streamId)) {
+      return notFoundError("Invalid stream ID");
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const action = body.action;
+
+    if (action !== "claim" && action !== "cancel") {
+      return unauthorizedError("Action must be 'claim' or 'cancel'");
+    }
+
+    return successResponse({
+      message: `Stream ${action} action requires direct wallet signature via Freighter.`,
+      streamId,
+      action,
+    }, undefined, 202);
+  } catch (err) {
+    return handleApiError(err, "POST /api/streams/[id]");
+  }
+}));
+

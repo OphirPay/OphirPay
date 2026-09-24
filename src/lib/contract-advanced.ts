@@ -19,8 +19,10 @@ import {
   simulateContractCall,
   DEFAULT_CONTRACT_ID,
   EMITTER_CONTRACT_ID,
+  CHAIN_READ_SOURCE,
   classifyContractError,
 } from "@/lib/contracts";
+import { normalizeStream, type StreamRecord } from "@/lib/streams";
 import { getActiveWalletConnector } from "@/lib/wallets";
 import { NETWORK_PASSPHRASE, STELLAR_NETWORK } from "@/lib/stellar";
 
@@ -536,3 +538,128 @@ export async function emergencyUnpauseAll(
   ];
   return signAndSubmit(caller, CONTRACT_ID, "emergency_unpause_all", args);
 }
+
+// ── Payment Stream Functions ───────────────────────────────────
+
+/**
+ * Create a linear payment stream on-chain.
+ * Transfers totalAmount from creator to contract and locks it.
+ *
+ * @param creator - Wallet creating and funding the stream
+ * @param recipient - Beneficiary address receiving vested funds
+ * @param totalAmount - Total amount in stroops (i128)
+ * @param asset - Asset address (or Native token address)
+ * @param startTime - Unix timestamp in seconds
+ * @param endTime - Unix timestamp in seconds
+ * @param metadata - Optional stream description / memo
+ */
+export async function createStream(
+  creator: string,
+  recipient: string,
+  totalAmount: bigint | number | string,
+  asset: string,
+  startTime: number,
+  endTime: number,
+  metadata: string = ""
+): Promise<ContractCallResult> {
+  const amountStr = typeof totalAmount === "bigint" ? totalAmount.toString() : String(totalAmount);
+  const args: xdr.ScVal[] = [
+    nativeToScVal(creator, { type: "address" }),
+    nativeToScVal(recipient, { type: "address" }),
+    nativeToScVal(amountStr, { type: "i128" }),
+    nativeToScVal(asset, { type: "address" }),
+    nativeToScVal(BigInt(startTime), { type: "u64" }),
+    nativeToScVal(BigInt(endTime), { type: "u64" }),
+    nativeToScVal(metadata, { type: "string" }),
+  ];
+  return signAndSubmit(creator, CONTRACT_ID, "create_stream", args);
+}
+
+/**
+ * Claim vested tokens from an active payment stream.
+ * Recipient-only: requires recipient signature.
+ */
+export async function claimStream(
+  recipient: string,
+  streamId: number
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(recipient, { type: "address" }),
+    nativeToScVal(BigInt(streamId), { type: "u64" }),
+  ];
+  return signAndSubmit(recipient, CONTRACT_ID, "claim_stream", args);
+}
+
+/**
+ * Cancel a payment stream.
+ * Creator-only: unvested tokens are refunded to the creator.
+ */
+export async function cancelStream(
+  creator: string,
+  streamId: number
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(creator, { type: "address" }),
+    nativeToScVal(BigInt(streamId), { type: "u64" }),
+  ];
+  return signAndSubmit(creator, CONTRACT_ID, "cancel_stream", args);
+}
+
+/**
+ * Fetch a single payment stream by ID via contract simulation.
+ */
+export async function getStream(
+  streamId: number,
+  sourcePublicKey?: string
+): Promise<StreamRecord | null> {
+  const caller = sourcePublicKey || CHAIN_READ_SOURCE;
+  const result = await simulateContractCall(CONTRACT_ID, "get_stream", caller, [
+    nativeToScVal(BigInt(streamId), { type: "u64" }),
+  ]);
+  if (result.status === "SIMULATION_FAILED" || !result.returnValue) {
+    return null;
+  }
+  return normalizeStream(result.returnValue);
+}
+
+/**
+ * Fetch the total count of payment streams created on-chain.
+ */
+export async function getStreamCount(sourcePublicKey?: string): Promise<number> {
+  const caller = sourcePublicKey || CHAIN_READ_SOURCE;
+  const result = await simulateContractCall(CONTRACT_ID, "get_stream_count", caller);
+  if (result.status === "SIMULATION_FAILED" || result.returnValue == null) {
+    return 0;
+  }
+  return Number(result.returnValue);
+}
+
+/**
+ * Fetch list of recent streams up to limit.
+ */
+export async function listStreams(
+  sourcePublicKey?: string,
+  limit: number = 20
+): Promise<StreamRecord[]> {
+  const total = await getStreamCount(sourcePublicKey);
+  if (total <= 0) return [];
+
+  const start = Math.max(1, total - limit + 1);
+  const ids: number[] = [];
+  for (let i = total; i >= start; i--) {
+    ids.push(i);
+  }
+
+  const streams: StreamRecord[] = [];
+  for (const id of ids) {
+    try {
+      const stream = await getStream(id, sourcePublicKey);
+      if (stream) streams.push(stream);
+    } catch {
+      // Continue on non-existent stream
+    }
+  }
+
+  return streams;
+}
+

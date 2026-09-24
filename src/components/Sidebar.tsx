@@ -28,6 +28,7 @@ const navItems = [
   { href: "/payments", label: "Payments", Icon: PaymentsIcon },
   { href: "/batches", label: "Batches", Icon: BatchesIcon },
   { href: "/recurring", label: "Recurring", Icon: RecurringIcon },
+  { href: "/streams", label: "Streams", Icon: StreamsIcon },
   { href: "/requests", label: "Requests", Icon: RequestsIcon },
   { href: "/webhooks", label: "Webhooks", Icon: WebhookIcon },
   { href: "/contracts", label: "Contracts", Icon: ContractsIcon },
@@ -45,6 +46,14 @@ const navItems = [
   { href: "/timelock", label: "Timelock", Icon: TimelockIcon },
   { href: "/policy-versions", label: "Policy Versions", Icon: PolicyVersionsIcon },
 ];
+
+function StreamsIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m1-3l1 3m5-3l-1 3m1-3l1 3M9 10.5l3-3m0 0l3 3m-3-3v7.5" />
+    </svg>
+  );
+}
 
 function ApiKeysIcon({ className }: { className?: string }) {
   return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 19.5a7.5 7.5 0 0115 0M15 8.25l3 3m0 0l2.25-2.25M18 11.25l-2.25 2.25" /></svg>;

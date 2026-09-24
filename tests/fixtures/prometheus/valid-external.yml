@@ -1,0 +1,17 @@
+# Fixture for scripts/validate-monitoring.mjs — a valid rule file: one alert
+# on a metric the app publishes, one alert on an external metric declared
+# inside its block. Used to prove the `--rules` flag accepts a well-formed
+# file other than the checked-in one.
+groups:
+  - name: fixture
+    rules:
+      - alert: FixtureExternalGauge
+        # external: ophirpay_contract_balance
+        #   contract-side gauge — fixture
+        expr: ophirpay_contract_balance < 0
+        labels:
+          severity: critical
+      - alert: FixtureExposedMetric
+        expr: rate(ophirpay_http_requests_total[5m]) > 1
+        labels:
+          severity: warning

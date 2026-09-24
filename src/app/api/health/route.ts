@@ -6,6 +6,7 @@ import { STELLAR_NETWORK, SOROBAN_RPC_URL, HORIZON_URL } from "@/lib/stellar";
 import { OPHIRPAY_CONTRACT_ID } from "@/lib/contracts";
 import { successResponse, serverError } from "@/lib/api-response";
 import { withRequestLogging } from "@/lib/request-logging";
+import { getRpcFailoverState } from "@/lib/rpc-failover";
 
 // ── Check helpers ──────────────────────────────────────────────
 
@@ -69,8 +70,10 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     // Optional check: Soroban RPC reachability
     let rpcStatus: CheckStatus = "unchecked";
     let rpcLatency: number | null = null;
+    const rpcFailover = getRpcFailoverState(STELLAR_NETWORK as "TESTNET" | "PUBLIC");
+    const rpcProbeUrl = rpcFailover.activeUrl || SOROBAN_RPC_URL;
     const rpc = await pingJsonRpc(
-      SOROBAN_RPC_URL,
+      rpcProbeUrl,
       { jsonrpc: "2.0", id: 1, method: "getHealth" },
       5000
     );
@@ -137,7 +140,14 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
             network: STELLAR_NETWORK,
             rpcUrl: SOROBAN_RPC_URL,
             horizonUrl: HORIZON_URL,
-            rpc: { status: rpcStatus, latencyMs: rpcLatency },
+            rpc: {
+              status: rpcStatus,
+              latencyMs: rpcLatency,
+              activeEndpoint: rpcFailover.activeUrl,
+              isPrimary: rpcFailover.isPrimary,
+              failoverCount: rpcFailover.failoverCount,
+              endpoints: rpcFailover.endpoints,
+            },
             horizon: { status: horizonStatus, latencyMs: horizonLatency },
           },
           contract: {

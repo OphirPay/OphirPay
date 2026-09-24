@@ -349,8 +349,13 @@ describe('crypto', () => {
 describe('email', () => {
   describe('sendEmail', () => {
     it('returns a boolean in dev mode', async () => {
-      const result = await sendEmail({ to: 't@t.com', subject: 'S', html: '<p>B</p>' });
-      expect(typeof result).toBe('boolean');
+      vi.stubEnv("NODE_ENV", "development");
+      try {
+        const result = await sendEmail({ to: 't@t.com', subject: 'S', html: '<p>B</p>' });
+        expect(typeof result).toBe('boolean');
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
   });
 

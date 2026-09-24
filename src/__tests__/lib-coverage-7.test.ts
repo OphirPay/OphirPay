@@ -44,12 +44,13 @@ afterEach(() => {
 // ─── email ─────────────────────────────────────────────────────
 
 describe("email", () => {
-  it("sendEmail returns false outside development (no provider wired)", async () => {
+  it("sendEmail throws EmailConfigurationError outside development when unconfigured", async () => {
     vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("RESEND_API_KEY", "");
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await expect(
       sendEmail({ to: "a@b.c", subject: "s", html: "<p>x</p>" })
-    ).resolves.toBe(false);
+    ).rejects.toThrow(/RESEND_API_KEY is not set/);
     expect(logSpy).not.toHaveBeenCalled();
   });
 

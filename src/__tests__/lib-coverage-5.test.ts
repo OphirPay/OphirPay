@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { exportToCsv } from '@/lib/csv';
 import { getDateRange, getDateRangePresets } from '@/lib/date-range';
 import { formatXlm, formatFiat, formatTokenAmount, formatCompact } from '@/lib/format-currency';
@@ -59,7 +59,7 @@ describe('prefetch', () => {
   it('routes', () => { expect(PRELOAD_ROUTES.length).toBeGreaterThan(0); expect(PRELOAD_ROUTES).toContain('/send'); });
 });
 describe('email', () => {
-  it('dev', async () => expect(typeof await sendEmail({to:'t@t.com',subject:'S',html:'<p>H</p>'})).toBe('boolean'));
+  it('dev', async () => { vi.stubEnv("NODE_ENV", "development"); try { expect(typeof await sendEmail({to:'t@t.com',subject:'S',html:'<p>H</p>'})).toBe('boolean'); } finally { vi.unstubAllEnvs(); } });
   it('templates', () => { expect(EMAIL_TEMPLATES.paymentSent('10','tx')).toHaveProperty('subject'); });
 });
 describe('focus-trap', () => {

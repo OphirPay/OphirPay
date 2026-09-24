@@ -1,50 +1,70 @@
-// SPDX-License-Identifier: MIT
-
 /**
- * Error tracking integration point.
- * In production, replace with a real Sentry/DataDog/LogRocket integration.
+ * Sentry wrapper that gracefully degrades when the SDK is not available.
+ * It exposes a minimal API used by the application: initSentry and captureError.
+ *
+ * The wrapper is intentionally lightweight to avoid adding a hard dependency
+ * on the Sentry SDK. If the SDK is missing, all calls become no-ops.
  */
 
-interface ErrorContext {
-  component?: string;
-  userId?: string;
-  url?: string;
-  tags?: Record<string, string>;
-  extra?: Record<string, unknown>;
+let Sentry: any = null;
+
+try {
+  // @sentry/nextjs provides both client and server support
+  Sentry = require('@sentry/nextjs');
+} catch {
+  // SDK not installed – provide a no-op implementation
+  Sentry = {
+    init: () => {},
+    captureException: () => {},
+    setTag: () => {},
+    setRelease: () => {},
+    setContext: () => {},
+  };
 }
 
-export function captureError(error: Error, context?: ErrorContext): void {
-  if (process.env.NODE_ENV === "production") {
-    // Production: send to error tracking service
-    // Sentry.captureException(error, { tags: context?.tags, extra: context?.extra });
-    console.error("[OphirPay]", {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-      ...context,
+/**
+ * Initialise Sentry with the provided DSN and release.
+ * The function is idempotent – calling it multiple times is safe.
+ */
+export const initSentry = (dsn?: string, release?: string) => {
+  if (!dsn) return;
+  Sentry.init({
+    dsn,
+    release,
+    beforeSend(event) {
+      // Redact PII: wallet addresses, amounts, and memo fields
+      if (event.exception?.values) {
+        event.exception.values.forEach((value: any) => {
+          if (value.value) {
+            // Redact hex wallet addresses (0x followed by 40 hex chars)
+            value.value = value.value.replace(/0x[a-fA-F0-9]{40}/g, '[REDACTED]');
+            // Redact numeric amounts (simple regex – adjust as needed)
+            value.value = value.value.replace(/\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b/g, '[REDACTED]');
+            // Redact memo strings
+            value.value = value.value.replace(/memo:\s*\S+/gi, 'memo:[REDACTED]');
+          }
+        });
+      }
+      return event;
+    },
+  });
+};
+
+/**
+ * Capture an exception with optional context information.
+ * The context is merged into Sentry's context API.
+ */
+export const captureError = (error: any, context?: Record<string, any>) => {
+  if (!Sentry || !Sentry.captureException) return;
+  if (context) {
+    Object.entries(context).forEach(([key, value]) => {
+      Sentry.setContext(key, value);
     });
-  } else {
-    console.error("[OphirPay Dev]", error);
   }
-}
+  Sentry.captureException(error);
+};
 
-export function captureMessage(message: string, level: "info" | "warning" | "error" = "info"): void {
-  if (process.env.NODE_ENV === "production") {
-    // Sentry.captureMessage(message, level);
-    console.log(`[OphirPay ${level}]`, message);
-  }
-}
-
-/**
- * Set user context for error tracking (Stellar address for anonymous users).
- */
-export function setUserContext(publicKey: string): void {
-  try {
-    // Sentry.setUser({ id: publicKey });
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("ophir-user-id", publicKey);
-    }
-  } catch {
-    // Silently ignore in SSR
-  }
-}
+// Initialise Sentry immediately when this module is imported.
+const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
+const release = process.env.NEXT_PUBLIC_RELEASE;
+initSentry(dsn, release);

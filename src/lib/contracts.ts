@@ -9,6 +9,12 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import { getHorizonServer, getSorobanServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import {
+  withSpan,
+  SpanKind,
+  getCurrentRequestId,
+  redactTraceAttributes,
+} from "@/lib/tracing";
 
 // ── Contract Configuration ─────────────────────────────────────
 
@@ -136,43 +142,60 @@ export async function simulateContractCall(
   sourcePublicKey: string,
   args: xdr.ScVal[] = []
 ): Promise<SimulateResult> {
-  const server = getSorobanServer();
+  return withSpan(
+    "soroban.simulate",
+    async (span) => {
+      span.setAttributes(
+        redactTraceAttributes({
+          "contract.id": contractId,
+          "contract.function": functionName,
+          "soroban.source": sourcePublicKey,
+          "request.id": getCurrentRequestId(),
+        })
+      );
 
-  try {
-    const contract = new Contract(contractId);
-    const account = await server.getAccount(sourcePublicKey);
+      const server = getSorobanServer();
 
-    const tx = new TransactionBuilder(account, {
-      fee: "100000",
-      networkPassphrase: NETWORK_PASSPHRASE,
-      timebounds: { minTime: 0, maxTime: 0 },
-    })
-      .addOperation(contract.call(functionName, ...args))
-      .build();
-
-    const simResponse = await server.simulateTransaction(tx);
-
-    if ("error" in simResponse && simResponse.error) {
-      return {
-        status: "SIMULATION_FAILED",
-        returnValue: null,
-        error: String(simResponse.error),
-      };
-    }
-
-    let returnValue: unknown = null;
-    if ("result" in simResponse && simResponse.result) {
       try {
-        returnValue = scValToNative(simResponse.result.retval);
-      } catch {
-        returnValue = "(binary result)";
-      }
-    }
+        const contract = new Contract(contractId);
+        const account = await server.getAccount(sourcePublicKey);
 
-    return { status: "SIMULATED", returnValue };
-  } catch (err) {
-    throw classifyContractError(err);
-  }
+        const tx = new TransactionBuilder(account, {
+          fee: "100000",
+          networkPassphrase: NETWORK_PASSPHRASE,
+          timebounds: { minTime: 0, maxTime: 0 },
+        })
+          .addOperation(contract.call(functionName, ...args))
+          .build();
+
+        const simResponse = await server.simulateTransaction(tx);
+
+        if ("error" in simResponse && simResponse.error) {
+          span.setAttribute("soroban.status", "SIMULATION_FAILED");
+          return {
+            status: "SIMULATION_FAILED",
+            returnValue: null,
+            error: String(simResponse.error),
+          };
+        }
+
+        let returnValue: unknown = null;
+        if ("result" in simResponse && simResponse.result) {
+          try {
+            returnValue = scValToNative(simResponse.result.retval);
+          } catch {
+            returnValue = "(binary result)";
+          }
+        }
+
+        span.setAttribute("soroban.status", "SIMULATED");
+        return { status: "SIMULATED", returnValue };
+      } catch (err) {
+        throw classifyContractError(err);
+      }
+    },
+    { kind: SpanKind.CLIENT }
+  );
 }
 
 // ── Invoke (with signature) ───────────────────────────────────
@@ -187,33 +210,48 @@ export async function invokeContractFunction(
   sourcePublicKey: string,
   args: xdr.ScVal[] = []
 ): Promise<InvokeResult> {
-  const server = getSorobanServer();
+  return withSpan(
+    "soroban.invoke",
+    async (span) => {
+      span.setAttributes(
+        redactTraceAttributes({
+          "contract.id": contractId,
+          "contract.function": functionName,
+          "soroban.source": sourcePublicKey,
+          "request.id": getCurrentRequestId(),
+        })
+      );
 
-  try {
-    const contract = new Contract(contractId);
-    const account = await server.getAccount(sourcePublicKey);
+      const server = getSorobanServer();
 
-    const tx = new TransactionBuilder(account, {
-      fee: "100000",
-      networkPassphrase: NETWORK_PASSPHRASE,
-      timebounds: {
-        minTime: 0,
-        maxTime: Math.floor(Date.now() / 1000) + 300,
-      },
-    })
-      .addOperation(contract.call(functionName, ...args))
-      .build();
+      try {
+        const contract = new Contract(contractId);
+        const account = await server.getAccount(sourcePublicKey);
 
-    const prepared = await server.prepareTransaction(tx);
+        const tx = new TransactionBuilder(account, {
+          fee: "100000",
+          networkPassphrase: NETWORK_PASSPHRASE,
+          timebounds: {
+            minTime: 0,
+            maxTime: Math.floor(Date.now() / 1000) + 300,
+          },
+        })
+          .addOperation(contract.call(functionName, ...args))
+          .build();
 
-    return {
-      status: "AWAITING_SIGNATURE",
-      txHash: "",
-      xdr: prepared.toXDR(),
-    };
-  } catch (err) {
-    throw classifyContractError(err);
-  }
+        const prepared = await server.prepareTransaction(tx);
+
+        return {
+          status: "AWAITING_SIGNATURE",
+          txHash: "",
+          xdr: prepared.toXDR(),
+        };
+      } catch (err) {
+        throw classifyContractError(err);
+      }
+    },
+    { kind: SpanKind.CLIENT }
+  );
 }
 
 // ── Submit ─────────────────────────────────────────────────────
@@ -227,98 +265,126 @@ export async function submitContractInvocation(signedXdr: string): Promise<{
   status: string;
   returnValue?: unknown;
 }> {
-  const server = getSorobanServer();
+  return withSpan(
+    "soroban.submit",
+    async (span) => {
+      span.setAttributes(
+        redactTraceAttributes({
+          "request.id": getCurrentRequestId(),
+        })
+      );
 
-  try {
-    const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
-    // The tx hash is deterministic from the signed envelope — compute it
-    // up-front so we can verify via Horizon even if the RPC result can't be
-    // deserialized by the SDK (see "Bad union switch" handling below).
-    const txHash = tx.hash().toString("hex");
+      const server = getSorobanServer();
 
-    try {
-      await server.sendTransaction(tx);
-    } catch (err) {
-      // SDK v13 cannot deserialize protocol-27 RPC responses ("Bad union
-      // switch"). This is a parsing limitation, not a tx failure — the
-      // response contains a valid result. Fall through to Horizon to confirm.
-      if (!(err instanceof Error) || !err.message.includes("Bad union switch")) {
-        throw err;
-      }
-    }
+      try {
+        const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
+        // The tx hash is deterministic from the signed envelope — compute it
+        // up-front so we can verify via Horizon even if the RPC result can't be
+        // deserialized by the SDK (see "Bad union switch" handling below).
+        const txHash = tx.hash().toString("hex");
+        span.setAttribute("stellar.tx_hash", txHash);
 
-    // Try the Soroban RPC result first — preserves the contract return value
-    // (e.g. proposal/request ids) for callers that consume it.
-    let result: Awaited<ReturnType<typeof server.getTransaction>> | undefined;
-    let parseError = false;
-    try {
-      result = await server.getTransaction(txHash);
-    } catch (err) {
-      parseError = err instanceof Error && err.message.includes("Bad union switch");
-      if (!parseError) throw err;
-    }
+        try {
+          await server.sendTransaction(tx);
+        } catch (err) {
+          // SDK v13 cannot deserialize protocol-27 RPC responses ("Bad union
+          // switch"). This is a parsing limitation, not a tx failure — the
+          // response contains a valid result. Fall through to Horizon to confirm.
+          if (!(err instanceof Error) || !err.message.includes("Bad union switch")) {
+            throw err;
+          }
+        }
 
-    if (result) {
-      let attempts = 0;
-      while (result.status === "NOT_FOUND" && attempts < 30) {
-        await new Promise((r) => setTimeout(r, 1000));
+        // Try the Soroban RPC result first — preserves the contract return value
+        // (e.g. proposal/request ids) for callers that consume it.
+        let result: Awaited<ReturnType<typeof server.getTransaction>> | undefined;
+        let parseError = false;
         try {
           result = await server.getTransaction(txHash);
         } catch (err) {
           parseError = err instanceof Error && err.message.includes("Bad union switch");
           if (!parseError) throw err;
-          break;
         }
-        attempts++;
-      }
-    }
 
-    if (result && result.status !== "NOT_FOUND" && !parseError) {
-      let returnValue: unknown;
-      if (result.status === "SUCCESS" && result.resultMetaXdr) {
-        try {
-          const meta = result.resultMetaXdr as xdr.TransactionMeta;
-          const sorobanMeta = meta.v3()?.sorobanMeta();
-          if (sorobanMeta) {
-            returnValue = scValToNative(sorobanMeta.returnValue());
+        if (result) {
+          let attempts = 0;
+          while (result.status === "NOT_FOUND" && attempts < 30) {
+            await new Promise((r) => setTimeout(r, 1000));
+            try {
+              result = await server.getTransaction(txHash);
+            } catch (err) {
+              parseError = err instanceof Error && err.message.includes("Bad union switch");
+              if (!parseError) throw err;
+              break;
+            }
+            attempts++;
           }
-        } catch {
-          // Non-Soroban meta or parsing failure — ignore.
         }
-      }
-      return { txHash, status: result.status, returnValue };
-    }
 
-    // The RPC result wasn't parseable ("Bad union switch") — confirm the
-    // outcome via Horizon REST, which parses protocol-27 cleanly. The tx was
-    // already accepted by sendTransaction (PENDING), so this is confirmation
-    // of a tx that did go through — mirroring scripts/deploy-testnet.mjs.
-    const horizon = getHorizonServer();
-    let status = "PENDING";
-    for (let i = 0; i < 30; i++) {
-      try {
-        const htx = await horizon.transactions().transaction(txHash).call();
-        status = htx.successful ? "SUCCESS" : "FAILED";
-        break;
+        if (result && result.status !== "NOT_FOUND" && !parseError) {
+          let returnValue: unknown;
+          if (result.status === "SUCCESS" && result.resultMetaXdr) {
+            try {
+              const meta = result.resultMetaXdr as xdr.TransactionMeta;
+              const sorobanMeta = meta.v3()?.sorobanMeta();
+              if (sorobanMeta) {
+                returnValue = scValToNative(sorobanMeta.returnValue());
+              }
+            } catch {
+              // Non-Soroban meta or parsing failure — ignore.
+            }
+          }
+          span.setAttribute("soroban.status", result.status);
+          return { txHash, status: result.status, returnValue };
+        }
+
+        // The RPC result wasn't parseable ("Bad union switch") — confirm the
+        // outcome via Horizon REST, which parses protocol-27 cleanly. The tx was
+        // already accepted by sendTransaction (PENDING), so this is confirmation
+        // of a tx that did go through — mirroring scripts/deploy-testnet.mjs.
+        const horizon = getHorizonServer();
+        let status = "PENDING";
+        for (let i = 0; i < 30; i++) {
+          try {
+            const htx = await withSpan(
+              "horizon.get_transaction",
+              async (hSpan) => {
+                hSpan.setAttributes(
+                  redactTraceAttributes({
+                    "stellar.tx_hash": txHash,
+                    "horizon.operation": "get_transaction",
+                    "request.id": getCurrentRequestId(),
+                  })
+                );
+                return horizon.transactions().transaction(txHash).call();
+              },
+              { kind: SpanKind.CLIENT }
+            );
+            status = htx.successful ? "SUCCESS" : "FAILED";
+            break;
+          } catch (err) {
+            // NotFoundError (HTTP 404) = not ingested yet — keep polling.
+            // Anything else is unexpected; surface it as PENDING.
+            const isNotFound =
+              err instanceof Error &&
+              (err.message.includes("Not Found") ||
+                (err as { response?: { status?: number } }).response?.status === 404);
+            if (!isNotFound) {
+              status = "PENDING";
+              break;
+            }
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+
+        span.setAttribute("horizon.status", status);
+        return { txHash, status };
       } catch (err) {
-        // NotFoundError (HTTP 404) = not ingested yet — keep polling.
-        // Anything else is unexpected; surface it as PENDING.
-        const isNotFound =
-          err instanceof Error &&
-          (err.message.includes("Not Found") ||
-            (err as { response?: { status?: number } }).response?.status === 404);
-        if (!isNotFound) {
-          status = "PENDING";
-          break;
-        }
+        throw classifyContractError(err);
       }
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-
-    return { txHash, status };
-  } catch (err) {
-    throw classifyContractError(err);
-  }
+    },
+    { kind: SpanKind.CLIENT }
+  );
 }
 
 // ── On-Chain Payment Recording ─────────────────────────────────
@@ -352,63 +418,83 @@ export async function recordPaymentOnChain(params: {
   network?: string;
   networkPassphrase?: string;
 }): Promise<RecordOnChainResult> {
-  const {
-    payer,
-    payee,
-    amountStroops,
-    txHash,
-    metadata = "",
-    signTransaction,
-    network = "TESTNET",
-    networkPassphrase,
-  } = params;
+  return withSpan(
+    "soroban.record_payment",
+    async (span) => {
+      const {
+        payer,
+        payee,
+        amountStroops,
+        txHash,
+        metadata = "",
+        signTransaction,
+        network = "TESTNET",
+        networkPassphrase,
+      } = params;
 
-  try {
-    // Matches the contract's `record_payment(payer, payee, amount, asset,
-    // tx_hash, metadata)` signature — payer is the auth'd caller.
-    const args: xdr.ScVal[] = [
-      nativeToScVal(payer, { type: "address" }), // payer (require_auth)
-      nativeToScVal(payee, { type: "address" }), // payee
-      nativeToScVal(amountStroops, { type: "i128" }), // amount (stroops)
-      nativeToScVal(Asset.native().contractId(NETWORK_PASSPHRASE), { type: "address" }), // asset
-      nativeToScVal(txHash, { type: "string" }), // tx_hash
-      nativeToScVal(metadata, { type: "string" }), // metadata
-    ];
+      span.setAttributes(
+        redactTraceAttributes({
+          "stellar.payer": payer,
+          "stellar.payee": payee,
+          "stellar.amount_stroops": amountStroops,
+          "stellar.tx_hash": txHash,
+          "stellar.network": network,
+          "request.id": getCurrentRequestId(),
+        })
+      );
 
-    const txInfo = await invokeContractFunction(
-      DEFAULT_CONTRACT_ID,
-      "record_payment",
-      payer,
-      args
-    );
+      try {
+        // Matches the contract's `record_payment(payer, payee, amount, asset,
+        // tx_hash, metadata)` signature — payer is the auth'd caller.
+        const args: xdr.ScVal[] = [
+          nativeToScVal(payer, { type: "address" }), // payer (require_auth)
+          nativeToScVal(payee, { type: "address" }), // payee
+          nativeToScVal(amountStroops, { type: "i128" }), // amount (stroops)
+          nativeToScVal(Asset.native().contractId(NETWORK_PASSPHRASE), { type: "address" }), // asset
+          nativeToScVal(txHash, { type: "string" }), // tx_hash
+          nativeToScVal(metadata, { type: "string" }), // metadata
+        ];
 
-    if (txInfo.status !== "AWAITING_SIGNATURE" || !txInfo.xdr) {
-      return {
-        status: "FAILED",
-        error: "Failed to build the on-chain payment record.",
-      };
-    }
+        const txInfo = await invokeContractFunction(
+          DEFAULT_CONTRACT_ID,
+          "record_payment",
+          payer,
+          args
+        );
 
-    const signedXdr = await signTransaction(txInfo.xdr, {
-      network,
-      networkPassphrase,
-    });
+        if (txInfo.status !== "AWAITING_SIGNATURE" || !txInfo.xdr) {
+          span.setAttribute("soroban.status", "FAILED");
+          return {
+            status: "FAILED",
+            error: "Failed to build the on-chain payment record.",
+          };
+        }
 
-    const result = await submitContractInvocation(signedXdr);
+        const signedXdr = await signTransaction(txInfo.xdr, {
+          network,
+          networkPassphrase,
+        });
 
-    if (result.status !== "SUCCESS") {
-      return {
-        status: "FAILED",
-        txHash: result.txHash,
-        error: `On-chain record transaction was not confirmed (${result.status}).`,
-      };
-    }
+        const result = await submitContractInvocation(signedXdr);
 
-    return { status: "RECORDED", txHash: result.txHash };
-  } catch (err) {
-    const contractError = classifyContractError(err);
-    return { status: "FAILED", error: contractError.message };
-  }
+        if (result.status !== "SUCCESS") {
+          span.setAttribute("soroban.status", "FAILED");
+          return {
+            status: "FAILED",
+            txHash: result.txHash,
+            error: `On-chain record transaction was not confirmed (${result.status}).`,
+          };
+        }
+
+        span.setAttribute("soroban.status", "RECORDED");
+        return { status: "RECORDED", txHash: result.txHash };
+      } catch (err) {
+        const contractError = classifyContractError(err);
+        return { status: "FAILED", error: contractError.message };
+      }
+    },
+    { kind: SpanKind.CLIENT }
+  );
 }
 
 // ── On-Chain Reads (Public) ────────────────────────────────────

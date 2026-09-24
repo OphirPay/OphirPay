@@ -21,6 +21,8 @@ export const WEBHOOK_EVENTS = {
   REQUEST_CREATED: "request.created",
   REQUEST_PAID: "request.paid",
   REQUEST_EXPIRED: "request.expired",
+  REQUEST_OVERDUE: "request.overdue",
+  REQUEST_REMINDER_SENT: "request.reminder_sent",
 } as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENTS)[keyof typeof WEBHOOK_EVENTS];
@@ -41,6 +43,8 @@ export const WEBHOOK_EVENT_LABELS: Record<WebhookEventType, string> = {
   [WEBHOOK_EVENTS.REQUEST_CREATED]: "Request Created",
   [WEBHOOK_EVENTS.REQUEST_PAID]: "Request Paid",
   [WEBHOOK_EVENTS.REQUEST_EXPIRED]: "Request Expired",
+  [WEBHOOK_EVENTS.REQUEST_OVERDUE]: "Request Overdue",
+  [WEBHOOK_EVENTS.REQUEST_REMINDER_SENT]: "Request Reminder Sent",
 };
 
 /** All webhook event types as an array for form dropdowns */

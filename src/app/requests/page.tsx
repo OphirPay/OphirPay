@@ -13,7 +13,7 @@ import { StatusBadge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
 import { generatePaymentLink } from "@/lib/payment-link";
-import { formatAmount } from "@/lib/utils";
+import { formatAmount, cn } from "@/lib/utils";
 import { useWallet } from "@/hooks/useMultiWallet";
 
 interface RequestData {
@@ -21,6 +21,10 @@ interface RequestData {
   amount: number;
   assetCode: string;
   status: string;
+  dueDate?: string;
+  expiresAt?: string;
+  reminderCount?: number;
+  lastReminderAt?: string;
   description?: string;
   recipientAddress?: string;
   transactionHash?: string;
@@ -33,6 +37,7 @@ interface CreateRequestBody {
   assetCode: string;
   description?: string;
   recipientAddress?: string;
+  dueDate?: string;
 }
 
 const QR_API = "https://api.qrserver.com/v1/create-qr-code";
@@ -49,12 +54,15 @@ export default function RequestsPage() {
   const [formAsset, setFormAsset] = useState("XLM");
   const [formDescription, setFormDescription] = useState("");
   const [formAddress, setFormAddress] = useState("");
+  const [formDueDate, setFormDueDate] = useState("");
+  const [remindingId, setRemindingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
     data: rawRequests,
     isLoading: loading,
+    refetch,
   } = useApiQuery<RequestData[]>(["requests"], "/api/requests");
   const requests = Array.isArray(rawRequests) ? rawRequests : [];
 
@@ -78,6 +86,7 @@ export default function RequestsPage() {
         assetCode: formAsset,
         description: formDescription || undefined,
         recipientAddress: formAddress || wallet.publicKey || undefined,
+        dueDate: formDueDate ? new Date(formDueDate).toISOString() : undefined,
       });
       setShowCreate(false);
       resetForm();
@@ -90,21 +99,52 @@ export default function RequestsPage() {
     }
   };
 
+  const handleSendReminder = async (id: string) => {
+    setRemindingId(id);
+    try {
+      const res = await fetch(`/api/requests/${id}/remind`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error("Reminder failed", data.error?.message || data.message || "Failed to send reminder.");
+        return;
+      }
+      toast.success(
+        "Reminder sent",
+        `Reminder #${data.data.reminderCount} sent to recipient.`
+      );
+      refetch();
+    } catch (err: any) {
+      toast.error("Reminder failed", err.message || "Network error occurred.");
+    } finally {
+      setRemindingId(null);
+    }
+  };
+
   const resetForm = () => {
     setFormAmount("");
     setFormAsset("XLM");
     setFormDescription("");
     setFormAddress("");
+    setFormDueDate("");
     setFormError(null);
   };
 
   const getPaymentLink = (req: RequestData): string => {
-    return generatePaymentLink({
+    const link = generatePaymentLink({
       destination: req.recipientAddress || wallet.publicKey || "",
       amount: req.amount.toString(),
       assetCode: req.assetCode,
       message: req.description,
     });
+    if (req.dueDate) {
+      const u = new URL(link);
+      u.searchParams.set("due", req.dueDate);
+      return u.toString();
+    }
+    return link;
   };
 
   const getQRUrl = (req: RequestData): string => {
@@ -171,63 +211,127 @@ export default function RequestsPage() {
         />
       ) : (
         <div className="space-y-3">
-          {requests.map((req) => (
-            <div
-              key={req.id}
-              className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 hover:border-gray-300 dark:hover:border-gray-700 transition-colors"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-lg font-bold text-gray-900 dark:text-white">
-                      {formatAmount(req.amount, req.assetCode)}
-                    </span>
-                    <StatusBadge status={req.status} />
-                  </div>
-                  {req.description && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                      {req.description}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
-                    <span>
-                      {new Date(req.createdAt).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </span>
-                    {req.transactionHash && (
-                      <span className="font-mono text-green-600 dark:text-green-400">
-                        Paid
+          {requests.map((req) => {
+            const isOverdue =
+              req.status === "OVERDUE" ||
+              (req.status === "PENDING" &&
+                req.dueDate &&
+                new Date(req.dueDate).getTime() < Date.now());
+
+            return (
+              <div
+                key={req.id}
+                className={cn(
+                  "bg-white dark:bg-gray-900 rounded-xl border p-5 transition-colors",
+                  isOverdue
+                    ? "border-amber-300 dark:border-amber-700/70 bg-amber-50/20 dark:bg-amber-950/10"
+                    : "border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
+                )}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-lg font-bold text-gray-900 dark:text-white">
+                        {formatAmount(req.amount, req.assetCode)}
                       </span>
+                      {isOverdue ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                            className="w-3.5 h-3.5"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          Overdue
+                        </span>
+                      ) : (
+                        <StatusBadge status={req.status} />
+                      )}
+                    </div>
+                    {req.description && (
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        {req.description}
+                      </p>
                     )}
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
+                      <span>
+                        Created{" "}
+                        {new Date(req.createdAt).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                      {req.dueDate && (
+                        <span
+                          className={
+                            isOverdue
+                              ? "font-medium text-amber-700 dark:text-amber-400"
+                              : "text-gray-400"
+                          }
+                        >
+                          · Due{" "}
+                          {new Date(req.dueDate).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                          {isOverdue ? " (Overdue)" : ""}
+                        </span>
+                      )}
+                      {req.reminderCount !== undefined && req.reminderCount > 0 && (
+                        <span className="text-gray-500 dark:text-gray-400">
+                          · {req.reminderCount} reminder
+                          {req.reminderCount !== 1 ? "s" : ""} sent
+                        </span>
+                      )}
+                      {req.transactionHash && (
+                        <span className="font-mono text-green-600 dark:text-green-400">
+                          · Paid
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => {
-                      const link = getPaymentLink(req);
-                      navigator.clipboard.writeText(link);
-                      toast.success("Link copied", "Share this link with your payer.");
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-ophir-600 dark:text-ophir-400 hover:bg-ophir-50 dark:hover:bg-ophir-950/30 border border-ophir-200 dark:border-ophir-800 transition-colors"
-                  >
-                    Copy Link
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectedRequest(req);
-                      setShowQR(true);
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-colors"
-                  >
-                    QR Code
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {(req.status === "PENDING" || isOverdue) && (
+                      <button
+                        onClick={() => handleSendReminder(req.id)}
+                        disabled={remindingId === req.id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-amber-300 dark:border-amber-800 transition-colors disabled:opacity-50"
+                      >
+                        {remindingId === req.id ? "Sending..." : "Send Reminder"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        const link = getPaymentLink(req);
+                        navigator.clipboard.writeText(link);
+                        toast.success("Link copied", "Share this link with your payer.");
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-ophir-600 dark:text-ophir-400 hover:bg-ophir-50 dark:hover:bg-ophir-950/30 border border-ophir-200 dark:border-ophir-800 transition-colors"
+                    >
+                      Copy Link
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedRequest(req);
+                        setShowQR(true);
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-colors"
+                    >
+                      QR Code
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -308,6 +412,18 @@ export default function RequestsPage() {
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
               placeholder="e.g. Invoice #42 — Consulting services"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Due Date <span className="text-gray-400 font-normal">(optional — marked overdue after this date)</span>
+            </label>
+            <input
+              type="date"
+              value={formDueDate}
+              onChange={(e) => setFormDueDate(e.target.value)}
               className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
             />
           </div>

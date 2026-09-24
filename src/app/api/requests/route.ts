@@ -15,6 +15,7 @@ import { verifyCsrf } from "@/lib/csrf";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { withRequestLogging } from "@/lib/request-logging";
+import { transitionOverduePaymentRequests } from "@/lib/payment-requests";
 
 export const GET = withMetrics("GET /api/requests", withRequestLogging(async function GET(request: Request) {
   try {
@@ -24,6 +25,9 @@ export const GET = withMetrics("GET /api/requests", withRequestLogging(async fun
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
+
+    // Automatically transition any overdue/expired requests before returning list
+    await transitionOverduePaymentRequests(new Date());
 
     const requests = await prisma.paymentRequest.findMany({
       where: { userId: auth.userId },
@@ -58,6 +62,8 @@ export const POST = withMetrics("POST /api/requests", withRequestLogging(async f
         assetIssuer: parsed.data.assetIssuer,
         description: parsed.data.description,
         recipientAddress: parsed.data.recipientAddress,
+        dueDate: parsed.data.dueDate,
+        expiresAt: parsed.data.expiresAt,
         userId: auth.userId,
       },
     });
@@ -72,6 +78,8 @@ export const POST = withMetrics("POST /api/requests", withRequestLogging(async f
         assetCode: req.assetCode,
         description: req.description,
         status: req.status,
+        dueDate: req.dueDate ? req.dueDate.toISOString() : null,
+        expiresAt: req.expiresAt ? req.expiresAt.toISOString() : null,
         createdAt: req.createdAt.toISOString(),
       },
       auth.userId

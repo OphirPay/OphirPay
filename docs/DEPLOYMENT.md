@@ -571,3 +571,12 @@ curl -s https://your-domain.com/api/health | jq .database
 **[← Back to OphirPay README](../README.md)**
 
 </div>
+
+## SEP-1 stellar.toml
+
+Every deployment serves `/.well-known/stellar.toml` (generated at
+`src/app/.well-known/stellar.toml/route.ts`). It is derived from the
+`STELLAR_NETWORK_PASSPHRASE` and the `NEXT_PUBLIC_CONTRACT_ID` /
+`NEXT_PUBLIC_EMITTER_CONTRACT_ID` values configured for that environment, so
+verify those after a network switch or contract redeploy — the drift guard in
+`src/__tests__/stellar-toml.test.ts` enforces the same invariant.

@@ -300,6 +300,24 @@ Respect the `Retry-After` header: wait at least the indicated number of seconds
 before retrying. Repeatedly ignoring it will keep returning `429`. For bursty
 workloads, implement exponential backoff starting from the `Retry-After` value.
 
+## SEP-1 stellar.toml (wallet & explorer discovery)
+
+The deployment publishes a [SEP-1](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md)
+`stellar.toml` at `/.well-known/stellar.toml` so wallets, block explorers and
+anchors can discover this deployment's network, contracts and contact details
+without copying values by hand.
+
+```bash
+curl -s https://ophirpay.vercel.app/.well-known/stellar.toml
+```
+
+The document is **generated from the same configuration the application uses**
+(`STELLAR_NETWORK_PASSPHRASE` and `NEXT_PUBLIC_CONTRACT_ID` /
+`NEXT_PUBLIC_EMITTER_CONTRACT_ID` from `.env.local`), so a network switch or a
+contract redeploy updates it automatically and it cannot drift from what is
+actually deployed. A guard test
+(`src/__tests__/stellar-toml.test.ts`) fails loudly if it ever does.
+
 ## Environment Variables
 
 | Variable | Required | Description |

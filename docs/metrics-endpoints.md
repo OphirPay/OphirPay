@@ -92,3 +92,50 @@ series can be used for latency SLOs and error-rate alerting per route.
   wrapped handler.
 - `src/lib/metrics-counters.ts` holds the storage and serialization helpers
   (`recordEndpointLatency`, `getEndpointMetrics`, `LATENCY_BUCKET_BOUNDS`).
+
+## Alert rules and external metrics
+
+`monitoring/prometheus-alerts.yml` is validated in CI
+(`.github/workflows/prometheus-rules-validation.yml`):
+
+1. `promtool check rules --lint-fatal` parses the file and fails on an invalid
+   rule or a duplicate alert (`--lint-fatal` is required — promtool 3.x
+   otherwise reports the duplicate and still exits 0).
+2. `scripts/validate-monitoring.mjs` extracts every metric selector used by an
+   alert `expr` and cross-checks it against the series this endpoint publishes.
+   A selector that is not published fails the check, naming the alert and the
+   metric — a renamed metric cannot ship as an alert that silently never fires.
+
+An alert may intentionally reference a series that lives outside this
+endpoint — a contract-side gauge, or Prometheus' own `up`. Such a selector
+must be declared inside the alert block it belongs to, on a dedicated comment
+line:
+
+```yaml
+      - alert: ContractBalanceBelowLocked
+        # external: ophirpay_contract_balance, ophirpay_locked_balance
+        #   contract-side gauges — not published by the app
+        expr: |
+          ophirpay_contract_balance - ophirpay_locked_balance < 0
+```
+
+Rules of the convention:
+
+- One `# external:` line per declaration, comma-separated metric names.
+- The declaration must sit inside the alert block it applies to. A declaration
+  written elsewhere (file header, between two alerts) is reported as an error
+  instead of being silently ignored.
+- Declaring a metric this endpoint publishes, or declaring a metric the
+  expression no longer references, only warns.
+- Most of the selectors in the alert rules are declared external today
+  (contract-balance gauges, batch item counters, webhook queue depth, database
+  pool, rate-limit hits, `up`) — several look like app-owned series that were
+  never implemented, so the declarations double as the review list of
+  follow-ups.
+
+Run the check locally:
+
+```bash
+node scripts/validate-monitoring.mjs
+docker run --rm -v "$PWD:/mnt" prom/prometheus:v3.14.0 promtool check rules /mnt/monitoring/prometheus-alerts.yml
+```

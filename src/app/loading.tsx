@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: MIT
 
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /**
- * Route-level loading fallback.
- * Shown automatically by Next.js during page transitions.
+ * Root route-level loading fallback.
+ * Renders a structured page-shaped skeleton to minimize Cumulative Layout Shift (CLS).
  */
 export default function Loading() {
   return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="text-center">
-        <Spinner size="lg" className="mb-4" />
-        <p className="text-slate-400 text-sm">Loading...</p>
+    <div className="space-y-6 animate-fade-in" aria-busy="true" aria-label="Loading page content">
+      <div className="space-y-2">
+        <Skeleton width="140px" height="1rem" />
+        <Skeleton width="260px" height="2rem" />
+      </div>
+      <LoadingSkeleton variant="stats" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <LoadingSkeleton variant="card" lines={4} />
+        <LoadingSkeleton variant="card" lines={4} />
       </div>
     </div>
   );

@@ -94,8 +94,7 @@ baselines below when behavior intentionally changes.
 - **Non-2xx %** — application-level failures (4xx/5xx responses). For
   `/api/payments`, a non-zero value usually means a missing/invalid API key.
 - **SSE caveat** — `/api/events` holds connections open for the duration, so
-  its req/s is inherently ≈ connections/s. Read its latency as
-  "time to establish the stream and receive the `connected` event".
+  its req/s is inherently ≈ connections/s. Read its latency as "time to establish the stream and receive the `connected` event".
 
 > Baselines are indicative, not contractual. Re-run on your own hardware
 > before drawing conclusions — a laptop vs. a beefy CI box differs by 10–50×.
@@ -121,6 +120,18 @@ Generated on 2026-08-27T03:48:25.922Z against http://localhost:3000 (8s per pass
 | /api/events | 10 | n/a | - | - | - | 0.00% | n/a |
 | /api/events | 25 | n/a | - | - | - | 0.00% | n/a |
 | /api/events | 50 | n/a | - | - | - | 0.00% | n/a |
+
+## Transaction fee refresh policy
+
+Fee recommendations must refresh Horizon `fee_stats` every 30 seconds. The
+default aggressiveness policy uses the 90th percentile (`p90`) of `fee_charged`;
+a different percentile may be configured for deployment needs. If Horizon is
+unreachable or returns invalid data, use the last successful recommendation or
+the configured fallback fee and expose `basis: 'fallback'` in the confirmation
+UI. The displayed fee and basis must be visible before signing, and the
+submitted fee must match the displayed recommendation. Unit tests must cover
+response parsing, refresh cadence, fallback behavior, and displayed basis.
+
 ## Methodology
 
 1. Each endpoint is exercised at each concurrency level in

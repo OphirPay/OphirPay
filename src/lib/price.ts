@@ -101,18 +101,26 @@ export async function fetchXlmPrice(options?: {
 
   // 1. Check in-memory cache
   if (!options?.forceRefresh && priceCache && now - priceCache.timestamp < ttl) {
+    const staleAgeMs = now - priceCache.timestamp;
     return {
       price: priceCache.price,
       source: "cached",
       timestamp: priceCache.timestamp,
-      isStale: false,
-      staleAgeMs: now - priceCache.timestamp,
+      isStale: staleAgeMs > staleThresholdMs,
+      staleAgeMs,
     };
   }
 
   // Avoid hammering a rate-limited or failing upstream during backoff.
-  if (!options?.forceRefresh && priceCache && backoffUntil > now) {
-    return staleCacheResult(now, staleThresholdMs, "Price feed is in backoff; using last known price", true);
+  if (backoffUntil > now) {
+    return staleCacheResult(
+      now,
+      staleThresholdMs,
+      priceCache
+        ? "Price feed is in backoff; using last known price"
+        : "Price feed is in backoff; price unavailable",
+      true
+    );
   }
 
   // 2. Deduplicate concurrent requests
@@ -121,6 +129,8 @@ export async function fetchXlmPrice(options?: {
   }
 
   const fetchPromise = (async (): Promise<PriceResult> => {
+    let wasRateLimited = false;
+
     // Primary: CoinGecko
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -139,6 +149,7 @@ export async function fetchXlmPrice(options?: {
       );
 
       if (res.status === 429) {
+        wasRateLimited = true;
         backoffUntil = Date.now() + PRICE_BACKOFF_MS;
       }
 
@@ -174,6 +185,7 @@ export async function fetchXlmPrice(options?: {
       });
 
       if (res.status === 429) {
+        wasRateLimited = true;
         backoffUntil = Date.now() + PRICE_BACKOFF_MS;
       }
 
@@ -198,13 +210,21 @@ export async function fetchXlmPrice(options?: {
     // If cache has a stale price, return it with error indication rather than complete failure if available
     if (priceCache) {
       backoffUntil = Math.max(backoffUntil, Date.now() + PRICE_BACKOFF_MS);
-      return staleCacheResult(Date.now(), staleThresholdMs, "Price sources currently unreachable, using last known price", backoffUntil > Date.now());
+      return staleCacheResult(
+        Date.now(),
+        staleThresholdMs,
+        "Price sources currently unreachable, using last known price",
+        wasRateLimited
+      );
     }
 
+    backoffUntil = Math.max(backoffUntil, Date.now() + PRICE_BACKOFF_MS);
     return {
       price: null,
       source: null,
       error: "XLM/USD price sources unavailable",
+      isStale: true,
+      rateLimited: wasRateLimited,
     };
   })();
 

@@ -199,6 +199,23 @@ describe("Price Utility & Precision Rules", () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
+    it("does not bypass backoff on forced refresh polling", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 429 })
+        .mockRejectedValueOnce(new Error("secondary unavailable"));
+      global.fetch = mockFetch;
+
+      const first = await fetchXlmPrice({ forceRefresh: true });
+      expect(first.price).toBeNull();
+      expect(first.rateLimited).toBe(true);
+
+      const second = await fetchXlmPrice({ forceRefresh: true });
+      expect(second.price).toBeNull();
+      expect(second.rateLimited).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
     it("passes optional provider API key as an Authorization header", async () => {
       const mockFetch = vi.fn().mockResolvedValueOnce({
         ok: true,

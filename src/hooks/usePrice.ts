@@ -13,6 +13,9 @@ export interface UseXlmPriceOptions {
 export interface UseXlmPriceReturn {
   price: number | null;
   source: PriceResult["source"];
+  isStale: boolean;
+  staleAgeMs: number | null;
+  rateLimited: boolean;
   isLoading: boolean;
   isError: boolean;
   isUnavailable: boolean;
@@ -31,6 +34,9 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
 
   const [price, setPrice] = useState<number | null>(null);
   const [source, setSource] = useState<PriceResult["source"]>(null);
+  const [isStale, setIsStale] = useState(false);
+  const [staleAgeMs, setStaleAgeMs] = useState<number | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
   const [isLoading, setIsLoading] = useState<boolean>(enabled);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -45,6 +51,9 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
         if (isMountedRef.current) {
           setPrice(result.price);
           setSource(result.source);
+          setIsStale(result.isStale ?? false);
+          setStaleAgeMs(result.staleAgeMs ?? null);
+          setRateLimited(result.rateLimited ?? false);
           setError(result.error ?? null);
           if (result.price !== null) {
             setLastUpdated(result.timestamp ? new Date(result.timestamp) : new Date());
@@ -56,6 +65,9 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
         const errMsg = err instanceof Error ? err.message : "Failed to fetch price";
         if (isMountedRef.current) {
           setError(errMsg);
+          setIsStale(true);
+          setStaleAgeMs(null);
+          setRateLimited(false);
           setIsLoading(false);
         }
         return { price: null, source: null, error: errMsg };
@@ -85,9 +97,12 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
   return {
     price,
     source,
+    isStale,
+    staleAgeMs,
+    rateLimited,
     isLoading,
     isError: error !== null && price === null,
-    isUnavailable: price === null && !isLoading,
+    isUnavailable: (price === null || isStale) && !isLoading,
     error,
     lastUpdated,
     refetch: loadPrice,

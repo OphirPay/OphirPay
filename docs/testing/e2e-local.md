@@ -1,8 +1,10 @@
 # Running the E2E suite locally
 
-The Playwright suite is **not** part of the branch CI pipeline — no workflow
-under `.github/workflows/` runs it — so a local run is currently the only way
-to exercise it. It is also not self-contained: `playwright.config.ts`
+The Playwright suite is **not** part of the branch (`ci.yml`) pipeline — it runs
+in the nightly [`e2e-nightly.yml`](../../.github/workflows/e2e-nightly.yml)
+workflow (02:00 UTC, and on demand via `workflow_dispatch`), which brings up its
+own database and server — so a local run is the fast way to check it before
+pushing. Locally the suite is not self-contained: `playwright.config.ts`
 deliberately has **no `webServer` block**. The suite runs against a server
 that is already live (a deployment, or one you start yourself), with
 `http://localhost:3000` as the default target and `E2E_BASE_URL` as the
@@ -24,7 +26,7 @@ in.
 | Dependencies | `npm ci` (uses the lockfile; `npm install` also works). |
 | Playwright browsers | `npx playwright install chromium firefox` — `chromium` covers the `chromium` and `mobile-chrome` projects, `firefox` the `firefox` project. |
 | Database | PostgreSQL via `docker compose up -d db`, or any option in the [Local Development Guide](../LOCAL_DEV.md). The server refuses to boot without `DATABASE_URL`. |
-| Environment file | `cp .env.example .env.local` — see §2. |
+| Environment files | `cp .env.example .env.local && cp .env.example .env` — see §2. |
 | Seeded database | `npm run db:seed` — see §3. |
 
 ## 2. Environment variables
@@ -155,7 +157,7 @@ E2E_BASE_URL=https://ophirpay.vercel.app npm run test:e2e
 npm run test:e2e                                # every spec, all three projects
 npm run test:e2e -- --project=chromium          # one project: chromium | firefox | mobile-chrome
 npm run test:e2e -- e2e/titles.spec.ts          # one spec file
-npm run test:e2e -- --shard=1/3                 # one shard of three (the same mechanism CI shards with)
+npm run test:e2e -- --shard=1/3                 # one shard of three (for parallel runs)
 npm run test:e2e -- -g "page title"             # tests whose title matches
 npm run test:e2e -- --repeat-each=5             # re-run each test to reproduce flakiness
 npx playwright test --list                      # enumerate tests without running anything

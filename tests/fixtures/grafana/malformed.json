@@ -1,0 +1,5 @@
+{
+  "title": "Malformed fixture - deliberately truncated JSON",
+  "uid": "grafana-fixture-malformed",
+  "schemaVersion": 39,
+  "panels": [

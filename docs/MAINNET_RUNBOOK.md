@@ -387,8 +387,8 @@
 
   ```env
   NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC
-  NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org
-  NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban.stellar.org
+  NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org
+  NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org:443
   STELLAR_NETWORK_PASSPHRASE=Public Global Stellar Network ; September 2015
   NEXT_PUBLIC_CONTRACT_ID=<CONTRACT_ID from Phase 4>
   NEXT_PUBLIC_EMITTER_CONTRACT_ID=<EMITTER_CONTRACT_ID from Phase 4>
@@ -405,8 +405,8 @@
     --set image.tag=v1.0.0 \
     --set ingress.hosts[0].host=ophirpay.com \
     --set config.NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
-    --set config.NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org \
-    --set config.NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban.stellar.org \
+    --set config.NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \
+    --set config.NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org:443 \
     --set config.DATABASE_PROVIDER=postgresql \
     --set config.NODE_ENV=production \
     --wait

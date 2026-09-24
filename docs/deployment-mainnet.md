@@ -27,8 +27,8 @@ This guide walks through deploying OphirPay to Stellar Mainnet with PostgreSQL, 
 ```env
 # Network
 NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC
-NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org
-NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban.stellar.org
+NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org
+NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org:443
 
 # Database
 DATABASE_URL=postgresql://user:password@host:5432/ophirpay

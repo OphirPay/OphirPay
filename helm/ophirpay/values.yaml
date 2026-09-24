@@ -76,13 +76,25 @@ pdb:
 networkPolicy:
   enabled: true
 
+# ── Application Configuration (ConfigMap) ───────────────────────────────────
+# NOTE: Next.js inlines NEXT_PUBLIC_* variables into client JavaScript bundles
+# at build time (docker build / npm run build). Injecting NEXT_PUBLIC_* via this
+# ConfigMap makes them available to server-side code (SSR, API routes) at runtime,
+# but prebuilt client bundles will NOT read runtime ConfigMap overrides.
+# If targeting a different network (e.g. Testnet vs Public Mainnet) in client
+# components, the container image MUST be built with those variables provided at
+# build time.
 config:
   NEXT_PUBLIC_STELLAR_NETWORK: "TESTNET"
-  NEXT_PUBLIC_HORIZON_URL: "https://horizon-testnet.stellar.org"
-  NEXT_PUBLIC_SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  NEXT_PUBLIC_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org:443"
   DATABASE_PROVIDER: "postgresql"
   NODE_ENV: "production"
 
+# ── Secrets (Kubernetes Secret) ─────────────────────────────────────────────
+# Sensitive values injected into the container environment at runtime.
+# Like config variables, NEXT_PUBLIC_* contract IDs are inlined into client
+# bundles at Next.js build time.
 secrets:
   DATABASE_URL: ""
   REDIS_URL: ""

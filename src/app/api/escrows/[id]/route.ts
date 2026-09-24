@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
-import { successResponse, handleApiError, notFoundError, unauthorizedError } from "@/lib/api-response";
+import { successResponse, handleApiError, notFoundError, unauthorizedError, badRequestError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
@@ -44,3 +44,38 @@ export const GET = withMetrics("GET /api/escrows/[id]", withRequestLogging(async
     return handleApiError(err, "GET /api/escrows/[id]");
   }
 }));
+
+/**
+ * POST /api/escrows/[id] — action handler (release, claim, arbiter-release)
+ */
+export const POST = withMetrics("POST /api/escrows/[id]", withRequestLogging(async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await getAuthContext(request);
+    if (!auth) {
+      return unauthorizedError("Authentication required.");
+    }
+
+    const parsed = await validateIdParam(params, "numeric");
+    if (!parsed.success) return parsed.response;
+    const escrowId = Number(parsed.id);
+
+    const body = await request.json().catch(() => ({}));
+    const action = body.action;
+
+    if (action !== "release" && action !== "claim" && action !== "arbiter-release") {
+      return badRequestError("Action must be 'release', 'claim', or 'arbiter-release'");
+    }
+
+    return successResponse({
+      message: `Escrow ${action} requires direct wallet signing via client-side transaction invocation.`,
+      escrowId,
+      action,
+    }, undefined, 202);
+  } catch (err) {
+    return handleApiError(err, "POST /api/escrows/[id]");
+  }
+}));
+

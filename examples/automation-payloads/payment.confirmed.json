@@ -1,0 +1,16 @@
+{
+  "event": "payment.confirmed",
+  "timestamp": "2026-09-24T10:01:25Z",
+  "idempotency_key": "idem_pay_8f29d102",
+  "data": {
+    "id": "pay_01HF9A7BC001",
+    "amount": 100,
+    "asset": "USDC",
+    "sender": "GBEXAMPLE...SENDER1",
+    "recipient": "GCRECEIVER...ORG2",
+    "status": "confirmed",
+    "tx_hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    "memo": "Invoice #1042"
+  },
+  "signature": "647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64"
+}

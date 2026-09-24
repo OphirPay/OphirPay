@@ -1,0 +1,17 @@
+{
+  "event": "payment.failed",
+  "timestamp": "2026-09-24T10:01:30Z",
+  "idempotency_key": "idem_pay_8f29d102",
+  "data": {
+    "id": "pay_01HF9A7BC001",
+    "amount": 100,
+    "asset": "USDC",
+    "sender": "GBEXAMPLE...SENDER1",
+    "recipient": "GCRECEIVER...ORG2",
+    "status": "failed",
+    "error_code": "INSUFFICIENT_BALANCE",
+    "error_message": "Sender account does not hold sufficient trustline balance",
+    "memo": "Invoice #1042"
+  },
+  "signature": "f4b5e6d7c8b9a0123456789abcdef0123456789abcdef0123456789abcdef012"
+}

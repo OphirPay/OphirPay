@@ -1,0 +1,15 @@
+{
+  "event": "payment.signed",
+  "timestamp": "2026-09-24T10:01:15Z",
+  "idempotency_key": "idem_pay_8f29d102",
+  "data": {
+    "id": "pay_01HF9A7BC001",
+    "amount": 100,
+    "asset": "USDC",
+    "sender": "GBEXAMPLE...SENDER1",
+    "recipient": "GCRECEIVER...ORG2",
+    "status": "signed",
+    "memo": "Invoice #1042"
+  },
+  "signature": "a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0"
+}

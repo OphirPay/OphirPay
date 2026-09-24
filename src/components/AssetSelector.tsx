@@ -13,6 +13,7 @@ import {
 import { fetchAllBalances, type AssetBalance } from "@/lib/stellar";
 import { checkTrustline } from "@/lib/trustline";
 import { STELLAR_NETWORK } from "@/lib/stellar";
+import { ResolvedAssetName } from "@/lib/use-resolved-asset-name";
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -119,6 +120,12 @@ export function AssetSelector({
           <span className="text-gray-900 dark:text-white font-medium">
             {selectedAsset.code}
           </span>
+          {selectedAsset.type !== "native" && selectedAsset.issuer && (
+            <ResolvedAssetName
+              asset={selectedAsset}
+              className="block truncate text-xs text-gray-400 max-w-[8rem]"
+            />
+          )}
         </span>
 
         <span className="flex items-center gap-2">
@@ -174,9 +181,11 @@ export function AssetSelector({
                       <span className="text-gray-900 dark:text-white font-medium">
                         {asset.code}
                       </span>
-                      <span className="block text-xs text-gray-400">
-                        {asset.displayName}
-                      </span>
+                      <ResolvedAssetName
+                        asset={asset}
+                        fallback={asset.displayName}
+                        className="block truncate text-xs text-gray-400 max-w-[10rem]"
+                      />
                     </div>
                   </div>
                   <div className="text-right">

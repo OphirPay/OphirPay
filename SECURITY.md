@@ -85,6 +85,10 @@ Older versions are not patched; please upgrade. When reporting, state which
 version you found the issue in and whether it reproduces on the latest
 release.
 
+## Security headers
+
+The effective HTTP security-header policy is documented in [docs/SECURITY_HEADERS.md](docs/SECURITY_HEADERS.md), including the authoritative source for each header and deliberate CSP/CORS relaxations.
+
 ## Scope
 
 ### In scope

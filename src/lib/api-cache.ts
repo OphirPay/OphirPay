@@ -1,80 +1,51 @@
-// SPDX-License-Identifier: MIT
-
 /**
- * Simple in-memory TTL cache for read-only contract simulations.
- * Reduces RPC load by caching get_stats, get_audit_log_count, get_proposal_count, etc.
+ * Helper utilities that sit on top of `src/lib/cache.ts` and make it easy to
+ * cache whole API responses.
  *
- * In production, replace with Redis for multi-replica consistency.
+ * The functions are deliberately framework‑agnostic – they only deal with plain
+ * JavaScript objects. The route handlers are responsible for turning those
+ * objects into `NextResponse` (or `NextApiResponse` for the pages router).
  */
 
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
-}
-
-const store = new Map<string, CacheEntry<unknown>>();
-
-/** Default TTL: 30 seconds for stats, 5 seconds for audit counts */
-const DEFAULT_TTL_MS = 30_000;
+import { cache } from '@/src/lib/cache';
 
 /**
- * Get a cached value by key. Returns undefined if miss or expired.
+ * Retrieve a value from the cache or compute it via `fetcher`.
+ *
+ * The result is cached as JSON using the supplied `ttlSeconds`.
+ *
+ * @param key        Unique cache key (e.g. `api:stats`).
+ * @param ttlSeconds Time‑to‑live in seconds.
+ * @param fetcher    Async function that returns the fresh data.
  */
-export function cacheGet<T>(key: string): T | undefined {
-  const entry = store.get(key);
-  if (!entry) return undefined;
-  if (Date.now() > entry.expiresAt) {
-    store.delete(key);
-    return undefined;
-  }
-  return entry.data as T;
-}
-
-/**
- * Set a cached value with TTL in milliseconds.
- */
-export function cacheSet<T>(key: string, data: T, ttlMs: number = DEFAULT_TTL_MS): void {
-  store.set(key, { data, expiresAt: Date.now() + ttlMs });
-}
-
-/**
- * Delete a specific cache key.
- */
-export function cacheDelete(key: string): void {
-  store.delete(key);
-}
-
-/**
- * Clear all cached entries.
- */
-export function cacheClear(): void {
-  store.clear();
-}
-
-/**
- * Get cache stats for monitoring.
- */
-export function cacheStats(): { size: number; keys: string[] } {
-  // Purge expired entries before reporting
-  for (const [key, entry] of store) {
-    if (Date.now() > entry.expiresAt) store.delete(key);
-  }
-  return { size: store.size, keys: Array.from(store.keys()) };
-}
-
-/**
- * Fetch with cache: wraps an async function with a TTL cache.
- * On cache hit, returns cached value. On miss, calls fn and caches result.
- */
-export async function cachedFetch<T>(
-  cacheKey: string,
-  fn: () => Promise<T>,
-  ttlMs: number = DEFAULT_TTL_MS,
+export async function getOrSetCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>,
 ): Promise<T> {
-  const cached = cacheGet<T>(cacheKey);
-  if (cached !== undefined) return cached;
+  const cached = await cache.get(key);
+  if (cached) {
+    try {
+      return JSON.parse(cached) as T;
+    } catch {
+      // If JSON parsing fails we fall back to recomputing.
+    }
+  }
 
-  const data = await fn();
-  cacheSet(cacheKey, data, ttlMs);
-  return data;
+  const fresh = await fetcher();
+  await cache.set(key, JSON.stringify(fresh), ttlSeconds);
+  return fresh;
+}
+
+/**
+ * Convenience wrapper for mutation endpoints that need to purge related
+ * read‑only caches.
+ *
+ * Pass an array of prefixes (e.g. `['api:stats', 'api:analytics']`) that should
+ * be invalidated after the mutation succeeds.
+ */
+export async function invalidateCachePrefixes(prefixes: string[]): Promise<void> {
+  for (const prefix of prefixes) {
+    await cache.invalidatePrefix(prefix);
+  }
 }

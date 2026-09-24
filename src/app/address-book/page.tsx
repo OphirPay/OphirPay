@@ -8,6 +8,7 @@ import {
   saveAddress,
   removeAddress,
   searchAddressBook,
+  exportAddressBookCsv,
   type AddressEntry,
 } from "@/lib/address-book";
 import { isValidStellarAddress } from "@/lib/stellar";
@@ -20,18 +21,21 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useToast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/EmptyState";
+import { AddressBookCsvImport } from "@/components/AddressBookCsvImport";
 
 interface ContactForm {
   label: string;
   publicKey: string;
   memo: string;
+  asset: string;
 }
 
-const EMPTY_FORM: ContactForm = { label: "", publicKey: "", memo: "" };
+const EMPTY_FORM: ContactForm = { label: "", publicKey: "", memo: "", asset: "" };
 
 function validateForm(form: ContactForm): string | null {
   const label = form.label.trim();
   const address = form.publicKey.trim();
+  const asset = form.asset.trim();
   if (!label) return "Please enter a nickname for this contact.";
   if (label.length > 100) return "Nickname must be 100 characters or fewer.";
   if (!isValidStellarAddress(address)) {
@@ -39,6 +43,9 @@ function validateForm(form: ContactForm): string | null {
   }
   if (form.memo.length > 28) {
     return "Memo must be 28 characters or fewer.";
+  }
+  if (asset && !/^[a-zA-Z0-9]{1,12}$/.test(asset)) {
+    return "Asset code must be 1 to 12 alphanumeric characters.";
   }
   return null;
 }
@@ -51,12 +58,36 @@ export default function AddressBookPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<AddressEntry | null>(null);
   const [editingOriginalKey, setEditingOriginalKey] = useState<string | null>(null);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   const filtered = useMemo(() => {
     return search.trim() ? searchAddressBook(search.trim()) : contacts;
   }, [contacts, search]);
 
   const refresh = () => setContacts(getAddressBook());
+
+  const handleExportCsv = () => {
+    if (contacts.length === 0) {
+      toast.info("Address book is empty", "Add or import contacts before exporting.");
+      return;
+    }
+    exportAddressBookCsv(contacts);
+    toast.success(
+      "Address book exported",
+      `${contacts.length} contact${contacts.length !== 1 ? "s" : ""} saved to CSV.`
+    );
+  };
+
+  const handleImportSuccess = (counts: { added: number; updated: number }) => {
+    refresh();
+    const details = [];
+    if (counts.added > 0) details.push(`${counts.added} new`);
+    if (counts.updated > 0) details.push(`${counts.updated} updated`);
+    toast.success(
+      "Contacts imported",
+      details.length > 0 ? details.join(", ") : "All contacts up to date"
+    );
+  };
 
   const openAdd = () => {
     setEditingOriginalKey(null);
@@ -70,6 +101,7 @@ export default function AddressBookPage() {
       label: entry.label,
       publicKey: entry.publicKey,
       memo: entry.memo ?? "",
+      asset: entry.asset ?? "",
     });
     setFormError(null);
   };
@@ -92,6 +124,7 @@ export default function AddressBookPage() {
     const label = editing.label.trim();
     const publicKey = editing.publicKey.trim();
     const memo = editing.memo.trim() || undefined;
+    const asset = editing.asset.trim().toUpperCase() || undefined;
 
     // The address is the identity — if it changed, drop the old entry first
     // so we don't end up with duplicates.
@@ -99,7 +132,7 @@ export default function AddressBookPage() {
       removeAddress(editingOriginalKey);
     }
 
-    saveAddress({ publicKey, label, memo });
+    saveAddress({ publicKey, label, memo, asset });
     refresh();
     closeEditor();
     toast.success(
@@ -130,9 +163,25 @@ export default function AddressBookPage() {
             Frequently used Stellar addresses — stored locally in your browser
           </p>
         </div>
-        <Button onClick={openAdd} leftIcon={<PlusIcon />}>
-          Add Contact
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExportCsv}
+            leftIcon={<DownloadIcon />}
+          >
+            Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setIsImportOpen(true)}
+            leftIcon={<UploadIcon />}
+          >
+            Import CSV
+          </Button>
+          <Button onClick={openAdd} leftIcon={<PlusIcon />}>
+            Add Contact
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -213,11 +262,18 @@ export default function AddressBookPage() {
                   </span>
                   <CopyButton value={entry.publicKey} label="Address" />
                 </div>
-                {entry.memo ? (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    memo: {entry.memo}
-                  </p>
-                ) : null}
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  {entry.memo ? (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      memo: {entry.memo}
+                    </span>
+                  ) : null}
+                  {entry.asset ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-ophir-50 dark:bg-ophir-950/40 text-ophir-700 dark:text-ophir-300 font-mono">
+                      asset: {entry.asset}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
@@ -284,6 +340,16 @@ export default function AddressBookPage() {
             placeholder="e.g. Invoice #42"
             maxLength={28}
           />
+          <Input
+            label="Preferred Asset"
+            hint="Optional preferred Stellar asset code (e.g. XLM, USDC)."
+            value={editing?.asset ?? ""}
+            onChange={(e) =>
+              setEditing((f) => (f ? { ...f, asset: e.target.value.toUpperCase() } : f))
+            }
+            placeholder="e.g. USDC"
+            maxLength={12}
+          />
           {formError && (
             <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
               <p className="text-sm text-red-600 dark:text-red-400" role="alert">
@@ -293,6 +359,13 @@ export default function AddressBookPage() {
           )}
         </div>
       </Modal>
+
+      {/* CSV Import modal */}
+      <AddressBookCsvImport
+        open={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImportSuccess={handleImportSuccess}
+      />
 
       {/* Delete confirmation */}
       <ConfirmDialog
@@ -334,3 +407,42 @@ function PlusIcon() {
     </svg>
   );
 }
+
+function DownloadIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className="w-4 h-4"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+      />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className="w-4 h-4"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+      />
+    </svg>
+  );
+}
+

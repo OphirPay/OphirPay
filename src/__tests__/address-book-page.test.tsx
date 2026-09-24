@@ -125,4 +125,20 @@ describe("AddressBookPage", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
   });
+
+  it("renders Export CSV and Import CSV action buttons", () => {
+    setup();
+    expect(screen.getByRole("button", { name: /export csv/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /import csv/i })).toBeInTheDocument();
+  });
+
+  it("opens the CSV import modal when clicking Import CSV", async () => {
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(screen.getByRole("button", { name: /import csv/i }));
+    expect(
+      screen.getByText(/import address book from csv/i)
+    ).toBeInTheDocument();
+  });
 });

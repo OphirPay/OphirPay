@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-// NOTE: the Content-Security-Policy is set per-request in src/middleware.ts
+// NOTE: the Content-Security-Policy is set per-request in src/proxy.ts
 // with a per-request nonce (Next.js reads it from the x-nonce request header
 // and applies it to its inline streaming/hydration scripts). A static CSP
 // cannot express that nonce, so it must NOT live here.

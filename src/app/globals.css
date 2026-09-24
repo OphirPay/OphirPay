@@ -159,3 +159,71 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+
+/* ── Print payment receipts and details ─────────────────────── */
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  nav,
+  aside,
+  header[role="banner"],
+  footer,
+  button,
+  [aria-label="Breadcrumb"],
+  [data-print-hide="true"] {
+    display: none !important;
+  }
+
+  main,
+  .ophir-print-payment-detail {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    box-shadow: none !important;
+  }
+
+  .ophir-print-payment-detail *,
+  .ophir-print-payment-detail .dark * {
+    background-color: transparent !important;
+    color: #111827 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  .ophir-print-payment-detail a {
+    color: #111827 !important;
+    text-decoration: none !important;
+  }
+
+  .ophir-print-payment-detail dl,
+  .ophir-print-payment-detail dt,
+  .ophir-print-payment-detail dd,
+  .ophir-print-payment-detail section,
+  .ophir-print-payment-detail header {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .ophir-print-payment-detail .font-mono {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}

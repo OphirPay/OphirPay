@@ -110,16 +110,18 @@ export default function PaymentDetailView({ id }: { id: string }) {
   );
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <Breadcrumb
-        items={[
+    <article className="space-y-6 animate-fade-in print:space-y-4 ophir-print-payment-detail">
+      <div className="print:hidden">
+        <Breadcrumb
+          items={[
           { label: "Payments", href: "/payments" },
           { label: `Payment ${shortenAddress(payment.id, 8)}` },
-        ]}
-      />
+          ]}
+        />
+      </div>
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:block print:border-b print:border-gray-300 print:pb-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Payment{" "}
@@ -131,7 +133,7 @@ export default function PaymentDetailView({ id }: { id: string }) {
             Details for payment record {payment.id}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 print:hidden">
           {canDownloadReceipt && (
             <button
               onClick={() =>
@@ -166,15 +168,15 @@ export default function PaymentDetailView({ id }: { id: string }) {
           )}
           <Link
             href="/payments"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors print:hidden"
           >
             ← Back to Payments
           </Link>
         </div>
-      </div>
+      </header>
 
       {/* Details */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <section aria-label="Printable payment details" className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden print:rounded-none print:border-gray-300 print:bg-white print:text-black print:overflow-visible print:break-inside-avoid">
         <dl className="divide-y divide-gray-100 dark:divide-gray-800/50 text-sm">
           <DetailRow label="Payment ID">
             <span className="font-mono text-xs text-gray-700 dark:text-gray-300 break-all">
@@ -199,23 +201,24 @@ export default function PaymentDetailView({ id }: { id: string }) {
           )}
           {payment.memo && (
             <DetailRow label="Memo">
-              <span className="font-mono text-xs text-gray-700 dark:text-gray-300">
+              <span className="font-mono text-xs text-gray-700 dark:text-gray-300 print:break-words">
                 {payment.memo}
               </span>
             </DetailRow>
           )}
           <DetailRow label="Transaction Hash">
             {payment.transactionHash ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 print:block">
                 <a
                   href={getStellarExplorerUrl(payment.transactionHash)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-mono text-xs text-ophir-600 dark:text-ophir-400 hover:underline"
+                  className="font-mono text-xs text-ophir-600 dark:text-ophir-400 hover:underline print:text-black print:break-all"
                 >
-                  {shortenAddress(payment.transactionHash)}
+                  <span className="print:hidden">{shortenAddress(payment.transactionHash)}</span>
+                  <span className="hidden print:inline">{payment.transactionHash}</span>
                 </a>
-                <CopyButton value={payment.transactionHash} label="Hash" />
+                <span className="print:hidden"><CopyButton value={payment.transactionHash} label="Hash" /></span>
               </div>
             ) : (
               <span className="text-gray-400 dark:text-gray-500">—</span>
@@ -238,8 +241,8 @@ export default function PaymentDetailView({ id }: { id: string }) {
             </DetailRow>
           )}
         </dl>
-      </div>
-    </div>
+      </section>
+    </article>
   );
 }
 
@@ -253,11 +256,11 @@ function DetailRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-3 px-4">
-      <dt className="text-gray-500 dark:text-gray-400 font-medium">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-3 px-4 print:grid-cols-3 print:gap-4 print:px-0 print:break-inside-avoid print:border-b print:border-gray-200">
+      <dt className="text-gray-500 dark:text-gray-400 font-medium print:text-black">
         {label}
       </dt>
-      <dd className="sm:col-span-2 text-gray-700 dark:text-gray-300">
+      <dd className="sm:col-span-2 text-gray-700 dark:text-gray-300 print:text-black print:break-words">
         {children}
       </dd>
     </div>

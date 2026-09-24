@@ -30,7 +30,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 
 PORT=3000
 MODE="prod" # prod | dev
@@ -137,7 +137,9 @@ HEALTH_URL="${BASE_URL%/}/api/health"
 # ── Helpers ─────────────────────────────────────────────────────
 
 health_ok() {
-  curl -fsS --max-time 5 -o /dev/null "$HEALTH_URL" >/dev/null 2>&1
+  # The health route pings Soroban RPC and Horizon (5 s timeouts each), so on
+  # a machine without a route to Stellar a healthy response can take ~10 s.
+  curl -fsS --max-time 15 -o /dev/null "$HEALTH_URL" >/dev/null 2>&1
 }
 
 kill_tree() {
@@ -150,12 +152,25 @@ kill_tree() {
   kill "$pid" 2>/dev/null || true
 }
 
+# Prints "pid child grandchild …" for pid and all its descendants (best effort),
+# so the --keep-server hint can name every process the user must stop.
+process_tree() {
+  local pid="$1" child
+  printf '%s' "$pid"
+  if command -v pgrep >/dev/null 2>&1; then
+    for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+      printf ' %s' "$(process_tree "$child")"
+    done
+  fi
+}
+
 cleanup() {
   local status=$?
   if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
     if [ "$KEEP_SERVER" -eq 1 ]; then
       echo ""
-      echo "ℹ️  Server left running (PID $SERVER_PID) — stop it with: kill $SERVER_PID"
+      echo "ℹ️  Server left running — stop it (npm + its next-server child) with:"
+      echo "     kill $(process_tree "$SERVER_PID")"
     else
       echo ""
       echo "→ Stopping server (PID $SERVER_PID)..."
@@ -171,8 +186,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 wait_for_health() {
-  local waited=0
-  while [ "$waited" -lt "$WAIT_SECONDS" ]; do
+  local start="$SECONDS"
+  while [ $((SECONDS - start)) -lt "$WAIT_SECONDS" ]; do
     if health_ok; then
       return 0
     fi
@@ -183,7 +198,6 @@ wait_for_health() {
       return 1
     fi
     sleep 1
-    waited=$((waited + 1))
   done
   echo "✕ Timed out after ${WAIT_SECONDS}s waiting for ${HEALTH_URL}." >&2
   echo "  Last log lines (${SERVER_LOG}):" >&2
@@ -212,6 +226,11 @@ if health_ok; then
 elif [ "$MANAGE_SERVER" -eq 0 ]; then
   echo "→ E2E_BASE_URL is set (${BASE_URL}) — no local server managed."
   echo "⚠️  ${HEALTH_URL} did not answer 200 — the run may fail."
+  case "$BASE_URL" in
+    http://localhost:* | http://127.0.0.1:*)
+      echo "   If this is meant to be a local run, unset E2E_BASE_URL so the script starts the server."
+      ;;
+  esac
 else
   if [ "$MODE" = "prod" ] && [ "$BUILD" -eq 0 ] && [ ! -f .next/BUILD_ID ]; then
     echo "✕ No production build found (.next/BUILD_ID is missing)." >&2

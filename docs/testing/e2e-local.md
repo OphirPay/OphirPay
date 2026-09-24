@@ -42,16 +42,32 @@ missing required value. For E2E you need at least:
 Everything else (network, RPC/Horizon URLs, rate limits, …) has working
 Testnet defaults in `.env.example`.
 
+```bash
+cp .env.example .env.local   # loaded by Next.js (build, dev, start)
+cp .env.example .env         # loaded by the Prisma CLI and prisma/seed.ts
+
+# Set DATABASE_URL in both files — e.g. for the Compose `db` service:
+#   DATABASE_URL="postgresql://ophirpay:ophirpay@localhost:5432/ophirpay"
+```
+
+> **Why two files?** Next.js loads both `.env` and `.env.local`, but the
+> Prisma CLI (`npx prisma migrate deploy`, `db push`) and
+> `npm run db:seed` only read `.env` — a `DATABASE_URL` kept exclusively in
+> `.env.local` fails with `Environment variable not found: DATABASE_URL`
+> (Prisma CLI) or a PrismaClient initialization error (seed). Both files are
+> git-ignored, so keep the values in sync — or put everything in `.env` and
+> use `.env.local` only for machine-local overrides.
+
 > ⚠️ `NEXT_PUBLIC_*` variables are inlined at **build** time. Set them in
-> `.env.local` before `npm run build`; changing them afterwards requires a
-> rebuild (the dev server re-evaluates them on restart).
+> `.env` / `.env.local` before `npm run build`; changing them afterwards
+> requires a rebuild (the dev server re-evaluates them on restart).
 
 ## 3. Database and seed
 
 ```bash
 # Postgres from docker-compose (service `db`), then apply the committed migrations
 docker compose up -d db
-npx prisma migrate deploy
+npx prisma migrate deploy   # reads DATABASE_URL from .env (see §2)
 npx prisma generate
 
 # Seed demo data (1 user, 5 payments, 1 batch, 4 refunds, 3 hooks)
@@ -86,6 +102,10 @@ server is up but the DB is not:
 ```bash
 curl -sf http://localhost:3000/api/health   # → 200, {"success":true,...}
 ```
+
+> The health check pings Soroban RPC and Horizon (5 s timeouts each), so on a
+> machine without a network route to Stellar it can take ~10 s to answer — it
+> still returns 200, with `"status": "degraded"`.
 
 Port 3000 already taken? Start elsewhere and point the suite at it:
 
@@ -188,6 +208,7 @@ managing a server.
 |---|---|---|
 | `connect ECONNREFUSED 127.0.0.1:3000` | No server on the default port — the config has no `webServer`. | Start the app (§4) or set `E2E_BASE_URL`. |
 | `/api/health` answers `503` | Database unreachable. | Check `DATABASE_URL`; `docker compose up -d db`; `npx prisma migrate deploy`. |
+| `Environment variable not found: DATABASE_URL` (Prisma CLI) or a PrismaClient init error (`npm run db:seed`) | Prisma reads `.env`, not `.env.local`. | Put `DATABASE_URL` in `.env` as well (§2). |
 | Pages render but lists are empty | Database not seeded. | `npm run db:seed`. |
 | Run fails on missing browser executable | Playwright browsers not installed. | `npx playwright install chromium firefox`. |
 | Intermittent `429` responses | Global rate limit (`RATE_LIMIT_RPM`, default 120/min per IP) hit by repeated runs. | Raise it in `.env.local` and restart. |

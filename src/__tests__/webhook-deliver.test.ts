@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
 
 vi.mock("@/lib/webhook-url-guard", () => ({
-  isSafeWebhookUrlAtDelivery: vi.fn(async (url: string) => !url.includes("127.0.0.1")),
+  isSafeWebhookUrlAtDelivery: vi.fn(async (url: string) => !url.includes("127.0.0.1") && !url.includes("rebinding-blocked")),
 }));
 
 import {
@@ -15,6 +15,7 @@ import {
 import {
   resetMetricsForTest,
 } from "@/lib/metrics-counters";
+import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
 
 const SECRET = "test-secret-0123456789";
 
@@ -72,6 +73,7 @@ describe("deliverWebhook", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     resetMetricsForTest();
+    vi.mocked(isSafeWebhookUrlAtDelivery).mockImplementation(async (url: string) => !url.includes("127.0.0.1") && !url.includes("rebinding-blocked"));
   });
 
   afterEach(() => {
@@ -122,7 +124,27 @@ describe("deliverWebhook", () => {
     const ok = await deliverWebhook("http://127.0.0.1:8080/hook", SECRET, samplePayload, 2);
     expect(ok.success).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(ok.errorMessage).toBe("URL resolved to a private/internal address");
+    expect(ok.errorMessage).toBe("URL resolved to a private/internal address or blocked port");
+  });
+
+  it("re-validates target before each attempt and halts immediately if DNS rebinds during retry", async () => {
+    let callCount = 0;
+    vi.mocked(isSafeWebhookUrlAtDelivery).mockImplementation(async () => {
+      callCount++;
+      return callCount === 1; // 1st attempt safe, 2nd attempt rebound to private
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const ok = await deliverWebhook("https://rebinding-test.com/hook", SECRET, samplePayload, 3);
+    expect(ok.success).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(ok.attempts).toBe(1);
+    expect(ok.errorMessage).toBe("URL resolved to a private/internal address or blocked port");
   });
 
   it("counts each retry attempt and labels the final failed outcome by the last attempt", async () => {

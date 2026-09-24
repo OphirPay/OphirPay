@@ -2,7 +2,7 @@
 
 import { logger } from "@/lib/logger";
 import { incMetric } from "@/lib/metrics-counters";
-import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
+import { isSafeWebhookUrlAtDelivery, WebhookUrlGuardOptions } from "@/lib/webhook-url-guard";
 import crypto from "crypto";
 
 export interface WebhookPayload {
@@ -19,6 +19,11 @@ export interface WebhookDeliveryResult {
   latencyMs: number;
   attempts: number;
   errorMessage?: string;
+}
+
+export interface DeliverWebhookOptions {
+  maxRetries?: number;
+  urlGuardOptions?: WebhookUrlGuardOptions;
 }
 
 /**
@@ -55,32 +60,42 @@ export function buildSignedPayload(
 /**
  * Deliver a webhook event to a registered endpoint with retries and signing.
  * Returns delivery outcome including HTTP status when available.
+ * Re-validates the target URL and DNS resolution immediately before each delivery attempt.
  */
 export async function deliverWebhook(
   url: string,
   secret: string,
   payload: WebhookPayload,
-  maxRetries = 3
+  maxRetriesOrOptions: number | DeliverWebhookOptions = 3
 ): Promise<WebhookDeliveryResult> {
   const startedAt = Date.now();
-  const { body, signature } = buildSignedPayload(payload, secret);
+  const maxRetries = typeof maxRetriesOrOptions === "number" ? maxRetriesOrOptions : (maxRetriesOrOptions.maxRetries ?? 3);
+  const guardOptions = typeof maxRetriesOrOptions === "object" ? maxRetriesOrOptions.urlGuardOptions : undefined;
 
-  // Re-validate the destination at delivery time to mitigate DNS rebinding.
-  if (!(await isSafeWebhookUrlAtDelivery(url))) {
-    logger.error("Webhook delivery blocked — URL resolved to a private/internal address", { url });
-    incMetric("webhooks_failed_total");
-    return {
-      success: false,
-      attempts: 0,
-      latencyMs: Date.now() - startedAt,
-      errorMessage: "URL resolved to a private/internal address",
-    };
-  }
+  const { body, signature } = buildSignedPayload(payload, secret);
 
   let lastStatusCode: number | undefined;
   let lastError: string | undefined;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // Re-validate the destination immediately before each delivery attempt to prevent DNS rebinding attacks.
+    const isSafe = await isSafeWebhookUrlAtDelivery(url, guardOptions);
+    if (!isSafe) {
+      lastError = "URL resolved to a private/internal address or blocked port";
+      logger.error("Webhook delivery blocked — URL resolved to a private/internal address or blocked port", {
+        url,
+        attempt,
+      });
+      incMetric("webhooks_failed_total");
+      return {
+        success: false,
+        statusCode: lastStatusCode,
+        latencyMs: Date.now() - startedAt,
+        attempts: attempt > 1 ? attempt - 1 : 0,
+        errorMessage: lastError,
+      };
+    }
+
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);

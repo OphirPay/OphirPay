@@ -27,6 +27,19 @@ X-OphirPay-Event: payment.created
 
 ---
 
+## Webhook URL Validation & SSRF Guard Policy
+
+OphirPay enforces strict Server-Side Request Forgery (SSRF) protections on all webhook endpoints:
+- **Allowed Protocols & Ports:** Only `http:` and `https:` schemes targeting standard HTTP (`80`) and HTTPS (`443`) ports are allowed. Non-standard ports (e.g., 22, 6379, 8080) are rejected by default.
+- **Blocked IP Ranges & Private Networks:**
+  - IPv4 Loopback (`127.0.0.0/8`), `0.0.0.0/8`, link-local (`169.254.0.0/16`), and private RFC 1918 networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
+  - Carrier-Grade NAT (`100.64.0.0/10`), DS-Lite (`192.0.0.0/29`), Benchmarking (`198.18.0.0/15`), and Multicast/Reserved ranges (`224.0.0.0/4`, `240.0.0.0/4`).
+  - IPv6 Loopback (`::1`), Link-Local (`fe80::/10`), Unique Local Addresses (ULA `fc00::/7`), Multicast (`ff00::/8`), and IPv4-mapped/compatible IPv6 addresses.
+  - Internal/Cloud metadata domains (e.g., `.local`, `.internal`, `.lan`, `metadata.google.internal`, `instance-data.*`).
+- **DNS Re-Validation on Each Delivery Attempt:** To protect against Time-Of-Check to Time-Of-Use (TOCTOU) DNS rebinding attacks, domain targets are dynamically re-resolved and re-validated immediately before each HTTP delivery attempt. If any resolved IP belongs to a restricted subnet, delivery is immediately blocked with an explicit error.
+
+---
+
 ## The exact canonical form
 
 OphirPay signs the payload with `buildSignedPayload` (see

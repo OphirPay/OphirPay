@@ -122,7 +122,8 @@
 - [ ] Monitoring (Prometheus + Grafana) and alerting (PagerDuty/Slack) reachable
   — see [docs/metrics-endpoints.md](./metrics-endpoints.md).
 - [ ] Nightly DB backup job enabled (`.github/workflows/db-backup.yml`) so the
-  rollback path in Phase 5 has a restore point.
+  rollback path in Phase 5 has a restore point. Retention, storage, and
+  alerting policy: [deployment guide § Nightly backups](./deployment-mainnet.md#nightly-backups).
 
 ---
 
@@ -368,6 +369,9 @@
   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
   ./scripts/restore-drill.sh
   ```
+
+  Policy details (bucket, storage class, freshness check, alerting):
+  [deployment guide § Nightly backups](./deployment-mainnet.md#nightly-backups).
 
 - [ ] After restore, re-run the app health checks and confirm
   `GET /api/health` reports `database: connected`.

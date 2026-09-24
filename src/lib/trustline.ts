@@ -1,63 +1,83 @@
-// SPDX-License-Identifier: MIT
-
-import { getHorizonServer } from "@/lib/stellar";
+import { Server, TransactionBuilder, Operation, Asset, Keypair, Networks } from '@stellar/stellar-sdk';
 
 /**
- * Trustline utilities for Stellar assets other than XLM.
- * Before sending a non-native asset, the destination must trust the issuer.
+ * Build a trustline creation transaction for a non‑native asset.
+ *
+ * @param {string} sourceSecret - Secret key of the source account that will create the trustline.
+ * @param {string} destinationPublic - Public key of the account that will receive the asset.
+ * @param {Asset} asset - The asset to trust.
+ * @param {string} [limit='1000000'] - Optional limit for the trustline. Defaults to a large number.
+ * @returns {Promise<string>} XDR of the signed transaction ready to submit.
+ *
+ * The transaction is memo‑free, uses the base reserve, and is signed by the source account.
  */
+export async function buildTrustlineTx(
+  sourceSecret: string,
+  destinationPublic: string,
+  asset: Asset,
+  limit: string = '1000000'
+): Promise<string> {
+  const sourceKeypair = Keypair.fromSecret(sourceSecret);
+  const server = new Server(process.env.HORIZON_URL!);
 
-interface TrustlineInfo {
-  assetCode: string;
-  assetIssuer: string;
-  hasTrustline: boolean;
-  balance?: string;
-  limit?: string;
+  // Load the source account to get the current sequence number
+  const sourceAccount = await server.loadAccount(sourceKeypair.publicKey());
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: await server.fetchBaseFee(),
+    networkPassphrase: Networks.TESTNET, // Adjust if using mainnet
+  })
+    .addOperation(
+      Operation.changeTrust({
+        asset,
+        limit,
+      })
+    )
+    .setTimeout(180)
+    .build();
+
+  tx.sign(sourceKeypair);
+  return tx.toXDR();
 }
 
 /**
- * Check if an account has a trustline for a given asset.
- * Returns trustline details or null if not found.
+ * Check the trustline status for a given account and asset.
+ *
+ * @param {string} accountId - Public key of the account to check.
+ * @param {Asset} asset - Asset to check trustline for.
+ * @returns {Promise<'none' | 'authorized' | 'frozen' | 'authorized_to_maintain_liabilities'>}
  */
-export async function checkTrustline(
-  publicKey: string,
-  assetCode: string,
-  assetIssuer: string
-): Promise<TrustlineInfo> {
-  try {
-    const server = getHorizonServer();
-    const account = await server.loadAccount(publicKey);
+export async function checkTrustlineStatus(
+  accountId: string,
+  asset: Asset
+): Promise<
+  'none' | 'authorized' | 'frozen' | 'authorized_to_maintain_liabilities'
+> {
+  const server = new Server(process.env.HORIZON_URL!);
+  const account = await server.loadAccount(accountId);
+  const trustline = account.balances.find(
+    (b) => b.asset_code === asset.getCode() && b.asset_issuer === asset.getIssuer()
+  );
 
-    const trustline = account.balances.find(
-      (b): b is Extract<typeof b, { asset_code: string; asset_issuer: string }> =>
-        b.asset_type !== "native" &&
-        "asset_code" in b && "asset_issuer" in b &&
-        b.asset_code === assetCode &&
-        b.asset_issuer === assetIssuer
-    );
-
-    return {
-      assetCode,
-      assetIssuer,
-      hasTrustline: !!trustline,
-      balance: trustline?.balance,
-      limit: trustline?.limit,
-    };
-  } catch {
-    return { assetCode, assetIssuer, hasTrustline: false };
+  if (!trustline) {
+    return 'none';
   }
-}
 
-/**
- * Check if sending `amount` of an asset would exceed the trustline limit.
- */
-export function wouldExceedTrustlineLimit(
-  currentBalance: string,
-  amount: string,
-  limit: string
-): boolean {
-  const balance = parseFloat(currentBalance);
-  const send = parseFloat(amount);
-  const maxLimit = parseFloat(limit);
-  return balance + send > maxLimit;
+  if (trustline.limit === '0') {
+    return 'none';
+  }
+
+  if (trustline.flags.authorized) {
+    if (trustline.flags.frozen) {
+      return 'frozen';
+    }
+    return 'authorized';
+  }
+
+  // If not authorized but flags exist
+  if (trustline.flags.authorized_to_maintain_liabilities) {
+    return 'authorized_to_maintain_liabilities';
+  }
+
+  return 'none';
 }

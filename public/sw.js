@@ -1,15 +1,23 @@
 // OphirPay Service Worker
-// Caching strategies for PWA offline support
+// Caching strategies for PWA offline support with precached offline shell
 
-const CACHE_VERSION = "ophirpay-v2";
+const CACHE_VERSION = "ophirpay-v3";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 
-// Static assets to precache on install
-const PRECACHE_URLS = ["/", "/manifest.json"];
+// Offline fallback document
+const OFFLINE_FALLBACK_URL = "/offline.html";
 
-// ── Install — precache static assets ────────────────────────
+// Static assets to precache on install
+const PRECACHE_URLS = [
+  "/",
+  "/manifest.json",
+  OFFLINE_FALLBACK_URL,
+  "/icon.svg",
+];
+
+// ── Install — precache static assets and offline fallback ──
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -20,7 +28,7 @@ self.addEventListener("install", (event) => {
   );
 });
 
-// ── Activate — clean old caches ─────────────────────────────
+// ── Activate — clean old caches on version bump ─────────────
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
@@ -93,16 +101,28 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, clone));
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, clone));
+          }
           return response;
         })
-        .catch(() =>
-          caches.match(request).then(
-            (cached) =>
-              cached ||
-              new Response(
-                `<!DOCTYPE html>
+        .catch(async () => {
+          // 1. Exact cached navigation match
+          const cached = await caches.match(request);
+          if (cached) return cached;
+
+          // 2. Precached offline fallback document
+          const offlineFallback = await caches.match(OFFLINE_FALLBACK_URL);
+          if (offlineFallback) return offlineFallback;
+
+          // 3. Cached root app shell
+          const rootCached = await caches.match("/");
+          if (rootCached) return rootCached;
+
+          // 4. Standalone markup fallback
+          return new Response(
+            `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -113,36 +133,46 @@ self.addEventListener("fetch", (event) => {
     body {
       font-family: system-ui, -apple-system, sans-serif;
       background: #0a0a1a; color: #e2e8f0;
-      display: flex; align-items: center; justify-content: center;
-      min-height: 100vh; text-align: center; padding: 2rem;
+      display: flex; flex-direction: column; min-height: 100vh;
+    }
+    .banner {
+      background: #f59e0b; color: #fff; text-align: center;
+      padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500;
+    }
+    .main {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      text-align: center; padding: 2rem;
     }
     .card {
       background: #1e1e3a; border-radius: 1rem; padding: 2.5rem;
-      max-width: 400px; border: 1px solid #2d2d5e;
+      max-width: 420px; border: 1px solid #2d2d5e;
     }
     h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #7B68EE; }
     p { font-size: 0.875rem; color: #94a3b8; margin-bottom: 1.5rem; line-height: 1.5; }
     button {
       background: #7B68EE; color: white; border: none; padding: 0.75rem 1.5rem;
-      border-radius: 0.5rem; font-size: 0.875rem; cursor: pointer;
+      border-radius: 0.5rem; font-size: 0.875rem; cursor: pointer; font-weight: 600;
     }
+    button:hover { background: #6a57de; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>You're Offline</h1>
-    <p>OphirPay requires an internet connection to process payments and sync blockchain data.</p>
-    <button onclick="location.reload()">Try Again</button>
+  <div class="banner" role="status" aria-live="polite">You are offline — some features may be unavailable.</div>
+  <div class="main">
+    <div class="card">
+      <h1>You're Offline</h1>
+      <p>OphirPay requires an internet connection to process payments and sync blockchain data.</p>
+      <button onclick="location.reload()">Retry Connection</button>
+    </div>
   </div>
 </body>
 </html>`,
-                {
-                  status: 503,
-                  headers: { "Content-Type": "text/html" },
-                }
-              )
-          )
-        )
+            {
+              status: 503,
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+            }
+          );
+        })
     );
     return;
   }
@@ -153,7 +183,25 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// ── Push notifications (placeholder) ────────────────────────
+// ── Client messages & service worker control ────────────────
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "GET_VERSION") {
+    event.ports?.[0]?.postMessage({
+      version: CACHE_VERSION,
+      staticCache: STATIC_CACHE,
+      dynamicCache: DYNAMIC_CACHE,
+      apiCache: API_CACHE,
+      precacheUrls: PRECACHE_URLS,
+      offlineFallbackUrl: OFFLINE_FALLBACK_URL,
+    });
+  }
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+// ── Push notifications ──────────────────────────────────────
 
 self.addEventListener("push", (event) => {
   const data = event.data?.json() ?? {};

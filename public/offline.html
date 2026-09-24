@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline — OphirPay</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    :root {
+      --bg: #0a0a1a;
+      --card-bg: #14142b;
+      --border: #232347;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --primary: #7B68EE;
+      --primary-hover: #6a57de;
+      --amber: #f59e0b;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .offline-banner {
+      background-color: var(--amber);
+      color: #ffffff;
+      text-align: center;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 1.125rem;
+    }
+    .brand svg {
+      width: 28px;
+      height: 28px;
+    }
+    .main-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 2.5rem 2rem;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+    }
+    .icon-wrapper {
+      width: 72px;
+      height: 72px;
+      background: rgba(245, 158, 11, 0.12);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      color: var(--amber);
+    }
+    .icon-wrapper svg {
+      width: 36px;
+      height: 36px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      color: var(--text);
+    }
+    p {
+      color: var(--muted);
+      font-size: 0.9375rem;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    @media (min-width: 480px) {
+      .btn-group {
+        flex-direction: row;
+        justify-content: center;
+      }
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      border: none;
+    }
+    .btn-primary {
+      background-color: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+    .btn-secondary {
+      background-color: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+    .status-indicator {
+      margin-top: 1.5rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--amber);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-banner" role="status" aria-live="polite">
+    You are offline — some features may be unavailable.
+  </div>
+
+  <header class="header">
+    <a href="/" class="brand">
+      <svg viewBox="0 0 512 512" fill="none">
+        <defs>
+          <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#0a0a1a"/>
+            <stop offset="1" stop-color="#1e1e3a"/>
+          </linearGradient>
+          <linearGradient id="icon" x1="128" y1="128" x2="384" y2="384" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#7B68EE"/>
+            <stop offset="1" stop-color="#4B3FCF"/>
+          </linearGradient>
+        </defs>
+        <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+        <g transform="translate(256,256)">
+          <circle cx="0" cy="0" r="140" fill="url(#icon)" opacity="0.9"/>
+          <path d="M0,-120 L25,-30 L100,-20 L45,25 L60,100 L0,60 L-60,100 L-45,25 L-100,-20 L-25,-30 Z" fill="#fff" fill-opacity="0.95"/>
+          <circle cx="0" cy="0" r="50" fill="#0a0a1a" opacity="0.3"/>
+          <text x="0" y="8" text-anchor="middle" font-family="system-ui" font-weight="700" font-size="42" fill="#fff" opacity="0.9">OP</text>
+        </g>
+      </svg>
+      <span>OphirPay</span>
+    </a>
+  </header>
+
+  <main class="main-container">
+    <div class="card" role="region" aria-label="Offline notice">
+      <div class="icon-wrapper">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 7.5h.008v.008H12v-.008z" />
+        </svg>
+      </div>
+      <h1>You're Currently Offline</h1>
+      <p>
+        OphirPay requires an active internet connection to interact with the Stellar blockchain, stream payments, and sync transaction receipts. Cached application views remain accessible.
+      </p>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="window.location.reload()">
+          Retry Connection
+        </button>
+        <a href="/" class="btn btn-secondary">
+          Go to Dashboard
+        </a>
+      </div>
+      <div class="status-indicator">
+        <span class="status-dot"></span>
+        <span id="network-status">Waiting for connection to restore...</span>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function updateStatus() {
+      const statusText = document.getElementById("network-status");
+      if (navigator.onLine) {
+        if (statusText) statusText.textContent = "Back online! Reloading page...";
+        window.location.reload();
+      } else {
+        if (statusText) statusText.textContent = "Waiting for connection to restore...";
+      }
+    }
+    window.addEventListener("online", updateStatus);
+    window.addEventListener("offline", updateStatus);
+  </script>
+</body>
+</html>

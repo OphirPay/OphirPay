@@ -5,6 +5,7 @@
 import { WalletButton } from "./WalletButton";
 import { NotificationCenter } from "./NotificationCenter";
 import { useTheme } from "@/hooks/useTheme";
+import { openKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 export function Header() {
   const { toggle, resolved } = useTheme();
@@ -20,8 +21,29 @@ export function Header() {
           </h2>
         </div>
 
-        {/* Right: Notifications + Theme toggle + Wallet button */}
+        {/* Right: Shortcuts + Notifications + Theme toggle + Wallet button */}
         <div className="flex items-center gap-2 md:gap-3">
+          <button
+            onClick={openKeyboardShortcuts}
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+            className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors hidden sm:inline-flex"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-5 h-5"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3.75 6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6zM6 8.25h1.5m2.25 0h1.5m2.25 0h1.5m2.25 0H18m-12 3.75h1.5m2.25 0h1.5m2.25 0h1.5m2.25 0H18m-12 3.75h3m3 0h6"
+              />
+            </svg>
+          </button>
           <NotificationCenter />
           {/* Dark mode toggle */}
           <button

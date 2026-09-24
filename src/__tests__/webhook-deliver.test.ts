@@ -138,4 +138,19 @@ describe("deliverWebhook", () => {
     expect(ok.attempts).toBe(2);
     expect(ok.statusCode).toBe(500);
   });
+
+  it("captures and truncates response body excerpt up to 500 characters", async () => {
+    const longResponse = "x".repeat(600);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(longResponse),
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 1);
+    expect(ok.success).toBe(true);
+    expect(ok.responseBody).toHaveLength(501); // 500 chars + '…'
+    expect(ok.responseBody?.endsWith("…")).toBe(true);
+  });
 });

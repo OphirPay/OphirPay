@@ -19,8 +19,6 @@
  * every delivery in `deliverWebhook`.
  */
 
-import { isIP } from "node:net";
-
 /** Blocked IPv4 ranges as [start, end] u32 pairs (inclusive). */
 const PRIVATE_IPV4: Array<[number, number]> = [
   [0x00000000, 0x00ffffff], // 0.0.0.0/8
@@ -71,6 +69,22 @@ function isPrivateIpv6(address: string): boolean {
   return false;
 }
 
+/** Determines whether host is an IPv4 (4), IPv6 (6), or non-IP hostname (0). */
+function isIPAddress(host: string): number {
+  const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (ipv4Match) {
+    const octets = [Number(ipv4Match[1]), Number(ipv4Match[2]), Number(ipv4Match[3]), Number(ipv4Match[4])];
+    if (octets.every((o) => o >= 0 && o <= 255)) {
+      return 4;
+    }
+    return 0;
+  }
+  if (host.includes(":")) {
+    return 6;
+  }
+  return 0;
+}
+
 /** Block hostnames that can never be a legitimate public webhook target. */
 const BLOCKED_HOST_PATTERNS = [
   /^localhost$/i,
@@ -83,35 +97,52 @@ const BLOCKED_HOST_PATTERNS = [
 ];
 
 /**
- * Return true when `url` is a safe public http(s) webhook endpoint.
+ * Validate a webhook URL and return whether it is safe along with an actionable reason if rejected.
  */
-export function isSafeWebhookUrl(url: string): boolean {
+export function validateWebhookUrlWithReason(url: string): { safe: boolean; reason?: string } {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return false;
+    return { safe: false, reason: "Malformed URL: cannot be parsed as a valid URL" };
   }
 
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { safe: false, reason: `Blocked protocol "${parsed.protocol}": only http: and https: are allowed` };
+  }
+
+  // Reject credentials in the URL (user:pass@host) — unnecessary and risky
+  if (parsed.username || parsed.password) {
+    return { safe: false, reason: "Embedded credentials (user:pass@host) are forbidden in webhook URLs" };
+  }
 
   // Node's URL.hostname keeps brackets around IPv6 literals (e.g. "[::1]")
   const host = parsed.hostname.replace(/^\[|\]$/g, "");
 
-  // Reject credentials in the URL (user:pass@host) — unnecessary and risky
-  if (parsed.username || parsed.password) return false;
-
   // Literal IP checks
-  const ipVersion = isIP(host);
-  if (ipVersion === 4 && isPrivateIpv4(host)) return false;
-  if (ipVersion === 6 && isPrivateIpv6(host)) return false;
+  const ipVersion = isIPAddress(host);
+  if (ipVersion === 4 && isPrivateIpv4(host)) {
+    return { safe: false, reason: `Target host "${host}" is in a private/internal IPv4 address range (SSRF guard)` };
+  }
+  if (ipVersion === 6 && isPrivateIpv6(host)) {
+    return { safe: false, reason: `Target host "${host}" is in a private/internal IPv6 address range (SSRF guard)` };
+  }
 
   // Hostname pattern checks
   for (const pattern of BLOCKED_HOST_PATTERNS) {
-    if (pattern.test(host)) return false;
+    if (pattern.test(host)) {
+      return { safe: false, reason: `Target host "${host}" resolves to a reserved/internal domain (SSRF guard)` };
+    }
   }
 
-  return true;
+  return { safe: true };
+}
+
+/**
+ * Return true when `url` is a safe public http(s) webhook endpoint.
+ */
+export function isSafeWebhookUrl(url: string): boolean {
+  return validateWebhookUrlWithReason(url).safe;
 }
 
 /**
@@ -124,7 +155,7 @@ export async function isSafeWebhookUrlAtDelivery(url: string): Promise<boolean> 
     const { lookup } = await import("node:dns/promises");
     const addresses = await lookup(new URL(url).hostname, { all: true });
     return addresses.every((a) => {
-      const v = isIP(a.address);
+      const v = isIPAddress(a.address);
       if (v === 4) return !isPrivateIpv4(a.address);
       if (v === 6) return !isPrivateIpv6(a.address);
       return false;

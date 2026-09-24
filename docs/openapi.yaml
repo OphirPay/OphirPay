@@ -1826,14 +1826,36 @@ paths:
     get:
       tags: [Events]
       summary: Fetch on-chain payment event history
+      description: |
+        Fetch on-chain payment event history for replay and backfill, ordered by
+        on-chain sequence ID descending (newest first).
+
+        Supports keyset (cursor) pagination: pass `limit` and, for subsequent pages,
+        the opaque `cursor` token returned in `meta.nextCursor` or `data.nextCursor`.
+        Rows are fetched with `limit + 1` internally to determine `hasMore` and
+        `nextCursor`.
       parameters:
         - name: limit
           in: query
-          schema: { type: integer, default: 50, maximum: 200 }
-          description: Number of recent events to return
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+          description: Number of recent events to return (min 1, max 100, default 50).
+        - name: cursor
+          in: query
+          schema: { type: string }
+          description: >-
+            Opaque keyset cursor from a previous response's nextCursor. Identifies the
+            anchor event to continue pagination from.
       responses:
         "200":
-          description: Recent event history
+          description: Paginated on-chain event history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedEventHistory"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/ServerError"
 
   # ── Health ────────────────────────────────────────────────
   /api/health:
@@ -2224,7 +2246,41 @@ components:
           description: Round-trip delivery time in milliseconds
         sentAt:
           type: string
-          format: date-time
+    EventHistoryItem:
+      type: object
+      properties:
+        id: { type: string, example: evt_10 }
+        type: { type: string, example: payment.created }
+        payer: { type: string, example: GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU }
+        payee: { type: string, example: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 }
+        amount: { type: integer, example: 10000000 }
+        txHash: { type: string, example: 3389e9f0f1a65f19736cacf544c2e825313e4304f7b0941ff32469d4c728cb39 }
+        timestamp: { type: integer, nullable: true, example: 1700000000 }
+        createdAt: { type: string, format: date-time, example: "2023-11-14T22:13:20.000Z" }
+        metadata: { type: string, nullable: true, example: "invoice-101" }
+
+    PaginatedEventHistory:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          type: object
+          properties:
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/EventHistoryItem"
+            total: { type: integer, example: 100 }
+            nextCursor: { type: [string, 'null'] }
+            hasMore: { type: boolean }
+        meta:
+          type: object
+          properties:
+            limit: { type: integer, example: 50 }
+            total: { type: integer, example: 100 }
+            nextCursor: { type: [string, 'null'] }
+            hasMore: { type: boolean }
+            timestamp: { type: string, format: date-time }
 
     HealthResponse:
       type: object

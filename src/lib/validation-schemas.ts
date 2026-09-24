@@ -250,7 +250,15 @@ export const paginationSchema = z.object({
   search: z.string().optional(),
 });
 
+/** Keyset cursor pagination query schema (limit + opaque cursor). */
+export const cursorPaginationSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  /** Opaque keyset cursor from a previous response's nextCursor. */
+  cursor: z.string().min(1).optional(),
+});
+
 export type PaginationParams = z.infer<typeof paginationSchema>;
+export type CursorPaginationParams = z.infer<typeof cursorPaginationSchema>;
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
 

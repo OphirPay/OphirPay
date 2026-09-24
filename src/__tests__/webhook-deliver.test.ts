@@ -14,6 +14,7 @@ import {
 } from "@/lib/webhook-deliver";
 import {
   resetMetricsForTest,
+  getMetricsSnapshot,
 } from "@/lib/metrics-counters";
 
 const SECRET = "test-secret-0123456789";
@@ -138,4 +139,43 @@ describe("deliverWebhook", () => {
     expect(ok.attempts).toBe(2);
     expect(ok.statusCode).toBe(500);
   });
+
+  it("marks delivery as isDeadLetter and updates metrics when retry budget is exhausted", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 3);
+    expect(ok.success).toBe(false);
+    expect(ok.isDeadLetter).toBe(true);
+    expect(ok.attempts).toBe(3);
+
+    const snapshot = getMetricsSnapshot();
+    expect(snapshot.webhooks_dead_letter_total).toBe(1);
+    const dlOutcome = snapshot.delivery_final_outcomes.find(
+      (o) => o.delivery_type === "webhook" && o.final_outcome === "dead_letter"
+    );
+    expect(dlOutcome).toBeDefined();
+    expect(dlOutcome?.count).toBe(1);
+    expect(dlOutcome?.attempt_number).toBe(3);
+  });
+
+  it("records a distinct timeout failure reason and increments timeout metric on aborted request", async () => {
+    const timeoutErr = new Error("The operation was aborted");
+    timeoutErr.name = "TimeoutError";
+    const fetchMock = vi.fn().mockRejectedValue(timeoutErr);
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 1, 100);
+    expect(ok.success).toBe(false);
+    expect(ok.errorMessage).toMatch(/^TIMEOUT: Delivery attempt timed out after 100ms/);
+    expect(ok.isDeadLetter).toBe(true);
+
+    const snapshot = getMetricsSnapshot();
+    expect(snapshot.webhooks_timeout_total).toBe(1);
+    expect(snapshot.webhooks_dead_letter_total).toBe(1);
+  });
 });
+

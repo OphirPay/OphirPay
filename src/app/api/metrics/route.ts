@@ -46,6 +46,14 @@ function buildMetrics(): string {
     "# TYPE ophirpay_webhooks_failed_total counter",
     `ophirpay_webhooks_failed_total ${c.webhooks_failed_total}`,
     "",
+    "# HELP ophirpay_webhooks_dead_letter_total Total webhooks moved to dead-letter queue",
+    "# TYPE ophirpay_webhooks_dead_letter_total counter",
+    `ophirpay_webhooks_dead_letter_total ${c.webhooks_dead_letter_total}`,
+    "",
+    "# HELP ophirpay_webhooks_timeout_total Total webhook delivery attempts that timed out",
+    "# TYPE ophirpay_webhooks_timeout_total counter",
+    `ophirpay_webhooks_timeout_total ${c.webhooks_timeout_total}`,
+    "",
     "# HELP ophirpay_delivery_attempts_total Total delivery attempts by delivery type and attempt number",
     "# TYPE ophirpay_delivery_attempts_total counter",
     ...c.delivery_attempts.map(
@@ -150,7 +158,26 @@ function buildMetrics(): string {
   return lines.join("\n") + "\n";
 }
 
-export const GET = withMetrics("GET /api/metrics", async function GET() {
+export const GET = withMetrics("GET /api/metrics", async function GET(
+  request?: Request,
+) {
+  if (request) {
+    try {
+      const url = new URL(request.url);
+      const acceptsJson = request.headers.get("accept")?.includes("application/json");
+      if (url.searchParams.get("format") === "json" || acceptsJson) {
+        return NextResponse.json(getMetricsSnapshot(), {
+          status: 200,
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+          },
+        });
+      }
+    } catch {
+      // Fall through to plain text metrics
+    }
+  }
+
   return new NextResponse(buildMetrics(), {
     status: 200,
     headers: {

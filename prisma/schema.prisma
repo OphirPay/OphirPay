@@ -551,6 +551,7 @@ model WebhookDelivery {
 enum DeliveryStatus {
   SUCCESS
   FAILED
+  DEAD_LETTER
 }
 
 // ── Refunds ───────────────────────────────────────────────────

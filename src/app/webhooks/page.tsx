@@ -390,6 +390,8 @@ export default function WebhooksPage() {
                                   className={
                                     d.status === "SUCCESS"
                                       ? "text-green-600 dark:text-green-400"
+                                      : d.status === "DEAD_LETTER"
+                                      ? "text-amber-600 dark:text-amber-400 font-medium"
                                       : "text-red-600 dark:text-red-400"
                                   }
                                 >

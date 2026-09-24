@@ -107,6 +107,33 @@ groups:
             Webhook queue has {{ $value }} pending deliveries. Delivery may be
             backed up. Check webhook worker health.
 
+      - alert: WebhookDeadLetterQueueThresholdExceeded
+        expr: |
+          rate(ophirpay_webhooks_dead_letter_total[10m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: webhooks
+        annotations:
+          summary: "Webhook events exhausting retries into dead-letter queue"
+          description: |
+            Webhook deliveries are persistently exhausting all retry attempts and
+            landing in the dead-letter state. Investigate subscriber endpoint health
+            and trigger bulk redelivery once service is restored.
+
+      - alert: WebhookDeliveryTimeoutRateHigh
+        expr: |
+          rate(ophirpay_webhooks_timeout_total[10m]) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: webhooks
+        annotations:
+          summary: "Webhook delivery timeout rate high"
+          description: |
+            Webhook delivery attempts are exceeding the per-attempt bounded timeout.
+            Check subscriber latency or network connectivity.
+
       # ── API Health Alerts ────────────────────────────────────
 
       - alert: ApiHighErrorRate

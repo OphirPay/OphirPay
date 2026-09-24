@@ -132,16 +132,20 @@ E2E_BASE_URL=https://ophirpay.vercel.app npm run test:e2e
 - **Main** — the whole suite. `npm run test:e2e:ui` opens interactive UI mode.
   `retries` and `workers` are CI-only overrides; a local run never retries.
 - **Visual** — screenshot comparison of Dashboard, Send, Batches and Contracts
-  in light and dark themes. Baselines belong in
-  `tests/visual/__screenshots__/`, but none are committed yet, so a first run
-  fails with "snapshot doesn't exist" and writes the actual images for
-  review (tracked in issue #686). The `npm run test:visual` /
-  `test:visual:update` aliases the README mentions are not defined in
-  `package.json` yet — use the `-c` form above, and add
-  `--update-snapshots` to (re)generate baselines.
+  in light and dark themes. Heads-up: the suite currently fails before
+  comparing anything — the snapshot names in the spec carry no `.png`
+  extension, which Playwright 1.62 rejects (`Screenshot name "dashboard-light"
+  must have a '.png' or '.webp' extension`), and no baselines are committed
+  under `tests/visual/__screenshots__/` anyway (both tracked in issue #686).
+  The `npm run test:visual` / `test:visual:update` aliases the README mentions
+  are not defined in `package.json` either — use the `-c` command above, and
+  add `--update-snapshots` to (re)generate baselines once the spec is fixed.
 - **Accessibility** — axe-core scans (`@axe-core/playwright`) of five routes
   in both themes, run through the main config: `npm run test:a11y` is exactly
-  `playwright test e2e/accessibility.spec.ts`. A second a11y spec,
+  `playwright test e2e/accessibility.spec.ts`. Heads-up: the scans currently
+  report serious `color-contrast` violations on every route (they fail on all
+  three projects, and on the deployed site too) — that is a pre-existing app
+  issue, not a local-setup problem. A second a11y spec,
   `e2e/payments-a11y.spec.ts` (payments table), runs as part of the main
   suite.
 
@@ -200,7 +204,8 @@ npm run test:e2e:local -- --project=chromium e2e/titles.spec.ts   # args pass th
 target port, waits up to `SERVER_WAIT_SECONDS` (default 120) for
 `/api/health`, and stops the server it started via an `EXIT` trap — Ctrl+C
 included. If `E2E_BASE_URL` is set, the script runs against it without
-managing a server.
+managing a server. `--seed` and `--build` only apply when the script starts
+the server (they are skipped when an already-running server is reused).
 
 ## 9. Troubleshooting
 
@@ -209,6 +214,8 @@ managing a server.
 | `connect ECONNREFUSED 127.0.0.1:3000` | No server on the default port — the config has no `webServer`. | Start the app (§4) or set `E2E_BASE_URL`. |
 | `/api/health` answers `503` | Database unreachable. | Check `DATABASE_URL`; `docker compose up -d db`; `npx prisma migrate deploy`. |
 | `Environment variable not found: DATABASE_URL` (Prisma CLI) or a PrismaClient init error (`npm run db:seed`) | Prisma reads `.env`, not `.env.local`. | Put `DATABASE_URL` in `.env` as well (§2). |
+| Server logs `EADDRINUSE 0.0.0.0:8787` and stops responding | Another OphirPay instance (e.g. a dev server) already holds the WebSocket events port. | Stop the other instance, or start with `EVENTS_WS_PORT=8790`. |
+| `next start` warns `"next start" does not work with "output: standalone"` | Expected on this repo — `next.config.ts` sets `output: "standalone"` for the Docker image. | Ignore it for local E2E; `npm start` serves normally (Docker uses `node .next/standalone/server.js`). |
 | Pages render but lists are empty | Database not seeded. | `npm run db:seed`. |
 | Run fails on missing browser executable | Playwright browsers not installed. | `npx playwright install chromium firefox`. |
 | Intermittent `429` responses | Global rate limit (`RATE_LIMIT_RPM`, default 120/min per IP) hit by repeated runs. | Raise it in `.env.local` and restart. |

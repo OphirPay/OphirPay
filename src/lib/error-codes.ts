@@ -565,3 +565,70 @@ export const ERROR_STATUS: Record<string, number> = {
   CACHE_UNAVAILABLE: 503,
   EMAIL_UNAVAILABLE: 503,
 };
+
+/**
+ * Set of error codes that represent transient conditions and are safe for clients to retry.
+ */
+export const RETRYABLE_ERROR_CODES = new Set<string>([
+  // 408 Timeouts
+  ERROR_CODES.REQUEST_TIMEOUT,
+  ERROR_CODES.TRANSACTION_TIMEOUT,
+  ERROR_CODES.CONTRACT_TIMEOUT,
+  ERROR_CODES.RPC_TIMEOUT,
+
+  // 409 Race conditions
+  ERROR_CODES.CONCURRENT_MUTATION,
+  ERROR_CODES.LOCK_TIMEOUT,
+
+  // 429 Rate limits
+  ERROR_CODES.RATE_LIMITED,
+  ERROR_CODES.RATE_LIMIT_EXCEEDED,
+  ERROR_CODES.TOO_MANY_REQUESTS,
+  ERROR_CODES.RATE_LIMIT_BACKOFF,
+
+  // 500 Transient infrastructure errors
+  ERROR_CODES.DATABASE_DEADLOCK,
+  ERROR_CODES.DATABASE_CONNECTION_FAILED,
+  ERROR_CODES.RPC_ERROR,
+  ERROR_CODES.RPC_NODE_ERROR,
+  ERROR_CODES.NETWORK_ERROR,
+  ERROR_CODES.NETWORK_TIMEOUT,
+  ERROR_CODES.STELLAR_ERROR,
+  ERROR_CODES.HORIZON_ERROR,
+  ERROR_CODES.SOROBAN_ERROR,
+
+  // 503 Service unavailable
+  ERROR_CODES.CONTRACT_UNAVAILABLE,
+  ERROR_CODES.SERVICE_UNAVAILABLE,
+  ERROR_CODES.OVERLOADED,
+  ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+  ERROR_CODES.STELLAR_UNAVAILABLE,
+  ERROR_CODES.HORIZON_UNAVAILABLE,
+  ERROR_CODES.SOROBAN_UNAVAILABLE,
+  ERROR_CODES.RPC_UNAVAILABLE,
+  ERROR_CODES.DATABASE_UNAVAILABLE,
+  ERROR_CODES.CACHE_UNAVAILABLE,
+  ERROR_CODES.EMAIL_UNAVAILABLE,
+]);
+
+/**
+ * Check whether an error code represents a transient, retryable condition.
+ */
+export function isRetryableError(code: string): boolean {
+  return RETRYABLE_ERROR_CODES.has(code);
+}
+
+/**
+ * Check whether an error code is terminal (client error or permanent constraint).
+ */
+export function isTerminalError(code: string): boolean {
+  return !isRetryableError(code);
+}
+
+/**
+ * Look up the HTTP status code for a given error code, defaulting to 500 if unmapped.
+ */
+export function getErrorStatus(code: string): number {
+  return ERROR_STATUS[code] ?? 500;
+}
+

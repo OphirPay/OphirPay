@@ -1,0 +1,63 @@
+name: Prometheus alert rules validation
+
+# Validates the shipped Prometheus alert rules (issue #754):
+#   1. `promtool check rules` parses `monitoring/prometheus-alerts.yml` and
+#      fails on an invalid or duplicated rule.
+#   2. `scripts/validate-monitoring.mjs` cross-checks every metric selector
+#      used by an alert expression against the series published by
+#      `src/app/api/metrics/route.ts`; a selector that is neither published
+#      nor declared with an `# external:` comment inside its alert block fails
+#      the job, naming the alert and the metric.
+on:
+  pull_request:
+    branches: [main, integration/staging]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "monitoring/prometheus-alerts.yml"
+      - "src/app/api/metrics/**"
+      - "scripts/validate-monitoring.mjs"
+      - "src/__tests__/prometheus-alerts.test.ts"
+      - "tests/fixtures/prometheus/**"
+      - ".github/workflows/prometheus-rules-validation.yml"
+  push:
+    branches: [main, integration/staging]
+    paths:
+      - "monitoring/prometheus-alerts.yml"
+      - "src/app/api/metrics/**"
+      - "scripts/validate-monitoring.mjs"
+      - "src/__tests__/prometheus-alerts.test.ts"
+      - "tests/fixtures/prometheus/**"
+      - ".github/workflows/prometheus-rules-validation.yml"
+
+permissions:
+  contents: read
+
+# ── Global Concurrency — cancel stale runs on same PR ────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ══════════════════════════════════════════════════════════════
+  # MONITORING — Prometheus alert rules (promtool + metric cross-check)
+  # ══════════════════════════════════════════════════════════════
+  alert-rules:
+    name: "🚨 Monitoring — Prometheus alert rules (promtool + metrics)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install promtool (pinned v3.14.0)
+        run: |
+          PROMTOOL_VER=3.14.0
+          curl -sL "https://github.com/prometheus/prometheus/releases/download/v${PROMTOOL_VER}/prometheus-${PROMTOOL_VER}.linux-amd64.tar.gz" | tar xz
+          sudo mv "prometheus-${PROMTOOL_VER}.linux-amd64/promtool" /usr/local/bin/
+      - name: Check the alert rules with promtool
+        # `--lint-fatal` is required: without it promtool 3.x reports the
+        # duplicate-rule lint but still exits 0, so a duplicated alert would
+        # not fail the job.
+        run: promtool check rules --lint-fatal monitoring/prometheus-alerts.yml
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc' }
+      - name: Cross-check alert metrics against the metrics route
+        run: node scripts/validate-monitoring.mjs

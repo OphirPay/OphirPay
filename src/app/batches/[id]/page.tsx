@@ -6,6 +6,10 @@ import Link from "next/link";
 import { timeAgo, getStatusColor, formatAmount, shortenAddress } from "@/lib/utils";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { CurrencyAmount } from "@/components/ui/CurrencyAmount";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
 import type { BatchWithProgress } from "@/types";
 
@@ -29,6 +33,9 @@ export default function BatchDetailPage() {
 
   const error = hasError ? "Failed to load batch details" : null;
 
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
+
   const handleRetry = () => {
     retryMutation.mutate(undefined, {
       onSuccess: () => {
@@ -36,6 +43,8 @@ export default function BatchDetailPage() {
       },
     });
   };
+
+  const totalBatchAmount = batch?.items?.reduce((sum, item) => sum + item.amount, 0) ?? 0;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -71,7 +80,7 @@ export default function BatchDetailPage() {
       ) : (
         <>
           {/* Header */}
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                 {batch.name}
@@ -85,7 +94,14 @@ export default function BatchDetailPage() {
                 Created {timeAgo(batch.createdAt)}
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <CurrencyToggle
+                value={currency}
+                onChange={setCurrency}
+                showPrice={currency === "USD"}
+                price={xlmPrice}
+                isUnavailable={isPriceUnavailable}
+              />
               {batch.progress.failed > 0 && (
                 <button
                   onClick={handleRetry}
@@ -147,7 +163,7 @@ export default function BatchDetailPage() {
             </div>
 
             {/* Counts */}
-            <div className="flex items-center gap-6 mt-3">
+            <div className="flex flex-wrap items-center gap-6 mt-3">
               <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-blue-500" />
                 <span className="text-xs text-gray-500 dark:text-gray-400">
@@ -166,9 +182,20 @@ export default function BatchDetailPage() {
                   {batch.progress.failed} failed
                 </span>
               </div>
-              <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+              <span className="text-xs text-gray-400 dark:text-gray-500">
                 {batch.progress.total} total
               </span>
+              <div className="flex items-center gap-1.5 ml-auto text-xs text-gray-500 dark:text-gray-400">
+                <span>Total:</span>
+                <CurrencyAmount
+                  amount={totalBatchAmount}
+                  assetCode={batch.items[0]?.assetCode ?? "XLM"}
+                  currency={currency}
+                  price={xlmPrice}
+                  isUnavailable={isPriceUnavailable}
+                  className="font-medium"
+                />
+              </div>
             </div>
           </div>
 
@@ -184,7 +211,7 @@ export default function BatchDetailPage() {
                 <thead>
                   <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
                     <th className="py-3 px-5 font-medium">#</th>
-                    <th className="py-3 px-5 font-medium">Amount</th>
+                    <th className="py-3 px-5 font-medium">Amount ({currency})</th>
                     <th className="py-3 px-5 font-medium">Status</th>
                     <th className="py-3 px-5 font-medium">Memo</th>
                   </tr>
@@ -200,8 +227,14 @@ export default function BatchDetailPage() {
                         <td className="py-3 px-5 text-gray-500 dark:text-gray-400 text-xs font-mono">
                           {i + 1}
                         </td>
-                        <td className="py-3 px-5 font-mono font-medium text-gray-900 dark:text-white">
-                          {formatAmount(item.amount, item.assetCode)}
+                        <td className="py-3 px-5">
+                          <CurrencyAmount
+                            amount={item.amount}
+                            assetCode={item.assetCode}
+                            currency={currency}
+                            price={xlmPrice}
+                            isUnavailable={isPriceUnavailable}
+                          />
                         </td>
                         <td className="py-3 px-5">
                           <span

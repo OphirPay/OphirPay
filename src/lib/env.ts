@@ -25,6 +25,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().url().optional(),
   AUTH_SECRET: z.string().min(32).optional(), // required in production (see auth-session.ts)
   CRON_SECRET: z.string().min(16).optional(), // required for /api/cron (see app/api/cron/route.ts)
+  RESEND_API_KEY: z.string().min(1).optional(), // required in production for transactional email (see lib/email.ts)
+  EMAIL_FROM: z.string().optional(), // defaults to "OphirPay <payments@ophirpay.com>"
   SCHEDULED_PAYMENTS_SOURCE_SECRET: z.string().optional(), // Stellar secret that signs scheduled payments
   NEXT_PUBLIC_DEMO_MODE: z.string().optional(),
   NEXT_PUBLIC_FEATURE_MULTI_ASSET: z.string().optional(),
@@ -56,6 +58,8 @@ export function validateEnv(): Env {
       AUTH_RATE_LIMIT_WALLET_RPM: process.env.AUTH_RATE_LIMIT_WALLET_RPM,
       REDIS_URL: process.env.REDIS_URL,
       CRON_SECRET: process.env.CRON_SECRET,
+      RESEND_API_KEY: process.env.RESEND_API_KEY,
+      EMAIL_FROM: process.env.EMAIL_FROM,
       SCHEDULED_PAYMENTS_SOURCE_SECRET: process.env.SCHEDULED_PAYMENTS_SOURCE_SECRET,
       NEXT_PUBLIC_FEATURE_MULTI_ASSET: process.env.NEXT_PUBLIC_FEATURE_MULTI_ASSET,
       NEXT_PUBLIC_FEATURE_WEBHOOKS: process.env.NEXT_PUBLIC_FEATURE_WEBHOOKS,

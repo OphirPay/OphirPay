@@ -41,10 +41,25 @@ export {
   fetchXlmPrice,
   convertXlmToUsd,
   formatFiatAmount,
+  formatPriceOrAsset,
+  formatPriceUnavailableFallback,
   clearPriceCache,
+  setCachedPrice,
+  getPriceProviderApiKey,
   ROUNDING_RULES,
+  PRICE_CACHE_TTL_MS,
+  PRICE_STALE_THRESHOLD_MS,
+  PRICE_BACKOFF_MS,
+  DEFAULT_PRICE_TIMEOUT_MS,
 } from "./price";
-export type { PriceResult, FormatFiatOptions } from "./price";
+export type {
+  PriceResult,
+  PriceStaleReason,
+  FetchXlmPriceOptions,
+  FormatFiatOptions,
+  FormatPriceOrAssetOptions,
+  FormattedPriceOrAsset,
+} from "./price";
 
 // Contracts
 export { classifyContractError, ContractErrorType, ContractError } from "./contracts";

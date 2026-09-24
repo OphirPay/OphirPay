@@ -282,14 +282,14 @@ function PaymentsClient() {
     });
 
   const { currency, setCurrency } = useCurrencyDisplay();
-  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable, isStale } = useXlmPrice();
 
   const renderPaymentAmount = (payment: OnChainPayment) => {
     const xlmAmount = payment.amountStroops / XLM_STROOPS;
     if (currency !== "USD") {
       return formatAmount(xlmAmount, "XLM");
     }
-    if (xlmPrice !== null) {
+    if (xlmPrice !== null && !isStale) {
       return (
         <div>
           <span className="font-medium text-gray-900 dark:text-white">
@@ -305,7 +305,7 @@ function PaymentsClient() {
       <div>
         <span>{formatAmount(xlmAmount, "XLM")}</span>
         <span className="block text-[11px] text-amber-600 dark:text-amber-400 font-sans">
-          (USD unavailable)
+          {isStale ? "(USD price stale)" : "(USD unavailable)"}
         </span>
       </div>
     );
@@ -371,6 +371,7 @@ function PaymentsClient() {
             showPrice={currency === "USD"}
             price={xlmPrice}
             isUnavailable={isPriceUnavailable}
+            isStale={isStale}
           />
           <button
             type="button"

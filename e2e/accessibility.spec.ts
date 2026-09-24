@@ -177,3 +177,87 @@ test("the accessibility matrix runs on every configured browser project", () => 
     expect.arrayContaining(["chromium", "firefox", "mobile-chrome"])
   );
 });
+
+/**
+ * Issue #789 — the skip link and the landmark structure.
+ *
+ * The shell in AppShell.tsx / Header.tsx / Sidebar.tsx renders on every route.
+ * A keyboard user had to tab through the sidebar and header navigation before
+ * reaching content, and the shell contributed duplicate landmarks and headings
+ * to every page. The axe scan above catches a missing landmark indirectly at
+ * best; these tests assert the two behaviours the issue names directly, so a
+ * regression reads as "the skip link stopped moving focus" rather than as a
+ * mysterious axe diff on an unrelated route.
+ */
+
+const SHELL_ROUTES: [path: string, name: string][] = [
+  ["/", "dashboard"],
+  ["/payments", "payments"],
+  ["/webhooks", "webhooks"],
+];
+
+for (const [path, name] of SHELL_ROUTES) {
+  test(`${name}: the skip link is the first focusable element`, async ({ page }) => {
+    await page.goto(path);
+    await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+
+    // First Tab must land on the skip link, not on a sidebar item.
+    await page.keyboard.press("Tab");
+    const focused = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      return { text: el?.textContent?.trim() ?? "", href: el?.getAttribute("href") ?? "" };
+    });
+
+    expect(focused.href, `first Tab on ${name} focused "${focused.text}" instead`).toBe("#main-content");
+  });
+
+  test(`${name}: the skip link moves focus into main content`, async ({ page }) => {
+    await page.goto(path);
+    await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+
+    await page.keyboard.press("Tab");
+    // Activating the link must move focus to (or into) the main landmark.
+    await page.keyboard.press("Enter");
+
+    const inMain = await page.evaluate(() => {
+      const main = document.getElementById("main-content");
+      if (!main) return false;
+      return main === document.activeElement || main.contains(document.activeElement);
+    });
+    expect(inMain, `skip link on ${name} did not move focus into #main-content`).toBe(true);
+  });
+
+  test(`${name}: exposes exactly one main landmark and one h1`, async ({ page }) => {
+    await page.goto(path);
+    await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+
+    const mains = await page.locator("main").count();
+    expect(mains, `${name} has ${mains} <main> landmarks`).toBe(1);
+
+    const h1s = await page.locator("h1").count();
+    expect(h1s, `${name} has ${h1s} <h1> headings (the shell must not add any)`).toBe(1);
+  });
+
+  test(`${name}: every navigation landmark is labelled`, async ({ page }) => {
+    // Two <nav> landmarks without distinct labels are indistinguishable to a
+    // screen-reader user: the shell renders one for desktop and one for mobile,
+    // so both need a name even though only one is visible at a time.
+    await page.goto(path);
+    await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+
+    const unlabelled = await page.evaluate(() => {
+      const navs = Array.from(document.querySelectorAll("nav"));
+      const names = navs.map((nav) => {
+        const labelled =
+          nav.getAttribute("aria-label") ||
+          (nav.getAttribute("aria-labelledby")
+            ? document.getElementById(nav.getAttribute("aria-labelledby") as string)?.textContent
+            : "");
+        return labelled?.trim() ?? "";
+      });
+      return { count: navs.length, names, unlabelled: names.filter((n) => n === "").length };
+    });
+
+    expect(unlabelled.unlabelled, `${name}: ${unlabelled.unlabelled} of ${unlabelled.count} nav landmarks have no accessible name`).toBe(0);
+  });
+}

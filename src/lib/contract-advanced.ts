@@ -447,17 +447,101 @@ export async function getFeeCollector(sourcePublicKey: string) {
 
 // ── Timelocked Action Functions ───────────────────────────────
 
+export function buildAdminActionScVal(actionType: string, target?: string, data?: string): xdr.ScVal {
+  switch (actionType) {
+    case "set_fee_collector": {
+      const collector = target || "";
+      return xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol("SetFeeCollector"),
+        nativeToScVal(collector, { type: "address" }),
+      ]);
+    }
+    case "set_emitter": {
+      const emitter = target || "";
+      return xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol("SetEmitter"),
+        nativeToScVal(emitter, { type: "address" }),
+      ]);
+    }
+    case "pause_contract":
+    case "emergency_pause_all":
+      return xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol("EmergencyPauseAll"),
+      ]);
+    case "unpause_contract":
+    case "emergency_unpause_all":
+      return xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol("EmergencyUnpauseAll"),
+      ]);
+    case "revoke_role": {
+      const grantee = target || "";
+      return xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol("RevokeRole"),
+        nativeToScVal(grantee, { type: "address" }),
+      ]);
+    }
+    case "set_fee_config": {
+      let config = {
+        payment_fee_bps: 25,
+        escrow_fee_bps: 50,
+        stream_fee_bps: 75,
+        batch_base_fee: 1000n,
+        batch_per_item_fee: 100n,
+        enabled: true,
+      };
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          config = { ...config, ...parsed };
+        } catch {
+          // fallback to defaults if not json
+        }
+      }
+      return xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol("SetFeeConfig"),
+        nativeToScVal(config),
+      ]);
+    }
+    case "set_multisig_config": {
+      let config = {
+        threshold: 2,
+        signers: target ? [target] : [],
+        enabled: true,
+      };
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          config = { ...config, ...parsed };
+        } catch {
+          // fallback to defaults
+        }
+      }
+      return xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol("SetMultisigConfig"),
+        nativeToScVal(config),
+      ]);
+    }
+    default:
+      return xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol("EmergencyPauseAll"),
+      ]);
+  }
+}
+
 export async function proposeTimelockedAction(
   caller: string,
-  actionType: string,
-  target: string,
-  data: string,
+  actionOrType: string | xdr.ScVal,
+  target?: string,
+  data?: string,
 ): Promise<ContractCallResult> {
+  const actionScVal: xdr.ScVal =
+    typeof actionOrType === "string"
+      ? buildAdminActionScVal(actionOrType, target, data)
+      : actionOrType;
+
   const args: xdr.ScVal[] = [
     nativeToScVal(caller, { type: "address" }),
-    nativeToScVal(actionType, { type: "string" }),
-    nativeToScVal(target, { type: "string" }),
-    nativeToScVal(data, { type: "string" }),
+    actionScVal,
   ];
   return signAndSubmit(caller, CONTRACT_ID, "propose_timelocked_action", args);
 }

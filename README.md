@@ -414,9 +414,9 @@ OphirPayContract.emergency_pause_all() / emergency_unpause_all()
 | `set_multisig_config(...)` | Admin | Configure N-of-M thresholds (versioned) |
 | `set_fee_config(...)` | Admin | Configure per-operation fee basis points |
 | `set_fee_collector(...)` | Admin | Designate fee recipient |
-| `propose_timelocked_action(...)` | Admin | Propose admin action with mandatory delay |
-| `execute_timelocked_action(id)` | Admin | Execute after delay expires |
-| `cancel_timelocked_action(id)` | Admin | Cancel a pending action |
+| `propose_timelocked_action(action)` | Admin | Propose typed admin action (`AdminAction`) committed in storage with 24h delay |
+| `execute_timelocked_action(id)` | Public | Execute after 24h delay; dispatches on-chain to the protected admin operation |
+| `cancel_timelocked_action(id)` | Admin | Cancel a pending timelocked action |
 | `configure_governance(...)` | Admin | Set governance parameters |
 | `create_proposal(...)` | Governance | Create DAO governance proposal (deposit required) |
 | `vote_on_proposal(id, support)` | Governance | Vote YES/NO on a proposal (1 address = 1 vote) |
@@ -437,6 +437,13 @@ OphirPayContract.emergency_pause_all() / emergency_unpause_all()
 | `get_stats()` | Read | All contract counters (gas-optimized) |
 | `get_fee_config()` / `get_fee_config_history()` | Read | Fee configuration + immutable history |
 | `get_audit_log_count()` / `get_audit_entry(id)` | Read | Immutable on-chain audit trail |
+
+#### ⏱️ Timelocked Admin Operations & On-Chain Dispatch
+
+To mitigate the risk of compromised admin keys, OphirPay provides an on-chain timelock mechanism (`propose_timelocked_action` → 24-hour delay → `execute_timelocked_action`):
+- **Bound Payload Commitment:** At proposal time, the entire typed payload (`AdminAction`) is validated and persistently committed to storage under the action's unique ID. The payload cannot be altered or substituted at execution time.
+- **On-Chain Dispatch:** Calling `execute_timelocked_action(action_id)` after the 24-hour delay dispatches the mutation directly to the target function on-chain (including `set_fee_config`, `set_fee_collector`, `set_emitter`, `set_multisig_config`, `grant_role`, `revoke_role`, `configure_governance`, `set_spending_limit`, `configure_escalation`, `emergency_pause_all`, and `emergency_unpause_all`).
+- **Cancellation Protection:** Owners can cancel pending proposals before execution via `cancel_timelocked_action(action_id)`. Cancelled or already-executed actions cannot be re-executed.
 
 ### 📡 Emitter Contract — `PaymentEventEmitter`
 

@@ -1,0 +1,66 @@
+name: Docker Build Smoke Test
+
+on:
+  pull_request:
+    branches: [integration/staging]
+    paths:
+      - Dockerfile
+      - package.json
+      - yarn.lock
+      - pnpm-lock.yaml
+      - next.config.js
+      - tsconfig.json
+
+jobs:
+  docker-smoke-test:
+    name: Build & Smoke Test Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: .docker-cache
+          key: ${{ runner.os }}-docker-${{ hashFiles('Dockerfile', 'package.json', 'yarn.lock', 'pnpm-lock.yaml', 'next.config.js', 'tsconfig.json') }}
+          restore-keys: |
+            ${{ runner.os }}-docker-
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: ophirpay:test
+          cache-from: type=local,src=.docker-cache
+          cache-to: type=local,dest=.docker-cache,mode=max
+
+      - name: Run container
+        run: |
+          docker run -d --name ophirpay-test -p 3000:3000 ophirpay:test
+          # Wait for the health endpoint to become available
+          for i in {1..30}; do
+            if curl -f http://localhost:3000/api/health; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for health check... ($i/30)"
+            sleep 2
+          done
+          echo "Health check failed"
+          docker logs ophirpay-test
+          docker stop ophirpay-test
+          exit 1
+
+      - name: Stop and remove container
+        if: always()
+        run: |
+          docker stop ophirpay-test || true
+          docker rm ophirpay-test || true

@@ -32,7 +32,11 @@
     "fintech",
     "defi"
   ],
+  "bin": {
+    "ophirpay": "./bin/ophirpay.mjs"
+  },
   "scripts": {
+    "cli": "node bin/ophirpay.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

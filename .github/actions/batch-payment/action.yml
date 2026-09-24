@@ -1,0 +1,60 @@
+name: "OphirPay Batch Payment"
+description: "Submit a batch payout from a CSV file in CI/CD pipelines with failure detection on rejected payments"
+author: "OphirPay"
+
+inputs:
+  api-key:
+    description: "OphirPay API Key for authentication"
+    required: true
+  csv-file:
+    description: "Path to the CSV file containing recipient addresses and amounts"
+    required: true
+  batch-name:
+    description: "Descriptive name for the batch payout (e.g. Payroll-Sep-2026)"
+    required: true
+  source-account:
+    description: "Source Stellar account ID funding the payments"
+    required: true
+  base-url:
+    description: "OphirPay API server URL (default: https://api.ophirpay.com)"
+    required: false
+    default: "https://api.ophirpay.com"
+  description:
+    description: "Optional notes or metadata describing the payout"
+    required: false
+    default: ""
+  idempotency-key:
+    description: "Optional idempotency key to prevent accidental re-submission"
+    required: false
+    default: ""
+  fail-on-rejected:
+    description: "Fail the workflow job if any recipient payment is rejected or fails"
+    required: false
+    default: "true"
+
+outputs:
+  batch-id:
+    description: "The unique ID of the created batch"
+  status:
+    description: "The status of the batch (e.g. CREATED, COMPLETED, FAILED)"
+  total-recipients:
+    description: "The number of recipients in the batch"
+  total-amount:
+    description: "Total amount disbursed across all recipients"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run OphirPay Batch Action
+      shell: bash
+      env:
+        INPUT_API_KEY: ${{ inputs.api-key }}
+        INPUT_CSV_FILE: ${{ inputs.csv-file }}
+        INPUT_BATCH_NAME: ${{ inputs.batch-name }}
+        INPUT_SOURCE_ACCOUNT: ${{ inputs.source-account }}
+        INPUT_BASE_URL: ${{ inputs.base-url }}
+        INPUT_DESCRIPTION: ${{ inputs.description }}
+        INPUT_IDEMPOTENCY_KEY: ${{ inputs.idempotency-key }}
+        INPUT_FAIL_ON_REJECTED: ${{ inputs.fail-on-rejected }}
+      run: |
+        node "${{ github.action_path }}/index.mjs"

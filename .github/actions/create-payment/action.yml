@@ -1,0 +1,58 @@
+name: "OphirPay Single Payment"
+description: "Trigger an individual Stellar payment from CI/CD pipelines"
+author: "OphirPay"
+
+inputs:
+  api-key:
+    description: "OphirPay API Key for authentication"
+    required: true
+  amount:
+    description: "Amount to transfer"
+    required: true
+  dest-address:
+    description: "Destination Stellar public address"
+    required: true
+  source-account:
+    description: "Source Stellar account ID"
+    required: true
+  asset-code:
+    description: "Asset code (default: XLM)"
+    required: false
+    default: "XLM"
+  base-url:
+    description: "OphirPay API server URL (default: https://api.ophirpay.com)"
+    required: false
+    default: "https://api.ophirpay.com"
+  memo:
+    description: "Optional transaction memo"
+    required: false
+    default: ""
+  description:
+    description: "Optional description"
+    required: false
+    default: ""
+
+outputs:
+  payment-id:
+    description: "The unique ID of the created payment"
+  status:
+    description: "Status of the payment"
+  tx-hash:
+    description: "Stellar transaction hash if submitted on-chain"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run OphirPay Create Payment Action
+      shell: bash
+      env:
+        INPUT_API_KEY: ${{ inputs.api-key }}
+        INPUT_AMOUNT: ${{ inputs.amount }}
+        INPUT_DEST_ADDRESS: ${{ inputs.dest-address }}
+        INPUT_SOURCE_ACCOUNT: ${{ inputs.source-account }}
+        INPUT_ASSET_CODE: ${{ inputs.asset-code }}
+        INPUT_BASE_URL: ${{ inputs.base-url }}
+        INPUT_MEMO: ${{ inputs.memo }}
+        INPUT_DESCRIPTION: ${{ inputs.description }}
+      run: |
+        node "${{ github.action_path }}/index.mjs"

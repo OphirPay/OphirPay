@@ -1,0 +1,32 @@
+{
+  "name": "@ophirpay/client",
+  "version": "0.1.0",
+  "description": "Official TypeScript client and SDK for OphirPay Stellar payments platform",
+  "author": "OphirPay Team",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "ophirpay",
+    "stellar",
+    "soroban",
+    "payments",
+    "batch-payments",
+    "webhooks",
+    "sdk",
+    "client"
+  ]
+}

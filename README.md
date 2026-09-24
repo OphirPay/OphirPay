@@ -320,7 +320,7 @@ OphirPay supports multiple Stellar wallets through a unified connector abstracti
 | Rabet | Browser extension | ✅ Supported |
 | Albedo | Web-based (no extension) | ✅ Supported |
 | Lobstr | Web-based (SEP-7) | ✅ Supported |
-| Ledger | Hardware (WebUSB/HID) | ✅ Supported |
+| Ledger | Hardware (WebUSB) | ✅ Supported (Chromium browsers with Stellar app) |
 
 ```tsx
 // Consuming the wallet anywhere in your app

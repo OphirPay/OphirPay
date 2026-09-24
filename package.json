@@ -60,6 +60,8 @@
     "test:a11y": "playwright test e2e/accessibility.spec.ts"
   },
   "dependencies": {
+    "@ledgerhq/hw-app-str": "^7.7.7",
+    "@ledgerhq/hw-transport-webusb": "^6.35.0",
     "@prisma/client": "^6.5.0",
     "@stellar/freighter-api": "^4.0.0",
     "@stellar/stellar-sdk": "^13.2.0",

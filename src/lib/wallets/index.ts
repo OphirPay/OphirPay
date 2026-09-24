@@ -74,7 +74,7 @@ export function getActiveWalletConnector(): WalletConnector | null {
   const freighter = walletConnectors.freighter;
   if (freighter?.isAvailable()) return freighter;
   // Try any available wallet
-  for (const id of ["xbull", "rabet", "albedo", "lobstr"] as WalletId[]) {
+  for (const id of ["xbull", "rabet", "albedo", "lobstr", "ledger"] as WalletId[]) {
     const c = walletConnectors[id];
     if (c?.isAvailable()) return c;
   }

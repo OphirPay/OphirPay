@@ -68,7 +68,7 @@ async function signAndSubmit(
     return {
       success: false,
       error:
-        "No wallet available. Install a Stellar wallet (Freighter, xBull, Rabet, Albedo, or Lobstr) and connect it.",
+        "No wallet available. Install or connect a supported Stellar wallet (Freighter, xBull, Rabet, Albedo, Lobstr, or Ledger).",
     };
   }
 

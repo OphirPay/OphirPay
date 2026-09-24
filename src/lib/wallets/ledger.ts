@@ -1,41 +1,180 @@
 // SPDX-License-Identifier: MIT
 
+import { Keypair, Networks, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 import type { WalletConnector, SignOptions } from "./types";
 
 /**
- * Ledger hardware wallet connector.
- *
- * Ledger Nano S / Nano X with the Stellar app provide the highest level
- * of security for signing transactions.
- *
- * Requirements:
- * - Ledger device with Stellar app installed
- * - @ledgerhq/hw-transport-webusb (npm install @ledgerhq/hw-transport-webusb)
- * - @stellar/stellar-sdk Ledger integration
- *
- * This connector uses WebUSB to communicate directly with the Ledger device.
- * The user must have their Ledger connected via USB and the Stellar app open.
- *
- * Docs: https://www.ledger.com/stellar-wallet
- * Stellar app: https://support.ledger.com/article/360008672033-zd
+ * Standard Stellar BIP-44 derivation path:
+ * 44' (purpose) / 148' (Stellar coin type) / 0' (account index)
  */
+export const DEFAULT_STELLAR_BIP44_PATH = "44'/148'/0'";
 
+let currentDerivationPath = DEFAULT_STELLAR_BIP44_PATH;
 let ledgerPublicKey: string | null = null;
 let ledgerConnected = false;
 
+// Active transport and app references
+let activeTransport: { close: () => Promise<void> } | null = null;
+let activeStellarApp: unknown | null = null;
+
+// Pluggable transport & app factories for unit testing and dependency injection
+type TransportFactory = () => Promise<{ close: () => Promise<void> }>;
+type StellarAppFactory = (transport: unknown) => {
+  getPublicKey: (path: string, boolValidate?: boolean) => Promise<{ publicKey: string }>;
+  signTransaction: (path: string, transaction: Buffer) => Promise<{ signature: Buffer | Uint8Array }>;
+};
+
+let customTransportFactory: TransportFactory | null = null;
+let customAppFactory: StellarAppFactory | null = null;
+
+export function setLedgerTransportFactory(factory: TransportFactory | null): void {
+  customTransportFactory = factory;
+}
+
+export function setLedgerAppFactory(factory: StellarAppFactory | null): void {
+  customAppFactory = factory;
+}
+
+export function getLedgerDerivationPath(): string {
+  return currentDerivationPath;
+}
+
+export function setLedgerDerivationPath(path: string): void {
+  if (!path.startsWith("44'/148'/")) {
+    throw new Error(
+      `Invalid Stellar derivation path: "${path}". Must start with 44'/148'/ (e.g. 44'/148'/0').`
+    );
+  }
+  currentDerivationPath = path;
+}
+
 /**
- * Check if WebUSB is available in this browser.
- * Ledger requires WebUSB for browser communication.
+ * Check if WebUSB is available in this environment.
+ * Ledger communication requires WebUSB in a secure context (HTTPS / localhost).
  */
-function hasWebUsb(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return "usb" in navigator;
+export function hasWebUsb(): boolean {
+  if (typeof navigator === "undefined" || typeof window === "undefined") {
+    return false;
+  }
+  return !!navigator.usb && window.isSecureContext !== false;
+}
+
+/**
+ * Translate raw Ledger / WebUSB errors into actionable user-facing messages.
+ */
+export function parseLedgerError(err: unknown): Error {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    const name = err.name;
+
+    // WebUSB unsupported
+    if (!hasWebUsb()) {
+      return new Error(
+        "WebUSB is not supported in this browser. Please use Chrome, Edge, Brave, or Opera over HTTPS to connect your Ledger device."
+      );
+    }
+
+    // User cancelled the browser device selection prompt
+    if (
+      name === "NotFoundError" ||
+      msg.includes("no device selected") ||
+      msg.includes("access denied") ||
+      msg.includes("user cancelled")
+    ) {
+      return new Error(
+        "No Ledger device was selected. Please plug in your Ledger, unlock it with your PIN, and try again."
+      );
+    }
+
+    // USB device occupied by another program (e.g. Ledger Live)
+    if (
+      msg.includes("busy") ||
+      msg.includes("unable to claim interface") ||
+      msg.includes("0x6800") ||
+      msg.includes("0x6801")
+    ) {
+      return new Error(
+        "Unable to connect to Ledger. Ensure Ledger Live or other wallet applications are closed, then try again."
+      );
+    }
+
+    // Device locked
+    if (
+      msg.includes("device locked") ||
+      msg.includes("locked device") ||
+      msg.includes("0x5515") ||
+      msg.includes("0x6982")
+    ) {
+      return new Error(
+        "Your Ledger device is locked. Please unlock it with your PIN and open the Stellar app."
+      );
+    }
+
+    // Stellar app not open on device (CLA/INS mismatch or APDU rejection)
+    if (
+      msg.includes("0x6e00") ||
+      msg.includes("0x6700") ||
+      msg.includes("0x6d00") ||
+      msg.includes("0x6511") ||
+      msg.includes("cla_not_supported") ||
+      msg.includes("ins_not_supported") ||
+      msg.includes("app not open") ||
+      msg.includes("app is not open")
+    ) {
+      return new Error(
+        "The Stellar app is not open on your Ledger device. Please open the Stellar app from the Ledger dashboard and try again."
+      );
+    }
+
+    // User rejected action on device
+    if (
+      msg.includes("0x6985") ||
+      msg.includes("user denied") ||
+      msg.includes("conditions of use not satisfied") ||
+      msg.includes("action cancelled by user") ||
+      msg.includes("rejected")
+    ) {
+      return new Error(
+        "Operation was rejected on your Ledger device."
+      );
+    }
+
+    // Timeout
+    if (msg.includes("timeout") || msg.includes("timed out")) {
+      return new Error(
+        "Ledger communication timed out. Ensure the device is connected, unlocked, and responsive."
+      );
+    }
+
+    return err;
+  }
+
+  return new Error(String(err) || "Unknown error communicating with Ledger device.");
+}
+
+async function getTransport(): Promise<{ close: () => Promise<void> }> {
+  if (customTransportFactory) {
+    return customTransportFactory();
+  }
+  const TransportWebUSB = (await import("@ledgerhq/hw-transport-webusb")).default;
+  return TransportWebUSB.create();
+}
+
+async function getStellarApp(transport: unknown): Promise<{
+  getPublicKey: (path: string, boolValidate?: boolean) => Promise<{ publicKey: string }>;
+  signTransaction: (path: string, transaction: Buffer) => Promise<{ signature: Buffer | Uint8Array }>;
+}> {
+  if (customAppFactory) {
+    return customAppFactory(transport);
+  }
+  const Str = (await import("@ledgerhq/hw-app-str")).default;
+  return new Str(transport as any); // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
 export const ledgerConnector: WalletConnector = {
   id: "ledger",
   name: "Ledger",
-  description: "Hardware wallet — connect your Ledger device",
+  description: "Hardware wallet — requires Chromium browser (WebUSB) + Stellar app",
   icon: "🔐",
 
   isAvailable(): boolean {
@@ -45,61 +184,120 @@ export const ledgerConnector: WalletConnector = {
   async connect() {
     if (!hasWebUsb()) {
       throw new Error(
-        "WebUSB is not available in this browser. " +
-          "Ledger requires Chrome/Edge/Brave with WebUSB support. " +
-          "Install @ledgerhq/hw-transport-webusb for full integration.",
+        "WebUSB is not supported in this browser. Please use Chrome, Edge, Brave, or Opera over HTTPS to connect your Ledger device."
       );
     }
 
-    // Dynamic import to avoid bundling ledger packages for users who don't need them
     try {
-      // In a full integration, this would use the Stellar Ledger app:
-      // import TransportWebUSB from "@ledgerhq/hw-transport-webusb";
-      // import Str from "@ledgerhq/hw-app-str";
-      // const transport = await TransportWebUSB.create();
-      // const stellar = new Str(transport);
-      // const { publicKey } = await stellar.getPublicKey("44'/148'/0'");
-      throw new Error("DYNAMIC_IMPORT_NEEDED"); // triggers the catch below
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (msg === "DYNAMIC_IMPORT_NEEDED" || msg.includes("Cannot find module")) {
-        throw new Error(
-          "Ledger packages not installed. Run:\n\n" +
-            "  npm install @ledgerhq/hw-transport-webusb @ledgerhq/hw-app-str\n\n" +
-            "Then:\n" +
-            "  1. Connect your Ledger device via USB\n" +
-            "  2. Open the Stellar app on your Ledger\n" +
-            "  3. Click Connect again",
-        );
+      // Disconnect any existing session first
+      if (activeTransport) {
+        try {
+          await activeTransport.close();
+        } catch {
+          // ignore
+        }
+        activeTransport = null;
+        activeStellarApp = null;
       }
-      throw err;
+
+      const transport = await getTransport();
+      activeTransport = transport;
+
+      const app = await getStellarApp(transport);
+      activeStellarApp = app;
+
+      const { publicKey } = await app.getPublicKey(currentDerivationPath, false);
+      if (!publicKey) {
+        throw new Error("Ledger returned an empty public key.");
+      }
+
+      ledgerPublicKey = publicKey;
+      ledgerConnected = true;
+
+      const network = await this.getNetwork();
+      return { publicKey, network: network || "TESTNET" };
+    } catch (err) {
+      ledgerConnected = false;
+      ledgerPublicKey = null;
+      if (activeTransport) {
+        try {
+          await activeTransport.close();
+        } catch {
+          // ignore
+        }
+        activeTransport = null;
+        activeStellarApp = null;
+      }
+      throw parseLedgerError(err);
     }
   },
 
   async disconnect() {
     ledgerPublicKey = null;
     ledgerConnected = false;
+    if (activeTransport) {
+      try {
+        await activeTransport.close();
+      } catch {
+        // ignore
+      }
+      activeTransport = null;
+      activeStellarApp = null;
+    }
     if (typeof window !== "undefined") {
       localStorage.removeItem("ophirpay-wallet-connected");
     }
   },
 
-  async signTransaction(_xdr: string, _opts?: SignOptions) {
-    if (!ledgerConnected) {
+  async signTransaction(xdrString: string, opts?: SignOptions) {
+    if (!ledgerConnected || !ledgerPublicKey) {
       throw new Error(
-        "Ledger not connected. Connect your device and open the Stellar app.",
+        "Ledger is not connected. Please connect your Ledger device and open the Stellar app."
       );
     }
 
-    // Full integration would sign via the Ledger Stellar app:
-    // const transport = await TransportWebUSB.create();
-    // const stellar = new Str(transport);
-    // const signature = await stellar.signTransaction("44'/148'/0'", xdr);
+    try {
+      let transport = activeTransport;
+      let app = activeStellarApp as {
+        signTransaction: (path: string, transaction: Buffer) => Promise<{ signature: Buffer | Uint8Array }>;
+      } | null;
 
-    throw new Error(
-      "Ledger signing requires @ledgerhq/hw-transport-webusb and @ledgerhq/hw-app-str. " +
-        "Install both packages, then connect your Ledger with the Stellar app open.",
-    );
+      if (!transport || !app) {
+        transport = await getTransport();
+        activeTransport = transport;
+        app = await getStellarApp(transport);
+        activeStellarApp = app;
+      }
+
+      const network = opts?.network || (await this.getNetwork()) || "TESTNET";
+      const networkPassphrase =
+        opts?.networkPassphrase ||
+        (network === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET);
+
+      const tx = TransactionBuilder.fromXDR(xdrString, networkPassphrase);
+      const signatureBase = tx.signatureBase();
+
+      const result = await app.signTransaction(currentDerivationPath, signatureBase);
+      if (!result?.signature) {
+        throw new Error("Ledger failed to return a valid signature.");
+      }
+
+      const keypair = Keypair.fromPublicKey(ledgerPublicKey);
+      const hint = keypair.signatureHint();
+      const rawSig = Buffer.isBuffer(result.signature)
+        ? result.signature
+        : Buffer.from(result.signature);
+
+      const decorated = new xdr.DecoratedSignature({
+        hint,
+        signature: rawSig,
+      });
+
+      tx.signatures.push(decorated);
+      return tx.toXDR();
+    } catch (err) {
+      throw parseLedgerError(err);
+    }
   },
 
   async getAddress() {

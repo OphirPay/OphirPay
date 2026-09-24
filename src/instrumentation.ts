@@ -1,37 +1,74 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { registerInstrumentations } from '@opentelemetry/instrumentation';
+import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
+import { PrismaInstrumentation } from '@opentelemetry/instrumentation-prisma';
+import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
+import { Resource } from '@opentelemetry/resources';
+import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { AlwaysOnSampler } from '@opentelemetry/core';
+import { OTLPExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
+import { setGlobalTracerProvider } from '@opentelemetry/sdk-trace-base';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { getEnv } from './lib/env.js';
+import { getRequestId } from './lib/request-id.js';
 
-/**
- * Next.js instrumentation hook — runs once on server startup.
- * Validates environment, initializes rate-limit store, logs config, and
- * starts the optional WebSocket event server (SSE remains the fallback).
- *
- * @see https://nextjs.org/docs/app/api-reference/file-conventions/instrumentation
- */
-export async function register() {
-  // Only run on server startup, not during build or client-side
-  if (
-    process.env.NEXT_RUNTIME === "nodejs" &&
-    process.env.NEXT_PHASE !== "phase-production-build"
-  ) {
-    const { bootstrap } = await import("@/lib/startup");
-    await bootstrap();
+const { OTLP_ENDPOINT, TRACE_SAMPLE_RATE = '0.0' } = getEnv();
 
-    // Start the WebSocket event channel (lower-latency alternative to SSE).
-    // Failures are non-fatal: clients automatically fall back to /api/events.
-    try {
-      const { startLiveEventsWsServer } = await import(
-        "@/lib/events/live-events-ws-server"
-      );
-      const wsServer = await startLiveEventsWsServer();
-      wsServer.startEventStream();
-      console.info(
-        `[OphirPay] WebSocket event server listening on port ${wsServer.port}`
-      );
-    } catch (error) {
-      console.warn(
-        "[OphirPay] WebSocket event server unavailable — clients will use SSE:",
-        error instanceof Error ? error.message : String(error)
-      );
-    }
+const shouldInstrument = () => {
+  const rate = parseFloat(TRACE_SAMPLE_RATE);
+  return !isNaN(rate) && rate > 0;
+};
+
+export const initTracing = () => {
+  if (!shouldInstrument()) return;
+
+  const resource = new Resource({
+    [SemanticResourceAttributes.SERVICE_NAME]: 'ophir-pay',
+  });
+
+  const provider = new NodeTracerProvider({
+    resource,
+    sampler: new AlwaysOnSampler(),
+  });
+
+  const exporter = new OTLPExporter({
+    url: OTLP_ENDPOINT,
+  });
+
+  provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+  provider.register();
+  setGlobalTracerProvider(provider);
+
+  registerInstrumentations({
+    instrumentations: [
+      new HttpInstrumentation(),
+      new PrismaInstrumentation(),
+      new FetchInstrumentation(),
+      ...getNodeAutoInstrumentations(),
+    ],
+  });
+};
+
+// Propagate request-id as trace attribute for correlation
+export const withRequestId = (span, requestId) => {
+  if (!span) return;
+  span.setAttribute('http.request_id', requestId);
+};
+
+class SimpleSpanProcessor {
+  constructor(exporter) {
+    this.exporter = exporter;
   }
+
+  onStart(span) {
+    const requestId = getRequestId();
+    if (requestId) span.setAttribute('http.request_id', requestId);
+  }
+
+  async onEnd(span) {
+    await this.exporter.export([span]);
+  }
+
+  onError(span) {}
 }

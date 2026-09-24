@@ -1,31 +1,25 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
+import { getRequestId as getRequestIdHeader } from './request-logging.js';
+import { trace } from '@opentelemetry/api';
 
-import { randomUUID } from "crypto";
-import { headers } from "next/headers";
+const TRACE_CONTEXT_HEADER = 'x-request-id';
 
-const REQUEST_ID_HEADER = "X-Request-Id";
-
-/**
- * Get or create a request ID for the current request.
- * Uses the incoming X-Request-Id header if present, otherwise generates a new UUID.
- */
-export async function getRequestId(): Promise<string> {
-  try {
-    const h = await headers();
-    const existing = h.get(REQUEST_ID_HEADER);
-    if (existing) return existing;
-  } catch {
-    // headers() not available (e.g., during build), generate new
+export const getRequestId = () => {
+  const span = trace.getActiveSpan();
+  if (span) {
+    const requestId = span.getAttribute('http.request_id');
+    if (requestId) return requestId;
   }
-  return randomUUID();
-}
+  return getRequestIdHeader() || crypto.randomUUID();
+};
 
-/**
- * Add request ID header to API responses for tracing.
- */
-export function withRequestId(response: Response, requestId: string): Response {
-  response.headers.set(REQUEST_ID_HEADER, requestId);
-  return response;
-}
+export const setRequestId = (requestId) => {
+  const span = trace.getActiveSpan();
+  if (span) span.setAttribute('http.request_id', requestId);
+};
 
-export { REQUEST_ID_HEADER };
+export const getRequestIdHeader = () => {
+  const header = getRequestIdHeader();
+  if (header) setRequestId(header);
+  return header;
+};

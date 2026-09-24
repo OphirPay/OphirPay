@@ -1,0 +1,46 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: cargo
+    directory: contracts/ophirpay
+    schedule:
+      interval: weekly
+    groups:
+      cargo-ophirpay:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: cargo
+    directory: contracts/emitter
+    schedule:
+      interval: weekly
+    groups:
+      cargo-emitter:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
+    directory: .github/workflows
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

@@ -233,15 +233,25 @@ The file is accessible at:
 // Method 1: Manual enforcement
 import { verifyCsrf } from "@/lib/csrf";
 
-OphirPay implements the following security headers:
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `X-XSS-Protection: 1; mode=block`
-- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
-
 // Method 2: Higher-order function wrapper
 import { withCsrf } from "@/lib/csrf";
+```
+
+## Security Headers
+
+OphirPay enforces a comprehensive HTTP security header policy across all environments. For the authoritative specification, layer precedence rules, deliberate relaxations, and verification runbooks, see **[docs/SECURITY_HEADERS.md](docs/SECURITY_HEADERS.md)**.
+
+Key headers enforced:
+- **`Content-Security-Policy`**: Dynamic per-request policy via `src/proxy.ts` (restricts scripts, frames, and RPC connections)
+- **`Strict-Transport-Security`**: `max-age=63072000; includeSubDomains; preload`
+- **`X-Content-Type-Options`**: `nosniff`
+- **`X-Frame-Options`**: `DENY`
+- **`X-XSS-Protection`**: `0` (OWASP recommended standard)
+- **`Referrer-Policy`**: `strict-origin-when-cross-origin`
+- **`Permissions-Policy`**: `camera=(), microphone=(), geolocation=(), payment=()`
+- **`Cross-Origin-Opener-Policy`**: `same-origin`
+
+## Smart Contract Security
 
 - All contract functions use proper access control
 - Cross-contract calls are validated and propagate failures atomically (see

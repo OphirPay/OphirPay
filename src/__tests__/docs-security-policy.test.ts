@@ -62,6 +62,41 @@ describe("SECURITY.md (responsible disclosure policy)", () => {
   it("points reporters to the issue template", () => {
     expect(doc).toMatch(/security_vulnerability\.yml/);
   });
+
+  it("links to the authoritative security headers policy", () => {
+    expect(doc).toMatch(/docs\/SECURITY_HEADERS\.md/);
+  });
+});
+
+describe("docs/SECURITY_HEADERS.md (security header policy)", () => {
+  const headersDocPath = path.join(root, "docs", "SECURITY_HEADERS.md");
+
+  it("exists", () => {
+    expect(existsSync(headersDocPath)).toBe(true);
+  });
+
+  const headersDoc = existsSync(headersDocPath)
+    ? readFileSync(headersDocPath, "utf8")
+    : "";
+
+  it("documents every security-relevant header with its authoritative source", () => {
+    expect(headersDoc).toMatch(/Content-Security-Policy/);
+    expect(headersDoc).toMatch(/Strict-Transport-Security/);
+    expect(headersDoc).toMatch(/X-Content-Type-Options/);
+    expect(headersDoc).toMatch(/X-Frame-Options/);
+    expect(headersDoc).toMatch(/X-XSS-Protection/);
+    expect(headersDoc).toMatch(/Referrer-Policy/);
+    expect(headersDoc).toMatch(/Permissions-Policy/);
+    expect(headersDoc).toMatch(/Cross-Origin-Opener-Policy/);
+    expect(headersDoc).toMatch(/Cross-Origin-Resource-Policy/);
+    expect(headersDoc).toMatch(/Cache-Control/);
+  });
+
+  it("documents deliberate relaxations and their technical rationale", () => {
+    expect(headersDoc).toMatch(/unsafe-inline/);
+    expect(headersDoc).toMatch(/wasm-unsafe-eval/);
+    expect(headersDoc).toMatch(/unsafe-eval/);
+  });
 });
 
 describe(".github/ISSUE_TEMPLATE/security_vulnerability.yml", () => {

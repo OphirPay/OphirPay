@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
-// NOTE: the Content-Security-Policy is set per-request in src/middleware.ts
-// with a per-request nonce (Next.js reads it from the x-nonce request header
-// and applies it to its inline streaming/hydration scripts). A static CSP
-// cannot express that nonce, so it must NOT live here.
+// NOTE: The Content-Security-Policy is set dynamically per-request in src/proxy.ts.
+// For the complete authoritative security headers specification, see docs/SECURITY_HEADERS.md.
+// Static headers below apply to all responses (or specific path patterns).
 
 const nextConfig: NextConfig = {
   // Standalone output — required by the Docker image (copies .next/standalone).

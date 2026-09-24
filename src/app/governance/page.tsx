@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useState } from "react";
+import Link from "next/link";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { EmptyState } from "@/components/EmptyState";
@@ -14,6 +15,8 @@ import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
 import type { ApiError } from "@/hooks/useApiQuery";
+import { getProposalStatus } from "@/lib/governance";
+
 
 interface Proposal {
   id: number;
@@ -226,9 +229,12 @@ export default function GovernancePage() {
                       <div className="flex items-start justify-between">
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">
+                            <Link
+                              href={`/governance/${p.id}`}
+                              className="font-semibold text-gray-900 dark:text-white hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors"
+                            >
                               {p.title}
-                            </h3>
+                            </Link>
                             <Badge
                               variant={
                                 p.executed
@@ -275,36 +281,45 @@ export default function GovernancePage() {
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
-                        {isVotingOpen(p) && !p.executed && (
-                          <>
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <div className="flex gap-2">
+                          {isVotingOpen(p) && !p.executed && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                onClick={() => handleVote(p.id, true)}
+                                loading={voteMutation.isPending}
+                              >
+                                👍 Yes
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => handleVote(p.id, false)}
+                                loading={voteMutation.isPending}
+                              >
+                                👎 No
+                              </Button>
+                            </>
+                          )}
+                          {!isVotingOpen(p) && !p.executed && p.yes_votes > p.no_votes && (
                             <Button
                               size="sm"
-                              variant="primary"
-                              onClick={() => handleVote(p.id, true)}
-                              loading={voteMutation.isPending}
+                              onClick={() => handleExecute(p.id)}
+                              loading={executeMutation.isPending}
                             >
-                              👍 Yes
+                              Execute
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => handleVote(p.id, false)}
-                              loading={voteMutation.isPending}
-                            >
-                              👎 No
-                            </Button>
-                          </>
-                        )}
-                        {!isVotingOpen(p) && !p.executed && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleExecute(p.id)}
-                            loading={executeMutation.isPending}
-                          >
-                            Execute
-                          </Button>
-                        )}
+                          )}
+                        </div>
+
+                        <Link
+                          href={`/governance/${p.id}`}
+                          className="text-xs text-ophir-600 dark:text-ophir-400 font-medium hover:underline inline-flex items-center gap-1"
+                        >
+                          View Details →
+                        </Link>
                       </div>
                     </div>
                   </Card>

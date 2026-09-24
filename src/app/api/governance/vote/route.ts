@@ -9,6 +9,8 @@ import { validateBody, voteOnProposalSchema } from "@/lib/validation-schemas";
 import { cacheDelete } from "@/lib/api-cache";
 import { withRequestLogging } from "@/lib/request-logging";
 
+import { recordProposalVote } from "@/lib/governance";
+
 /** Invalidate the cached proposal reads so a refetch shows the fresh vote. */
 function invalidateProposalCache(proposalId: number) {
   cacheDelete("gov:proposal_count");
@@ -44,8 +46,17 @@ export const POST = withMetrics("POST /api/governance/vote", withRequestLogging(
       );
     }
 
+    recordProposalVote({
+      proposalId,
+      voter,
+      support,
+      timestamp: Math.floor(Date.now() / 1000),
+      txHash: result.txHash,
+    });
+
     invalidateProposalCache(proposalId);
     return successResponse({ voted: true, proposalId, txHash: result.txHash });
+
   } catch (err) {
     return handleApiError(err, "POST /api/governance/vote");
   }

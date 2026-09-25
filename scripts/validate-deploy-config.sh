@@ -48,10 +48,48 @@ check_grep 'FRIENDBOT_ENABLED=false' 'friendbot disabled in PUBLIC mode'
 check_grep 'DRY_RUN' 'dry-run flag present'
 check_grep 'refusing to submit any transaction to PUBLIC network' 'dry-run refuses PUBLIC submissions'
 
+# 4. AUTH_SECRET security validation
+echo ""
+echo "── Validating AUTH_SECRET configuration ──"
+
+check_auth_secret() {
+  local secret="${AUTH_SECRET:-}"
+
+  # Fallback to .env.production or .env if present and variable not explicitly set in process environment
+  if [ -z "$secret" ] && [ -f ".env.production" ]; then
+    secret=$(grep -E '^[[:space:]]*AUTH_SECRET=' .env.production | head -n1 | cut -d '=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r' || true)
+  fi
+  if [ -z "$secret" ] && [ -f ".env" ]; then
+    secret=$(grep -E '^[[:space:]]*AUTH_SECRET=' .env | head -n1 | cut -d '=' -f2- | tr -d '"' | tr -d "'" | tr -d '\r' || true)
+  fi
+
+  if [ -n "$secret" ]; then
+    if echo "$secret" | grep -qiE 'replace-with|placeholder|changeme|openssl rand'; then
+      echo "  ❌ AUTH_SECRET is set to an insecure placeholder value: '${secret}'"
+      echo "     Generate a cryptographically random secret with: openssl rand -hex 32"
+      FAIL=1
+    elif [ "${#secret}" -lt 32 ]; then
+      echo "  ❌ AUTH_SECRET is too short (${#secret} chars, minimum 32 required)"
+      echo "     Generate a cryptographically random secret with: openssl rand -hex 32"
+      FAIL=1
+    else
+      echo "  ✅ AUTH_SECRET is valid and has sufficient length (${#secret} chars)"
+    fi
+  elif [ "${VALIDATE_AUTH_SECRET:-false}" = "true" ] || [ "${NODE_ENV:-}" = "production" ] || [ "${NETWORK_MODE:-}" = "PUBLIC" ]; then
+    echo "  ❌ AUTH_SECRET is required in production/PUBLIC deployments but is unset"
+    echo "     Generate a cryptographically random secret with: openssl rand -hex 32"
+    FAIL=1
+  else
+    echo "  ℹ️ AUTH_SECRET unset in local env (ensure it is configured for production deployments)"
+  fi
+}
+
+check_auth_secret
+
 echo ""
 if [ "$FAIL" -eq 1 ]; then
-  echo "❌ Deploy script PUBLIC config validation FAILED"
+  echo "❌ Deploy script and environment validation FAILED"
   exit 1
 fi
 
-echo "✅ Deploy script PUBLIC config is valid and targets Stellar Mainnet"
+echo "✅ Deploy script PUBLIC config and security settings are valid"

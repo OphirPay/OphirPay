@@ -21,6 +21,7 @@ import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/api-auth";
 import { isValidStellarAddress } from "@/lib/stellar";
+import { validateAuthSecret, isPlaceholderAuthSecret } from "@/lib/env";
 
 export const SESSION_COOKIE_NAME = "ophirpay_session";
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -33,12 +34,20 @@ export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
  */
 export function getAuthSecret(): string {
   const secret = process.env.AUTH_SECRET;
-  if (secret && secret.length >= 32) return secret;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "AUTH_SECRET is required in production. Generate one with: openssl rand -hex 32"
-    );
+  const isProd = process.env.NODE_ENV === "production";
+
+  if (isProd) {
+    const check = validateAuthSecret(secret, true);
+    if (!check.valid) {
+      throw new Error(check.error);
+    }
+    return secret!;
   }
+
+  if (secret && secret.length >= 32 && !isPlaceholderAuthSecret(secret)) {
+    return secret;
+  }
+
   // Dev-only fallback — never valid in production (the branch above throws).
   return "dev-only-auth-secret-000000000000000000000000";
 }

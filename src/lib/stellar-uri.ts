@@ -68,3 +68,74 @@ export function buildSep7PayUri(params: Sep7PayParams): string {
 export function buildReceivePayload(address: string): string {
   return buildSep7PayUri({ destination: address });
 }
+
+const SEP7_SCHEME = "web+stellar:";
+const SEP7_PAY_OP = "pay";
+const MEMO_TYPES = ["MEMO_TEXT", "MEMO_ID", "MEMO_HASH", "MEMO_RETURN"] as const;
+
+function parseSep7Url(uri: string): URL | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(uri);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== SEP7_SCHEME) return null;
+  if (parsed.pathname !== SEP7_PAY_OP) return null;
+  return parsed;
+}
+
+/**
+ * Parse a SEP-7 `web+stellar:pay` URI back into its fields.
+ * Returns null when the URI is not a well-formed pay handoff.
+ * Inverse of buildSep7PayUri — every field it emits parses back.
+ */
+export function parseSep7PayUri(uri: string): Sep7PayParams | null {
+  const parsed = parseSep7Url(uri);
+  if (!parsed) return null;
+
+  const destination = parsed.searchParams.get("destination") ?? "";
+  if (!destination) return null;
+
+  const params: Sep7PayParams = { destination };
+  const amount = parsed.searchParams.get("amount");
+  if (amount !== null) params.amount = amount;
+  const memo = parsed.searchParams.get("memo");
+  if (memo !== null) params.memo = memo;
+  const memoType = parsed.searchParams.get("memo_type");
+  if (memoType !== null) {
+    if (!(MEMO_TYPES as readonly string[]).includes(memoType)) return null;
+    params.memoType = memoType as Sep7PayParams["memoType"];
+  }
+  const assetCode = parsed.searchParams.get("asset_code");
+  if (assetCode !== null) params.assetCode = assetCode;
+  const assetIssuer = parsed.searchParams.get("asset_issuer");
+  if (assetIssuer !== null) params.assetIssuer = assetIssuer;
+  const msg = parsed.searchParams.get("msg");
+  if (msg !== null) params.msg = msg;
+  return params;
+}
+
+/**
+ * Validate a SEP-7 pay handoff against the grammar (issue #812):
+ * correct scheme + operation, a present destination, a positive numeric
+ * amount when given, memo_type only alongside a memo, and an issuer only
+ * for non-native assets.
+ */
+export function isValidSep7Uri(uri: string): boolean {
+  const params = parseSep7PayUri(uri);
+  if (!params) return false;
+
+  if (params.amount !== undefined) {
+    const amount = Number(params.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return false;
+  }
+  if (params.memoType !== undefined && params.memo === undefined) return false;
+  if (
+    params.assetIssuer !== undefined &&
+    (params.assetCode === undefined || params.assetCode === "XLM")
+  ) {
+    return false;
+  }
+  return true;
+}

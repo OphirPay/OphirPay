@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useWallet } from "@/hooks/useMultiWallet";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { buildReceivePayload } from "@/lib/stellar-uri";
 import { getAccountExplorerUrl } from "@/lib/stellar";
 import { shortenAddress } from "@/lib/utils";
@@ -71,6 +72,9 @@ export default function ReceivePage() {
   };
 
   const address = wallet.publicKey;
+  // Extension wallets don't exist on phones: offer the SEP-7 deep-link
+  // handoff there, with the QR flow as the fallback everywhere else.
+  const showWalletHandoff = useMediaQuery("(max-width: 768px)");
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -157,6 +161,19 @@ export default function ReceivePage() {
             <p className="mt-4 text-sm text-gray-600 dark:text-gray-400 max-w-xs">
               Scan with any SEP-7-compatible Stellar wallet to send a payment
               to this address.
+            </p>
+            {showWalletHandoff && address && (
+              <a
+                href={buildReceivePayload(address)}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-ophir-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-ophir-700"
+              >
+                Open in wallet
+              </a>
+            )}
+            <p className="mt-2 text-xs text-gray-400 dark:text-gray-500 max-w-xs">
+              On a phone without a wallet extension, Open in wallet hands the
+              payment to your wallet app. Otherwise the QR code above works
+              everywhere.
             </p>
           </Card>
 

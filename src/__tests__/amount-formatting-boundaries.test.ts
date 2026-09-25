@@ -78,16 +78,56 @@ describe("Stellar 7-decimal precision (amount.ts)", () => {
     expect(stroopsToDisplay(-1)).toBe("-0.0000001");
     expect(stroopsToDisplay(-10_000_000)).toBe("-1");
   });
+
+  it.each([
+    [-0.1, "0"],
+    [-0.4, "0"],
+    [-0.9, "-0.0000001"],
+  ])("stroopsToDisplay(%s) → %s", (stroops, expected) => {
+    expect(stroopsToDisplay(stroops)).toBe(expected);
+  });
 });
 
 describe("rounding at the display boundary", () => {
-  it("rounds half away from zero, not to even", () => {
-    // Banker's rounding would give "2" for 2.5 and "0" for 0.5.
-    expect(formatDecimal(2.5, 0)).toBe("3");
-    expect(formatDecimal(0.5, 0)).toBe("1");
-    expect(formatDecimal(1.5, 0)).toBe("2");
-    expect(formatDecimal(3.5, 0)).toBe("4");
-    expect(formatDecimal(-2.5, 0)).toBe("-3");
+  it.each([
+    [0.5, 0, "1"],
+    [1.5, 0, "2"],
+    [2.5, 0, "3"],
+    [3.5, 0, "4"],
+    [-0.5, 0, "-1"],
+    [-1.5, 0, "-2"],
+    [-2.5, 0, "-3"],
+    [-3.5, 0, "-4"],
+  ])("formatDecimal(%s, %s, 'halfExpand') → %s", (value, decimals, expected) => {
+    expect(formatDecimal(value, decimals)).toBe(expected);
+    expect(formatDecimal(value, decimals, "halfExpand")).toBe(expected);
+    expect(formatDecimal(value, decimals, { roundingMode: "halfExpand" })).toBe(expected);
+  });
+
+  it.each([
+    [0.5, 0, "0"],
+    [1.5, 0, "2"],
+    [2.5, 0, "2"],
+    [3.5, 0, "4"],
+    [4.5, 0, "4"],
+    [-0.5, 0, "0"],
+    [-1.5, 0, "-2"],
+    [-2.5, 0, "-2"],
+    [-3.5, 0, "-4"],
+    [-4.5, 0, "-4"],
+  ])("formatDecimal(%s, %s, 'halfEven') → %s", (value, decimals, expected) => {
+    expect(formatDecimal(value, decimals, "halfEven")).toBe(expected);
+    expect(formatDecimal(value, decimals, { roundingMode: "halfEven" })).toBe(expected);
+  });
+
+  it.each([
+    [12.345, 2, "12.35", "12.34"],
+    [12.355, 2, "12.36", "12.36"],
+    [12.365, 2, "12.37", "12.36"],
+    [12.375, 2, "12.38", "12.38"],
+  ])("compares halfExpand vs halfEven on %s at %s decimals", (value, decimals, expectedExpand, expectedEven) => {
+    expect(formatDecimal(value, decimals, "halfExpand")).toBe(expectedExpand);
+    expect(formatDecimal(value, decimals, "halfEven")).toBe(expectedEven);
   });
 
   it.each([
@@ -101,9 +141,33 @@ describe("rounding at the display boundary", () => {
     expect(formatDecimal(value, 2)).toBe(expected);
   });
 
+  it.each([
+    [2.5, 0, "$2", "$3"],
+    [1.5, 0, "$2", "$2"],
+    [3.5, 0, "$4", "$4"],
+  ])("formatFiat(%s, 'USD', %s) halfEven vs halfExpand", (value, decimals, expectedEven, expectedExpand) => {
+    expect(formatFiat(value, "USD", decimals, { roundingMode: "halfEven" })).toBe(expectedEven);
+    expect(formatFiat(value, "USD", decimals, { roundingMode: "halfExpand" })).toBe(expectedExpand);
+  });
+
+  it.each([
+    [25_000_000, 0, "2", "3"],
+    [15_000_000, 0, "2", "2"],
+    [35_000_000, 0, "4", "4"],
+  ])("formatXlm(%s, %s) halfEven vs halfExpand", (stroops, decimals, expectedEven, expectedExpand) => {
+    expect(formatXlm(stroops, decimals, { roundingMode: "halfEven" })).toBe(expectedEven);
+    expect(formatXlm(stroops, decimals, { roundingMode: "halfExpand" })).toBe(expectedExpand);
+  });
+
+  it.each([
+    [2.5, "USDC", 0, "2 USDC", "3 USDC"],
+    [3.5, "USDC", 0, "4 USDC", "4 USDC"],
+  ])("formatTokenAmount(%s, %s, %s) halfEven vs halfExpand", (amount, symbol, decimals, expectedEven, expectedExpand) => {
+    expect(formatTokenAmount(amount, symbol, decimals, { roundingMode: "halfEven" })).toBe(expectedEven);
+    expect(formatTokenAmount(amount, symbol, decimals, { roundingMode: "halfExpand" })).toBe(expectedExpand);
+  });
+
   it("rounds the binary value, so a decimal that is not exact rounds down", () => {
-    // 2.675 is really 2.67499999999999982… — documented so the behaviour is
-    // never mistaken for a bug.
     expect(formatDecimal(2.675, 2)).toBe("2.67");
     expect(formatDecimal(999_999.995, 2)).toBe("999999.99");
   });
@@ -156,13 +220,32 @@ describe("non-finite and unparseable input", () => {
     expect(formatCompact(value)).toBe(NON_FINITE_AMOUNT);
   });
 
-  it.each(["", "abc", "1,234.50", "12px"])(
-    "treats the unparseable string %j as non-finite",
-    (value) => {
-      expect(formatXlm(value)).toBe(NON_FINITE_AMOUNT);
-      expect(formatFiat(value)).toBe(NON_FINITE_AMOUNT);
-      expect(formatTokenAmount(value, "XLM")).toBe(NON_FINITE_AMOUNT);
-      expect(formatCompact(value)).toBe(NON_FINITE_AMOUNT);
+  it.each([
+    "",
+    "   ",
+    "abc",
+    "1,234.50",
+    "12px",
+    "NaN",
+    "Infinity",
+    "-Infinity",
+    "--",
+    "0x10",
+    "null",
+    "undefined",
+  ])("treats the unparseable string %j as non-finite", (value) => {
+    expect(formatXlm(value)).toBe(NON_FINITE_AMOUNT);
+    expect(formatFiat(value)).toBe(NON_FINITE_AMOUNT);
+    expect(formatTokenAmount(value, "XLM")).toBe(NON_FINITE_AMOUNT);
+    expect(formatCompact(value)).toBe(NON_FINITE_AMOUNT);
+  });
+
+  it.each([0, -0, "0", "-0"])(
+    "formats zero variant %j cleanly without negative zero output",
+    (val) => {
+      expect(formatFiat(val)).toBe("$0.00");
+      expect(formatXlm(val)).toBe("0.00");
+      expect(formatCompact(val)).toBe("0");
     }
   );
 

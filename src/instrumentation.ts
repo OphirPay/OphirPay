@@ -33,5 +33,21 @@ export async function register() {
         error instanceof Error ? error.message : String(error)
       );
     }
+
+    // Reconcile submitted payments from Horizon's transaction stream. The
+    // existing periodic lookup remains available as a recovery fallback for
+    // missed events or environments where long-lived connections are dropped.
+    try {
+      const { startPaymentStatusStreams } = await import(
+        "@/lib/payment-status-stream"
+      );
+      await startPaymentStatusStreams();
+      console.info("[OphirPay] Horizon payment status streams started");
+    } catch (error) {
+      console.warn(
+        "[OphirPay] Horizon payment streams unavailable — polling fallback remains active:",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
   }
 }

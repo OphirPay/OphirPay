@@ -191,6 +191,8 @@ model Payment {
   metadata          String?   // JSON string for flexible metadata
   /// Human-readable error message when the payment failed.
   errorMessage      String?
+  /// Mechanism that produced the terminal status: "stream" | "poll" | null.
+  reconciliationSource String?
 
   // Idempotency: a per-attempt key so retries (issue #159) are never
   // mistaken for the original attempt. Regenerated on every retry.

@@ -19,6 +19,7 @@ permissions:
   contents: read
   pull-requests: write
 
+# ── Global Concurrency — singleton, never cancelled ───────────
 concurrency:
   group: prompt-promotion-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: false

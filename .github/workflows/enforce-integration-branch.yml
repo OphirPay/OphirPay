@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
 
+# ── Global Concurrency — cancel stale runs on same ref ────────
 concurrency:
   group: enforce-base-${{ github.event.pull_request.number }}
   cancel-in-progress: true

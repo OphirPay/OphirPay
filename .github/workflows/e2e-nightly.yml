@@ -23,7 +23,7 @@ on:
 permissions:
   contents: read
 
-# A nightly run and a manual dispatch must not overlap; the newer run wins.
+# ── Global Concurrency — singleton, never cancelled ───────────
 concurrency:
   group: e2e-nightly
   cancel-in-progress: false

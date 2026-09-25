@@ -18,21 +18,19 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
       - name: Run OpenSSF Scorecard analysis
-        # ossf/scorecard-action does not publish a floating `v2` tag — only
-        # concrete v2.4.x tags — so `@v2` fails to resolve (weekly job was
-        # failing since 2026-08-17). Pin to the latest v2.4.x release.
-        uses: ossf/scorecard-action@v2.4.4
+        # Pin to full commit SHA for immutable supply-chain integrity.
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         with:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
 
       - name: Upload to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@6bb031afdd8eb862ea3fc1848194185e076637e5 # v3.28.11
         with:
           sarif_file: results.sarif

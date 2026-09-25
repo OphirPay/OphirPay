@@ -35,7 +35,7 @@ echo "✓ Prisma client generated"
 echo ""
 echo "→ Seeding database..."
 npx prisma db push --accept-data-loss 2>/dev/null
-npx prisma db seed 2>/dev/null || echo "  ⚠ seed script not configured — skipping"
+npm run db:seed 2>/dev/null || npx prisma db seed 2>/dev/null || echo "  ⚠ seed script not configured — skipping"
 echo "✓ Database ready"
 
 # ── 5. Create .env.local with demo mode ────────────────────

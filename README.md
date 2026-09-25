@@ -233,6 +233,8 @@ Run the pre-demo smoke test to verify everything works:
 bash scripts/demo-test.sh
 ```
 
+For full details on demo mode, database seeding (`scripts/demo-seed.sh`), teardown, and screenshot/video asset capture, see [docs/DEMO_MODE.md](docs/DEMO_MODE.md).
+
 ---
 
 ## ⚡ Quick Start

@@ -41,6 +41,16 @@ if [[ -z "$LATEST" ]]; then
 fi
 
 echo "✓ Latest backup: ${LATEST}"
+
+# ── 1.1 Assert backup freshness ───────────────────────────
+echo ""
+echo "→ Asserting backup freshness against ${MAX_BACKUP_AGE_HOURS:-26}h SLO..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! bash "${SCRIPT_DIR}/assert-backup-freshness.sh" --bucket "${BACKUP_BUCKET}" --max-age-hours "${MAX_BACKUP_AGE_HOURS:-26}"; then
+  echo "✕ Backup freshness assertion failed — latest backup in S3 is stale!"
+  exit 1
+fi
+
 aws s3 cp "s3://${BACKUP_BUCKET}/${LATEST}" "./${LATEST}"
 
 # ── 2. Spin up ephemeral Postgres ──────────────────────────

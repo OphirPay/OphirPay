@@ -3,6 +3,7 @@
 import { logger } from "@/lib/logger";
 import { incMetric } from "@/lib/metrics-counters";
 import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
+import { RETRY_CONFIG } from "@/lib/retry-config";
 import crypto from "crypto";
 
 export interface WebhookPayload {
@@ -19,6 +20,14 @@ export interface WebhookDeliveryResult {
   latencyMs: number;
   attempts: number;
   errorMessage?: string;
+  /** Machine-readable terminal failure class. `timeout` means at least one
+   *  attempt hit the per-attempt timeout rather than an HTTP/network error. */
+  failureReason?: "timeout" | "http" | "network" | "blocked";
+}
+
+export interface DeliverWebhookOptions {
+  /** Per-attempt timeout in ms. Defaults to RETRY_CONFIG.webhook.timeoutMs. */
+  timeoutMs?: number;
 }
 
 /**
@@ -68,9 +77,11 @@ export async function deliverWebhook(
   url: string,
   secret: string,
   payload: WebhookPayload,
-  maxRetries = 3
+  maxRetries = 3,
+  options?: DeliverWebhookOptions
 ): Promise<WebhookDeliveryResult> {
   const startedAt = Date.now();
+  const timeoutMs = options?.timeoutMs ?? RETRY_CONFIG.webhook.timeoutMs;
   const { body, signature } = buildSignedPayload(payload, secret);
 
   let lastStatusCode: number | undefined;
@@ -79,6 +90,7 @@ export async function deliverWebhook(
   // records 0; a target that resolves privately on a later retry records the
   // attempts already spent.
   let attempts = 0;
+  let lastFailureReason: "timeout" | "http" | "network" = "network";
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     // Re-resolve and re-validate immediately before every attempt. DNS can
@@ -97,13 +109,14 @@ export async function deliverWebhook(
         latencyMs: Date.now() - startedAt,
         attempts,
         errorMessage: BLOCKED_WEBHOOK_TARGET_ERROR,
+        failureReason: "blocked",
       };
     }
 
     attempts = attempt;
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       const response = await fetch(url, {
         method: "POST",
@@ -132,9 +145,16 @@ export async function deliverWebhook(
       }
 
       lastError = `HTTP ${response.status}`;
+      lastFailureReason = "http";
       logger.warn("Webhook delivery failed", { url, status: response.status, attempt });
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
+      if (err instanceof Error && err.name === "AbortError") {
+        lastError = `Attempt timed out after ${timeoutMs}ms`;
+        lastFailureReason = "timeout";
+      } else {
+        lastError = err instanceof Error ? err.message : String(err);
+        lastFailureReason = "network";
+      }
       logger.warn("Webhook delivery error", { url, error: lastError, attempt });
     }
 
@@ -151,5 +171,6 @@ export async function deliverWebhook(
     latencyMs: Date.now() - startedAt,
     attempts: maxRetries,
     errorMessage: lastError ?? "Delivery exhausted retries",
+    failureReason: lastFailureReason,
   };
 }

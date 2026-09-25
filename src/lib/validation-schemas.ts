@@ -220,6 +220,11 @@ export const webhookReplaySchema = z.object({
 
 export const webhookDeliveriesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  status: z.enum(["SUCCESS", "FAILED", "DEAD_LETTERED"]).optional(),
+});
+
+export const webhookBulkRedeliverSchema = z.object({
+  deliveryIds: z.array(z.string().min(1)).min(1).max(50),
 });
 
 // ── API Key Schemas ───────────────────────────────────────────

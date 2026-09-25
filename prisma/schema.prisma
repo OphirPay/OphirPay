@@ -541,17 +541,21 @@ model WebhookDelivery {
   replayBatchId String?
   deliveredAt   DateTime       @default(now())
   createdAt     DateTime       @default(now())
+  deadLetterReason String?
+  deadLetteredAt DateTime?
 
   webhook Webhook     @relation(fields: [webhookId], references: [id])
   event   WebhookEvent @relation(fields: [eventId], references: [id])
 
   @@index([webhookId, deliveredAt])
   @@index([replayBatchId])
+  @@index([webhookId, status, deadLetteredAt])
 }
 
 enum DeliveryStatus {
   SUCCESS
   FAILED
+  DEAD_LETTERED
 }
 
 // ── Refunds ───────────────────────────────────────────────────

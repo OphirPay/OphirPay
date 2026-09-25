@@ -39,10 +39,10 @@ export async function GET(
       return badRequestError(parsed.error.issues.map((e) => e.message).join("; "));
     }
 
-    const { limit } = parsed.data;
+    const { limit, status } = parsed.data;
 
     const deliveries = await prisma.webhookDelivery.findMany({
-      where: { webhookId: webhook.id },
+      where: { webhookId: webhook.id, ...(status ? { status } : {}) },
       orderBy: { deliveredAt: "desc" },
       take: limit,
       select: {
@@ -53,6 +53,8 @@ export async function GET(
         isReplay: true,
         replayBatchId: true,
         deliveredAt: true,
+        deadLetterReason: true,
+        deadLetteredAt: true,
         event: {
           select: {
             event: true,
@@ -73,6 +75,8 @@ export async function GET(
         isReplay: d.isReplay,
         replayBatchId: d.replayBatchId,
         deliveredAt: d.deliveredAt.toISOString(),
+        deadLetterReason: d.deadLetterReason,
+        deadLetteredAt: d.deadLetteredAt?.toISOString() ?? null,
       })),
       { limit, total: deliveries.length },
     );

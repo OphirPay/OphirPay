@@ -107,6 +107,20 @@ groups:
             Webhook queue has {{ $value }} pending deliveries. Delivery may be
             backed up. Check webhook worker health.
 
+      - alert: WebhookDeadLetteredHigh
+        expr: increase(ophirpay_webhooks_dead_lettered_total[15m]) > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: webhooks
+        annotations:
+          summary: "Webhook deliveries are piling up in dead-letter"
+          description: |
+            {{ $value }} webhook deliveries moved to dead-letter in the last
+            15 minutes. Query dead-lettered rows (?status=DEAD_LETTERED on the
+            deliveries endpoint) and bulk-redeliver once subscriber endpoints
+            are fixed.
+
       # ── API Health Alerts ────────────────────────────────────
 
       - alert: ApiHighErrorRate

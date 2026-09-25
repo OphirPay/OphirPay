@@ -13,7 +13,11 @@ import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
-import { formatAmount, shortenAddress } from "@/lib/utils";
+import { shortenAddress } from "@/lib/utils";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { ConvertedAmount } from "@/components/ui/ConvertedAmount";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 import { isValidStellarAddress } from "@/lib/stellar";
 import { FREQUENCY_OPTIONS, FREQUENCY_LABELS, nextRunAt, type Frequency } from "@/lib/recurrence";
 
@@ -43,6 +47,8 @@ interface CreateRecurrenceBody {
 export default function RecurringPage() {
   usePageTitle(PAGE_TITLES.RECURRING);
   const { wallet } = useWallet();
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
   const toast = useToast();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -181,7 +187,17 @@ export default function RecurringPage() {
             Schedule automated Daily, Weekly, or Monthly payments
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>+ New Recurring</Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            showPrice={currency === "USD"}
+            price={xlmPrice}
+            isUnavailable={isPriceUnavailable}
+            size="sm"
+          />
+          <Button onClick={() => setShowCreate(true)}>+ New Recurring</Button>
+        </div>
       </div>
 
       {recurrences.length === 0 ? (
@@ -214,7 +230,12 @@ export default function RecurringPage() {
                     To: <code className="text-xs">{shortenAddress(rp.destAddress, 12)}</code>
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {formatAmount(parseFloat(rp.amount), rp.assetCode)}
+                    <ConvertedAmount
+                      xlmValue={parseFloat(rp.amount)}
+                      assetCode={rp.assetCode}
+                      currency={currency}
+                      xlmPrice={xlmPrice}
+                    />
                   </p>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                     <span data-testid={`next-run-${rp.id}`}>

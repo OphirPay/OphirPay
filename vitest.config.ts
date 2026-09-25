@@ -35,8 +35,6 @@ export default defineConfig({
         "src/lib/api-auth.ts",
         "src/lib/api-client.ts",
         "src/lib/rate-limit.ts",
-        "src/lib/webhook-dispatcher.ts",
-        "src/lib/webhook-deliver.ts",
         "src/lib/demo-mode.ts",
         "src/lib/instrumentation.ts",
         "src/lib/startup.ts",

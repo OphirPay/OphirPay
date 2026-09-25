@@ -813,3 +813,118 @@ fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
     assert_eq!(fix.token_client.balance(&recipient), total);
 }
 
+#[test]
+fn test_multisig_deduplication_and_approval_threshold() {
+    let fix = TestFixture::new();
+    let signer1 = Address::generate(&fix.env);
+    let signer2 = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    let duplicated_signers = soroban_sdk::vec![
+        &fix.env,
+        signer1.clone(),
+        signer2.clone(),
+        signer1.clone(),
+        signer2.clone(),
+    ];
+    let config_res =
+        fix.client
+            .try_set_multisig_config(&fix.owner, &2u32, &duplicated_signers, &true);
+    assert_eq!(config_res, Ok(Ok(())));
+
+    let stored_config = fix.client.get_multisig_config().unwrap();
+    assert_eq!(stored_config.threshold, 2);
+    assert_eq!(stored_config.signers.len(), 2);
+    assert_eq!(stored_config.signers.get(0), Some(signer1.clone()));
+    assert_eq!(stored_config.signers.get(1), Some(signer2.clone()));
+
+    let tx_hash = String::from_str(&fix.env, "tx-msig-694-integration");
+    let proposal_id =
+        fix.client
+            .propose_payment(&signer1, &payee, &1000i128, &fix.token_id, &tx_hash);
+    assert_eq!(proposal_id, 1);
+
+    let first_approval = fix.client.approve_payment(&signer1, &proposal_id);
+    assert_eq!(first_approval, false);
+
+    let duplicate_approval = fix.client.try_approve_payment(&signer1, &proposal_id);
+    assert_eq!(duplicate_approval, Err(Ok(PaymentError::AlreadyApproved)));
+
+    let early_execution = fix.client.try_execute_approved_payment(&signer1, &proposal_id);
+    assert_eq!(early_execution, Err(Ok(PaymentError::ThresholdNotMet)));
+
+    let second_approval = fix.client.approve_payment(&signer2, &proposal_id);
+    assert_eq!(second_approval, true);
+
+    let executed_payment_id = fix.client.execute_approved_payment(&signer1, &proposal_id);
+    assert_eq!(executed_payment_id, 1);
+    assert_eq!(fix.client.get_payment_count(), 1);
+}
+
+#[test]
+fn test_multisig_threshold_validation_against_unique_signers() {
+    let fix = TestFixture::new();
+    let signer1 = Address::generate(&fix.env);
+    let signer2 = Address::generate(&fix.env);
+
+    let duplicated_two_signers = soroban_sdk::vec![
+        &fix.env,
+        signer1.clone(),
+        signer2.clone(),
+        signer1.clone(),
+    ];
+    let res_exceeding_threshold =
+        fix.client
+            .try_set_multisig_config(&fix.owner, &3u32, &duplicated_two_signers, &true);
+    assert_eq!(res_exceeding_threshold, Err(Ok(PaymentError::InvalidAmount)));
+
+    let res_zero_threshold =
+        fix.client
+            .try_set_multisig_config(&fix.owner, &0u32, &duplicated_two_signers, &true);
+    assert_eq!(res_zero_threshold, Err(Ok(PaymentError::InvalidAmount)));
+
+    let empty_signers = Vec::new(&fix.env);
+    let res_empty_signers =
+        fix.client
+            .try_set_multisig_config(&fix.owner, &1u32, &empty_signers, &true);
+    assert_eq!(res_empty_signers, Err(Ok(PaymentError::InvalidAmount)));
+}
+
+#[test]
+fn test_multisig_max_signers_cap_enforced() {
+    let fix = TestFixture::new();
+
+    let mut excessive_signers = Vec::new(&fix.env);
+    for _ in 0..=(ophirpay_contract::MAX_SIGNERS as usize) {
+        excessive_signers.push_back(Address::generate(&fix.env));
+    }
+    assert_eq!(excessive_signers.len(), 51);
+
+    let res_excessive =
+        fix.client
+            .try_set_multisig_config(&fix.owner, &1u32, &excessive_signers, &true);
+    assert_eq!(res_excessive, Err(Ok(PaymentError::MaxSignersExceeded)));
+
+    let mut exactly_max_signers = Vec::new(&fix.env);
+    for _ in 0..(ophirpay_contract::MAX_SIGNERS as usize) {
+        exactly_max_signers.push_back(Address::generate(&fix.env));
+    }
+    assert_eq!(exactly_max_signers.len(), 50);
+
+    let mut duplicated_to_hundred = Vec::new(&fix.env);
+    for signer in exactly_max_signers.iter() {
+        duplicated_to_hundred.push_back(signer.clone());
+        duplicated_to_hundred.push_back(signer);
+    }
+    assert_eq!(duplicated_to_hundred.len(), 100);
+
+    let res_deduped_max =
+        fix.client
+            .try_set_multisig_config(&fix.owner, &1u32, &duplicated_to_hundred, &true);
+    assert_eq!(res_deduped_max, Ok(Ok(())));
+
+    let config = fix.client.get_multisig_config().unwrap();
+    assert_eq!(config.signers.len(), 50);
+}
+
+

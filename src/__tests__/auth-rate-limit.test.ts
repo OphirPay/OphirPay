@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+vi.mock("@/lib/prisma", () => ({ default: {} }));
+
 import {
   InMemoryRateLimitStore,
   setRateLimitStore,

@@ -22,6 +22,14 @@ ophirpay_webhooks_delivered_total 0
 # TYPE ophirpay_webhooks_failed_total counter
 ophirpay_webhooks_failed_total 0
 
+# HELP ophirpay_rpc_failovers_total Total Soroban RPC endpoint failovers
+# TYPE ophirpay_rpc_failovers_total counter
+ophirpay_rpc_failovers_total 0
+
+# HELP ophirpay_rpc_on_fallback Whether the app serves from a non-primary RPC endpoint
+# TYPE ophirpay_rpc_on_fallback gauge
+ophirpay_rpc_on_fallback 0
+
 # HELP ophirpay_delivery_attempts_total Total delivery attempts by delivery type and attempt number
 # TYPE ophirpay_delivery_attempts_total counter
 

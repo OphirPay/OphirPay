@@ -2,6 +2,7 @@
 import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
+import { getRpcFailoverState } from "@/lib/rpc-failover";
 import { STELLAR_NETWORK, SOROBAN_RPC_URL, HORIZON_URL } from "@/lib/stellar";
 import { OPHIRPAY_CONTRACT_ID } from "@/lib/contracts";
 import { successResponse, serverError } from "@/lib/api-response";
@@ -140,6 +141,7 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
             horizonUrl: HORIZON_URL,
             rpc: { status: rpcStatus, latencyMs: rpcLatency },
             horizon: { status: horizonStatus, latencyMs: horizonLatency },
+            rpcFailover: getRpcFailoverState(),
           },
           contract: {
             id: OPHIRPAY_CONTRACT_ID || null,

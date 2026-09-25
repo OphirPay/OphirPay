@@ -2,6 +2,7 @@
 
 import { rpc } from "@stellar/stellar-sdk";
 import { logger } from "@/lib/logger";
+import { incMetric } from "@/lib/metrics-counters";
 
 /**
  * Soroban RPC failover with caching and circuit breaking.
@@ -47,9 +48,51 @@ const circuitBreakers = new Map<string, CircuitState>();
 let cachedUrl: string | null = null;
 let cachedAt = 0;
 
+// ── Observable failover state (issue #820) ─────────────────────────────
+// Who is serving, how often we moved, and why — so operators don't need
+// log archaeology during an upstream incident.
+
+let failoverCount = 0;
+let lastTransitionAt: number | null = null;
+const lastFailureByUrl = new Map<string, string>();
+
+export interface RpcFailoverState {
+  activeUrl: string | null;
+  primaryUrl: string | null;
+  /** True when serving from a non-primary endpoint. */
+  onFallback: boolean;
+  failovers: number;
+  lastTransitionAt: number | null;
+  lastFailureByUrl: Record<string, string>;
+}
+
+/** Primary (first-listed) endpoint for a network. */
+export function getPrimaryRpcUrl(network: "TESTNET" | "PUBLIC" = "TESTNET"): string {
+  return (FALLBACK_RPC_URLS[network] ?? FALLBACK_RPC_URLS.TESTNET)[0];
+}
+
+/** Current observable failover state (snapshot). */
+export function getRpcFailoverState(
+  network: "TESTNET" | "PUBLIC" = "TESTNET",
+): RpcFailoverState {
+  const primaryUrl = getPrimaryRpcUrl(network);
+  const failures: Record<string, string> = {};
+  for (const [url, reason] of lastFailureByUrl) failures[url] = reason;
+  return {
+    activeUrl: cachedUrl,
+    primaryUrl,
+    onFallback: cachedUrl !== null && cachedUrl !== primaryUrl,
+    failovers: failoverCount,
+    lastTransitionAt,
+    lastFailureByUrl: failures,
+  };
+}
+
 // ── Probe ──────────────────────────────────────────────────────
 
-async function probeHealth(url: string): Promise<boolean> {
+type ProbeOutcome = "ok" | "unhealthy" | "unreachable";
+
+async function probeHealth(url: string): Promise<ProbeOutcome> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
 
@@ -60,9 +103,9 @@ async function probeHealth(url: string): Promise<boolean> {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
       signal: controller.signal,
     });
-    return res.ok;
+    return res.ok ? "ok" : "unhealthy";
   } catch {
-    return false;
+    return "unreachable";
   } finally {
     clearTimeout(timeout);
   }
@@ -89,23 +132,42 @@ export async function getWorkingRpcServer(
   }
 
   // ── Probe URLs, skipping those in circuit-breaker cooldown ─
+  let primaryFailedThisPass = false;
   for (const url of urls) {
     const breaker = circuitBreakers.get(url);
     if (breaker && now - breaker.failedAt < CIRCUIT_COOLDOWN_MS) {
       continue;
     }
 
-    const healthy = await probeHealth(url);
-    if (healthy) {
+    const outcome = await probeHealth(url);
+    if (outcome === "ok") {
+      const moved = cachedUrl !== null && cachedUrl !== url;
+      const coldFallback =
+        cachedUrl === null && primaryFailedThisPass && url !== urls[0];
+      if (moved || coldFallback) {
+        failoverCount += 1;
+        lastTransitionAt = now;
+        incMetric("rpc_failovers_total");
+        logger.warn("RPC endpoint failover", {
+          from: cachedUrl ?? "(none)",
+          to: url,
+          reason:
+            (cachedUrl && lastFailureByUrl.get(cachedUrl)) ??
+            "primary failed probe this pass",
+        });
+      }
       cachedUrl = url;
       cachedAt = now;
       circuitBreakers.delete(url);
       return new rpc.Server(url, { allowHttp: false });
     }
+    if (url === urls[0]) primaryFailedThisPass = true;
 
     // Mark as failed — enter cooldown
+    const reason = outcome === "unhealthy" ? "probe unhealthy" : "probe unreachable";
+    lastFailureByUrl.set(url, reason);
     circuitBreakers.set(url, { failedAt: now, url });
-    logger.warn("RPC endpoint unhealthy — circuit opened", { url, cooldownMs: CIRCUIT_COOLDOWN_MS });
+    logger.warn("RPC endpoint unhealthy — circuit opened", { url, cooldownMs: CIRCUIT_COOLDOWN_MS, reason });
   }
 
   // ── All endpoints failed or in cooldown ─────────────────
@@ -130,4 +192,7 @@ export function resetRpcState(): void {
   circuitBreakers.clear();
   cachedUrl = null;
   cachedAt = 0;
+  failoverCount = 0;
+  lastTransitionAt = null;
+  lastFailureByUrl.clear();
 }

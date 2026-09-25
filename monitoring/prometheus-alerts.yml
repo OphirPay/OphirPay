@@ -107,6 +107,19 @@ groups:
             Webhook queue has {{ $value }} pending deliveries. Delivery may be
             backed up. Check webhook worker health.
 
+      - alert: RpcOnFallbackTooLong
+        expr: ophirpay_rpc_on_fallback == 1
+        for: 10m
+        labels:
+          severity: warning
+          component: rpc
+        annotations:
+          summary: "App serving from a non-primary RPC endpoint"
+          description: |
+            The app has been running on a fallback Soroban RPC endpoint for
+            over 10 minutes. Check the primary endpoint health and the
+            rpcFailover section of /api/health for the failure reason.
+
       # ── API Health Alerts ────────────────────────────────────
 
       - alert: ApiHighErrorRate

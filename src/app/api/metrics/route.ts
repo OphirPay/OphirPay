@@ -46,6 +46,10 @@ function buildMetrics(): string {
     "# TYPE ophirpay_webhooks_failed_total counter",
     `ophirpay_webhooks_failed_total ${c.webhooks_failed_total}`,
     "",
+    "# HELP ophirpay_csp_reports_total Total CSP violation reports received",
+    "# TYPE ophirpay_csp_reports_total counter",
+    `ophirpay_csp_reports_total ${c.csp_reports_total}`,
+    "",
     "# HELP ophirpay_delivery_attempts_total Total delivery attempts by delivery type and attempt number",
     "# TYPE ophirpay_delivery_attempts_total counter",
     ...c.delivery_attempts.map(

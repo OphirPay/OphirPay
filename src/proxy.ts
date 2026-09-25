@@ -44,11 +44,17 @@ function generateRequestId(): string {
  * frame-src limited to wallet extensions, object-src 'none', ...).
  * Development additionally needs 'unsafe-eval' for HMR / Fast Refresh.
  */
-function buildCsp(): string {
-  const scriptSrc = isProd
+export function buildCsp(production?: boolean): string {
+  const isProduction =
+    production !== undefined
+      ? production
+      : process.env.NODE_ENV === "production" ||
+        process.env.CSP_REPORT_ENABLED === "true";
+
+  const scriptSrc = isProduction
     ? "'self' 'unsafe-inline' 'wasm-unsafe-eval'"
     : "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'";
-  return [
+  const directives = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
     "style-src 'self' 'unsafe-inline'",
@@ -60,7 +66,14 @@ function buildCsp(): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-  ].join("; ");
+  ];
+
+  if (isProduction) {
+    directives.push("report-uri /api/csp-report");
+    directives.push("report-to csp-endpoint");
+  }
+
+  return directives.join("; ");
 }
 
 export async function proxy(request: NextRequest) {
@@ -157,8 +170,25 @@ export async function proxy(request: NextRequest) {
   }
 
   // ── HTML pages: CSP + security headers ──────────────────────
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    process.env.CSP_REPORT_ENABLED === "true";
   const response = NextResponse.next();
-  response.headers.set("Content-Security-Policy", buildCsp());
+  response.headers.set("Content-Security-Policy", buildCsp(isProduction));
+  if (isProduction) {
+    response.headers.set(
+      "Reporting-Endpoints",
+      'csp-endpoint="/api/csp-report"'
+    );
+    response.headers.set(
+      "Report-To",
+      JSON.stringify({
+        group: "csp-endpoint",
+        max_age: 10886400,
+        endpoints: [{ url: "/api/csp-report" }],
+      })
+    );
+  }
   response.headers.set("X-Request-Id", requestId);
   response.headers.set("X-Api-Version", "1.0.0");
   response.headers.set("X-Content-Type-Options", "nosniff");

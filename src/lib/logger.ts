@@ -19,6 +19,11 @@ const SENSITIVE_FIELDS = new Set([
   "token",
   "secret",
   "password",
+  "cookie",
+  "cookies",
+  "session",
+  "sessionid",
+  "session_id",
 ]);
 
 function redactValue(value: unknown): unknown {

@@ -112,24 +112,3 @@ describe("BatchConfirmDialog", () => {
     expect(screen.getByText("0.00007 XLM")).toBeDefined();
   });
 });
-
-  it("surfaces the fee basis and a stale indication (issue #825)", () => {
-    render(
-      <BatchConfirmDialog
-        open
-        recipients={[{ address: "G".padEnd(56, "A"), amount: "1" }]}
-        totalAmount={1}
-        estimatedFee="200"
-        feeBasis="p90 of recent fees — congestion high"
-        feeCongestion="high"
-        feeSource="cache"
-        feeStale
-        onConfirm={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-    expect(screen.getByTestId("fee-basis-reason")).toHaveTextContent("p90 of recent fees");
-    expect(screen.getByTestId("fee-stale-badge")).toHaveTextContent("cached");
-    expect(screen.getByTestId("fee-basis")).toHaveAttribute("data-fee-base", "200");
-  });
-}

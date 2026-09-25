@@ -1,260 +1,358 @@
 // SPDX-License-Identifier: MIT
-//
-// Network fee recommendation derived from Horizon fee statistics — issue #825.
-//
-// The network base fee was treated as a constant (100 stroops). During
-// congestion that underbids the transaction: it is included in a later ledger
-// at best, rejected at worst, and either way the payments product looks broken.
-//
-// Horizon already publishes what we need on `/fee_stats`: the last ledger's
-// base fee, ledger capacity usage, and charged-fee percentiles. This module
-// turns those into a recommendation under a *policy* (aggressiveness), and —
-// critically — never throws. An unreachable Horizon yields the last known good
-// value, or the configured fallback, tagged so the UI can say why.
 
-import { HORIZON_URL } from "@/lib/stellar";
+/**
+ * Horizon fee-statistics based fee recommendation (issue #825).
+ *
+ * The network base fee used to be treated as a constant. During congestion a
+ * transaction built with a constant base fee is underbid and either fails or
+ * stalls, which is a visible failure for a payments product. This module reads
+ * Horizon's `/fee_stats` endpoint and derives a recommendation from *current*
+ * conditions:
+ *
+ *   - `last_ledger_base_fee`  — the base fee of the most recent ledger
+ *   - `ledger_capacity_usage` — how full recent ledgers are (0..1)
+ *   - `fee_charged` percentiles (p50/p95/p99/max) — what transactions actually
+ *     paid, which is the only reliable signal during a fee spike
+ *
+ * The recommendation is intentionally explainable: every value ships with a
+ * human-readable `basis` string so the UI can show *why* a fee is higher than
+ * usual, as required by the acceptance criteria.
+ *
+ * Fallback: when Horizon is unreachable or returns an unusable payload we fall
+ * back to the last known good recommendation (in-memory cache), and failing
+ * that to the configured baseline (Stellar's 100 stroops). The fallback is
+ * always flagged so the UI can render a visible indication, and we never
+ * silently pretend a cached value is live.
+ */
 
-/** Stroops. Protocol minimum; also the historical hardcoded value. */
-export const FALLBACK_BASE_FEE = Number(process.env.NEXT_PUBLIC_FALLBACK_BASE_FEE ?? 100);
+import { getHorizonServer } from "@/lib/stellar";
 
-/** How long a recommendation is reused before Horizon is consulted again. */
-export const FEE_STATS_TTL_MS = Number(process.env.NEXT_PUBLIC_FEE_STATS_TTL_MS ?? 30_000);
+// ── Constants ──────────────────────────────────────────────────
 
-/** Stroops per XLM; the threshold above which we call the network congested. */
-export const CONGESTION_MEDIUM_STROOPS = 200;
-export const CONGESTION_HIGH_STROOPS = 1_000;
+/** Stellar's protocol minimum base fee, in stroops. */
+export const BASELINE_BASE_FEE = 100;
 
-export type Aggressiveness = "low" | "medium" | "high";
+/**
+ * Documented refresh interval for live fee statistics. Callers that poll
+ * should use this value so the refresh cadence is consistent across screens.
+ */
+export const FEE_STATS_REFRESH_INTERVAL_MS = 30_000;
 
-/** Which percentile of recently *charged* fees the policy follows. */
-const POLICY_PERCENTILE: Record<Aggressiveness, "p50" | "p90" | "p99"> = {
-  low: "p50",
-  medium: "p90",
-  high: "p99",
-};
+/** A recommendation older than this is considered stale even with no error. */
+export const FEE_STATS_MAX_AGE_MS = 120_000;
+
+export type FeeSource = "horizon" | "cache" | "baseline" | "configured";
 
 export type Congestion = "low" | "medium" | "high";
 
-/** Normalised view of Horizon's `/fee_stats` payload. */
-export interface FeeStats {
-  /** `last_ledger_base_fee` — the current protocol floor, in stroops. */
-  baseFee: number;
-  /** Fraction (0..1) of the last ledger's max transaction count that was used. */
-  ledgerCapacityUsage: number;
-  charged: { min: number; max: number; mode: number; p50: number; p90: number; p99: number };
-  lastLedger: number;
-}
-
-/** Where a recommendation's number came from. Shown to the user verbatim. */
-export type FeeSource = "horizon" | "cache" | "fallback";
+/** Configurable aggressiveness policy for how much we are willing to overbid. */
+export type FeeAggressiveness = "economical" | "standard" | "aggressive";
 
 export interface FeeRecommendation {
-  /** The fee to put on the transaction, per operation, in stroops. */
+  /** Base fee per operation, in stroops, that should be signed. */
   baseFeeStroops: number;
-  /** Recommendation for a transaction with this many operations. */
-  totalStroops: number;
-  aggressiveness: Aggressiveness;
+  /** Base fee as a string, matching the previous `FeeEstimate.baseFee` shape. */
+  baseFee: string;
+  /** Estimated total fee for `operations` operations, in stroops. */
+  estimatedFee: string;
+  /** Number of operations the estimate covers. */
+  operations: number;
+  /** Congestion band derived from capacity usage and the percentile spread. */
   congestion: Congestion;
+  /** Where the base fee came from. */
   source: FeeSource;
-  /** True when Horizon could not be reached and we served a stale/fallback value. */
+  /** True when Horizon was unreachable or the value is stale. */
   stale: boolean;
-  /** Human-readable justification, rendered next to the fee in the UI. */
+  /** Human-readable explanation, safe to render directly in the UI. */
   basis: string;
-  stats?: FeeStats;
-  /** Epoch ms after which this recommendation should be re-fetched. */
-  expiresAt: number;
+  /** Epoch ms the underlying statistics were observed. */
+  observedAt: number;
+  /** Raw parsed statistics, for debugging and tests. */
+  stats?: ParsedFeeStats;
 }
 
-function num(v: unknown): number | null {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
+// ── Parsing ────────────────────────────────────────────────────
+
+export interface ParsedFeeStats {
+  lastLedgerBaseFee: number;
+  ledgerCapacityUsage: number;
+  min: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  max: number;
+}
+
+type AnyRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): AnyRecord | null {
+  return value && typeof value === "object" ? (value as AnyRecord) : null;
+}
+
+function num(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 /**
- * Parse Horizon `/fee_stats` into a `FeeStats`.
+ * Parse a Horizon `/fee_stats` payload into a flat, validated shape.
  *
- * Returns `null` — rather than a partially-filled object — when any field we
- * price against is missing or non-numeric. A half-parsed payload is how a fee
- * ends up accidentally derived from `undefined`.
+ * Returns `null` when required fields are missing or nonsensical rather than
+ * guessing, so callers can take the documented fallback path.
  */
-export function parseFeeStats(raw: unknown): FeeStats | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, any>;
-  const charged = r.fee_charged ?? {};
-  const baseFee = num(r.last_ledger_base_fee);
-  const usage = num(r.ledger_capacity_usage);
-  const p50 = num(charged.p50);
-  const p90 = num(charged.p90);
+export function parseFeeStats(payload: unknown): ParsedFeeStats | null {
+  const root = asRecord(payload);
+  if (!root) return null;
+
+  const baseFee =
+    num(root.last_ledger_base_fee) ?? num(root.base_fee) ?? null;
+
+  // Horizon historically nested these under `fee_charged`; accept either shape.
+  const charged = asRecord(root.fee_charged) ?? root;
+  const p50 = num(charged.p50) ?? baseFee;
+  const p95 = num(charged.p95);
   const p99 = num(charged.p99);
-  if (baseFee === null || usage === null || p50 === null || p90 === null || p99 === null) return null;
+  const max = num(charged.max);
+  const min = num(charged.min);
+
+  const capacity = num(root.ledger_capacity_usage);
+
+  if (baseFee === null || baseFee <= 0) return null;
+  if (p50 === null || p50 <= 0) return null;
+  if (capacity === null || capacity < 0 || capacity > 1) return null;
 
   return {
-    baseFee,
-    // Horizon documents this as a 0..1 fraction; clamp defensively for callers
-    // that sum or render it directly.
-    ledgerCapacityUsage: Math.min(1, Math.max(0, usage)),
-    charged: {
-      min: num(charged.min) ?? baseFee,
-      max: num(charged.max) ?? p99,
-      mode: num(charged.mode) ?? baseFee,
-      p50,
-      p90,
-      p99,
-    },
-    lastLedger: num(r.last_ledger) ?? 0,
+    lastLedgerBaseFee: Math.ceil(baseFee),
+    ledgerCapacityUsage: capacity,
+    min: min !== null && min > 0 ? Math.ceil(min) : BASELINE_BASE_FEE,
+    p50: Math.ceil(p50),
+    p95: Math.ceil(p95 ?? p50),
+    p99: Math.ceil(p99 ?? p95 ?? p50),
+    max: Math.ceil(max ?? p99 ?? p95 ?? p50),
   };
 }
 
-export function congestionFor(baseFeeStroops: number): Congestion {
-  if (baseFeeStroops >= CONGESTION_HIGH_STROOPS) return "high";
-  if (baseFeeStroops >= CONGESTION_MEDIUM_STROOPS) return "medium";
+// ── Policy ─────────────────────────────────────────────────────
+
+export function congestionFrom(stats: ParsedFeeStats): Congestion {
+  const { ledgerCapacityUsage, p95, lastLedgerBaseFee } = stats;
+  const overbidRatio = lastLedgerBaseFee > 0 ? p95 / lastLedgerBaseFee : 1;
+
+  if (ledgerCapacityUsage >= 0.8 || overbidRatio >= 5) return "high";
+  if (ledgerCapacityUsage >= 0.5 || overbidRatio >= 2) return "medium";
   return "low";
 }
 
 /**
- * Turn statistics plus a policy into a recommendation.
+ * Choose the recommended base fee for the given aggressiveness.
  *
- * The number is the *maximum* of the current base fee and the policy
- * percentile: the percentile alone can sit below the floor when a ledger is
- * empty, and a fee below the base fee is not merely low, it is invalid.
+ * `last_ledger_base_fee` is the protocol floor for the next ledger, but under
+ * load it is not what actually gets included — so we also consider the
+ * percentiles of what transactions paid. `standard` walks up through p50/p95
+ * as capacity rises; `aggressive` goes straight to p99+ to strongly prefer
+ * inclusion in the next ledger.
  */
-export function recommendFromStats(
-  stats: FeeStats,
-  opts: { aggressiveness?: Aggressiveness; operations?: number; source?: FeeSource; stale?: boolean; now?: number } = {},
+export function recommendBaseFee(
+  stats: ParsedFeeStats,
+  aggressiveness: FeeAggressiveness = "standard"
+): number {
+  const { lastLedgerBaseFee, ledgerCapacityUsage, p50, p95, p99, max } = stats;
+
+  const floor = Math.max(BASELINE_BASE_FEE, lastLedgerBaseFee);
+
+  if (aggressiveness === "economical") {
+    return Math.max(floor, Math.min(p50, floor * 2));
+  }
+
+  if (aggressiveness === "aggressive") {
+    const target = ledgerCapacityUsage >= 0.8 ? max : p99;
+    return Math.max(floor, target);
+  }
+
+  // standard
+  let target: number;
+  if (ledgerCapacityUsage >= 0.8) target = p95;
+  else if (ledgerCapacityUsage >= 0.5) target = p50;
+  else target = floor;
+
+  return Math.max(floor, target);
+}
+
+/** Human-readable justification shown next to the fee in the UI. */
+export function describeBasis(
+  stats: ParsedFeeStats,
+  chosen: number,
+  aggressiveness: FeeAggressiveness = "standard"
+): string {
+  const pct = Math.round(stats.ledgerCapacityUsage * 100);
+  const congestion = congestionFrom(stats);
+
+  if (congestion === "low" && chosen <= stats.lastLedgerBaseFee) {
+    return `Network is quiet (${pct}% ledger capacity); using the current base fee of ${chosen} stroops.`;
+  }
+
+  const source =
+    chosen >= stats.max
+      ? "the maximum recently charged fee"
+      : chosen >= stats.p99
+        ? "the 99th percentile of recently charged fees"
+        : chosen >= stats.p95
+          ? "the 95th percentile of recently charged fees"
+          : chosen >= stats.p50
+            ? "the median recently charged fee"
+            : `the current base fee of ${stats.lastLedgerBaseFee} stroops`;
+
+  return `Ledgers are ${pct}% full (${congestion} congestion); recommending ${chosen} stroops, based on ${source}, policy "${aggressiveness}".`;
+}
+
+// ── Cache ──────────────────────────────────────────────────────
+
+let lastGood: { recommendation: FeeRecommendation; at: number } | null = null;
+
+/** Test seam — clears the last-known-good cache. */
+export function __resetFeeStatsCache(): void {
+  lastGood = null;
+}
+
+// ── Fallback ───────────────────────────────────────────────────
+
+export function fallbackRecommendation(
+  operations = 1,
+  reason = "Horizon was unreachable",
+  configuredBaseFee?: number
 ): FeeRecommendation {
-  const aggressiveness = opts.aggressiveness ?? defaultAggressiveness();
-  const operations = Math.max(1, opts.operations ?? 1);
-  const percentile = POLICY_PERCENTILE[aggressiveness];
-  const charged = stats.charged[percentile];
-  const baseFeeStroops = Math.max(stats.baseFee, charged);
-  const source = opts.source ?? "horizon";
-  const congestion = congestionFor(baseFeeStroops);
-
-  const basis =
-    source === "horizon"
-      ? `${percentile} of recently charged fees (${charged} stroops), base fee ${stats.baseFee}; ledger ${Math.round(
-          stats.ledgerCapacityUsage * 100,
-        )}% full — ${aggressiveness} policy`
-      : `last known good value (${baseFeeStroops} stroops) — ${percentile} of charged fees at the time Horizon was last reachable`;
+  const baseFee =
+    configuredBaseFee && configuredBaseFee > 0
+      ? Math.ceil(configuredBaseFee)
+      : BASELINE_BASE_FEE;
+  const source: FeeSource =
+    configuredBaseFee && configuredBaseFee > 0 ? "configured" : "baseline";
 
   return {
-    baseFeeStroops,
-    totalStroops: baseFeeStroops * operations,
-    aggressiveness,
-    congestion,
+    baseFeeStroops: baseFee,
+    baseFee: String(baseFee),
+    estimatedFee: String(baseFee * operations),
+    operations,
+    congestion: "low",
     source,
-    stale: opts.stale ?? false,
-    basis,
-    stats,
-    expiresAt: (opts.now ?? Date.now()) + FEE_STATS_TTL_MS,
-  };
-}
-
-/** The recommendation served when Horizon has never been reachable. */
-export function fallbackRecommendation(opts: { operations?: number; now?: number } = {}): FeeRecommendation {
-  const operations = Math.max(1, opts.operations ?? 1);
-  return {
-    baseFeeStroops: FALLBACK_BASE_FEE,
-    totalStroops: FALLBACK_BASE_FEE * operations,
-    aggressiveness: defaultAggressiveness(),
-    congestion: congestionFor(FALLBACK_BASE_FEE),
-    source: "fallback",
     stale: true,
-    basis: `configured fallback (${FALLBACK_BASE_FEE} stroops) — Horizon could not be reached, so the fee may be too low under congestion`,
-    expiresAt: (opts.now ?? Date.now()) + FEE_STATS_TTL_MS,
+    basis: `${reason}; falling back to ${baseFee} stroops per operation (${source}). The fee may be underbid if the network is congested.`,
+    observedAt: Date.now(),
   };
 }
 
-function defaultAggressiveness(): Aggressiveness {
-  const raw = (process.env.NEXT_PUBLIC_FEE_AGGRESSIVENESS ?? "medium").toLowerCase();
-  return raw === "low" || raw === "high" ? raw : "medium";
+// ── Public API ─────────────────────────────────────────────────
+
+export interface FetchFeeStats {
+  (): Promise<unknown>;
 }
 
-// ---------------------------------------------------------------------------
-// Cache + transport
-//
-// Module-level so the proxy, the route handlers and the send screen share one
-// fetch per TTL window instead of each hammering Horizon.
-// ---------------------------------------------------------------------------
-
-interface CacheEntry {
-  recommendation: FeeRecommendation;
-  fetchedAt: number;
-}
-let cache: CacheEntry | null = null;
-
-export function clearFeeStatsCache(): void {
-  cache = null;
+export interface GetFeeRecommendationOptions {
+  operations?: number;
+  aggressiveness?: FeeAggressiveness;
+  /** Last-known-good cache lifetime before we treat the value as stale. */
+  maxAgeMs?: number;
+  /** Configured override used when Horizon cannot be reached. */
+  configuredBaseFee?: number;
+  /** Injectable fetcher, for tests. Defaults to Horizon `/fee_stats`. */
+  fetcher?: FetchFeeStats;
+  /** Force bypassing the cache, e.g. an explicit refresh. */
+  forceRefresh?: boolean;
 }
 
-export function peekCachedRecommendation(now = Date.now()): FeeRecommendation | null {
-  if (!cache) return null;
-  return { ...cache.recommendation, source: "cache", stale: now > cache.recommendation.expiresAt };
+async function defaultFetcher(): Promise<unknown> {
+  const server = getHorizonServer();
+  const anyServer = server as unknown as { feeStats?: () => Promise<unknown> };
+  if (typeof anyServer.feeStats === "function") return anyServer.feeStats();
+  const response = await fetch(`${server.serverURL}fee_stats`);
+  if (!response.ok) throw new Error(`Horizon fee_stats: ${response.status}`);
+  return response.json();
 }
-
-type Fetcher = (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
 
 /**
- * Recommend a network fee.
+ * Recommend a fee from live Horizon statistics.
  *
- * Never throws and never returns `undefined` — every caller gets a usable fee
- * plus a `source`/`basis` it can display. `operations` scales the total, not
- * the per-operation fee.
+ * Never throws: an unreachable Horizon yields a flagged fallback so callers can
+ * always build a transaction, and the UI can always show an honest basis.
  */
 export async function getFeeRecommendation(
-  opts: { operations?: number; aggressiveness?: Aggressiveness; now?: number; fetcher?: Fetcher; url?: string } = {},
+  options: GetFeeRecommendationOptions = {}
 ): Promise<FeeRecommendation> {
-  const now = opts.now ?? Date.now();
-  const operations = Math.max(1, opts.operations ?? 1);
-  const aggressiveness = opts.aggressiveness ?? defaultAggressiveness();
+  const {
+    operations = 1,
+    aggressiveness = "standard",
+    maxAgeMs = FEE_STATS_MAX_AGE_MS,
+    configuredBaseFee,
+    fetcher = defaultFetcher,
+    forceRefresh = false,
+  } = options;
 
-  if (cache && now - cache.fetchedAt < FEE_STATS_TTL_MS) {
-    return { ...cache.recommendation, source: "cache", stale: false, totalStroops: cache.recommendation.baseFeeStroops * operations };
+  const now = Date.now();
+  if (!forceRefresh && lastGood && now - lastGood.at < maxAgeMs) {
+    return { ...lastGood.recommendation, operations, estimatedFee: String(lastGood.recommendation.baseFeeStroops * operations) };
   }
 
-  const fetcher: Fetcher = opts.fetcher ?? ((url: string) => fetch(url) as unknown as ReturnType<Fetcher>);
-  const url = opts.url ?? `${HORIZON_URL.replace(/\/+$/, "")}/fee_stats`;
-
   try {
-    const res = await fetcher(url);
-    if (!res.ok) throw new Error(`Horizon responded ${(res as any).status ?? "non-ok"}`);
-    const stats = parseFeeStats(await res.json());
-    if (!stats) throw new Error("unparseable fee_stats payload");
+    const stats = parseFeeStats(await fetcher());
+    if (!stats) throw new Error("unusable fee statistics payload");
 
-    const rec = recommendFromStats(stats, { aggressiveness, operations, source: "horizon", now });
-    cache = { recommendation: { ...rec, totalStroops: rec.baseFeeStroops }, fetchedAt: now };
-    return rec;
-  } catch {
-    // Horizon unreachable or talking nonsense: prefer the last known good value
-    // over a config constant, and say so.
-    if (cache) {
-      const stale = recommendFromStats(cache.recommendation.stats as FeeStats, {
-        aggressiveness,
+    const chosen = recommendBaseFee(stats, aggressiveness);
+    const recommendation: FeeRecommendation = {
+      baseFeeStroops: chosen,
+      baseFee: String(chosen),
+      estimatedFee: String(chosen * operations),
+      operations,
+      congestion: congestionFrom(stats),
+      source: "horizon",
+      stale: false,
+      basis: describeBasis(stats, chosen, aggressiveness),
+      observedAt: now,
+      stats,
+    };
+
+    lastGood = { recommendation, at: now };
+    return recommendation;
+  } catch (error) {
+    const reason =
+      error instanceof Error && error.message
+        ? `Horizon fee statistics unavailable (${error.message})`
+        : "Horizon was unreachable";
+
+    if (lastGood) {
+      const age = now - lastGood.at;
+      const cached = lastGood.recommendation;
+      return {
+        ...cached,
         operations,
+        estimatedFee: String(cached.baseFeeStroops * operations),
         source: "cache",
         stale: true,
-        now,
-      });
-      return stale;
+        basis: `${reason}; using the last known good fee of ${cached.baseFeeStroops} stroops, observed ${Math.round(age / 1000)}s ago.`,
+      };
     }
-    return fallbackRecommendation({ operations, now });
+
+    return fallbackRecommendation(operations, reason, configuredBaseFee);
   }
 }
 
-/**
- * Guard for the "fee shown before signing matches the fee submitted" criterion.
- *
- * Called immediately before signing, with the stroop value the confirmation
- * screen displayed. Returns the discrepancy instead of throwing so the caller
- * can re-prompt the user rather than silently signing a different number.
- */
-export function assertQuotedFeeMatches(
-  quoted: FeeRecommendation,
-  submittedStroops: number,
-): { matches: boolean; expected: number; actual: number } {
+/** Backwards-compatible helper retained from the previous estimator. */
+export async function estimateTransactionFee(
+  numOperations = 1
+): Promise<Pick<FeeRecommendation, "baseFee" | "estimatedFee" | "operations" | "congestion">> {
+  const rec = await getFeeRecommendation({ operations: numOperations });
   return {
-    matches: quoted.totalStroops === submittedStroops,
-    expected: quoted.totalStroops,
-    actual: submittedStroops,
+    baseFee: rec.baseFee,
+    estimatedFee: rec.estimatedFee,
+    operations: rec.operations,
+    congestion: rec.congestion,
   };
+}
+
+/** Calculate the estimated total fee for a batch payment with N recipients. */
+export function estimateBatchFee(recipientCount: number, baseFee = BASELINE_BASE_FEE): string {
+  return (baseFee * recipientCount).toString();
 }

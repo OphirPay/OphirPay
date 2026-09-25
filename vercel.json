@@ -1,63 +1,33 @@
 {
-  "version": 2,
-  "buildCommand": "npx prisma generate && next build",
-  "installCommand": "npm ci",
-  "framework": "nextjs",
-  "outputDirectory": ".next",
-  "regions": ["iad1"],
+  // Security headers for static assets are documented in docs/SECURITY_HEADERS.md
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        },
-        {
-          "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
-        },
-        {
-          "key": "Permissions-Policy",
-          "value": "camera=(), microphone=(), geolocation=()"
-        }
-      ]
-    },
-    {
-      "source": "/_next/static/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        // X-XSS-Protection is set to 0 here to avoid double‑setting the header
+        { "key": "X-XSS-Protection", "value": "0" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()" },
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload" },
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Resource-Policy", "value": "same-origin" }
       ]
     }
   ],
   "rewrites": [
     {
-      "source": "/.well-known/security.txt",
-      "destination": "/.well-known/security.txt"
+      "source": "/(.*)",
+      "destination": "/$1"
     }
   ],
-  "redirects": [
+  "cache": [
     {
-      "source": "/home",
-      "destination": "/",
-      "permanent": true
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
     }
-  ],
-  "github": {
-    "enabled": true,
-    "autoAlias": true,
-    "silent": false,
-    "productionBranch": "main"
-  }
+  ]
 }

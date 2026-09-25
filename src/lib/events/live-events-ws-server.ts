@@ -37,6 +37,8 @@ export interface WsServerOptions {
   heartbeatMs?: number;
   /** Injectable source factory for tests. */
   eventSourceFactory?: () => LiveEventSource;
+  /** Maximum outbound buffered bytes per client before disconnecting stalled consumer. Default: 256KB */
+  maxBufferBytes?: number;
 }
 
 interface WsClient {
@@ -94,11 +96,28 @@ export class LiveEventsWsServer {
   }
 
   /**
+   * Maximum outbound buffer in bytes before disconnecting a stalled consumer.
+   */
+  get maxBufferBytes(): number {
+    return this.options.maxBufferBytes ?? 256 * 1024;
+  }
+
+  /**
    * Broadcast a message to every connected client.
+   * Disconnects slow/stalled consumers whose outbound socket buffer exceeds maxBufferBytes.
    */
   broadcast(payload: string): void {
     const frame = encodeFrame(OPCODE_TEXT, payload);
     for (const client of this.clients) {
+      if (client.socket.writableLength > this.maxBufferBytes) {
+        this.clients.delete(client);
+        try {
+          client.socket.destroy(new Error("Slow consumer: outbound buffer overflow"));
+        } catch {
+          // ignore
+        }
+        continue;
+      }
       client.socket.write(frame);
     }
   }
@@ -114,7 +133,7 @@ export class LiveEventsWsServer {
 
     this.heartbeatTimer = setInterval(() => {
       for (const client of this.clients) {
-        if (!client.alive) {
+        if (!client.alive || client.socket.writableLength > this.maxBufferBytes) {
           this.clients.delete(client);
           client.socket.destroy();
           continue;

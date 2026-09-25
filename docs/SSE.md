@@ -172,6 +172,51 @@ The client exposes a status enum — useful for UI indicators:
 | Event seen twice after reconnect | Dropped — dedup by `id` (window: last 1000 ids) |
 | WS server not running | Client falls back to SSE automatically (expected in dev) |
 | Proxy buffers the stream | Heartbeats pause → clients see a stale feed; set `X-Accel-Buffering: no` (already set) and `proxy_buffering off` in Nginx |
+| Stalled consumer / backpressure overflow | Bounded queue (max 50); oldest dropped with `event: drop` marker frame |
+| Persistent stall (>45s with buffered data) | Connection auto-closed with `event: close` (`stalled_consumer_timeout`) |
+
+## Backpressure & Slow Consumer Protection
+
+To prevent slow or stalled consumers from growing server memory without bound, all streaming endpoints (`/api/events`, `/api/audit-log/sse`, and WebSocket on port `8787`) enforce strict outbound buffer ceilings and watchdog timeouts:
+
+### 1. Per-Connection Bounded Queue
+- **Queue Ceiling:** Each active SSE connection buffers at most **50 events** in memory (`maxBufferSize = 50`).
+- **Desired Size:** Streams respect backpressure signals from the client (`ReadableStreamDefaultController.desiredSize`).
+
+### 2. Drop-Oldest Overflow Policy
+- When a client is unable to consume events as fast as they arrive and the 50-event buffer is saturated, the server applies a **drop-oldest** policy.
+- The oldest event in the buffer is dropped to make room for newer incoming events.
+- An explicit `drop` marker frame is queued and sent to the client as soon as the stream drains:
+  ```
+  event: drop
+  data: {"dropped": 1, "reason": "slow_consumer_buffer_overflow"}
+  ```
+  Integrations can listen for `event: drop` to detect that client-side lag caused events to be skipped.
+
+### 3. Keep-Alive Heartbeat
+- A heartbeat ping is emitted every **15 seconds**:
+  ```
+  event: heartbeat
+  data: {"timestamp": 1724000000000}
+  ```
+- Prevents reverse proxies (Nginx, Cloudflare, ALB) and browser timeouts from severing healthy idle connections.
+
+### 4. Idle Timeout & Stalled Consumer Auto-Disconnect
+- If a client has undrained buffered data and does not pull from the stream for **45 seconds** (`idleTimeoutMs = 45s`), the watchdog terminates the connection.
+- Before termination, a final `close` frame is emitted:
+  ```
+  event: close
+  data: {"reason": "stalled_consumer_timeout", "message": "Connection closed due to slow consumer timeout"}
+  ```
+- The connection is closed, buffers are immediately garbage collected, and the Prometheus connection gauge is released.
+
+### 5. Open Connection Metrics (`ophirpay_sse_open_connections`)
+- The gauge `ophirpay_sse_open_connections` (visible on `/api/metrics`) increments when a connection opens and decrements whenever a client disconnects, times out, or closes.
+- Under load tests and mass disconnects, the gauge strictly returns to baseline `0`.
+
+### 6. WebSocket Slow Consumer Protection
+- The WebSocket server (`live-events-ws-server.ts`) inspects `socket.writableLength` during every broadcast and heartbeat cycle.
+- If outbound unwritten bytes exceed **256 KB** (`maxBufferBytes = 256 * 1024`), the stalled consumer socket is immediately destroyed to prevent buffer buildup.
 
 ## Example clients
 

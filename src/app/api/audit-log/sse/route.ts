@@ -6,9 +6,8 @@ import { Contract, TransactionBuilder, scValToNative, nativeToScVal } from "@ste
 import { getSorobanServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
 import { DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { withRequestLogging } from "@/lib/request-logging";
+import { createBoundedSseStream } from "@/lib/events/bounded-sse-stream";
 
-/** Map of connected SSE clients */
-const clients = new Map<string, ReadableStreamDefaultController>();
 let clientCounter = 0;
 
 /**
@@ -81,89 +80,73 @@ async function pollContractForAuditEntries(
   return { entries, newLastSeenId: end };
 }
 
-export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(async function GET() {
+export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(async function GET(request?: Request) {
   const clientId = ++clientCounter;
   const contractId = process.env.NEXT_PUBLIC_CONTRACT_ID || DEFAULT_CONTRACT_ID;
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      clients.set(String(clientId), controller);
-      let lastSeenId = 0;
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let safetyTimeout: ReturnType<typeof setTimeout> | null = null;
+  let lastSeenId = 0;
 
-      // Send connected event immediately
-      controller.enqueue(
-        new TextEncoder().encode(
-          `event: connected\ndata: ${JSON.stringify({ clientId, contractId, message: "Audit log SSE stream connected" })}\n\n`
-        )
-      );
-
-      let closed = false;
-      let pollInterval: ReturnType<typeof setInterval> | null = null;
-      let safetyTimeout: ReturnType<typeof setTimeout> | null = null;
-      const encoder = new TextEncoder();
-
-      // Cleanup on stream cancel / client disconnect
-      const cleanup = () => {
-        if (closed) return;
-        closed = true;
-        if (pollInterval) clearInterval(pollInterval);
-        if (safetyTimeout) clearTimeout(safetyTimeout);
-        clients.delete(String(clientId));
-      };
-
-      // Typed cancel hook — runs when the client disconnects.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (controller as any).signal?.addEventListener("abort", cleanup);
-
-      // Safety: auto-cleanup after 10 minutes even without an explicit
-      // disconnect (e.g. runtimes that never surface the abort signal).
-      safetyTimeout = setTimeout(cleanup, 10 * 60 * 1000);
-
-      // Poll contract every 15 seconds for new entries
-      pollInterval = setInterval(async () => {
-        if (closed) return;
-        try {
-          const { entries, newLastSeenId } = await pollContractForAuditEntries(
-            lastSeenId,
-            CHAIN_READ_SOURCE
-          );
-          lastSeenId = newLastSeenId;
-
-          for (const entry of entries) {
-            if (closed) break;
-            try {
-              controller.enqueue(
-                encoder.encode(
-                  `event: audit:entry\ndata: ${JSON.stringify(entry)}\n\n`
-                )
-              );
-            } catch {
-              closed = true;
-              break;
-            }
-          }
-        } catch {
-          // Poll failed silently — retry next interval
-        }
-      }, 15_000);
-
-      // Initial poll
-      try {
-        const { entries, newLastSeenId } = await pollContractForAuditEntries(0, CHAIN_READ_SOURCE);
-        lastSeenId = newLastSeenId;
-        for (const entry of entries) {
-          if (closed) break;
-          controller.enqueue(
-            encoder.encode(
-              `event: audit:entry\ndata: ${JSON.stringify(entry)}\n\n`
-            )
-          );
-        }
-      } catch { /* silent */ }
+  const boundedStream = createBoundedSseStream({
+    maxBufferSize: 50,
+    heartbeatIntervalMs: 15_000,
+    idleTimeoutMs: 45_000,
+    requestSignal: request?.signal,
+    onTeardown: () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      if (safetyTimeout) {
+        clearTimeout(safetyTimeout);
+        safetyTimeout = null;
+      }
     },
   });
 
-  return new NextResponse(stream, {
+  // Send connected event immediately
+  boundedStream.send("connected", {
+    clientId,
+    contractId,
+    message: "Audit log SSE stream connected",
+  });
+
+  // Safety: auto-cleanup after 10 minutes even without an explicit disconnect
+  safetyTimeout = setTimeout(() => {
+    boundedStream.close("safety_timeout");
+  }, 10 * 60 * 1000);
+
+  // Poll contract every 15 seconds for new entries
+  pollInterval = setInterval(async () => {
+    if (boundedStream.isClosed()) return;
+    try {
+      const { entries, newLastSeenId } = await pollContractForAuditEntries(
+        lastSeenId,
+        CHAIN_READ_SOURCE
+      );
+      lastSeenId = newLastSeenId;
+
+      for (const entry of entries) {
+        if (boundedStream.isClosed()) break;
+        boundedStream.send("audit:entry", entry);
+      }
+    } catch {
+      // Poll failed silently — retry next interval
+    }
+  }, 15_000);
+
+  // Initial poll
+  try {
+    const { entries, newLastSeenId } = await pollContractForAuditEntries(0, CHAIN_READ_SOURCE);
+    lastSeenId = newLastSeenId;
+    for (const entry of entries) {
+      if (boundedStream.isClosed()) break;
+      boundedStream.send("audit:entry", entry);
+    }
+  } catch { /* silent */ }
+
+  return new NextResponse(boundedStream.stream, {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",

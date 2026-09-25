@@ -5,14 +5,23 @@ header on incoming webhook deliveries.
 
 - [`node/verify.mjs`](node/verify.mjs) — Node.js (ESM, no dependencies)
 - [`python/verify.py`](python/verify.py) — Python 3 (stdlib only)
+- [`go/verify.go`](go/verify.go) — Go (stdlib only)
 - [`sample-payload.json`](sample-payload.json) — sample signed payload
 
 Full guidance (canonical form, replay protection, pitfalls) lives in
 [`docs/webhook-verification.md`](../../docs/webhook-verification.md).
 
+### Canonicalization Rule
+
+The HMAC-SHA256 signature is calculated over the canonical JSON representation:
+1. Parse the received JSON body.
+2. Set the `signature` field to `""` (empty string) — keep the key, empty the value.
+3. Preserve key insertion order and serialize using compact separators (no extraneous whitespace outside string literals).
+4. Compute the HMAC-SHA256 hex digest using your webhook signing secret.
+
 ## Quick start (sample payload)
 
-Both scripts read the body from `--body-file` (or stdin), verify the HMAC,
+All three reference scripts read the body from `--body-file` (or stdin), verify the HMAC,
 then print `VALID` (exit 0) or `INVALID: <reason>` (exit 1).
 
 ```bash
@@ -24,6 +33,12 @@ node node/verify.mjs \
 
 # Python
 python3 python/verify.py \
+  --secret test-secret-0123456789 \
+  --signature 647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64 \
+  --body-file sample-payload.json
+
+# Go
+go run go/verify.go \
   --secret test-secret-0123456789 \
   --signature 647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64 \
   --body-file sample-payload.json

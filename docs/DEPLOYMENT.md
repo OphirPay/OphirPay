@@ -15,6 +15,7 @@
 - [Cache Headers for Static Assets and APIs](#-cache-headers-for-static-assets-and-apis)
 - [Soroban Contract Deployment](#-soroban-contract-deployment)
 - [Database Setup](#-database-setup)
+- [SEP-1 Discovery Document](#sep-1-discovery-document-well-knownstellartoml)
 - [Post-Deployment Verification](#-post-deployment-verification)
 - [Troubleshooting](#-troubleshooting)
 
@@ -523,6 +524,47 @@ DATABASE_PROVIDER=sqlite npx prisma db push
 ```
 
 > ⚠️ SQLite is for local development only. Production must use PostgreSQL.
+
+---
+
+## SEP-1 Discovery Document (`/.well-known/stellar.toml`)
+
+OphirPay serves a SEP-1 `stellar.toml` at **`https://<your-domain>/.well-known/stellar.toml`**.
+
+The document is **generated from application configuration**, not hand-maintained, so it cannot
+drift from the network the app runs on:
+
+| Field | Source |
+|---|---|
+| `NETWORK_PASSPHRASE` | `src/lib/stellar.ts` → `NETWORK_PASSPHRASE` (derived from `NEXT_PUBLIC_STELLAR_NETWORK`) |
+| `HORIZON_URL` | `src/lib/stellar.ts` → `HORIZON_URL` |
+| `OPHIRPAY_CONTRACT_ID` | `src/lib/contracts.ts` → `OPHIRPAY_CONTRACT_ID` |
+| `EMITTER_CONTRACT_ID` | `src/lib/contracts.ts` → `EMITTER_CONTRACT_ID` |
+| `ORG_URL` / `url` | `NEXT_PUBLIC_APP_URL` (falls back to the production origin) |
+
+**Builder:** `src/lib/stellar-toml.ts` → `buildStellarToml()`
+**Route:** `src/app/.well-known/stellar.toml/route.ts`
+
+### Verifying after deploy
+
+```bash
+curl -s https://<your-domain>/.well-known/stellar.toml | head -20
+
+# The advertised passphrase must match the network you deployed against.
+curl -s https://<your-domain>/.well-known/stellar.toml \
+  | grep NETWORK_PASSPHRASE
+```
+
+Expected values:
+
+- **Testnet** — `NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"`
+- **Mainnet** — `NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"`
+
+A mismatch means the app was deployed with a `NEXT_PUBLIC_STELLAR_NETWORK` that does not match the
+contract ids in the environment. Fix the environment, not the document.
+
+Drift is guarded in CI by `src/__tests__/stellar-toml.test.ts`, which fails if the served document
+stops matching `src/lib/stellar.ts` / `src/lib/contracts.ts`.
 
 ---
 

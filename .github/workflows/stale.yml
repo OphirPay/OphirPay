@@ -1,8 +1,25 @@
 name: "🧹 Stale Issue & PR Management"
 
+# ── Stale policy ──────────────────────────────────────────────
+# Issues go stale after 60 days of inactivity and close 14 days later,
+# EXCEPT the ones listed in `exempt-issue-labels` / `exempt-issue-assignees`.
+#
+# The `bounty` and `Stellar Wave` labels are exempt on purpose: a Drips Wave
+# round is explicitly meant to leave its issues open until a contributor
+# claims them, and a round can easily run past 60 days of inactivity on any
+# individual issue. Without the exemption the bot closes wave backlog on a
+# timer, which also makes the issue list useless as a contributor-facing
+# work queue. An assignee is exempted for the same reason — work that has
+# been claimed must not be closed underneath the contributor.
+#
+# This list is mirrored in CONTRIBUTING.md (“Bounty Process” → stale policy)
+# so maintainers can see the policy without opening the workflow.
+# ──────────────────────────────────────────────────────────────
+
 on:
   schedule:
     - cron: "0 8 * * 1" # Every Monday at 08:00 UTC
+  workflow_dispatch:
 
 permissions:
   issues: write
@@ -30,7 +47,14 @@ jobs:
             🔒 This issue has been closed due to inactivity.
 
             If you believe this is still relevant, please open a new issue referencing this one.
-          exempt-issue-labels: "pinned,security,blocked,good first issue,help wanted"
+          # `bounty` + `Stellar Wave` are the Drips Wave labels; see the
+          # policy note at the top of this file. `🎯 bounty wave` and
+          # `long-running` are accepted aliases for future waves.
+          exempt-issue-labels: "pinned,security,blocked,good first issue,help wanted,bounty,Stellar Wave,long-running"
+          # A claimed issue must not be closed underneath the contributor.
+          # `actions/stale` has no wildcard for `exempt-issue-assignees`, so
+          # the "any assignee" case needs the dedicated boolean.
+          exempt-all-issue-assignees: true
           exempt-all-issue-milestones: true
 
           # ── PR settings ─────────────────────────────────────

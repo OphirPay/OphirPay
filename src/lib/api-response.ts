@@ -3,6 +3,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handlePrismaError } from "@/lib/prisma-errors";
+import { parseContractError } from "@/lib/contract-errors";
+import { parseStellarError } from "@/lib/stellar-error";
+import { getTaxonomyEntry } from "@/lib/error-taxonomy";
 import { logger } from "@/lib/logger";
 import { getCurrentRequestId } from "@/lib/request-logging";
 import { ERROR_CODES } from "@/lib/error-codes";
@@ -28,7 +31,7 @@ interface ApiSuccess<T> {
   };
 }
 
-interface ApiError {
+export interface ApiError {
   success: false;
   error: {
     code: string;
@@ -36,6 +39,30 @@ interface ApiError {
     details?: unknown;
   };
   timestamp: string;
+}
+
+export type ApiErrorEnvelope = ApiError;
+
+/**
+ * Sole serializer of the API error envelope.
+ * Formats standardized { success: false, error: { code, message, details }, timestamp } payloads.
+ */
+export function serializeErrorEnvelope(
+  code: string,
+  message?: string,
+  details?: unknown
+): ApiError {
+  const taxonomy = getTaxonomyEntry(code);
+  const resolvedMessage = message ?? taxonomy?.message ?? "An error occurred";
+  return {
+    success: false,
+    error: {
+      code,
+      message: resolvedMessage,
+      details: details ? (jsonSafe(details) as unknown) : undefined,
+    },
+    timestamp: new Date().toISOString(),
+  };
 }
 
 // ── BigInt-safe JSON ───────────────────────────────────────────
@@ -100,18 +127,14 @@ export function successResponse<T>(
 
 export function errorResponse(
   code: string,
-  message: string,
-  status = 400,
+  message?: string,
+  status?: number,
   details?: unknown
 ) {
-  return NextResponse.json(
-    {
-      success: false,
-      error: { code, message, details: details ? jsonSafe(details) : undefined },
-      timestamp: new Date().toISOString(),
-    } satisfies ApiError,
-    { status }
-  );
+  const taxonomy = getTaxonomyEntry(code);
+  const resolvedStatus = status ?? taxonomy?.status ?? 400;
+  const envelope = serializeErrorEnvelope(code, message, details);
+  return NextResponse.json(envelope, { status: resolvedStatus });
 }
 
 export function validationError(err: z.ZodError) {
@@ -145,14 +168,8 @@ export function rateLimitError(
   if (retryAfterSeconds !== undefined) {
     headers["Retry-After"] = String(Math.max(0, Math.floor(retryAfterSeconds)));
   }
-  return NextResponse.json(
-    {
-      success: false,
-      error: { code: ERROR_CODES.RATE_LIMITED, message },
-      timestamp: new Date().toISOString(),
-    } satisfies ApiError,
-    { status: 429, headers }
-  );
+  const envelope = serializeErrorEnvelope(ERROR_CODES.RATE_LIMITED, message);
+  return NextResponse.json(envelope, { status: 429, headers });
 }
 
 export function forbiddenError(
@@ -177,6 +194,8 @@ export function badRequestError(message: string) {
  *
  * • Prisma errors → correct HTTP status (404, 409, 503, etc.)
  * • Zod validation errors → 400 with field details
+ * • Classified Soroban contract errors → mapped taxonomy status
+ * • Classified Stellar Horizon errors → mapped taxonomy status
  * • Generic errors → 500 (masked in production for security)
  */
 export function handleApiError(err: unknown, context?: string): NextResponse {
@@ -196,6 +215,41 @@ export function handleApiError(err: unknown, context?: string): NextResponse {
       err.issues.map((e) => e.message).join("; "),
       400
     );
+  }
+
+  // Already a classified taxonomy entry
+  if (
+    err &&
+    typeof err === "object" &&
+    "code" in err &&
+    "status" in err &&
+    "message" in err &&
+    typeof (err as { status: unknown }).status === "number"
+  ) {
+    const entry = err as { code: string; message: string; status: number; details?: unknown };
+    return errorResponse(entry.code, entry.message, entry.status, entry.details);
+  }
+
+  // Soroban contract error (e.g. Error(Contract, #1) or HostError)
+  if (
+    err instanceof Error &&
+    (err.message.includes("Error(Contract,") || err.message.includes("HostError"))
+  ) {
+    const classified = parseContractError(err.message);
+    return errorResponse(classified.code, classified.message, classified.status);
+  }
+
+  // Stellar Horizon transaction error with result codes
+  if (err && typeof err === "object" && ("result_codes" in err || "resultCode" in err)) {
+    const resultCode = String(
+      (err as { resultCode?: string }).resultCode ??
+      (err as { result_codes?: { transaction?: string } }).result_codes?.transaction ??
+      ""
+    );
+    if (resultCode) {
+      const classified = parseStellarError(resultCode);
+      return errorResponse(classified.code, classified.message, classified.status);
+    }
   }
 
   // Prisma errors — use handlePrismaError which knows all Prisma error types

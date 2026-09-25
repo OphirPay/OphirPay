@@ -1,29 +1,41 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * User-facing error message catalog.
+ * User-facing error message catalog mapped directly from ERROR_TAXONOMY.
  * Centralized messages for consistent UX across the application.
  */
 
+import { ERROR_TAXONOMY, formatErrorMessage, type ErrorTaxonomyCode } from "./error-taxonomy";
+
+export const ERROR_MESSAGES: Record<string, string> = Object.fromEntries(
+  Object.values(ERROR_TAXONOMY).map((entry) => [entry.code, entry.message])
+);
+
+export function getErrorMessage(
+  code: string,
+  params?: Record<string, string | number>
+): string {
+  const entry = ERROR_TAXONOMY[code as keyof typeof ERROR_TAXONOMY];
+  if (!entry) return "An unexpected error occurred.";
+  return formatErrorMessage(code, params);
+}
+
 export const ERRORS = {
-  WALLET_NOT_INSTALLED:
-    "Freighter wallet is not installed. Please install the Freighter browser extension to continue.",
-  WALLET_REJECTED: "Transaction was declined in Freighter. You can try again when ready.",
-  WALLET_DISCONNECTED:
-    "Wallet disconnected. Please reconnect your Freighter wallet to continue.",
+  WALLET_NOT_INSTALLED: ERROR_TAXONOMY.WALLET_NOT_INSTALLED.message,
+  WALLET_REJECTED: ERROR_TAXONOMY.WALLET_SIGN_REJECTED.message,
+  WALLET_DISCONNECTED: ERROR_TAXONOMY.WALLET_DISCONNECTED.message,
   INSUFFICIENT_BALANCE: (balance: string, needed: string) =>
-    `Insufficient balance. You have ${balance}, but need ${needed}.`,
-  INVALID_ADDRESS: "Please enter a valid Stellar address (starts with G, 56 characters).",
-  INVALID_AMOUNT: "Please enter a valid positive amount.",
-  MEMO_TOO_LONG: "Memo must be 28 characters or fewer.",
-  NETWORK_ERROR:
-    "Network error — unable to reach the Stellar network. Please check your connection and try again.",
-  CONTRACT_ERROR: "Smart contract execution failed. The contract may not be deployed or initialized.",
-  SAME_ACCOUNT: "Cannot send to your own address.",
+    formatErrorMessage("INSUFFICIENT_FUNDS", { balance, needed }),
+  INVALID_ADDRESS: ERROR_TAXONOMY.INVALID_ADDRESS.message,
+  INVALID_AMOUNT: ERROR_TAXONOMY.INVALID_AMOUNT.message,
+  MEMO_TOO_LONG: ERROR_TAXONOMY.MEMO_TOO_LONG.message,
+  NETWORK_ERROR: ERROR_TAXONOMY.NETWORK_ERROR.message,
+  CONTRACT_ERROR: ERROR_TAXONOMY.CONTRACT_ERROR.message,
+  SAME_ACCOUNT: ERROR_TAXONOMY.SELF_PAYMENT.message,
   BATCH_EMPTY: "Please add at least one recipient to the batch.",
-  BATCH_TOO_LARGE: "A batch can contain at most 100 recipients.",
+  BATCH_TOO_LARGE: ERROR_TAXONOMY.BATCH_TOO_LARGE.message,
   DUPLICATE_ADDRESS: "Duplicate recipient address detected — each address must be unique.",
-  RATE_LIMITED: "Too many requests. Please wait a moment and try again.",
-  NOT_FOUND: "The requested resource was not found.",
-  SERVER_ERROR: "An unexpected server error occurred. Please try again later.",
+  RATE_LIMITED: ERROR_TAXONOMY.RATE_LIMITED.message,
+  NOT_FOUND: ERROR_TAXONOMY.NOT_FOUND.message,
+  SERVER_ERROR: ERROR_TAXONOMY.INTERNAL_ERROR.message,
 } as const;

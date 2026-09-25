@@ -1,39 +1,82 @@
 // SPDX-License-Identifier: MIT
 
 import { Prisma } from "@prisma/client";
+import {
+  ERROR_TAXONOMY,
+  type ErrorTaxonomyEntry,
+} from "./error-taxonomy";
+
+export interface ClassifiedPrismaError extends ErrorTaxonomyEntry {
+  prismaCode?: string;
+  meta?: Record<string, unknown>;
+}
 
 /**
  * Human-readable Prisma error mapper.
- * Converts Prisma client errors into user-friendly messages for API responses.
+ * Converts Prisma client errors into unified error taxonomy entries.
  */
-
-export function handlePrismaError(err: unknown): { code: string; message: string; status: number } {
+export function handlePrismaError(err: unknown): ClassifiedPrismaError {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     switch (err.code) {
-      case "P2002":
+      case "P2002": {
+        const target = (err.meta?.target as string[])?.join(", ") || "field";
+        const entry = ERROR_TAXONOMY.UNIQUE_CONSTRAINT;
         return {
-          code: "UNIQUE_CONSTRAINT",
-          message: `A record with this ${(err.meta?.target as string[])?.join(", ") || "field"} already exists.`,
-          status: 409,
+          code: entry.code,
+          status: entry.status,
+          message: `A record with this ${target} already exists.`,
+          template: entry.template,
+          category: entry.category,
+          prismaCode: err.code,
+          meta: err.meta as Record<string, unknown> | undefined,
         };
+      }
       case "P2025":
-        return { code: "NOT_FOUND", message: "Record not found.", status: 404 };
+        return {
+          ...ERROR_TAXONOMY.NOT_FOUND,
+          message: "Record not found.",
+          prismaCode: err.code,
+          meta: err.meta as Record<string, unknown> | undefined,
+        };
       case "P2003":
-        return { code: "FOREIGN_KEY", message: "Related record not found.", status: 400 };
+        return {
+          ...ERROR_TAXONOMY.FOREIGN_KEY,
+          prismaCode: err.code,
+          meta: err.meta as Record<string, unknown> | undefined,
+        };
       case "P2014":
-        return { code: "RELATION_VIOLATION", message: "Cannot delete — related records exist.", status: 409 };
+        return {
+          ...ERROR_TAXONOMY.RELATION_VIOLATION,
+          prismaCode: err.code,
+          meta: err.meta as Record<string, unknown> | undefined,
+        };
       default:
-        return { code: "DATABASE_ERROR", message: "A database error occurred.", status: 500 };
+        return {
+          ...ERROR_TAXONOMY.DATABASE_ERROR,
+          prismaCode: err.code,
+          meta: err.meta as Record<string, unknown> | undefined,
+        };
     }
   }
 
   if (err instanceof Prisma.PrismaClientValidationError) {
-    return { code: "VALIDATION_ERROR", message: "Invalid data provided.", status: 400 };
+    return {
+      ...ERROR_TAXONOMY.VALIDATION_ERROR,
+      message: "Invalid data provided.",
+    };
   }
 
   if (err instanceof Prisma.PrismaClientInitializationError) {
-    return { code: "DB_CONNECTION", message: "Database connection failed.", status: 503 };
+    return {
+      ...ERROR_TAXONOMY.DB_CONNECTION,
+    };
   }
 
-  return { code: "INTERNAL_ERROR", message: "An unexpected error occurred.", status: 500 };
+  return {
+    ...ERROR_TAXONOMY.INTERNAL_ERROR,
+    message: "An unexpected error occurred.",
+  };
 }
+
+export const parsePrismaError = handlePrismaError;
+

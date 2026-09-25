@@ -65,6 +65,7 @@
     "test:visual": "playwright test -c playwright.visual.config.ts",
     "test:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots",
     "test:a11y": "playwright test e2e/accessibility.spec.ts",
+    "verify:contracts": "node scripts/run-contract-verification.mjs",
     "generate-errors": "tsx scripts/regenerate-errors.ts"
   },
   "dependencies": {

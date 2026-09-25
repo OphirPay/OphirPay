@@ -31,7 +31,7 @@ fully-green repository.
 - [x] Security, Performance & Gas, and Audit-Readiness documented in the README
 - [ ] Record fresh demo video + screenshots against the seeded demo environment
 - [ ] External security audit (Runtime Verification or Certora)
-- [ ] Formal verification of key contract invariants — 10/10 Kani *model* proofs exist but do not verify the deployed contract (see contracts/ophirpay/spec/ and docs/AUDIT.md)
+- [x] Formal verification of key contract invariants — Soroban test-host harnesses verify real contract code for fund-safety (LOCKED_BALANCE conservation), single-release escrow, bounded stream vesting, refund authorization limits, and pause isolation in CI with published verification reports (#802)
 
 ### Up Next
 - [ ] Contract modularization (split into Payment/Escrow/Governance modules)

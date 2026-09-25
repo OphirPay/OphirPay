@@ -139,6 +139,20 @@ jobs:
         run: cd contracts/ophirpay && PROPTEST_CASES=64 cargo test
       - name: Run Emitter contract unit tests
         run: cd contracts/emitter && cargo test
+      - name: Verify contract invariants & emit verification report
+        run: |
+          node scripts/run-contract-verification.mjs
+          if [ -f formal-verification-report.md ]; then
+            cat formal-verification-report.md >> $GITHUB_STEP_SUMMARY
+          fi
+      - name: Upload formal verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-verification-report
+          path: |
+            formal-verification-report.json
+            formal-verification-report.md
+          retention-days: 14
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
         with:

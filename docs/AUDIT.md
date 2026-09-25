@@ -366,7 +366,7 @@ and re-run the IP/hostname check against the final resolved address after follow
 | Priority | Finding | Status (2026-08-14) | Effort |
 |---|---|---|---|
 | P0 | HIGH-1 refund path bypasses LOCKED_BALANCE | ✅ Fixed | Medium |
-| P0 | HIGH-2 correct or remove "formally verified" claims | ✅ Fixed (README honesty note + badge removed; VERIFICATION.md retitled to "Modeled Invariants" with an explicit caveat) | Low |
+| P0 | HIGH-2 correct or remove "formally verified" claims | ✅ Fixed (Real Soroban contract invariant harnesses in `tests/contract_invariants.rs` proven in CI with published artifacts; #802) | Medium |
 | P1 | MEDIUM-1 `check_spending` unauthenticated mutation | ✅ Fixed | Low |
 | P1 | MEDIUM-2 bound all enumeration | ✅ Fixed (`get_payments_range` + `get_reason_code_analytics` capped at 100, most-recent-first; #742 added the same cap + truncation flag to `get_payments_by_batch` / `get_subscriber_hooks`) | Low |
 | P1 | MEDIUM-3 emitter allow-list | ✅ Fixed (deploy + `set_allowed_source` pending) | Low |

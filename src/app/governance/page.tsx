@@ -1,6 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
+import Link from "next/link";
 import { useState } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
@@ -226,9 +227,12 @@ export default function GovernancePage() {
                       <div className="flex items-start justify-between">
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">
+                            <Link
+                              href={`/governance/${p.id}`}
+                              className="font-semibold text-gray-900 dark:text-white hover:text-ophir-600 dark:hover:text-ophir-400 hover:underline"
+                            >
                               {p.title}
-                            </h3>
+                            </Link>
                             <Badge
                               variant={
                                 p.executed

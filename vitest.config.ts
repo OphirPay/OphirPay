@@ -62,9 +62,6 @@ export default defineConfig({
         "src/lib/stellar.ts", // E2E-only
         "src/lib/rpc-failover.ts", // E2E-only
         "src/lib/events/event-source.ts", // E2E-only
-        // Sharded database support is exercised by the Playwright E2E suite;
-        // excluding its in-memory fixtures keeps unit coverage meaningful.
-        "src/lib/db/sharded-test-fixture.ts", // E2E-only
         // NOTE (#700): api-auth.ts, rate-limit.ts, webhook-dispatcher.ts and
         // webhook-deliver.ts are deliberately NOT excluded — they authenticate
         // API calls, enforce rate limits and sign/deliver webhooks, so they are
@@ -101,7 +98,6 @@ export default defineConfig({
         "src/lib/soft-delete.ts", // E2E-only
         "src/components/ui/index.ts", // Re-export index
         "src/hooks/index.ts", // Re-export index
-        "src/lib/test-factory.ts", // Test utilities
         "src/lib/time.ts", // Browser-only
         "src/lib/trustline.ts", // E2E-only
         "src/lib/version-script.ts", // Build script
@@ -202,6 +198,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@tests": path.resolve(__dirname, "./tests"),
     },
   },
 });

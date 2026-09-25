@@ -103,9 +103,14 @@ npm run typecheck     # TypeScript check
 npm run lint          # ESLint
 npm run test:openapi  # OpenAPI spec ↔ implementation conformance (drift)
 npm run test:e2e      # E2E tests (requires a running server at E2E_BASE_URL)
+npm run test:e2e:local # Convenience runner: boots server, checks health, runs tests, cleans up
+npm run test:e2e:ui   # Interactive Playwright UI mode
 npm run test:visual   # Visual regression tests
 npm run test:visual:update # Update visual baselines
+npm run test:a11y     # Automated accessibility checks (axe-core)
 ```
+
+> **Detailed E2E Guide:** For comprehensive instructions on running the E2E suite locally, database seeding, the three Playwright configurations, and mock helpers, see [docs/testing/e2e-local.md](docs/testing/e2e-local.md).
 
 ### Coverage ratchet
 

@@ -594,6 +594,8 @@ policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md#coverage-ratchet).
 
 ### E2E Tests (Playwright) — 97 cases
 
+> For instructions on running the E2E suite locally, starting the required server, database seeding, and using the automated `npm run test:e2e:local` runner, see [docs/testing/e2e-local.md](docs/testing/e2e-local.md).
+
 | Spec | Focus |
 |---|---|
 | `critical-flows.spec.ts` | Core user journeys (connect → send → record) |

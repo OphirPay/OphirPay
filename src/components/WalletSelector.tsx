@@ -14,11 +14,14 @@ interface WalletSelectorProps {
   connectingWallet?: WalletId | null;
   error?: string | null;
   onClose: () => void;
+  includeUnsupported?: boolean;
 }
 
 /**
  * Wallet selection modal.
- * Shows all registered wallets, highlighting those that are installed.
+ * Shows supported registered wallets, highlighting those that are installed.
+ * Wallets marked as unsupported/pending in WALLET_REGISTRY are excluded by default
+ * so the selector never offers a connector that cannot sign or throws on connect.
  *
  * Rendered through the shared `Modal` component so it inherits the standard
  * dialog behavior: Escape-to-close, focus trap, body scroll lock, and focus
@@ -31,8 +34,13 @@ export function WalletSelector({
   connectingWallet,
   error,
   onClose,
+  includeUnsupported = false,
 }: WalletSelectorProps) {
   const [hovered, setHovered] = useState<WalletId | null>(null);
+
+  const displayedWallets = WALLET_REGISTRY.filter(
+    (w) => includeUnsupported || w.supported !== false,
+  ).sort((a, b) => a.priority - b.priority);
 
   return (
     <Modal
@@ -57,24 +65,26 @@ export function WalletSelector({
     >
       {/* Wallet list */}
       <div className="space-y-1">
-        {WALLET_REGISTRY.sort((a, b) => a.priority - b.priority).map((wallet) => {
-          const isAvailable = availableWallets.includes(wallet.id);
+        {displayedWallets.map((wallet) => {
+          const isSupported = wallet.supported !== false;
+          const isAvailable = isSupported && availableWallets.includes(wallet.id);
           const isConnectingWallet = connectingWallet === wallet.id;
 
           return (
             <button
               key={wallet.id}
-              onClick={() => isAvailable && onSelect(wallet.id)}
-              disabled={!isAvailable || isConnecting}
+              onClick={() => isAvailable && isSupported && onSelect(wallet.id)}
+              disabled={!isAvailable || !isSupported || isConnecting}
               onMouseEnter={() => setHovered(wallet.id)}
               onMouseLeave={() => setHovered(null)}
               className={cn(
                 "w-full flex items-center gap-4 px-4 py-3.5 rounded-xl text-left transition-all",
-                isAvailable
+                isAvailable && isSupported
                   ? "hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
                   : "opacity-50 cursor-not-allowed",
                 hovered === wallet.id &&
                   isAvailable &&
+                  isSupported &&
                   "bg-gray-50 dark:bg-gray-800 ring-1 ring-ophir-200 dark:ring-ophir-800",
               )}
             >
@@ -114,6 +124,10 @@ export function WalletSelector({
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
+                ) : !isSupported ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                    Pending
+                  </span>
                 ) : isAvailable ? (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
                     Installed

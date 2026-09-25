@@ -25,9 +25,9 @@ let ledgerConnected = false;
 
 /**
  * Check if WebUSB is available in this browser.
- * Ledger requires WebUSB for browser communication.
+ * Ledger requires WebUSB for browser communication (Chromium-based browsers only).
  */
-function hasWebUsb(): boolean {
+export function hasWebUsb(): boolean {
   if (typeof navigator === "undefined") return false;
   return "usb" in navigator;
 }
@@ -35,45 +35,30 @@ function hasWebUsb(): boolean {
 export const ledgerConnector: WalletConnector = {
   id: "ledger",
   name: "Ledger",
-  description: "Hardware wallet — connect your Ledger device",
+  description: "Hardware wallet — requires WebUSB in Chromium + Ledger Stellar app (Pending)",
   icon: "🔐",
 
+  /**
+   * Ledger hardware wallet support is pending integration with @ledgerhq packages.
+   * Returns false so the wallet selector does not present a non-functional connector.
+   */
   isAvailable(): boolean {
-    return typeof window !== "undefined" && hasWebUsb();
+    return false;
   },
 
-  async connect() {
+  async connect(): Promise<{ publicKey: string; network: string }> {
     if (!hasWebUsb()) {
       throw new Error(
         "WebUSB is not available in this browser. " +
-          "Ledger requires Chrome/Edge/Brave with WebUSB support. " +
-          "Install @ledgerhq/hw-transport-webusb for full integration.",
+          "Ledger hardware wallet requires a Chromium-based browser (Chrome, Edge, Brave, Opera) with WebUSB support.",
       );
     }
 
-    // Dynamic import to avoid bundling ledger packages for users who don't need them
-    try {
-      // In a full integration, this would use the Stellar Ledger app:
-      // import TransportWebUSB from "@ledgerhq/hw-transport-webusb";
-      // import Str from "@ledgerhq/hw-app-str";
-      // const transport = await TransportWebUSB.create();
-      // const stellar = new Str(transport);
-      // const { publicKey } = await stellar.getPublicKey("44'/148'/0'");
-      throw new Error("DYNAMIC_IMPORT_NEEDED"); // triggers the catch below
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (msg === "DYNAMIC_IMPORT_NEEDED" || msg.includes("Cannot find module")) {
-        throw new Error(
-          "Ledger packages not installed. Run:\n\n" +
-            "  npm install @ledgerhq/hw-transport-webusb @ledgerhq/hw-app-str\n\n" +
-            "Then:\n" +
-            "  1. Connect your Ledger device via USB\n" +
-            "  2. Open the Stellar app on your Ledger\n" +
-            "  3. Click Connect again",
-        );
-      }
-      throw err;
-    }
+    throw new Error(
+      "Ledger hardware wallet connector is currently pending full integration. " +
+        "It requires @ledgerhq/hw-transport-webusb and @ledgerhq/hw-app-str packages. " +
+        "Please use an active wallet (Freighter, Albedo, xBull, Rabet, or Lobstr).",
+    );
   },
 
   async disconnect() {

@@ -110,7 +110,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **Real-time event streaming** (SSE) | ✅ | ❌ |
 | **Webhook delivery** (HMAC signed, retries) | ✅ | ❌ |
 | **Cross-contract communication** | ✅ | ❌ |
-| **Multi-wallet support** (6 wallets: Freighter, xBull, Rabet, Albedo, Lobstr, Ledger) | ✅ | ❌ |
+| **Multi-wallet support** (5 active: Freighter, xBull, Rabet, Albedo, Lobstr; Ledger pending) | ✅ | ❌ |
 | **Multi-asset support** (USDC, custom tokens) | ✅ | ❌ |
 | **Path payments** (cross-asset sends, rate preview, slippage protection) | ✅ | ❌ |
 | **PWA with offline support** | ✅ | ❌ |
@@ -301,7 +301,7 @@ OphirPay supports multiple Stellar wallets through a unified connector abstracti
 
 | Feature | Implementation |
 |---|---|
-| **Multi-wallet** | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr, Ledger |
+| **Multi-wallet** | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr (Ledger hardware wallet pending) |
 | **Connect** | Wallet selector modal → `connector.connect()` |
 | **Disconnect** | Full state reset + connector-specific cleanup |
 | **Session persistence** | Auto-detects existing connections on page load |
@@ -313,14 +313,14 @@ OphirPay supports multiple Stellar wallets through a unified connector abstracti
 
 **Supported wallets:**
 
-| Wallet | Type | Status |
-|---|---|---|
-| Freighter | Browser extension | ✅ Supported |
-| xBull | Browser extension | ✅ Supported |
-| Rabet | Browser extension | ✅ Supported |
-| Albedo | Web-based (no extension) | ✅ Supported |
-| Lobstr | Web-based (SEP-7) | ✅ Supported |
-| Ledger | Hardware (WebUSB/HID) | ✅ Supported |
+| Wallet | Type | Status | Notes |
+|---|---|---|---|
+| Freighter | Browser extension | ✅ Supported | Recommended for desktop |
+| xBull | Browser extension | ✅ Supported | Full multi-asset support |
+| Rabet | Browser extension | ✅ Supported | Desktop extension |
+| Albedo | Web-based (no extension) | ✅ Supported | Works on mobile and desktop |
+| Lobstr | Web-based (SEP-7) | ✅ Supported | Seamless mobile/web handoff |
+| Ledger | Hardware (WebUSB) | ⏳ Pending | Requires Chromium browser (Chrome/Edge/Brave) with WebUSB & `@ledgerhq` driver packages |
 
 ```tsx
 // Consuming the wallet anywhere in your app
@@ -736,7 +736,7 @@ backups (`db-backup.yml`), and scheduled payments (`scheduled-payments-cron.yml`
 | **Styling** | [Tailwind CSS v4](https://tailwindcss.com) | Utility-first, dark mode, custom theme |
 | **Blockchain** | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org) | Horizon, Soroban RPC, TX building |
 | **Contracts** | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27 | WASM compilation, cross-contract invocation |
-| **Wallet** | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) | 6-wallet connector abstraction |
+| **Wallet** | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) | 5-wallet connector abstraction (Ledger pending) |
 | **Database** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite | Type-safe ORM, provider switching |
 | **Testing** | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | Unit, integration & E2E coverage |
 | **CI/CD** | [GitHub Actions](https://github.com/features/actions) | Gating pipeline on every PR |
@@ -800,7 +800,8 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 | ✅ SSE event streaming from chain | **Done** |
 | ✅ Mobile responsive UI | **Done** |
 | ✅ CI/CD pipeline + 806 app tests + 67 contract tests + 97 e2e | **Done** |
-| ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr, Ledger) | **Done** |
+| ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr) | **Done** |
+| ⏳ Ledger hardware wallet connector (WebUSB / `@ledgerhq`) | **Pending** |
 | ✅ Stellar assets (USDC, custom tokens, trustline checks) | **Done** |
 | ✅ Payment request links (shareable invoices, QR codes) | **Done** |
 | ✅ Webhook delivery (HMAC signed, retries) | **Done** |

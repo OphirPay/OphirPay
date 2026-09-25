@@ -349,6 +349,31 @@ try {
 
 ---
 
+## Stellar Wallets & Hardware Signers
+
+OphirPay integrates with Stellar accounts via client-side wallet connectors. Transactions are constructed in the application, serialized into XDR (External Data Representation), and handed to the connected wallet for signature. The application never sees or handles your private keys.
+
+### Active Supported Wallets
+
+| Wallet | Type | Target Environment | Status |
+|---|---|---|---|
+| **Freighter** | Browser Extension | Desktop (Chrome, Firefox, Edge, Brave) | ✅ Active (Recommended) |
+| **Albedo** | Web-based popup | Desktop & Mobile (no extension required) | ✅ Active |
+| **xBull** | Browser Extension / Web | Desktop & Mobile | ✅ Active |
+| **Rabet** | Browser Extension | Desktop | ✅ Active |
+| **Lobstr** | Web / Mobile (SEP-7) | Web & Mobile link handoff | ✅ Active |
+
+### Hardware Wallets (Ledger) Status & Requirements
+
+Hardware wallets isolate private keys on a dedicated secure element chip.
+
+- **Status**: ⏳ **Pending Integration** (connector currently disabled in UI).
+- **Driver Requirements**: Requires `@ledgerhq/hw-transport-webusb` and `@ledgerhq/hw-app-str` dependencies.
+- **Browser Requirements**: Ledger browser communication relies on the **WebUSB API**, which is only supported in **Chromium-based browsers** (Google Chrome, Microsoft Edge, Brave, Opera). Non-Chromium browsers such as Firefox and Safari do not support WebUSB.
+- **Fallback**: While hardware wallet driver integration is pending, users are directed to connect using one of the five active software wallets (such as Freighter or Albedo).
+
+---
+
 ## Glossary
 
 | Term | Definition |

@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-export type { WalletId, WalletConnector, SignOptions, MultiWalletState } from "./types";
+export type {
+  WalletId,
+  WalletConnector,
+  SignOptions,
+  MultiWalletState,
+  WalletRegistryEntry,
+} from "./types";
 export { WALLET_REGISTRY } from "./types";
 export { freighterConnector } from "./freighter";
 export { albedoConnector } from "./albedo";
 export { xBullConnector } from "./xbull";
-export { ledgerConnector } from "./ledger";
+export { ledgerConnector, hasWebUsb } from "./ledger";
 export { rabetConnector } from "./rabet";
 export { lobstrConnector } from "./lobstr";
 

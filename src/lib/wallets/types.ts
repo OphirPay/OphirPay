@@ -55,20 +55,26 @@ export interface MultiWalletState {
   activeWalletId: WalletId | null;
 }
 
-/** All known wallet connectors registry */
-export const WALLET_REGISTRY: {
+export interface WalletRegistryEntry {
   id: WalletId;
   name: string;
   description: string;
   icon: string;
   priority: number; // lower = shown first
-}[] = [
+  supported: boolean;
+  status: "supported" | "pending" | "unsupported";
+}
+
+/** All known wallet connectors registry */
+export const WALLET_REGISTRY: WalletRegistryEntry[] = [
   {
     id: "freighter",
     name: "Freighter",
     description: "Browser extension wallet for Stellar",
     icon: "🦊",
     priority: 1,
+    supported: true,
+    status: "supported",
   },
   {
     id: "albedo",
@@ -76,6 +82,8 @@ export const WALLET_REGISTRY: {
     description: "Web-based Stellar wallet — no extension needed",
     icon: "☀️",
     priority: 2,
+    supported: true,
+    status: "supported",
   },
   {
     id: "xbull",
@@ -83,13 +91,17 @@ export const WALLET_REGISTRY: {
     description: "Feature-rich Stellar browser extension",
     icon: "🐂",
     priority: 3,
+    supported: true,
+    status: "supported",
   },
   {
     id: "ledger",
     name: "Ledger",
-    description: "Hardware wallet — requires Ledger device + Stellar app",
+    description: "Hardware wallet — requires WebUSB in Chromium + Ledger Stellar app (Pending integration)",
     icon: "🔐",
     priority: 4,
+    supported: false,
+    status: "pending",
   },
   {
     id: "rabet",
@@ -97,6 +109,8 @@ export const WALLET_REGISTRY: {
     description: "Simple Stellar browser extension wallet",
     icon: "🐰",
     priority: 5,
+    supported: true,
+    status: "supported",
   },
   {
     id: "lobstr",
@@ -104,5 +118,7 @@ export const WALLET_REGISTRY: {
     description: "Popular Stellar web & mobile wallet",
     icon: "🌊",
     priority: 6,
+    supported: true,
+    status: "supported",
   },
 ];

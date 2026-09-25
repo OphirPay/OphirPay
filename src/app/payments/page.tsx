@@ -40,6 +40,7 @@ import {
   type PaymentSortKey,
 } from "@/lib/payments-sort";
 import { useTableKeyboardNavigation } from "@/hooks/useTableKeyboardNavigation";
+import { useVirtualRows } from "@/hooks/useVirtualRows";
 
 // ── Sortable column header ─────────────────────────────────────
 
@@ -110,6 +111,7 @@ interface OnChainData {
 
 const ALLOWED_PAGE_SIZES = [10, 25, 50] as const;
 const DEFAULT_PAGE_SIZE = 25;
+const COLUMN_COUNT = 5;
 
 // Fetch the complete on-chain dataset rather than a recent slice. Sorting and
 // pagination run client-side, so operating on a partial slice would silently
@@ -256,12 +258,68 @@ function PaymentsClient() {
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * pageSize;
-  const paginated = sorted.slice(startIndex, startIndex + pageSize);
+
+  // Pagination stays the data source: a page contributes `pageSize` rows and
+  // "Load more" appends the next slice, so the row set grows in bounded steps
+  // instead of rendering every loaded record at once.
+  //
+  // The loaded count is keyed by the identity of the row set rather than reset
+  // from an effect: `sorted` gets a fresh identity whenever a sort is active,
+  // and an effect keyed on it would reset the count on every render — silently
+  // undoing each "Load more" click.
+  const rowSetKey = [
+    currentPage,
+    pageSize,
+    debouncedSearch,
+    statusFilter,
+    dateFrom,
+    dateTo,
+    assetFilter,
+    sort.key ?? "none",
+    sort.dir,
+  ].join("|");
+  const [loadedRows, setLoadedRows] = useState({ key: rowSetKey, count: pageSize });
+  const loadedCount = loadedRows.key === rowSetKey ? loadedRows.count : pageSize;
+
+  const windowRows = useMemo(
+    () => sorted.slice(startIndex, startIndex + loadedCount),
+    [sorted, startIndex, loadedCount]
+  );
+  const loadedThrough = startIndex + windowRows.length;
+  const hasMoreRows = loadedThrough < sorted.length;
+
+  // Row virtualization: only the rows around the viewport are mounted, so a
+  // page holding thousands of records still keeps the DOM small. The spacer
+  // rows keep the scroll geometry identical to a fully rendered table.
+  const {
+    startIndex: virtualStart,
+    endIndex: virtualEnd,
+    padTop,
+    padBottom,
+    scrollRef,
+    scrollToIndex,
+  } = useVirtualRows({ rowCount: windowRows.length });
+
+  // Only the rows inside the window are mounted. Each entry carries its index
+  // in the whole loaded row set — the window starts at `virtualStart`, and
+  // that absolute index is what keyboard navigation and ARIA report.
+  const mountedRows = useMemo(
+    () =>
+      windowRows
+        .slice(virtualStart, virtualEnd + 1)
+        .map((payment, offset) => ({ payment, index: virtualStart + offset })),
+    [windowRows, virtualStart, virtualEnd]
+  );
 
   // Roving-tabindex keyboard navigation: the active row is in the tab order
-  // and ArrowUp/Down/Home/End move between rows (also from row actions).
+  // and ArrowUp/Down/Home/End move between rows (also from row actions). The
+  // index is absolute across `windowRows`, so it survives the window moving.
   const { activeIndex, getRowProps, onRowsKeyDown, tbodyRef } =
-    useTableKeyboardNavigation(paginated.length);
+    useTableKeyboardNavigation(windowRows.length, {
+      startIndex: virtualStart,
+      endIndex: virtualEnd,
+      scrollToIndex,
+    });
 
   const updateQuery = (updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -515,10 +573,27 @@ function PaymentsClient() {
         />
       ) : (
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" aria-busy={loading}>
-            <thead>
-              <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
+        <div
+          ref={scrollRef}
+          className="overflow-auto max-h-[70vh]"
+          data-testid="payments-table-scroll"
+        >
+          {/* The row count and each row's index describe the whole filtered
+              set rather than the mounted window, so screen readers still
+              announce the correct total and the current position. While the
+              on-chain read is in flight there is no row model yet, so no count
+              is claimed for the placeholder rows. */}
+          <table
+            className="w-full text-sm"
+            aria-label="On-chain payments"
+            aria-busy={loading}
+            aria-rowcount={loading ? undefined : sorted.length + 1}
+          >
+            <thead className="sticky top-0 z-10">
+              <tr
+                aria-rowindex={1}
+                className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900"
+              >
                 <th scope="col" className="py-3 px-4 font-medium">Payment</th>
                 <SortableTh label="amount" sortKey="amount" sort={sort} onSort={toggleSort}>
                   Amount {currency === "USD" ? "(USD)" : "(XLM)"}
@@ -541,7 +616,7 @@ function PaymentsClient() {
                     key={i}
                     className="border-b border-gray-100 dark:border-gray-800/50"
                   >
-                    <td className="py-3 px-4" colSpan={5}>
+                    <td className="py-3 px-4" colSpan={COLUMN_COUNT}>
                       <div className="flex items-center gap-4">
                         <Skeleton className="h-4 w-24" />
                         <Skeleton className="h-4 w-20" />
@@ -555,7 +630,7 @@ function PaymentsClient() {
 
               {!loading && filtered.length === 0 && !error && (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center">
+                  <td colSpan={COLUMN_COUNT} className="py-12 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       {search
                         ? "No payments match your search."
@@ -565,11 +640,21 @@ function PaymentsClient() {
                 </tr>
               )}
 
+              {/* Spacer standing in for the rows above the mounted window.
+                  `aria-hidden` keeps it out of the accessibility tree so it is
+                  never announced as a row. */}
+              {padTop > 0 && (
+                <tr aria-hidden="true" className="border-0">
+                  <td colSpan={COLUMN_COUNT} style={{ height: padTop, padding: 0 }} />
+                </tr>
+              )}
+
               {!loading &&
-                paginated.map((payment, index) => (
+                mountedRows.map(({ payment, index }) => (
                   <tr
                     key={payment.id}
                     data-row-index={index}
+                    aria-rowindex={startIndex + index + 2}
                     {...getRowProps(index)}
                     className={cn(
                       "border-b border-gray-100 dark:border-gray-800/50 transition-colors",
@@ -644,19 +729,26 @@ function PaymentsClient() {
                     </td>
                   </tr>
                 ))}
+
+              {/* Spacer standing in for the rows below the mounted window. */}
+              {padBottom > 0 && (
+                <tr aria-hidden="true" className="border-0">
+                  <td colSpan={COLUMN_COUNT} style={{ height: padBottom, padding: 0 }} />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
         {!loading && !error && filtered.length > 0 && (
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-800">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Showing{" "}
                 <span className="font-medium">
-                  {startIndex + 1}–{Math.min(startIndex + pageSize, filtered.length)}
+                  {startIndex + 1}–{Math.min(loadedThrough, sorted.length)}
                 </span>{" "}
-                of <span className="font-medium">{filtered.length}</span> on-chain records
+                of <span className="font-medium">{sorted.length}</span> on-chain records
               </p>
               <select
                 aria-label="Page size"
@@ -670,6 +762,20 @@ function PaymentsClient() {
                   </option>
                 ))}
               </select>
+              {/* Explicit affordance instead of rendering every loaded row:
+                  each click appends one page, while virtualization keeps the
+                  number of mounted rows bounded. */}
+              {hasMoreRows && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLoadedRows({ key: rowSetKey, count: loadedCount + pageSize })
+                  }
+                  className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Load more
+                </button>
+              )}
             </div>
             <Pagination
               page={currentPage}

@@ -1,25 +1,32 @@
+// src/prisma/schema.prisma
 
-model PaymentRequest {
-  id                  String    @id @default(uuid())
-  amount             BigInt
-  currency           String
-  memo               String?
-  dueDate            DateTime
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  status             RequestStatus
-  overdueAt          DateTime?
-  reminderCount      Int       @default(0)
-  lastReminderSent   DateTime?
-  // ... existing fields ...
+model ApiKey {
+  id            String   @id @default(cuid())
+  publicKey     String   @unique
+  privateKey    String
+  scopes        String[]
+  createdAt     DateTime
+  lastUsed      DateTime?
+  revokedAt     DateTime?
+  revokedBy     String?
+  rotationOf    ApiKey?   @relation("rotation", fields: ["rotationOfId"], references: ["id"])
+  rotationOfId String?
+  rotatedTo     ApiKey?   @relation("rotation", fields: ["rotatedToId"], references: ["id"])
+  rotatedToId  String?
+  overlapExpires DateTime?
 
-  @@index([status, overdueAt])
+  @@index([rotationOfId])
+  @@index([rotatedToId])
 }
 
-enum RequestStatus {
-  PENDING
-  OVERDUE
-  PAID
-  CANCELLED
-  EXPIRED
+model ApiKeyRequestLog {
+  id        String   @id @default(cuid())
+  apiKeyId  String
+  ipAddress String
+  userAgent String
+  timestamp DateTime
+  action    String   // 'rotation', 'revocation', 'usage'
+  metadata  Json?
+
+  apiKey ApiKey @relation(fields: [apiKeyId], references: [id])
 }

@@ -24,19 +24,20 @@
 | # | Secret | Purpose | Sensitivity | Storage Location(s) |
 |---|--------|---------|-------------|---------------------|
 | 1 | `AUTH_SECRET` | HMAC-SHA256 key that signs wallet session cookies (`src/lib/auth-session.ts`). Forges the entire auth layer if exposed. | **Critical** | Vercel env / K8s Secret / Helm values |
-| 2 | `HOOK_SECRET` | HMAC-SHA256 key for webhook payload signing (`scripts/relayer.ts`). Exposure allows forging webhook deliveries. | **Critical** | K8s Secret / Helm values / `.env.local` |
-| 3 | `DATABASE_URL` | PostgreSQL connection string (contains password). Full database read/write access. | **Critical** | Vercel env / K8s Secret / Helm values / Docker env |
-| 4 | `DIRECT_DATABASE_URL` | Direct (non-pooled) PostgreSQL connection string for Prisma migrations. | **High** | Same as `DATABASE_URL` |
-| 5 | `REDIS_URL` | Redis connection URL for distributed rate limiting (`src/lib/rate-limit.ts`). | **High** | K8s Secret / Helm values / Docker env |
-| 6 | `DB_PASSWORD` | PostgreSQL password for the backup workflow (`db-backup.yml`). | **High** | GitHub Actions Secrets |
-| 7 | `DB_HOST` | PostgreSQL host for the backup workflow. | **Medium** | GitHub Actions Secrets |
-| 8 | `DB_USER` | PostgreSQL user for the backup workflow. | **Medium** | GitHub Actions Secrets |
-| 9 | `DB_NAME` | Database name for the backup workflow. | **Low** | GitHub Actions Secrets |
-| 10 | `AWS_ACCESS_KEY_ID` | AWS key for S3 backup uploads (`db-backup.yml`). | **High** | GitHub Actions Secrets |
-| 11 | `AWS_SECRET_ACCESS_KEY` | AWS secret for S3 backup uploads. | **Critical** | GitHub Actions Secrets |
-| 12 | `AWS_REGION` | AWS region for S3 operations. | **Low** | GitHub Actions Secrets |
-| 13 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry error-tracking DSN. Low risk (DSNs are public in client bundles). | **Low** | Vercel env |
-| 14 | `NEXT_PUBLIC_GA_ID` | Google Analytics measurement ID. Public by design. | **Info** | Vercel env |
+| 2 | `API_KEY_PEPPER` | Server-side HMAC-SHA256 pepper for API key digests (`src/lib/api-auth.ts`). Falls back to `AUTH_SECRET` if unset. | **High** | Vercel env / K8s Secret / Helm values |
+| 3 | `HOOK_SECRET` | HMAC-SHA256 key for webhook payload signing (`scripts/relayer.ts`). Exposure allows forging webhook deliveries. | **Critical** | K8s Secret / Helm values / `.env.local` |
+| 4 | `DATABASE_URL` | PostgreSQL connection string (contains password). Full database read/write access. | **Critical** | Vercel env / K8s Secret / Helm values / Docker env |
+| 5 | `DIRECT_DATABASE_URL` | Direct (non-pooled) PostgreSQL connection string for Prisma migrations. | **High** | Same as `DATABASE_URL` |
+| 6 | `REDIS_URL` | Redis connection URL for distributed rate limiting (`src/lib/rate-limit.ts`). | **High** | K8s Secret / Helm values / Docker env |
+| 7 | `DB_PASSWORD` | PostgreSQL password for the backup workflow (`db-backup.yml`). | **High** | GitHub Actions Secrets |
+| 8 | `DB_HOST` | PostgreSQL host for the backup workflow. | **Medium** | GitHub Actions Secrets |
+| 9 | `DB_USER` | PostgreSQL user for the backup workflow. | **Medium** | GitHub Actions Secrets |
+| 10 | `DB_NAME` | Database name for the backup workflow. | **Low** | GitHub Actions Secrets |
+| 11 | `AWS_ACCESS_KEY_ID` | AWS key for S3 backup uploads (`db-backup.yml`). | **High** | GitHub Actions Secrets |
+| 12 | `AWS_SECRET_ACCESS_KEY` | AWS secret for S3 backup uploads. | **Critical** | GitHub Actions Secrets |
+| 13 | `AWS_REGION` | AWS region for S3 operations. | **Low** | GitHub Actions Secrets |
+| 14 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry error-tracking DSN. Low risk (DSNs are public in client bundles). | **Low** | Vercel env |
+| 15 | `NEXT_PUBLIC_GA_ID` | Google Analytics measurement ID. Public by design. | **Info** | Vercel env |
 
 > **Not secrets** (public by design, do not rotate):
 > `NEXT_PUBLIC_STELLAR_NETWORK`, `NEXT_PUBLIC_STELLAR_RPC_URL`,
@@ -299,6 +300,45 @@ gh secret set DB_USER --body "ophirpay"
 gh secret set DB_NAME --body "ophirpay"
 ```
 
+### 4.7 API Keys and API_KEY_PEPPER (High)
+
+**Purpose:** Programmatic authentication keys for merchants, integrators, and automated systems (`src/lib/api-auth.ts`).
+
+#### Key Format & Minimum Entropy Requirement
+- **Prefix convention:** All API keys must begin with the `oph_` prefix. The first 8 characters (`oph_xxxx`) serve as a stable display identifier and indexed database lookup prefix (`deriveKeyPrefix`).
+- **Minimum entropy:** Keys must contain at least **32 bytes (256 bits)** of cryptographic random material generated from a CSPRNG (`crypto.randomBytes(32)`), formatted as 64+ hexadecimal characters.
+- **Full format:** `oph_[0-9a-f]{64,}` (minimum total length: **68 characters**).
+- **Validation:** The creation route `POST /api/keys` enforces this format strictly. Any key shorter than 32 bytes of random entropy, missing the `oph_` prefix, or containing non-hex characters is rejected with `400 Bad Request`.
+- **Generation:**
+  ```bash
+  # Generate a compliant API key
+  echo "oph_$(openssl rand -hex 32)"
+  ```
+
+#### Storage & Peppered Digest Format
+- API keys are never stored in plaintext.
+- New keys are stored with a versioned, server-side peppered HMAC-SHA256 digest: `v1$<hmac-sha256-hex>`.
+- The server-side pepper is sourced from `API_KEY_PEPPER` (falling back to `AUTH_SECRET`), preventing offline dictionary or brute-force attacks against the `ApiKey.keyHash` column in the event of a database leak.
+- **Backward compatibility & seamless migration:** Existing API keys stored with legacy unpeppered SHA-256 digests continue to authenticate without interruption. Upon successful authentication, legacy digests are automatically upgraded in the background to the `v1$` peppered format.
+
+#### API Key Rotation Runbook (for Integrators / Users)
+1. Generate a new API key via dashboard or `POST /api/keys`.
+2. Configure the new key in client systems (`Authorization: Bearer <key>` or `X-API-Key: <key>`).
+3. Verify that requests authenticate successfully (`GET /api/payments` or health check).
+4. Revoke the old key via `DELETE /api/keys?id=<old_key_id>`.
+
+#### API_KEY_PEPPER Server Rotation
+```bash
+# 1. Generate a new 32-byte pepper
+NEW_PEPPER=$(openssl rand -hex 32)
+
+# 2. Update API_KEY_PEPPER in environment
+#    Vercel: Settings → Environment Variables → API_KEY_PEPPER = $NEW_PEPPER
+#    Kubernetes: kubectl patch secret ophirpay-secrets -p '{"data":{"API_KEY_PEPPER":"..."}}'
+
+# 3. Deploy/restart application instances
+```
+
 ---
 
 ## 5. Incident Response — Suspected Compromise
@@ -363,6 +403,9 @@ for i in $(seq 1 5); do
   curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health
 done
 # All should return 200 (rate limiting working normally)
+
+# 6. API Key auth test (if API_KEY_PEPPER rotated)
+curl -s -H "X-API-Key: <test_key>" http://localhost:3000/api/keys
 ```
 
 ---
@@ -372,6 +415,8 @@ done
 | Secret | Command |
 |--------|---------|
 | `AUTH_SECRET` | `openssl rand -hex 32` |
+| `API_KEY_PEPPER` | `openssl rand -hex 32` |
+| `API_KEY` (Key format) | `echo "oph_$(openssl rand -hex 32)"` |
 | `HOOK_SECRET` | `openssl rand -hex 32` |
 | `DB_PASSWORD` | `openssl rand -base64 24` |
 | `REDIS_PASSWORD` | `openssl rand -hex 16` |

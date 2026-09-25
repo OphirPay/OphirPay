@@ -36,23 +36,118 @@ export {
  * unlike the previous pattern that fetched every key and compared in-app.
  */
 
-// ── Hashing ────────────────────────────────────────────────────
+// ── Hashing & Key Format ───────────────────────────────────────
 
 /**
  * Length of the API key prefix used for indexed lookups + display.
  * MUST be identical in key creation (src/app/api/keys/route.ts) and
  * lookup here — a mismatch silently breaks every authenticated request.
  */
+export const API_KEY_PREFIX = "oph_";
 export const API_KEY_PREFIX_LENGTH = 8;
+export const MIN_API_KEY_ENTROPY_BYTES = 32; // Minimum 32 bytes (256 bits) of CSPRNG entropy
+export const MIN_API_KEY_HEX_LENGTH = MIN_API_KEY_ENTROPY_BYTES * 2; // 64 hex characters
+export const MIN_API_KEY_LENGTH = API_KEY_PREFIX.length + MIN_API_KEY_HEX_LENGTH; // 68 characters
+
+export interface ApiKeyValidationResult {
+  valid: boolean;
+  reason?: string;
+}
+
+/**
+ * Validate that an API key conforms to the minimum entropy and prefix requirements:
+ * Must start with `oph_` and contain at least 32 bytes (64 hex characters) of random material.
+ */
+export function validateApiKeyFormat(rawKey: string): ApiKeyValidationResult {
+  if (typeof rawKey !== "string") {
+    return { valid: false, reason: "API key must be a string" };
+  }
+  if (!rawKey.startsWith(API_KEY_PREFIX)) {
+    return {
+      valid: false,
+      reason: `API key must start with prefix '${API_KEY_PREFIX}'`,
+    };
+  }
+  const randomPart = rawKey.slice(API_KEY_PREFIX.length);
+  if (randomPart.length < MIN_API_KEY_HEX_LENGTH) {
+    return {
+      valid: false,
+      reason: `API key random material must be at least ${MIN_API_KEY_ENTROPY_BYTES} bytes (${MIN_API_KEY_HEX_LENGTH} hex characters); got ${randomPart.length} chars`,
+    };
+  }
+  if (!/^[0-9a-fA-F]+$/.test(randomPart)) {
+    return {
+      valid: false,
+      reason: "API key random material must contain only valid hexadecimal characters",
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Generate a cryptographically secure random API key with minimum 32 bytes of CSPRNG entropy.
+ */
+export function generateApiKey(entropyBytes: number = MIN_API_KEY_ENTROPY_BYTES): string {
+  const bytes = Math.max(entropyBytes, MIN_API_KEY_ENTROPY_BYTES);
+  return `${API_KEY_PREFIX}${crypto.randomBytes(bytes).toString("hex")}`;
+}
 
 /** Derive the stable lookup prefix for a raw API key. */
 export function deriveKeyPrefix(rawKey: string): string {
   return rawKey.slice(0, API_KEY_PREFIX_LENGTH);
 }
 
-/** Hash a raw API key using SHA-256 (sync, Node crypto). */
-export function hashApiKey(rawKey: string): string {
+/**
+ * Server-side pepper for API key hashing.
+ * Reads API_KEY_PEPPER or AUTH_SECRET, falling back to a deterministic dev secret.
+ */
+export function getApiKeyPepper(): string {
+  return (
+    process.env.API_KEY_PEPPER ||
+    process.env.AUTH_SECRET ||
+    "ophirpay-default-api-key-pepper-0000000000000000"
+  );
+}
+
+/** Legacy unpeppered SHA-256 hash (backward compatibility with existing keys). */
+export function hashLegacyApiKey(rawKey: string): string {
   return crypto.createHash("sha256").update(rawKey).digest("hex");
+}
+
+/**
+ * Hash a raw API key using HMAC-SHA256 with a server-side pepper and a version tag.
+ * Stored digest format: `v1$<hex>`
+ */
+export function hashApiKey(rawKey: string, pepper = getApiKeyPepper()): string {
+  const digest = crypto.createHmac("sha256", pepper).update(rawKey).digest("hex");
+  return `v1$${digest}`;
+}
+
+/**
+ * Constant-time comparison between raw key and a stored hash (supporting v1$ and legacy SHA-256).
+ */
+export function verifyApiKeyHash(
+  rawKey: string,
+  storedHash: string,
+  pepper = getApiKeyPepper(),
+): boolean {
+  if (storedHash.startsWith("v1$")) {
+    const expected = hashApiKey(rawKey, pepper);
+    const expectedBuf = Buffer.from(expected);
+    const storedBuf = Buffer.from(storedHash);
+    return (
+      expectedBuf.length === storedBuf.length &&
+      crypto.timingSafeEqual(expectedBuf, storedBuf)
+    );
+  }
+  // Legacy plain SHA-256 hash
+  const legacyExpected = hashLegacyApiKey(rawKey);
+  const expectedBuf = Buffer.from(legacyExpected);
+  const storedBuf = Buffer.from(storedHash);
+  return (
+    expectedBuf.length === storedBuf.length &&
+    crypto.timingSafeEqual(expectedBuf, storedBuf)
+  );
 }
 
 // ── Header Extraction ──────────────────────────────────────────
@@ -83,8 +178,9 @@ export interface AuthResult {
 /**
  * Authenticate a request against stored API keys.
  *
- * Uses an indexed lookup on (keyHash, prefix) so the query hits an index
- * rather than scanning every row — safe at any key volume.
+ * Uses an indexed lookup on (prefix, keyHash) supporting both v1 peppered
+ * HMAC-SHA256 digests and legacy plain SHA-256 digests so existing API keys
+ * keep authenticating without disruption.
  */
 export async function authenticateRequest(
   request: Request
@@ -92,16 +188,21 @@ export async function authenticateRequest(
   const rawKey = extractApiKey(request);
   if (!rawKey) return null;
 
-  const keyHash = hashApiKey(rawKey);
   const prefix = deriveKeyPrefix(rawKey);
+  const v1Hash = hashApiKey(rawKey);
+  const legacyHash = hashLegacyApiKey(rawKey);
 
   try {
     const apiKey = await prisma.apiKey.findFirst({
-      where: { keyHash, prefix },
+      where: {
+        prefix,
+        keyHash: { in: [v1Hash, legacyHash] },
+      },
       select: {
         id: true,
         userId: true,
         name: true,
+        keyHash: true,
         expiresAt: true,
         scopes: true,
       },
@@ -112,10 +213,20 @@ export async function authenticateRequest(
     // Check expiration
     if (apiKey.expiresAt && apiKey.expiresAt < new Date()) return null;
 
-    // Update lastUsed — fire-and-forget so auth latency is not gated on this write
-    prisma.apiKey
-      .update({ where: { id: apiKey.id }, data: { lastUsed: new Date() } })
-      .catch(() => {});
+    // If key authenticated with legacy SHA-256 hash, transparently migrate to v1 peppered hash
+    if (apiKey.keyHash === legacyHash) {
+      prisma.apiKey
+        .update({
+          where: { id: apiKey.id },
+          data: { keyHash: v1Hash, lastUsed: new Date() },
+        })
+        .catch(() => {});
+    } else {
+      prisma.apiKey
+        .update({ where: { id: apiKey.id }, data: { lastUsed: new Date() } })
+        .catch(() => {});
+    }
+
     prisma.apiKeyRequestLog
       .create({ data: { keyId: apiKey.id } })
       .catch(() => {});

@@ -1,27 +1,95 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import crypto from "crypto";
+
+vi.mock("@/lib/prisma", () => ({
+  default: {},
+}));
 import {
   hashApiKey,
+  hashLegacyApiKey,
+  verifyApiKeyHash,
   extractApiKey,
   deriveKeyPrefix,
+  validateApiKeyFormat,
+  generateApiKey,
   API_KEY_PREFIX_LENGTH,
+  MIN_API_KEY_LENGTH,
+  MIN_API_KEY_ENTROPY_BYTES,
 } from "@/lib/api-auth";
 import { InMemoryRateLimitStore } from "@/lib/rate-limit";
 import { timingSafeEqual } from "@/lib/crypto";
 import { searchRecords, rankSearchResults } from "@/lib/search-index";
 
-// ─── hashApiKey ─────────────────────────────────────────────────
+// ─── API Key Format & Entropy ───────────────────────────────────
 
-describe("hashApiKey", () => {
-  it("produces a 64-char hex string (SHA-256)", () => {
-    const hash = hashApiKey("oph_abc123");
-    expect(hash).toHaveLength(64);
-    expect(hash).toMatch(/^[a-f0-9]{64}$/);
+describe("validateApiKeyFormat", () => {
+  it("accepts a compliant 32-byte CSPRNG key", () => {
+    const key = `oph_${"a".repeat(64)}`;
+    const result = validateApiKeyFormat(key);
+    expect(result.valid).toBe(true);
   });
 
-  it("is deterministic", () => {
+  it("accepts generated keys from generateApiKey()", () => {
+    const key = generateApiKey();
+    expect(key).toHaveLength(MIN_API_KEY_LENGTH);
+    expect(validateApiKeyFormat(key).valid).toBe(true);
+  });
+
+  it("rejects keys without oph_ prefix", () => {
+    const key = "a".repeat(68);
+    const result = validateApiKeyFormat(key);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("must start with prefix 'oph_'");
+  });
+
+  it("rejects short keys (< 32 bytes random material)", () => {
+    const shortKey = "oph_abc123";
+    const result = validateApiKeyFormat(shortKey);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("must be at least 32 bytes");
+  });
+
+  it("rejects keys containing non-hexadecimal characters in random material", () => {
+    const invalidCharKey = `oph_${"g".repeat(64)}`;
+    const result = validateApiKeyFormat(invalidCharKey);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("valid hexadecimal characters");
+  });
+
+  it("rejects non-string inputs", () => {
+    // @ts-expect-error test invalid type
+    expect(validateApiKeyFormat(12345).valid).toBe(false);
+  });
+});
+
+describe("generateApiKey", () => {
+  it("generates a key with minimum 32 bytes of CSPRNG entropy", () => {
+    const key = generateApiKey();
+    expect(key.startsWith("oph_")).toBe(true);
+    expect(key.length).toBeGreaterThanOrEqual(MIN_API_KEY_LENGTH);
+    expect(validateApiKeyFormat(key).valid).toBe(true);
+  });
+
+  it("supports custom higher entropy lengths", () => {
+    const key = generateApiKey(48);
+    expect(key.length).toBe(4 + 48 * 2); // oph_ + 96 hex = 100
+    expect(validateApiKeyFormat(key).valid).toBe(true);
+  });
+});
+
+// ─── hashApiKey & verifyApiKeyHash ──────────────────────────────
+
+describe("hashApiKey", () => {
+  it("produces a v1$ tagged HMAC-SHA256 digest", () => {
+    const hash = hashApiKey("oph_abc123");
+    expect(hash.startsWith("v1$")).toBe(true);
+    expect(hash).toHaveLength(3 + 64); // v1$ + 64 hex
+    expect(hash.slice(3)).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("is deterministic for the same key and pepper", () => {
     expect(hashApiKey("my-key")).toBe(hashApiKey("my-key"));
   });
 
@@ -29,9 +97,33 @@ describe("hashApiKey", () => {
     expect(hashApiKey("key-a")).not.toBe(hashApiKey("key-b"));
   });
 
-  it("handles empty string", () => {
-    const hash = hashApiKey("");
+  it("produces different hashes for different peppers", () => {
+    expect(hashApiKey("key-a", "pepper-1")).not.toBe(hashApiKey("key-a", "pepper-2"));
+  });
+});
+
+describe("hashLegacyApiKey", () => {
+  it("produces a 64-char plain SHA-256 hex string", () => {
+    const hash = hashLegacyApiKey("oph_abc123");
     expect(hash).toHaveLength(64);
+    expect(hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(hash).toBe(crypto.createHash("sha256").update("oph_abc123").digest("hex"));
+  });
+});
+
+describe("verifyApiKeyHash", () => {
+  it("verifies a v1$ peppered digest", () => {
+    const rawKey = generateApiKey();
+    const storedHash = hashApiKey(rawKey);
+    expect(verifyApiKeyHash(rawKey, storedHash)).toBe(true);
+    expect(verifyApiKeyHash("oph_wrongkey123456789012345678901234567890123456789012345678901234", storedHash)).toBe(false);
+  });
+
+  it("verifies a legacy plain SHA-256 digest (backward compatibility)", () => {
+    const rawKey = "oph_legacy_key_from_prior_release_1234567890";
+    const legacyHash = hashLegacyApiKey(rawKey);
+    expect(verifyApiKeyHash(rawKey, legacyHash)).toBe(true);
+    expect(verifyApiKeyHash("oph_different_key", legacyHash)).toBe(false);
   });
 });
 

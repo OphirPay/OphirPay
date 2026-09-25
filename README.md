@@ -81,6 +81,7 @@
 - [📊 Database Schema](docs/SCHEMA.md)
 - [🚀 Deployment Guide](docs/DEPLOYMENT.md)
 - [📡 SSE Event Stream](docs/SSE.md)
+- [🤖 Automation Platforms (n8n / Zapier / Make)](docs/AUTOMATION_PLATFORMS.md)
 - [📖 SSE Integration & Architecture](docs/SSE_DOCUMENTATION.md)
 - [📜 Smart-contract SSE Reference](docs/CONTRACT_SSE_REFERENCE.md)
 - [🧪 Prisma CI & Testing](docs/PRISMA-CI.md)

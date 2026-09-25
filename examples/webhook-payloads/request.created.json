@@ -1,0 +1,13 @@
+{
+  "event": "request.created",
+  "timestamp": "2026-01-15T09:30:00.000Z",
+  "data": {
+    "requestId": "cm5ka1b2c00011356ddee1f2g",
+    "amount": "40.00",
+    "assetCode": "USDC",
+    "description": "Invoice #1042 — design retainer",
+    "status": "PENDING",
+    "createdAt": "2026-01-15T09:30:00.000Z"
+  },
+  "signature": "a2e53728040976fa3d0c9f63d4e9ce4d25a7aad57d6a7090290d8c7f9c5dfd0c"
+}

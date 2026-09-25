@@ -1,0 +1,12 @@
+{
+  "event": "batch.completed",
+  "timestamp": "2026-01-15T13:04:37.000Z",
+  "data": {
+    "batchId": "cm5kb3c4d00022356ffg2h3i4",
+    "totalPayments": 25,
+    "succeeded": 24,
+    "failed": 1,
+    "completedAt": "2026-01-15T13:04:37.000Z"
+  },
+  "signature": "f6f31f8e0f16853e1b823494c776583a8c16ebd5d098d3374c84188c9ea11881"
+}

@@ -189,6 +189,11 @@ Batches, recurrences, and payment requests emit their own events
 (`batch.*`, `recurrence.*`, `request.*`). Subscribe to any subset of these
 event types when registering a webhook.
 
+> 🤖 **Using n8n, Zapier, or Make?** See the
+> [automation-platform integration guide](AUTOMATION_PLATFORMS.md) for the full
+> event catalog with field meanings, generated payload examples per lifecycle
+> stage, per-platform signature-verification notes, and dedupe recipes.
+
 ### Replaying Missed Events
 
 If your endpoint was down during an outage, replay stored events from the

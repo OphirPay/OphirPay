@@ -333,6 +333,7 @@ publicly when you register it but privately later, that attempt is refused.
 
 ## Related docs
 
+- [Automation platforms guide](AUTOMATION_PLATFORMS.md) — n8n / Zapier / Make setup, event catalog, generated payload examples
 - [Integration guide](integration-guide.md) — end-to-end setup
 - [Architecture](architecture.md) — where webhooks fit in the system
 - `src/lib/webhook-deliver.ts` — sender-side signing (`buildSignedPayload`)

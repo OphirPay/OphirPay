@@ -1,0 +1,11 @@
+{
+  "event": "recurrence.triggered",
+  "timestamp": "2026-01-15T14:00:00.000Z",
+  "data": {
+    "scheduleId": "cm5kc5d6e00033356ggh4i5j6",
+    "paymentId": "cm5k9x2m00000356g4h7j8k2q",
+    "occurrence": 3,
+    "triggeredAt": "2026-01-15T14:00:00.000Z"
+  },
+  "signature": "d63bdcaee3e96e09344769176c983813fa2fa9198e65099d3908c78abad2eceb"
+}

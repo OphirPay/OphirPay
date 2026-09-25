@@ -1,0 +1,13 @@
+{
+  "event": "payment.failed",
+  "timestamp": "2026-01-15T12:01:02.000Z",
+  "data": {
+    "paymentId": "cm5k9x2m00000356g4h7j8k2q",
+    "amount": "125.50",
+    "assetCode": "USDC",
+    "transactionHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    "errorMessage": "Transaction failed on-chain. See the transaction on Stellar Expert for the operation result.",
+    "failedAt": "2026-01-15T12:01:02.000Z"
+  },
+  "signature": "3eab4a3daa76afa54091d9ab32e9631688bed74bca91f615b13f23517c35650a"
+}

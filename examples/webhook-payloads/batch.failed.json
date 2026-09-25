@@ -1,0 +1,10 @@
+{
+  "event": "batch.failed",
+  "timestamp": "2026-01-15T13:02:10.000Z",
+  "data": {
+    "batchId": "cm5kb3c4d00022356ffg2h3i4",
+    "errorMessage": "Batch processing halted: 3 payments failed validation.",
+    "failedAt": "2026-01-15T13:02:10.000Z"
+  },
+  "signature": "285c342b861ca90264b6b99831c45fabb7f225eda25ea3acbae02ef512306bd7"
+}

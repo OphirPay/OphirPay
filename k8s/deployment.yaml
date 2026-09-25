@@ -22,8 +22,9 @@ spec:
     spec:
       containers:
         - name: ophirpay
-          image: ghcr.io/ophirpay/ophirpay:latest
-          imagePullPolicy: Always
+          # Default to immutable version tag; override with specific tag or commit SHA for deployments
+          image: ghcr.io/ophirpay/ophirpay:v1.0.0
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
               name: http

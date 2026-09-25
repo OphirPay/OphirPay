@@ -24,7 +24,8 @@ import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
 import { recordPaymentOnChain } from "@/lib/contracts";
 import { downloadReceiptPdf } from "@/lib/receipt-pdf";
-import { estimateTransactionFee } from "@/lib/fee-estimator";
+import { FeeBasis } from "@/components/FeeBasis";
+import { getFeeRecommendation } from "@/lib/network-fee-stats";
 import { useToast } from "@/components/ui/Toast";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useApiMutation } from "@/hooks/useApiQuery";
@@ -92,7 +93,13 @@ function SendPageClient() {
 
   const [destination, setDestination] = useState("");
   const [amount, setAmount] = useState("");
-  const [feeEstimate, setFeeEstimate] = useState<{ baseFee: string; congestion: string } | null>(null);
+  const [feeEstimate, setFeeEstimate] = useState<{
+    baseFee: number;
+    congestion: "low" | "medium" | "high";
+    basis?: string;
+    source?: "horizon" | "cache" | "fallback";
+    stale?: boolean;
+  } | null>(null);
   const [memo, setMemo] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<AssetInfo>(XLM_ASSET);
   const [destAsset, setDestAsset] = useState<AssetInfo>(XLM_ASSET);
@@ -174,8 +181,16 @@ function SendPageClient() {
 
   // Fetch live fee estimate on mount
   useEffect(() => {
-    estimateTransactionFee(1)
-      .then((fee) => setFeeEstimate({ baseFee: fee.baseFee, congestion: fee.networkCongestion }))
+    getFeeRecommendation({ aggressiveness: "medium", operations: 1 })
+      .then((rec) =>
+        setFeeEstimate({
+          baseFee: rec.baseFeeStroops,
+          congestion: rec.congestion,
+          basis: rec.basis,
+          source: rec.source,
+          stale: rec.stale,
+        })
+      )
       .catch(() => {});
   }, []);
 
@@ -1129,17 +1144,15 @@ function SendPageClient() {
           </div>
 
           {feeEstimate && (
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="text-gray-500 dark:text-gray-400">
-                Network fee: ~{feeEstimate.baseFee} stroops
-              </span>
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                feeEstimate.congestion === "low" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                feeEstimate.congestion === "medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-              }`}>
-                {feeEstimate.congestion}
-              </span>
+            <div className="mt-2">
+              <FeeBasis
+                baseFee={feeEstimate.baseFee}
+                congestion={feeEstimate.congestion}
+                basis={feeEstimate.basis}
+                source={feeEstimate.source}
+                stale={feeEstimate.stale}
+                context="send"
+              />
             </div>
           )}
         </div>

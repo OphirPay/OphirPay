@@ -4,6 +4,7 @@
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatAmount, shortenAddress } from "@/lib/utils";
+import { FeeBasis } from "@/components/FeeBasis";
 
 interface BatchRecipient {
   address: string;
@@ -15,6 +16,11 @@ interface BatchConfirmDialogProps {
   recipients: BatchRecipient[];
   totalAmount: number;
   estimatedFee: string;
+  /** Why this fee was chosen (issue #825). Optional for backwards compatibility. */
+  feeBasis?: string;
+  feeCongestion?: "low" | "medium" | "high";
+  feeSource?: "horizon" | "cache" | "fallback";
+  feeStale?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -26,6 +32,10 @@ export function BatchConfirmDialog({
   recipients,
   totalAmount,
   estimatedFee,
+  feeBasis,
+  feeCongestion,
+  feeSource,
+  feeStale,
   onConfirm,
   onCancel,
 }: BatchConfirmDialogProps) {
@@ -51,6 +61,15 @@ export function BatchConfirmDialog({
             <span className="font-medium text-gray-900 dark:text-white">{feeXlm}</span>
           </div>
         </div>
+
+        <FeeBasis
+          baseFee={estimatedFee}
+          congestion={feeCongestion}
+          basis={feeBasis}
+          source={feeSource}
+          stale={feeStale}
+          context="batch"
+        />
 
         {/* Recipient list */}
         <div>

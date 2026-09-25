@@ -175,3 +175,34 @@ groups:
           description: |
             {{ $value | humanize }}/s rate limit hits. Possible abuse or
             misconfigured client. Check IP distribution.
+
+      # ── RPC Failover Alerts ──────────────────────────────────
+
+      - alert: RpcOnFallbackEndpoint
+        expr: ophirpay_rpc_on_primary_endpoint == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: rpc
+        annotations:
+          summary: "OphirPay serving traffic from a non-primary RPC endpoint"
+          description: |
+            Instance {{ $labels.instance }} has been running on a fallback
+            Soroban RPC endpoint for network {{ $labels.network }} for more
+            than 5 minutes. The primary endpoint is likely degraded — check
+            the upstream provider status and the
+            ophirpay_rpc_endpoint_last_failure_info metric for the failure
+            reason, and ophirpay_rpc_failovers_total for transition history.
+
+      - alert: RpcFailoverFlapping
+        expr: increase(ophirpay_rpc_failovers_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          component: rpc
+        annotations:
+          summary: "RPC endpoints flapping between failovers"
+          description: |
+            {{ $value | humanize }} RPC endpoint transitions in the last 15
+            minutes on network {{ $labels.network }}. Endpoints are unstable —
+            check circuit-breaker logs and upstream RPC health.

@@ -33,6 +33,27 @@ ophirpay_webhooks_failed_total 0
 ophirpay_db_query_duration_seconds_sum 0
 ophirpay_db_query_duration_seconds_count 0
 
+# HELP ophirpay_rpc_failovers_total Total RPC endpoint transitions away from the previously active endpoint
+# TYPE ophirpay_rpc_failovers_total counter
+ophirpay_rpc_failovers_total{network="TESTNET"} 0
+ophirpay_rpc_failovers_total{network="PUBLIC"} 0
+
+# HELP ophirpay_rpc_on_primary_endpoint Whether the active Soroban RPC endpoint is the configured primary (1) or a fallback (0)
+# TYPE ophirpay_rpc_on_primary_endpoint gauge
+ophirpay_rpc_on_primary_endpoint{network="TESTNET"} 1
+ophirpay_rpc_on_primary_endpoint{network="PUBLIC"} 1
+
+# HELP ophirpay_rpc_endpoint_active Whether a Soroban RPC endpoint is currently serving traffic
+# TYPE ophirpay_rpc_endpoint_active gauge
+ophirpay_rpc_endpoint_active{network="TESTNET",endpoint="https://soroban-testnet.stellar.org:443",is_primary="true"} 1
+ophirpay_rpc_endpoint_active{network="PUBLIC",endpoint="https://soroban.stellar.org:443",is_primary="true"} 1
+ophirpay_rpc_endpoint_active{network="PUBLIC",endpoint="https://mainnet.soroban.rpc.pulse.so:443",is_primary="false"} 0
+
+# HELP ophirpay_rpc_endpoint_last_failure_timestamp_seconds Unix timestamp of the most recent health-check failure per RPC endpoint
+# TYPE ophirpay_rpc_endpoint_last_failure_timestamp_seconds gauge
+
+# HELP ophirpay_rpc_endpoint_last_failure_info Most recent failure reason per RPC endpoint (value is always 1)
+# TYPE ophirpay_rpc_endpoint_last_failure_info gauge
 # HELP ophirpay_endpoint_request_duration_seconds Request latency histogram per endpoint and status class
 # TYPE ophirpay_endpoint_request_duration_seconds histogram
 ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.005"} 0

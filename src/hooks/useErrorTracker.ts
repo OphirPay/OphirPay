@@ -33,12 +33,18 @@ import { captureError, captureMessage } from "@/lib/sentry";
  * }
  * ```
  */
-export function useErrorTracker(component?: string) {
+export function useErrorTracker(component?: string, segment?: string) {
   const trackError = useCallback(
     (error: Error, extra?: Record<string, unknown>) => {
-      captureError(error, { component, extra });
+      captureError(error, {
+        component,
+        extra: {
+          ...extra,
+          ...(segment ? { segment } : {}),
+        },
+      });
     },
-    [component]
+    [component, segment]
   );
 
   const trackMessage = useCallback(

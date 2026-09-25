@@ -97,6 +97,7 @@ export function sanitizeRoute(pathname: string): string {
 export function reportRenderedError(
   error: Error & { digest?: string },
   overridePath?: string,
+  segment?: string,
 ): void {
   if (reportInProgress) return; // prevent recursion
 
@@ -106,7 +107,7 @@ export function reportRenderedError(
   const safeRoute = sanitizeRoute(route);
   const message = error?.message || "Unknown error";
 
-  const key = `${safeRoute}::${message}`;
+  const key = `${safeRoute}::${segment ?? ""}::${message}`;
   const now = Date.now();
   if (recentErrorReports.has(key)) {
     const last = recentErrorReports.get(key)!;
@@ -116,10 +117,14 @@ export function reportRenderedError(
 
   reportInProgress = true;
   try {
-    _track("error_occurred", {
+    const props: EventProperties = {
       route: safeRoute,
       message,
-    });
+    };
+    if (segment) {
+      props.segment = segment;
+    }
+    _track("error_occurred", props);
   } catch {
     // Swallow analytics failures so the fallback UI is never broken
     // by a reporting error.

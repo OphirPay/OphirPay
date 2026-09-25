@@ -50,6 +50,7 @@
     "coverage": "vitest run --coverage",
     "analyze": "node scripts/analyze-build.mjs",
     "bundle:check": "node scripts/check-bundle-budget.mjs",
+    "validate:dashboard": "node scripts/validate-grafana-dashboard.mjs",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:push": "prisma db push",
     "db:validate": "prisma validate && prisma generate",

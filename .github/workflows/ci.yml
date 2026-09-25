@@ -35,6 +35,8 @@ jobs:
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
       - run: npm run lint -- --max-warnings 0
+      - name: Validate Grafana Dashboard
+        run: node scripts/validate-grafana-dashboard.mjs
 
   # ══════════════════════════════════════════════════════════════
   # 2. TYPECHECK — TypeScript strict type-checking

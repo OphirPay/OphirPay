@@ -80,6 +80,7 @@
 - [🛠 Tech Stack](#-tech-stack)
 - [📊 Database Schema](docs/SCHEMA.md)
 - [🚀 Deployment Guide](docs/DEPLOYMENT.md)
+- [☸️ Kubernetes & Helm Deployment Guide](docs/KUBERNETES.md)
 - [📡 SSE Event Stream](docs/SSE.md)
 - [📖 SSE Integration & Architecture](docs/SSE_DOCUMENTATION.md)
 - [📜 Smart-contract SSE Reference](docs/CONTRACT_SSE_REFERENCE.md)

@@ -326,32 +326,40 @@ server {
 
 ## Option 4: Kubernetes (Helm)
 
-A Helm chart is included in `helm/ophirpay/`.
+A Helm chart is included in `helm/ophirpay/` (Deployment, Service, Ingress, ConfigMap, Secret, ServiceAccount, HPA, PDB, NetworkPolicy); plain manifests live in `k8s/`. The chart is provided as a **starting point, not a supported product** — read **[docs/KUBERNETES.md](KUBERNETES.md)** before deploying: it covers required values, secret provisioning, the database migration step, the build-time `NEXT_PUBLIC_*` caveat, ingress/TLS, probe tuning and a pre-flight checklist.
 
 ### Deploy with Helm
 
 ```bash
-# Create namespace
+# 1. Create the namespace
 kubectl create namespace ophirpay
 
-# Create secrets
-kubectl create secret generic ophirpay-secrets \
-  --namespace ophirpay \
-  --from-literal=DATABASE_URL="postgresql://..." \
-  --from-literal=AUTH_SECRET="$(openssl rand -hex 32)" \
-  --from-literal=NEXT_PUBLIC_CONTRACT_ID="<contract-id>" \
-  --from-literal=NEXT_PUBLIC_EMITTER_CONTRACT_ID="<emitter-id>"
+# 2. Values: keep secrets in a file and out of git
+cat > values.secrets.yaml <<EOF
+secrets:
+  DATABASE_URL: "postgresql://user:***@host:5432/ophirpay?sslmode=require"
+  AUTH_SECRET: "$(openssl rand -hex 32)"
+  NEXT_PUBLIC_CONTRACT_ID: "<contract-id>"
+  NEXT_PUBLIC_EMITTER_CONTRACT_ID: "<emitter-id>"
+EOF
 
-# Install with Helm
+# 3. Run database migrations before the rollout (the distroless runtime image
+#    cannot run them — see docs/KUBERNETES.md §6)
+DATABASE_URL="postgresql://..." npx prisma migrate deploy
+
+# 4. Install
 helm upgrade --install ophirpay ./helm/ophirpay \
   --namespace ophirpay \
-  --set image.tag=latest \
-  --set ingress.hosts[0].host=ophirpay.com \
+  --set fullnameOverride=ophirpay \
+  --set image.repository=ghcr.io/your-org/ophirpay \
+  --set image.tag=v1.0.0 \
+  --set ingress.hosts[0].host=pay.example.com \
   --set config.NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
   --set config.NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \
   --set config.NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org:443 \
   --set config.DATABASE_PROVIDER=postgresql \
   --set config.NODE_ENV=production \
+  -f values.secrets.yaml \
   --wait
 ```
 
@@ -369,13 +377,17 @@ helm upgrade --install ophirpay ./helm/ophirpay \
 >
 > Every key in `helm/ophirpay/values.yaml` must be a variable documented in
 > `.env.example`; `src/__tests__/helm-config.test.ts` fails the build otherwise.
+>
+> 📖 Full Kubernetes/Helm path — required values, secret provisioning, migrations,
+> probes and the pre-flight checklist — is in
+> [docs/KUBERNETES.md](KUBERNETES.md).
 
 ### Verify
 
 ```bash
 kubectl get pods -n ophirpay
 kubectl get ingress -n ophirpay
-curl https://ophirpay.com/api/health
+curl https://pay.example.com/api/health
 ```
 
 ---

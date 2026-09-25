@@ -771,52 +771,57 @@ Returns the number of recurring schedules.
 
 ## Refunds
 
+> For a complete guide to the refund lifecycle, reason-code catalog (0–5), state transitions, and bounded analytics window, see **[Refund System Guide](REFUNDS.md)**.
+
 ### `request_refund(requester: Address, payment_id: u64, amount: i128, asset: Address, reason: String, reason_code: RefundReasonCode) -> Result<u64, PaymentError>`
 
-Requests a refund; returns the refund ID.
+Requests a refund for an existing payment; returns the generated refund ID.
 
-- **Access:** actor auth (`requester.require_auth()`); within refund window.
-- **Errors:** `PaymentNotFound` (3), `PaymentAlreadyRefunded` (49), `RefundWindowExpired` (50), `InvalidAmount` (5).
+- **Access:** actor auth (`requester.require_auth()`). Requester must be either the original **payer** or **payee** of the payment (HIGH-1 audit fix).
+- **Validation:** `amount > 0 && amount <= payment.amount`, `asset == payment.asset`, `!payment.cancelled`, contract unpaused.
+- **Errors:** `PaymentNotFound` (3), `PaymentAlreadyCancelled` (33), `Unauthorized` (4), `InvalidAmount` (5), `AssetNotSupported` (14), `ContractPaused` (18).
 
 ### `approve_refund(caller: Address, refund_id: u64) -> Result<(), PaymentError>`
 
-Approves a refund request.
+Approves a pending refund request (moves state from `Requested` to `Approved`).
 
-- **Access:** Operator role (`caller.require_auth()` + `require_role(Operator)`).
-- **Errors:** `RefundNotFound` (47), `NotARoleHolder` (27), `RefundAlreadyProcessed` (48).
+- **Access:** Contract Owner only (`caller.require_auth()` + `require_owner(&env, &caller)`).
+- **Errors:** `RefundNotFound` (47), `Unauthorized` (4), `RefundAlreadyProcessed` (48), `ContractPaused` (18).
 
 ### `reject_refund(caller: Address, refund_id: u64) -> Result<(), PaymentError>`
 
-Rejects a refund request.
+Rejects a pending refund request (moves state from `Requested` to `Rejected`).
 
-- **Access:** Operator role (`caller.require_auth()` + `require_role(Operator)`).
-- **Errors:** `RefundNotFound` (47), `NotARoleHolder` (27), `RefundRejected` (57).
+- **Access:** Contract Owner only (`caller.require_auth()` + `require_owner(&env, &caller)`).
+- **Errors:** `RefundNotFound` (47), `Unauthorized` (4), `RefundAlreadyProcessed` (48), `ContractPaused` (18).
 
 ### `process_refund(caller: Address, refund_id: u64) -> Result<(), PaymentError>`
 
-Processes (disburses) an approved refund.
+Processes an approved refund, executing a reentrancy-guarded Soroban token transfer back to the requester.
 
-- **Access:** Operator role (`caller.require_auth()` + `require_role(Operator)`).
-- **Errors:** `RefundNotFound` (47), `NotARoleHolder` (27), `RefundAlreadyProcessed` (48), `TokenTransferFailed` (15).
+- **Access:** Contract Owner only (`caller.require_auth()` + `require_owner(&env, &caller)`).
+- **Security:** Reentrancy guard (`acquire_reentrancy_lock` - MEDIUM-4).
+- **Errors:** `RefundNotFound` (47), `Unauthorized` (4), `RefundAlreadyProcessed` (48), `ContractPaused` (18).
 
 ### `get_refund(refund_id: u64) -> Result<Refund, PaymentError>`
 
-Returns a refund record.
+Returns a refund record by ID.
 
 - **Access:** public read.
 - **Errors:** `RefundNotFound` (47).
 
 ### `get_refund_count() -> u64`
 
-Returns the number of refunds.
+Returns the total count of recorded refunds.
 
 - **Access:** public read.
 
 ### `get_reason_code_analytics() -> Vec<(u32, u64)>`
 
-Returns refund counts grouped by reason code.
+Returns refund counts grouped by reason code (`0` through `5`).
 
-- **Access:** public read (Auditor-friendly).
+- **Access:** public read.
+- **Bounded Scan Window:** Capped at the **most recent 100 refunds** (`total.saturating_sub(99)..=total`) to guarantee O(1) gas consumption (MEDIUM-2 audit fix). Older historical refunds are truncated from this aggregation. Details: [docs/REFUNDS.md](REFUNDS.md#5-analytics-aggregation--bounded-scan-window).
 
 ---
 

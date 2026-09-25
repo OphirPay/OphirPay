@@ -562,6 +562,28 @@ curl -X POST "https://api.ophirpay.com/api/refunds" \
 }
 ```
 
+### Get Refund Reason Code Analytics
+```bash
+curl -X GET "https://api.ophirpay.com/api/refunds?analytics=true" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+```
+**Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": [
+    { "code": 0, "count": 2 },
+    { "code": 1, "count": 0 },
+    { "code": 2, "count": 1 },
+    { "code": 3, "count": 0 },
+    { "code": 4, "count": 5 },
+    { "code": 5, "count": 1 }
+  ]
+}
+```
+
+> For details on reason code semantics (0=ProductDefect to 5=Other), lifecycle state transitions, and on-chain bounded analytics, see **[Refund System Guide](REFUNDS.md)**.
+
 ---
 
 ## 11. Audit Logs & Real-Time Events

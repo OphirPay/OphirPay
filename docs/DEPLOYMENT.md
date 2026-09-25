@@ -620,3 +620,28 @@ curl -s https://your-domain.com/api/health | jq .database
 **[← Back to OphirPay README](../README.md)**
 
 </div>
+
+
+## stellar.toml (SEP-1 discovery)
+
+`GET /.well-known/stellar.toml` serves a SEP-1 document generated at request
+time from the running configuration (`src/lib/stellar-toml.ts`,
+`src/app/.well-known/stellar.toml/route.ts`). It advertises
+`VERSION`, `NETWORK_PASSPHRASE`, `NETWORK`, the OphirPay and Emitter contract
+ids, DOCUMENTATION/SECURITY links and — when `NEXT_PUBLIC_ISSUER_ACCOUNT` is
+set — any issued `[[CURRENCIES]]`.
+
+Because the document is generated, the ids cannot drift from configuration.
+To change what wallets see, change the environment
+(`NEXT_PUBLIC_OPHIRPAY_CONTRACT_ID`, `NEXT_PUBLIC_EMITTER_CONTRACT_ID`,
+`STELLAR_NETWORK_PASSPHRASE`, `NEXT_PUBLIC_STELLAR_NETWORK`,
+`NEXT_PUBLIC_ISSUER_ACCOUNT`) and restart — never edit the served file.
+
+Verify after deploy:
+
+```bash
+curl -s https://<your-origin>/.well-known/stellar.toml
+```
+
+Optional env: `NEXT_PUBLIC_ASSET_CODE`, `NEXT_PUBLIC_ASSET_DECIMALS`,
+`NEXT_PUBLIC_SUPPORT_EMAIL`, `NEXT_PUBLIC_SECURITY_POLICY_URL`.

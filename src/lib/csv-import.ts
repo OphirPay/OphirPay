@@ -15,84 +15,17 @@ export const MAX_BATCH_RECIPIENTS = 100;
  */
 export const MEMO_MAX_BYTES = 28;
 
+import { parseCsv } from "@/lib/csv-core";
+
 // ── CSV parsing ───────────────────────────────────────────────
 
 /**
- * Parse CSV text into a matrix of cells. Handles quoted fields, escaped
- * quotes (`""` inside a quoted field), commas and newlines inside quotes,
- * and CRLF/CR line endings. A leading UTF-8 BOM is stripped, and rows that
- * are entirely blank are dropped.
+ * Parse CSV text into a matrix of cells via unified csv-core.
+ * Handles quoted fields, escaped quotes (`""`), commas and newlines inside quotes,
+ * CRLF/CR line endings, leading UTF-8 BOM, and blank row filtering.
  */
 export function parseCsvText(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQuotes = false;
-  const clean = text.replace(/^\uFEFF/, "");
-  let i = 0;
-
-  while (i < clean.length) {
-    const ch = clean[i];
-
-    if (inQuotes) {
-      if (ch === '"') {
-        if (clean[i + 1] === '"') {
-          field += '"';
-          i += 2;
-          continue;
-        }
-        inQuotes = false;
-        i += 1;
-        continue;
-      }
-      field += ch;
-      i += 1;
-      continue;
-    }
-
-    if (ch === '"') {
-      inQuotes = true;
-      i += 1;
-      continue;
-    }
-
-    if (ch === ",") {
-      row.push(field);
-      field = "";
-      i += 1;
-      continue;
-    }
-
-    if (ch === "\n") {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-      i += 1;
-      continue;
-    }
-
-    if (ch === "\r") {
-      // CRLF or lone CR both end the row; swallow the LF if present.
-      if (clean[i + 1] === "\n") i += 1;
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-      i += 1;
-      continue;
-    }
-
-    field += ch;
-    i += 1;
-  }
-
-  // Push the final row (input may not end with a newline).
-  row.push(field);
-  rows.push(row);
-
-  // Drop rows that are entirely blank.
-  return rows.filter((r) => r.some((cell) => cell !== ""));
+  return parseCsv(text);
 }
 
 // ── Field-level validation ────────────────────────────────────

@@ -2,11 +2,21 @@
 
 /**
  * CSV export utility — generates and downloads CSV files from array data.
+ * Powered by unified RFC-4180 csv-core.
  */
 
-interface CsvOptions {
+import { serializeRecords, escapeCsvCell } from "@/lib/csv-core";
+
+export interface CsvOptions {
   filename?: string;
   delimiter?: string;
+}
+
+/**
+ * Escape a CSV field using the shared CSV core escaping logic.
+ */
+export function escapeCsvField(value: string, delimiter = ","): string {
+  return escapeCsvCell(value, { delimiter });
 }
 
 /**
@@ -20,14 +30,11 @@ export function exportToCsv<T extends Record<string, any>>(
 ): void {
   const { filename = "export.csv", delimiter = "," } = options;
 
-  const header = columns.map((c) => escapeCsvField(String(c.header), delimiter)).join(delimiter);
-  const rows = data.map((row) =>
-    columns
-      .map((c) => escapeCsvField(String(row[c.key] ?? ""), delimiter))
-      .join(delimiter)
-  );
+  const csv = serializeRecords(data, columns, {
+    delimiter,
+    lineEnding: "\n",
+  });
 
-  const csv = [header, ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
 
@@ -39,11 +46,4 @@ export function exportToCsv<T extends Record<string, any>>(
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-}
-
-function escapeCsvField(value: string, delimiter: string): string {
-  if (value.includes(delimiter) || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }

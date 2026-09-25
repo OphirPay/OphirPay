@@ -1,7 +1,12 @@
+// SPDX-License-Identifier: MIT
+
 /**
  * OphirPay CSV Export Builder
  * Issue #161: Export the filtered payment list to CSV
+ * Refactored to delegate core parsing and serializing to unified csv-core.
  */
+
+import { escapeCsvCell, serializeRecords, serializeCsv } from "@/lib/csv-core";
 
 export interface PaymentRecord {
   id: string;
@@ -16,82 +21,45 @@ export interface PaymentRecord {
 }
 
 export function escapeCsvField(val: unknown): string {
-  if (val === null || val === undefined) return '';
-  const str = String(val);
-  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
+  return escapeCsvCell(val);
 }
 
 export function buildPaymentCsv(payments: PaymentRecord[]): string {
-  const headers = ['id', 'amount', 'currency', 'status', 'created_at', 'memo', 'tx_hash'];
-  const rows = [headers.join(',')];
+  const headers = ["id", "amount", "currency", "status", "created_at", "memo", "tx_hash"];
+  const rows = payments.map((p) => [
+    p.id,
+    p.amount,
+    p.currency,
+    p.status,
+    p.created_at || p.timestamp,
+    p.memo,
+    p.tx_hash || p.txHash,
+  ]);
 
-  for (const p of payments) {
-    const row = [
-      escapeCsvField(p.id),
-      escapeCsvField(p.amount),
-      escapeCsvField(p.currency),
-      escapeCsvField(p.status),
-      escapeCsvField(p.created_at || p.timestamp),
-      escapeCsvField(p.memo),
-      escapeCsvField(p.tx_hash || p.txHash)
-    ];
-    rows.push(row.join(','));
-  }
-
-  return rows.join('\n');
+  return serializeCsv([headers, ...rows], { lineEnding: "\n" });
 }
 
-export function getExportFilename(prefix = 'payments-export', date = new Date()): string {
+export function getExportFilename(prefix = "payments-export", date = new Date()): string {
   const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
   return `${prefix}-${yyyy}-${mm}-${dd}.csv`;
 }
-
-// SPDX-License-Identifier: MIT
-
-/**
- * Server-side CSV generation for API route export endpoints.
- * Different from the client-side csv.ts which triggers downloads in the browser.
- */
 
 /**
  * Convert an array of objects to CSV string (server-safe, no Blob).
  * `T extends object` (rather than Record<string, unknown>) so interfaces —
  * which have no implicit index signature — are accepted.
+ * Includes OWASP formula-injection protection.
  */
 export function toCsvString<T extends object>(
   data: T[],
   columns: { key: keyof T; header: string }[]
 ): string {
-  const header = columns.map((c) => escapeField(String(c.header))).join(",");
-  const rows = data.map((row) =>
-    columns.map((c) => escapeField(String(row[c.key] ?? ""))).join(",")
-  );
-  return [header, ...rows].join("\n");
-}
-
-function escapeField(value: string): string {
-  // CSV formula-injection guard (OWASP): spreadsheet apps evaluate cells that
-  // begin with = + - @ as formulas (including DDE/UNC paths). Neutralize by
-  // prefixing a single quote, which the spreadsheet renders literally.
-  if (/^[=+\-@]/.test(value)) {
-    value = `'${value}`;
-  }
-  if (
-    value.includes(",") ||
-    value.includes('"') ||
-    value.includes("\n") ||
-    // RFC 4180 §2.6 — a bare carriage return splits the record in Excel and
-    // in any reader that treats CR as a line terminator.
-    value.includes("\r")
-  ) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
+  return serializeRecords(data, columns, {
+    preventFormulaInjection: true,
+    lineEnding: "\n",
+  });
 }
 
 /**

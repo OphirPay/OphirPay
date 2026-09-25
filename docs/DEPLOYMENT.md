@@ -77,6 +77,13 @@ cp .env.example .env.local
 | `CRON_SECRET` | — | Shared secret protecting `/api/cron`. Required to run the scheduled-payment cron — see [Scheduled Payment Cron](scheduled-payment-cron.md) |
 | `SCHEDULED_PAYMENTS_SOURCE_SECRET` | — | Stellar secret key of the funded operator account that signs due scheduled payments |
 
+### Transactional Email (Required for email notifications)
+
+| Variable | Default | Description |
+|---|---|---|
+| `RESEND_API_KEY` | — | Resend API key for payment confirmations and webhook failure alerts. When unset, `sendEmail()` throws `EmailConfigurationError` |
+| `EMAIL_FROM` | `OphirPay <payments@ophirpay.com>` | Verified sender identity for transactional emails |
+
 ### Testnet vs Mainnet
 
 | Setting | Testnet (default) | Mainnet |

@@ -32,6 +32,7 @@ export const PAGE_TITLES = {
   POLICY_VERSIONS: "Policy Versions",
   MULTISIG: "Multisig",
   GOVERNANCE: "Governance",
+  ESCROWS: "Escrows",
 } as const;
 
 export const PAGE_DESCRIPTIONS = {
@@ -56,4 +57,5 @@ export const PAGE_DESCRIPTIONS = {
   POLICY_VERSIONS: "Review the version history of fee and multisig configuration.",
   MULTISIG: "Configure multisig signers and approve/execute multi-sig payments.",
   GOVERNANCE: "Create proposals and vote on DAO-governed contract actions.",
+  ESCROWS: "Create and manage payment escrows with arbiter release.",
 } as const;

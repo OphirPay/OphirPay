@@ -11,7 +11,7 @@
 import {
   Asset,
   nativeToScVal,
-  type xdr,
+  xdr,
 } from "@stellar/stellar-sdk";
 import {
   invokeContractFunction,
@@ -216,6 +216,70 @@ export async function executeGovernanceProposal(
     nativeToScVal(proposalId, { type: "u64" }),
   ];
   return signAndSubmit(caller, CONTRACT_ID, "execute_proposal", args);
+}
+
+// ── Escrow Functions ───────────────────────────────────────────
+
+export interface CreateEscrowParams {
+  depositor: string;
+  beneficiary: string;
+  /** Optional arbiter — encoded as an empty vec when absent. */
+  arbiter?: string;
+  /** Amount in stroops (integer). */
+  amount: number;
+  /** Token contract address for the escrowed asset. */
+  asset: string;
+  /** Unlock timestamp in ledger seconds. */
+  deadline: number;
+  metadata?: string;
+}
+
+/** Encode Option<Address>: Soroban represents it as a vec of 0 or 1 items. */
+export function encodeOptionalAddress(address?: string): xdr.ScVal {
+  if (!address) return xdr.ScVal.scvVec([]);
+  return xdr.ScVal.scvVec([nativeToScVal(address, { type: "address" })]);
+}
+
+export async function createEscrow(params: CreateEscrowParams): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(params.depositor, { type: "address" }),
+    nativeToScVal(params.beneficiary, { type: "address" }),
+    encodeOptionalAddress(params.arbiter),
+    nativeToScVal(params.amount, { type: "i128" }),
+    nativeToScVal(params.asset, { type: "address" }),
+    nativeToScVal(params.deadline, { type: "u64" }),
+    nativeToScVal(params.metadata ?? "", { type: "string" }),
+  ];
+  return signAndSubmit(params.depositor, CONTRACT_ID, "create_escrow", args);
+}
+
+export async function releaseEscrow(owner: string, escrowId: number): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(owner, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+  ];
+  return signAndSubmit(owner, CONTRACT_ID, "release_escrow", args);
+}
+
+export async function releaseEscrowByArbiter(
+  arbiter: string,
+  escrowId: number,
+  releaseToBeneficiary: boolean,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(arbiter, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+    nativeToScVal(releaseToBeneficiary, { type: "bool" }),
+  ];
+  return signAndSubmit(arbiter, CONTRACT_ID, "release_by_arbiter", args);
+}
+
+export async function claimEscrow(beneficiary: string, escrowId: number): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(beneficiary, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+  ];
+  return signAndSubmit(beneficiary, CONTRACT_ID, "claim_escrow", args);
 }
 
 // ── Recurring Functions ────────────────────────────────────────

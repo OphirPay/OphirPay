@@ -218,32 +218,38 @@ export function Sidebar() {
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 z-40 flex-col">
+      <aside
+        aria-label="Main sidebar"
+        className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 z-40 flex-col"
+      >
         <div className="flex items-center gap-3 px-6 h-16 border-b border-gray-200 dark:border-gray-800">
           <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-ophir-600 to-stellar flex items-center justify-center shadow-lg shadow-ophir-500/30">
             <span className="text-white font-bold text-lg">O</span>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</h1>
+            <span className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</span>
             <p className="text-xs text-gray-500 dark:text-gray-400">Stellar Payments</p>
           </div>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
+        <nav aria-label="Main navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
         {footer}
       </aside>
 
       {/* Mobile sidebar */}
-      <aside className={cn(
-        "lg:hidden fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 z-40 flex-col transition-transform duration-300",
-        mobileOpen ? "translate-x-0 flex" : "-translate-x-full"
-      )}>
+      <aside
+        aria-label="Mobile navigation drawer"
+        className={cn(
+          "lg:hidden fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 z-40 flex-col transition-transform duration-300",
+          mobileOpen ? "translate-x-0 flex" : "-translate-x-full"
+        )}
+      >
         <div className="flex items-center gap-3 px-6 h-16 border-b border-gray-200 dark:border-gray-800">
           <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-ophir-600 to-stellar flex items-center justify-center shadow-lg shadow-ophir-500/30">
             <span className="text-white font-bold text-lg">O</span>
           </div>
-          <div><h1 className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</h1></div>
+          <div><span className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</span></div>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
+        <nav aria-label="Mobile navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
         {footer}
       </aside>
     </>

@@ -592,9 +592,9 @@ function SendPageClient() {
               />
             </svg>
           </div>
-          <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+          <h1 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
             Connect Your Wallet
-          </h2>
+          </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
             You need to connect a Stellar wallet to send payments.
           </p>

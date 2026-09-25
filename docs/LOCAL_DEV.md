@@ -60,10 +60,13 @@ Edit `prisma/schema.prisma`:
    }
    ```
 
-2. **Drop all four `@db.Decimal(18, 7)` annotations** — SQLite has no
-   fixed-precision numeric type, so Prisma stores `Decimal` as its own
-   arbitrary-precision text representation. (Search the file for
-   `@db.Decimal` and delete the annotation on each occurrence.)
+2. **Drop all five `@db.Decimal(18, 7)` annotations** (`Payment.amount`,
+   `Recurrence.amount`, `ScheduledPayment.amount`, `PaymentRequest.amount`,
+   `Refund.amount`) — SQLite has no fixed-precision numeric type, so Prisma
+   stores `Decimal` as its own arbitrary-precision text representation. (Search
+   the file for `@db.Decimal` and delete the annotation on each occurrence.)
+   See [docs/DATABASE_SCHEMA_MIGRATIONS.md §5](./DATABASE_SCHEMA_MIGRATIONS.md#5-postgresql-vs-sqlite-provider-comparison--limitations)
+   for full behavioral differences, migration commands, and limitations.
 
 ### 2.2 Configure and initialize
 

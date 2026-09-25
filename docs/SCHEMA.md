@@ -286,8 +286,10 @@ OphirPay supports two database providers, switchable via the `DATABASE_PROVIDER`
 
 ### Provider-specific notes
 
-- **SQLite**: Used for local development with `npx prisma db push`. No migrations needed.
-- **PostgreSQL**: Used in production with `npx prisma migrate deploy`. Supports connection pooling via `DIRECT_DATABASE_URL`.
+- **SQLite**: Used for local development with `npx prisma db push`. No migrations apply cleanly to SQLite. Requires dropping `@db.Decimal` annotations.
+- **PostgreSQL**: Used in production and CI with `npx prisma migrate deploy`. Supports connection pooling via `DIRECT_DATABASE_URL` and native Decimal precision.
+
+For a complete breakdown of behavioral differences, concurrency/locking differences, migration workflows, and data migration between PostgreSQL and SQLite, see **[Database Schema & Migration Guide §5](./DATABASE_SCHEMA_MIGRATIONS.md#5-postgresql-vs-sqlite-provider-comparison--limitations)**.
 
 ---
 

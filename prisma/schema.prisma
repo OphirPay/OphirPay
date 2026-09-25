@@ -8,9 +8,11 @@
 // provider selection.
 //
 // For local development on SQLite, follow the "SQLite ⇄ PostgreSQL
-// notes" below: swap the datasource block and drop the four
-// `@db.Decimal(18, 7)` annotations as LOCAL, UNCOMMITTED edits, then
-// run `npx prisma db push`.
+// notes" below: swap the datasource block and drop the five
+// `@db.Decimal(18, 7)` annotations (Payment, Recurrence, ScheduledPayment,
+// PaymentRequest, Refund) as LOCAL, UNCOMMITTED edits, then
+// run `npx prisma db push`. See docs/DATABASE_SCHEMA_MIGRATIONS.md
+// for the complete provider comparison and limitations.
 //
 // For PostgreSQL with connection pooling (e.g. Supabase, Neon),
 // set DIRECT_DATABASE_URL for migrations.
@@ -23,11 +25,20 @@
 //
 //   1. Swap the datasource: uncomment the sqlite block below and comment out
 //      the postgresql block.
-//   2. Drop all four `@db.Decimal(18, 7)` annotations — SQLite has no
-//      fixed-precision numeric type, so Prisma stores Decimal as its own
-//      arbitrary-precision text representation.
+//   2. Drop all five `@db.Decimal(18, 7)` annotations (Payment.amount,
+//      Recurrence.amount, ScheduledPayment.amount, PaymentRequest.amount,
+//      Refund.amount) — SQLite has no fixed-precision numeric type, so Prisma
+//      stores Decimal as its own arbitrary-precision text representation.
 //
 // Behavioral differences that matter when running against SQLite:
+//
+//   • Migrations — 0 of the migrations in prisma/migrations/ apply cleanly to
+//     SQLite (dialects diverge on CREATE TYPE, TIMESTAMP(3), etc.). Always use
+//     `npx prisma db push` for SQLite.
+//
+//   • Concurrency & Locking — PostgreSQL uses MVCC row-level locking. SQLite uses
+//     file-level locking and will fail with `SQLITE_BUSY` under concurrent API
+//     requests, webhook deliveries, or scheduled jobs.
 //
 //   • Enums — PostgreSQL uses native ENUM types; SQLite emulates them as
 //     TEXT columns with client-side validation. Enum *values* are identical
@@ -41,6 +52,8 @@
 //     distinct, so a compound unique index that includes a nullable field
 //     allows any number of rows with NULL while still enforcing uniqueness
 //     for non-NULL values.
+//
+// For complete provider comparison and limitations, see docs/DATABASE_SCHEMA_MIGRATIONS.md.
 
 generator client {
   provider = "prisma-client-js"

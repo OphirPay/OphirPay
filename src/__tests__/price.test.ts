@@ -5,20 +5,28 @@ import {
   fetchXlmPrice,
   convertXlmToUsd,
   formatFiatAmount,
+  formatPriceOrAsset,
   clearPriceCache,
+  clearRateLimitState,
   setCachedPrice,
+  parseRetryAfter,
+  isSourceRateLimited,
   ROUNDING_RULES,
   PRICE_CACHE_TTL_MS,
+  PRICE_STALE_THRESHOLD_MS,
+  DEFAULT_RATE_LIMIT_COOLDOWN_MS,
 } from "@/lib/price";
 
 describe("Price Utility & Precision Rules", () => {
   beforeEach(() => {
     clearPriceCache();
+    clearRateLimitState();
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
     clearPriceCache();
+    clearRateLimitState();
     vi.restoreAllMocks();
   });
 
@@ -221,6 +229,225 @@ describe("Price Utility & Precision Rules", () => {
       expect(ROUNDING_RULES.XLM_MIN_DECIMALS).toBe(2);
       expect(ROUNDING_RULES.XLM_MAX_DECIMALS).toBe(7);
       expect(PRICE_CACHE_TTL_MS).toBe(60_000);
+      expect(PRICE_STALE_THRESHOLD_MS).toBe(300_000);
+      expect(DEFAULT_RATE_LIMIT_COOLDOWN_MS).toBe(30_000);
+    });
+  });
+
+  describe("parseRetryAfter", () => {
+    it("parses numeric seconds into milliseconds", () => {
+      expect(parseRetryAfter("60")).toBe(60_000);
+      expect(parseRetryAfter("15")).toBe(15_000);
+      expect(parseRetryAfter("0")).toBe(0);
+    });
+
+    it("parses valid HTTP dates into relative milliseconds from now", () => {
+      const futureDate = new Date(Date.now() + 45_000).toUTCString();
+      const parsed = parseRetryAfter(futureDate);
+      expect(parsed).toBeGreaterThanOrEqual(44_000);
+      expect(parsed).toBeLessThanOrEqual(46_000);
+    });
+
+    it("falls back to default cooldown on null, empty, or invalid header", () => {
+      expect(parseRetryAfter(null)).toBe(DEFAULT_RATE_LIMIT_COOLDOWN_MS);
+      expect(parseRetryAfter(undefined)).toBe(DEFAULT_RATE_LIMIT_COOLDOWN_MS);
+      expect(parseRetryAfter("invalid-format")).toBe(DEFAULT_RATE_LIMIT_COOLDOWN_MS);
+    });
+  });
+
+  describe("Rate-Limit (429) Backoff & Failover", () => {
+    it("parses 429 Retry-After header and enters cooldown for CoinGecko while falling back to Coinbase", async () => {
+      const mockFetch = vi
+        .fn()
+        // CoinGecko returns 429 with Retry-After: 45
+        .mockResolvedValueOnce({
+          status: 429,
+          headers: new Headers({ "retry-after": "45" }),
+          ok: false,
+        })
+        // Coinbase succeeds
+        .mockResolvedValueOnce({
+          status: 200,
+          ok: true,
+          json: async () => ({ data: { base: "XLM", currency: "USD", amount: "0.14" } }),
+        });
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice();
+      expect(result.price).toBe(0.14);
+      expect(result.source).toBe("coinbase");
+      expect(isSourceRateLimited("coingecko")).toBe(true);
+      expect(isSourceRateLimited("coinbase")).toBe(false);
+
+      // Next call with forceRefresh should skip CoinGecko while in cooldown and hit Coinbase directly
+      const mockFetch2 = vi.fn().mockResolvedValueOnce({
+        status: 200,
+        ok: true,
+        json: async () => ({ data: { base: "XLM", currency: "USD", amount: "0.142" } }),
+      });
+      global.fetch = mockFetch2;
+
+      const result2 = await fetchXlmPrice({ forceRefresh: true });
+      expect(result2.price).toBe(0.142);
+      expect(result2.source).toBe("coinbase");
+      expect(mockFetch2).toHaveBeenCalledTimes(1); // CoinGecko was skipped
+    });
+
+    it("returns defined non-throwing result with rateLimited: true when all sources are 429 and cache exists", async () => {
+      setCachedPrice(0.12, "coingecko", Date.now() - 10_000);
+
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          status: 429,
+          headers: new Headers({ "retry-after": "60" }),
+          ok: false,
+        })
+        .mockResolvedValueOnce({
+          status: 429,
+          headers: new Headers({ "retry-after": "60" }),
+          ok: false,
+        });
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice({ forceRefresh: true });
+      expect(result.price).toBe(0.12);
+      expect(result.source).toBe("cached");
+      expect(result.rateLimited).toBe(true);
+      expect(result.error).toContain("rate-limit");
+    });
+
+    it("returns null price with rateLimited: true when all sources are 429 and no cache exists", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          status: 429,
+          headers: new Headers({ "retry-after": "30" }),
+          ok: false,
+        })
+        .mockResolvedValueOnce({
+          status: 429,
+          headers: new Headers({ "retry-after": "30" }),
+          ok: false,
+        });
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice();
+      expect(result.price).toBeNull();
+      expect(result.source).toBeNull();
+      expect(result.rateLimited).toBe(true);
+      expect(result.error).toBeDefined();
+    });
+  });
+
+  describe("Staleness Policy & SWR Background Revalidation", () => {
+    it("marks cached price as stale when age exceeds staleness threshold", async () => {
+      // Set cache older than 5 minutes (300,000ms)
+      const sixMinutesAgo = Date.now() - 360_000;
+      setCachedPrice(0.115, "coingecko", sixMinutesAgo);
+
+      // Upstream sources fail
+      const mockFetch = vi.fn().mockRejectedValue(new Error("Oracle down"));
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice({ forceRefresh: true });
+      expect(result.price).toBe(0.115);
+      expect(result.source).toBe("cached");
+      expect(result.isStale).toBe(true);
+      expect(result.staleAgeMs).toBeGreaterThanOrEqual(360_000);
+      expect(result.staleReason).toBeDefined();
+    });
+
+    it("serves cached price immediately and triggers background revalidation in SWR window", async () => {
+      // Cache is 90 seconds old (exceeds 60s TTL, but within 300s stale threshold)
+      const ninetySecsAgo = Date.now() - 90_000;
+      setCachedPrice(0.12, "coingecko", ninetySecsAgo);
+
+      let revalidationCalled = false;
+      const mockFetch = vi.fn().mockImplementation(async () => {
+        revalidationCalled = true;
+        return {
+          ok: true,
+          json: async () => ({ stellar: { usd: 0.125 } }),
+        };
+      });
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice();
+      expect(result.price).toBe(0.12);
+      expect(result.source).toBe("cached");
+      expect(result.isStale).toBe(false);
+
+      // Revalidation was triggered in the background
+      await vi.waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+        expect(revalidationCalled).toBe(true);
+      });
+    });
+  });
+
+  describe("API Key Header Injection", () => {
+    it("attaches x-cg-demo-api-key header when apiKey is supplied", async () => {
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ stellar: { usd: 0.13 } }),
+      });
+      global.fetch = mockFetch;
+
+      await fetchXlmPrice({ apiKey: "test-api-key-123", forceRefresh: true });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("coingecko.com"),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "x-cg-demo-api-key": "test-api-key-123",
+          }),
+        })
+      );
+    });
+  });
+
+  describe("formatPriceOrAsset", () => {
+    it("formats fresh price correctly in USD", () => {
+      const result = formatPriceOrAsset(100, {
+        price: 0.15,
+        source: "coingecko",
+        isStale: false,
+      });
+
+      expect(result.formatted).toBe("$15.00");
+      expect(result.isFallback).toBe(false);
+      expect(result.isStale).toBe(false);
+    });
+
+    it("formats stale price with (USD price stale) notice", () => {
+      const result = formatPriceOrAsset(100, {
+        price: 0.15,
+        source: "cached",
+        isStale: true,
+      });
+
+      expect(result.formatted).toBe("$15.00 (USD price stale)");
+      expect(result.isFallback).toBe(false);
+      expect(result.isStale).toBe(true);
+    });
+
+    it("falls back to asset unit when price is null or unavailable", () => {
+      const result = formatPriceOrAsset(100, {
+        price: null,
+        source: null,
+        error: "Unavailable",
+      });
+
+      expect(result.formatted).toBe("100 XLM (USD unavailable)");
+      expect(result.isFallback).toBe(true);
+      expect(result.isStale).toBe(false);
+    });
+
+    it("handles undefined or missing price result safely", () => {
+      const result = formatPriceOrAsset("50.5", null);
+      expect(result.formatted).toBe("50.5 XLM (USD unavailable)");
+      expect(result.isFallback).toBe(true);
     });
   });
 });

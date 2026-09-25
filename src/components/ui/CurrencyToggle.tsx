@@ -13,6 +13,7 @@ export interface CurrencyToggleProps {
   showPrice?: boolean;
   price?: number | null;
   isUnavailable?: boolean;
+  isStale?: boolean;
 }
 
 /**
@@ -27,6 +28,7 @@ export function CurrencyToggle({
   showPrice = false,
   price,
   isUnavailable = false,
+  isStale = false,
 }: CurrencyToggleProps) {
   const isSm = size === "sm";
 
@@ -79,7 +81,14 @@ export function CurrencyToggle({
             (${price.toFixed(2)})
           </span>
         )}
-        {showPrice && isUnavailable && (
+        {showPrice && isStale && (
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+            title="Price feed is stale"
+            aria-label="Price feed is stale"
+          />
+        )}
+        {showPrice && isUnavailable && !isStale && (
           <span
             className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
             title="Price feed unavailable"

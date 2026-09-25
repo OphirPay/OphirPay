@@ -1,0 +1,101 @@
+name: Container Image Vulnerability Scan
+
+# Runs container image vulnerability scanning for the published distroless image.
+# Triggered on every build and push to protected branches, on pull requests that
+# change the Dockerfile or dependencies, on nightly schedule, and on demand.
+#
+# The scan builds the Dockerfile, executes a Trivy scan on the resulting image,
+# and passes the results to `scripts/audit-container-image.mjs`, which enforces
+# documented suppressions from `.github/dependency-suppressions.json` and fails
+# the build if any unsuppressed critical (or configurable high) CVEs are found.
+
+on:
+  push:
+    branches: [main, integration/staging]
+    paths:
+      - 'Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/container-scan.yml'
+      - '.github/dependency-suppressions.json'
+      - 'scripts/audit-container-image.mjs'
+  pull_request:
+    branches: [main, integration/staging]
+    paths:
+      - 'Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/container-scan.yml'
+      - '.github/dependency-suppressions.json'
+      - 'scripts/audit-container-image.mjs'
+  schedule:
+    # Nightly 03:30 UTC
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+    inputs:
+      fail_on:
+        description: "Severity threshold to fail the scan"
+        required: false
+        default: "critical"
+        type: choice
+        options:
+          - critical
+          - high
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container-scan:
+    name: "Container Image Vulnerability Scan (Trivy)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: "npm"
+
+      - name: Build local container image
+        run: |
+          echo "Building container image from Dockerfile..."
+          docker build -t ophirpay:scan .
+
+      - name: Create report directory
+        run: mkdir -p container-scan-report
+
+      - name: Run Trivy container scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'ophirpay:scan'
+          format: 'json'
+          output: 'container-scan-report/trivy-report.json'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Audit container image vulnerabilities against suppressions
+        env:
+          CONTAINER_SCAN_FAIL_ON: ${{ github.event.inputs.fail_on || 'critical' }}
+        run: |
+          node scripts/audit-container-image.mjs container-scan-report/trivy-report.json
+
+      - name: Upload container audit report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-audit-report
+          path: container-scan-report/
+          retention-days: 30

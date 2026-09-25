@@ -30,6 +30,8 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 3: Runner (distroless for minimal attack surface)
+# Shipped container image is scanned in CI for OS/binary CVEs via
+# .github/workflows/container-scan.yml and scripts/audit-container-image.mjs
 FROM gcr.io/distroless/nodejs20-debian12:nonroot AS runner
 WORKDIR /app
 

@@ -1,0 +1,13 @@
+# Misplaced external comment outside any alert
+# external: stray_metric
+
+groups:
+  - name: test_misplaced
+    rules:
+      - alert: NormalAlert
+        expr: rate(ophirpay_http_requests_total[5m]) > 10
+        for: 1m
+        labels:
+          severity: info
+        annotations:
+          summary: "Normal alert"

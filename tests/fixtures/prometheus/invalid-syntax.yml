@@ -1,0 +1,6 @@
+groups:
+  - name: broken
+    rules:
+      - alert: BadSyntaxAlert
+        expr: rate(ophirpay_http_requests_total[5m] >
+        for: 1m

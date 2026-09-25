@@ -299,7 +299,12 @@ and re-run the IP/hostname check against the final resolved address after follow
    `SystemFatalError = 300`) for many features that are **not implemented** (staking, bridge,
    insurance, KYC, routing, gas, oracle, dispute resolution). The large reserved catalog exists
    to keep the TS error catalog and the contract enum in lockstep, but the unused variants add
-   code size and a false sense of coverage.
+   code size and a false sense of coverage. — ✅ **FIXED (2026-09-25).** The enum now declares only the 53 variants
+   reachable from an entrypoint (down from 307). Every reachable code keeps its numeric value;
+   the retired codes stay reserved and are documented on the enum and in
+   [SPEC.md](./SPEC.md#error-code-allocation) § "Error code allocation". The generated TypeScript
+   catalog, its generator-backed tests, `contracts/ophirpay/tests/error_uniqueness.rs` and
+   `docs/CONTRACT_FUNCTION_REFERENCE.md` were updated to match (#766).
 7. **`set_multisig_config`** does not deduplicate signers or enforce the documented
    `MaxSignersExceeded` (error 91) / `MaxSignersExceeded` caps.
 8. **`create_batch`** uses unchecked `total_amount += amount` (potential `i128` overflow with 100

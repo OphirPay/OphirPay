@@ -5,14 +5,14 @@ import { decodeContractError, getContractErrorCatalog } from "@/lib/contract-err
 
 describe("decodeContractError", () => {
   it("decodes known Error(Contract, #N) pattern", () => {
-    // Code 1 = NotInitialized per the 300-code PaymentError catalog
+    // Code 1 = NotInitialized per the trimmed PaymentError catalog (#766)
     expect(decodeContractError("Error(Contract, #1)")).toBe(
       "Contract not initialized: call init() first"
     );
   });
 
   it("decodes known numeric code", () => {
-    // Code 5 = InvalidAmount per the 300-code PaymentError catalog
+    // Code 5 = InvalidAmount per the trimmed PaymentError catalog (#766)
     expect(decodeContractError("5")).toBe(
       "Invalid amount: must be greater than zero"
     );

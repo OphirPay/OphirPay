@@ -247,6 +247,60 @@ clean error.
 
 ---
 
+## Error Code Allocation
+
+`PaymentError` (`contracts/ophirpay/src/lib.rs`) declares **one variant per
+error the contract can actually return from an entrypoint**. It no longer
+carries the ~250 placeholder variants for unimplemented features (staking,
+bridge, insurance, KYC, payment routing, gas/resource budgets, oracle, dispute
+resolution, treasury, lending, privacy, notifications, analytics, ...) that
+inflated the enum to 307 entries and advertised capability the project does not
+have (issue #766, [AUDIT.md](./AUDIT.md) LOW-6).
+
+**Stability rule:** a code that is reachable today keeps its numeric value
+forever. The trim removed *declarations*, never renumbered a live code, so a
+client that already maps e.g. `ReentrantCall` to `52` keeps working.
+
+### Allocated codes (53)
+
+`1-14, 17-27, 29-32, 35-42, 45-48, 51-52, 62, 65, 91, 301-307`
+
+Code `307` (`StreamInvariantViolated`) is the ceiling: the trim must not raise
+it, and no new code may exceed it without a documented decision.
+
+### Reserved codes
+
+Codes the enum used to declare, plus the never-allocated tail, stay reserved
+and **must not be reused without a documented decision**:
+
+```
+15-16, 28, 33-34, 43-44, 49-50, 53-61, 63-64, 66-90, 92-300
+```
+
+`contracts/ophirpay/tests/error_uniqueness.rs` asserts that the allocated codes
+and these ranges partition `1..=307` exactly, and
+`src/__tests__/contract-error-catalog.test.ts` asserts the TypeScript catalog
+never advertises a reserved code.
+
+### Adding a new error
+
+1. Take the **lowest unused value** from the reserved block (currently `15`).
+2. Append the variant to the enum with an explicit discriminant and a `///`
+   doc comment — `scripts/regenerate-errors.ts` uses that comment as the
+   user-facing message.
+3. Run `npm run generate-errors` to refresh `src/lib/contract-errors.ts`.
+4. Drop the code from the reserved list in the enum comment,
+   `contracts/ophirpay/tests/error_uniqueness.rs`, this document, and
+   `docs/CONTRACT_FUNCTION_REFERENCE.md`.
+5. Never renumber or silently remove an already-shipped code.
+
+The `contract-regression` CI job reports the WASM size delta for every
+contract change. The #766 trim shrinks the contract, so its delta is negative;
+the commit that lands it can re-record `contracts/wasm-baseline.json` with
+`node scripts/check-contract-regressions.mjs --update-baseline`.
+
+---
+
 ## State Transition Diagram
 
 ```

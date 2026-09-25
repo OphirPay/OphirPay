@@ -42,13 +42,8 @@ jobs:
       DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-prisma
       - run: npx prisma validate
-      - run: npx prisma generate
       - run: bash scripts/validate-prisma-migrations.sh
       - name: Check schema and migration drift
         run: >-

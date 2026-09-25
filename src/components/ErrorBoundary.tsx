@@ -3,10 +3,16 @@
 
 
 import { Component, type ReactNode } from "react";
+import { captureError } from "@/lib/sentry";
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  /**
+   * Route segment owning the subtree (e.g. "payments"). Reported as a tag
+   * so tracking data identifies the failing area (issue #791).
+   */
+  segment?: string;
 }
 
 interface State {
@@ -26,6 +32,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("[OphirPay ErrorBoundary]", error.message, errorInfo.componentStack);
+    if (this.props.segment) {
+      captureError(error, { tags: { segment: this.props.segment } });
+    }
   }
 
   render() {

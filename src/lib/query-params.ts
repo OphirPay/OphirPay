@@ -51,3 +51,41 @@ export function getEnumParam<T extends string>(
   if (raw && (allowed as readonly string[]).includes(raw)) return raw as T;
   return defaultValue;
 }
+
+/**
+ * Extract an ISO/date query parameter (YYYY-MM-DD or ISO timestamp) with validation.
+ * Returns defaultValue if missing or invalid, along with validity flag and raw value.
+ */
+export function getDateParam(
+  searchParams: URLSearchParams,
+  key: string,
+  defaultValue = ""
+): { value: string; isValid: boolean; raw: string | null } {
+  const raw = searchParams.get(key);
+  if (raw === null || raw.trim() === "") {
+    return { value: defaultValue, isValid: true, raw };
+  }
+  const dateStr = raw.trim();
+  const timestamp = Date.parse(dateStr.includes("T") ? dateStr : `${dateStr}T00:00:00`);
+  if (Number.isNaN(timestamp)) {
+    return { value: defaultValue, isValid: false, raw };
+  }
+  return { value: dateStr, isValid: true, raw };
+}
+
+/** Extract an enum query parameter with explicit validity tracking. */
+export function getValidatedEnumParam<T extends string>(
+  searchParams: URLSearchParams,
+  key: string,
+  allowed: readonly T[],
+  defaultValue: T | "" = ""
+): { value: T | ""; isValid: boolean; raw: string | null } {
+  const raw = searchParams.get(key);
+  if (raw === null || raw === "") {
+    return { value: defaultValue, isValid: true, raw };
+  }
+  if ((allowed as readonly string[]).includes(raw)) {
+    return { value: raw as T, isValid: true, raw };
+  }
+  return { value: defaultValue, isValid: false, raw };
+}

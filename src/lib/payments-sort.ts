@@ -52,6 +52,37 @@ export function parsePaymentSort(params: URLSearchParams): PaymentSort {
 }
 
 /**
+ * Check if the sort / dir parameters in the query string are valid.
+ * Returns information on any invalid parameter detected.
+ */
+export function validatePaymentSortParams(params: URLSearchParams): {
+  isValid: boolean;
+  invalidParams: Array<{ param: string; value: string; reason: string }>;
+} {
+  const invalidParams: Array<{ param: string; value: string; reason: string }> = [];
+  const rawSort = params.get("sort");
+  if (rawSort && !(PAYMENT_SORT_KEYS as readonly string[]).includes(rawSort)) {
+    invalidParams.push({
+      param: "sort",
+      value: rawSort,
+      reason: `Allowed sort keys are: ${PAYMENT_SORT_KEYS.join(", ")}`,
+    });
+  }
+  const rawDir = params.get("dir");
+  if (rawDir && rawDir !== "asc" && rawDir !== "desc") {
+    invalidParams.push({
+      param: "dir",
+      value: rawDir,
+      reason: "Allowed sort directions are: asc, desc",
+    });
+  }
+  return {
+    isValid: invalidParams.length === 0,
+    invalidParams,
+  };
+}
+
+/**
  * Build the URL param updates that encode a sort state.
  * Passing the result to the page's `updateQuery` persists the sort in the
  * URL. A cleared sort (key === null) maps both params to null so they are

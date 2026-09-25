@@ -30,6 +30,43 @@ export const BLOCKED_WEBHOOK_TARGET_ERROR =
   "Webhook target rejected by the SSRF guard — URL resolves to a private/internal address or a disallowed port";
 
 /**
+ * Header carrying the delivery timestamp (issue #702). Its value is part of
+ * the signed material, so a receiver can trust it for replay protection
+ * instead of trusting an unsigned header.
+ */
+export const WEBHOOK_TIMESTAMP_HEADER = "X-OphirPay-Timestamp";
+
+/**
+ * Advertised freshness window for a delivery, in seconds. Retries reuse the
+ * same payload and signature (1s/2s/4s backoff), so any window over ~10s
+ * comfortably covers the retry span; 300s additionally absorbs clock skew.
+ */
+export const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
+
+/**
+ * The exact byte string the HMAC covers: `<timestamp>.<canonicalBody>`.
+ *
+ * Binding the timestamp *outside* the JSON body (in addition to it being a
+ * field of the body) means the `X-OphirPay-Timestamp` header is authenticated
+ * too — a captured delivery cannot be re-dated by editing the header, and a
+ * receiver that only trusts the header still verifies the body.
+ */
+export function webhookSignedInput(
+  timestamp: string,
+  canonicalBody: string
+): string {
+  return `${timestamp}.${canonicalBody}`;
+}
+
+/**
+ * Build the canonical string a receiver must sign: the body serialized with
+ * the `signature` field emptied (key order preserved).
+ */
+export function canonicalizeWebhookBody(payload: WebhookPayload): string {
+  return JSON.stringify({ ...payload, signature: "" });
+}
+
+/**
  * Generate HMAC-SHA256 signature for a webhook payload.
  * Receiving endpoints can verify authenticity by recomputing the signature.
  */

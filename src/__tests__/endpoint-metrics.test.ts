@@ -132,7 +132,7 @@ describe("per-endpoint metrics", () => {
     recordEndpointLatency("GET", "/api/payments", 200, 0.3);
     recordEndpointLatency("POST", '/api/escape/"\\', 500, 1.2);
 
-    const res = await GET();
+    const res = await GET(authenticatedRequest());
     const text = await res.text();
     
     // Ignore dynamic parts like memory info
@@ -150,7 +150,7 @@ describe("per-endpoint metrics", () => {
     recordEndpointLatency("GET", "/api/payments", 200, 0.3);
     recordEndpointLatency("POST", '/api/escape/"\\', 500, 1.2);
 
-    const res = await GET();
+    const res = await GET(authenticatedRequest());
     const text = await res.text();
     const lines = text.split("\n");
 

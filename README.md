@@ -85,6 +85,7 @@
 - [📜 Smart-contract SSE Reference](docs/CONTRACT_SSE_REFERENCE.md)
 - [🧪 Prisma CI & Testing](docs/PRISMA-CI.md)
 - [🗄️ Sharded Database E2E Runbook](docs/SHARDED_DATABASE_E2E.md)
+- [📈 Observability & Alert Runbooks](docs/OBSERVABILITY.md)
 - [🤝 Contributing](#-contributing)
 - [📖 Stellar Glossary](GLOSSARY.md)
 - [🗺 Roadmap](#-roadmap)

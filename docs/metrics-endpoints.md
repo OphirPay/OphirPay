@@ -84,6 +84,7 @@ The metrics are in-process (reset on deploy), consistent with the existing
 `http_requests_total` counters. Point Prometheus/Grafana at `/api/metrics`
 (lifted from `monitoring/prometheus-alerts.yml`); the histogram and error
 series can be used for latency SLOs and error-rate alerting per route.
+For a complete guide to Grafana dashboard import, Prometheus scraping, Alertmanager routing, and per-alert incident response runbooks, see **[Observability & Runbook Guide](OBSERVABILITY.md)**.
 
 ## Implementation notes
 

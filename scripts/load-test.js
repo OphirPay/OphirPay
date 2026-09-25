@@ -48,6 +48,23 @@ const CONNECTIONS = (process.env.LOAD_TEST_CONNECTIONS || "1,5,10,25,50")
 const OUTPUT_DIR = process.env.LOAD_TEST_OUTPUT_DIR || path.join("tests", "load", "results");
 const WRITE_DOCS = process.argv.includes("--write-docs");
 
+const CHECK_REGRESSIONS =
+  process.argv.includes("--check-baselines") ||
+  process.argv.includes("--check-regressions") ||
+  process.env.CHECK_REGRESSIONS === "true" ||
+  process.env.FAIL_ON_REGRESSION === "true" ||
+  (process.env.CI === "true" && process.env.LOAD_TEST_SKIP_ASSERTIONS !== "true");
+
+const REGRESSION_MARGIN = Number(
+  process.env.PERFORMANCE_MARGIN ||
+    process.env.LOAD_TEST_MARGIN ||
+    process.env.REGRESSION_MARGIN ||
+    0.25
+);
+
+const MAX_ERROR_PCT = Number(process.env.LOAD_TEST_MAX_ERROR_PCT || 1.0);
+const MAX_NON2XX_PCT = Number(process.env.LOAD_TEST_MAX_NON2XX_PCT || 1.0);
+
 if (!CONNECTIONS.length) {
   console.error("LOAD_TEST_CONNECTIONS must contain at least one positive integer.");
   process.exit(1);
@@ -231,6 +248,193 @@ function updateDocs(results) {
   console.log(`\nUpdated ${DOCS_PATH}`);
 }
 
+/**
+ * Parse documented baselines table from docs/PERFORMANCE.md.
+ * Returns array of objects with endpoint, connections, req/s, p50, p95, p99, errorPct, non2xxPct.
+ */
+function parseBaselinesFromDocs(docsPath = DOCS_PATH) {
+  if (!fs.existsSync(docsPath)) return [];
+  const content = fs.readFileSync(docsPath, "utf8");
+  const start = content.indexOf("## Baselines");
+  if (start === -1) return [];
+  const end = content.indexOf("## Methodology", start);
+  const section = end !== -1 ? content.slice(start, end) : content.slice(start);
+
+  const lines = section.split("\n");
+  const baselines = [];
+
+  const parseMs = (val) => {
+    if (!val || val === "-" || val === "n/a") return null;
+    const num = Number(val.replace(/[^\d.]/g, ""));
+    return isNaN(num) ? null : num;
+  };
+
+  const parsePct = (val) => {
+    if (!val || val === "-" || val === "n/a") return null;
+    const num = Number(val.replace(/[^\d.]/g, ""));
+    return isNaN(num) ? null : num;
+  };
+
+  const parseReqs = (val) => {
+    if (!val || val === "-" || val === "n/a") return null;
+    const num = Number(val.replace(/,/g, ""));
+    return isNaN(num) ? null : num;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|") || trimmed.includes("---") || trimmed.includes("Endpoint")) {
+      continue;
+    }
+    const cols = trimmed
+      .split("|")
+      .map((c) => c.trim())
+      .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+    if (cols.length < 8) continue;
+
+    const [endpoint, connectionsStr, reqsStr, p50Str, p95Str, p99Str, errStr, non2xxStr] = cols;
+    const connections = Number(connectionsStr);
+    if (isNaN(connections)) continue;
+
+    baselines.push({
+      endpoint,
+      connections,
+      requestsPerSecond: parseReqs(reqsStr),
+      p50: parseMs(p50Str),
+      p95: parseMs(p95Str),
+      p99: parseMs(p99Str),
+      errorPct: parsePct(errStr) ?? 0,
+      non2xxPct: parsePct(non2xxStr),
+    });
+  }
+
+  return baselines;
+}
+
+/**
+ * Compare measured load-test results against documented baselines.
+ * Exceeding p95 latency or error rates beyond the configured margin returns violations.
+ */
+function checkRegressions(results, baselines, options = {}) {
+  const margin = options.margin != null ? options.margin : REGRESSION_MARGIN;
+  const maxErrorPct = options.maxErrorPct != null ? options.maxErrorPct : MAX_ERROR_PCT;
+  const maxNon2xxPct = options.maxNon2xxPct != null ? options.maxNon2xxPct : MAX_NON2XX_PCT;
+
+  const violations = [];
+
+  for (const r of results) {
+    const base = baselines.find(
+      (b) => b.endpoint === r.endpoint && b.connections === r.connections
+    );
+    if (!base) continue;
+
+    // Check p95 latency (skip SSE streams where p95 is null)
+    if (!r.sse && r.latency?.p95 != null && base.p95 != null) {
+      const allowedP95 = Math.round(base.p95 * (1 + margin));
+      if (r.latency.p95 > allowedP95) {
+        violations.push({
+          endpoint: r.endpoint,
+          connections: r.connections,
+          metric: "p95 latency",
+          measured: `${Math.round(r.latency.p95)} ms`,
+          baseline: `${base.p95} ms`,
+          allowed: `${allowedP95} ms (+${Math.round(margin * 100)}%)`,
+        });
+      }
+    }
+
+    // Check transport errors
+    const errPct = (r.errors / Math.max(1, r.connections)) * 100;
+    const allowedErr = Math.max(base.errorPct * (1 + margin), maxErrorPct);
+    if (errPct > allowedErr) {
+      violations.push({
+        endpoint: r.endpoint,
+        connections: r.connections,
+        metric: "Error %",
+        measured: `${errPct.toFixed(2)}%`,
+        baseline: `${base.errorPct.toFixed(2)}%`,
+        allowed: `${allowedErr.toFixed(2)}%`,
+      });
+    }
+
+    // Check application non-2xx failures
+    if (!r.sse) {
+      const non2xxPct = (r.non2xx / Math.max(1, r.requests.total)) * 100;
+      const baseNon2xx = base.non2xxPct ?? 0;
+      const allowedNon2xx = Math.max(baseNon2xx * (1 + margin), maxNon2xxPct);
+      if (non2xxPct > allowedNon2xx) {
+        violations.push({
+          endpoint: r.endpoint,
+          connections: r.connections,
+          metric: "Non-2xx %",
+          measured: `${non2xxPct.toFixed(2)}%`,
+          baseline: `${baseNon2xx.toFixed(2)}%`,
+          allowed: `${allowedNon2xx.toFixed(2)}%`,
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * Format markdown table summarizing measured results vs baselines for GitHub Step Summary.
+ */
+function formatStepSummary(results, baselines, violations, margin = REGRESSION_MARGIN) {
+  const lines = [];
+  lines.push("### ⚡ API Load Test Results");
+  lines.push("");
+  lines.push(`- **Target:** \`${BASE_URL}\``);
+  lines.push(`- **Duration per pass:** ${DURATION}s`);
+  lines.push(`- **Allowed regression margin:** +${Math.round(margin * 100)}%`);
+  lines.push("");
+  lines.push("| Endpoint | Concurrency | Req/s | p50 | p95 (Observed / Baseline / Limit) | p99 | Error % | Non-2xx % | Status |");
+  lines.push("|---|---|---|---|---|---|---|---|---|");
+
+  for (const r of results) {
+    const base = baselines.find((b) => b.endpoint === r.endpoint && b.connections === r.connections);
+    const errPct = pct((r.errors / Math.max(1, r.connections)) * 100);
+    const non2xxPct = r.sse ? "n/a" : pct((r.non2xx / Math.max(1, r.requests.total)) * 100);
+    const throughput = r.sse ? "n/a" : rate(r.requestsPerSecond);
+
+    let p95Cell = "-";
+    if (!r.sse && r.latency?.p95 != null) {
+      const obsP95 = ms(r.latency.p95);
+      if (base?.p95 != null) {
+        const limitP95 = Math.round(base.p95 * (1 + margin));
+        p95Cell = `${obsP95} / ${base.p95} ms / ${limitP95} ms`;
+      } else {
+        p95Cell = obsP95;
+      }
+    }
+
+    const rowViolations = violations.filter(
+      (v) => v.endpoint === r.endpoint && v.connections === r.connections
+    );
+    const status = rowViolations.length > 0 ? "❌ Regressed" : "✅ Passed";
+
+    lines.push(
+      `| \`${r.endpoint}\` | ${r.connections} | ${throughput} | ${r.sse ? "-" : ms(r.latency?.p50)} | ${p95Cell} | ${r.sse ? "-" : ms(r.latency?.p99)} | ${errPct} | ${non2xxPct} | ${status} |`
+    );
+  }
+
+  lines.push("");
+  if (violations.length > 0) {
+    lines.push(`#### ❌ Regressions Detected (${violations.length})`);
+    lines.push("");
+    for (const v of violations) {
+      lines.push(
+        `- **\`${v.endpoint}\` (concurrency ${v.connections})**: ${v.metric} measured **${v.measured}** exceeded baseline **${v.baseline}** (max allowed: ${v.allowed})`
+      );
+    }
+  } else {
+    lines.push("✅ **All measured latency and error metrics are within documented thresholds.**");
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 // ── Main ──────────────────────────────────────────────────────
 
 async function main() {
@@ -239,6 +443,7 @@ async function main() {
   console.log(`  duration : ${DURATION}s per pass`);
   console.log(`  concurrency: ${CONNECTIONS.join(", ")}`);
   console.log(`  API key  : ${API_KEY ? "provided" : "NOT set (authenticated endpoints will be skipped)"}`);
+  console.log(`  check regressions: ${CHECK_REGRESSIONS ? `YES (+${Math.round(REGRESSION_MARGIN * 100)}% margin)` : "no"}`);
   console.log("");
 
   const results = [];
@@ -272,9 +477,34 @@ async function main() {
   printTable(results.map(summaryRow));
   console.log("");
 
-  if (WRITE_DOCS) {
+  const baselines = parseBaselinesFromDocs();
+  const violations = checkRegressions(results, baselines, {
+    margin: REGRESSION_MARGIN,
+    maxErrorPct: MAX_ERROR_PCT,
+    maxNon2xxPct: MAX_NON2XX_PCT,
+  });
+
+  // Report to GitHub Job Summary when running in GitHub Actions
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    try {
+      const summaryMarkdown = formatStepSummary(results, baselines, violations, REGRESSION_MARGIN);
+      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summaryMarkdown + "\n");
+    } catch (err) {
+      console.error("Failed to write to GITHUB_STEP_SUMMARY:", err.message);
+    }
+  }
+
+  const shouldSaveResults =
+    WRITE_DOCS ||
+    process.env.LOAD_TEST_SAVE_RESULTS === "true" ||
+    process.env.CI === "true";
+
+  if (shouldSaveResults) {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-    const file = path.join(OUTPUT_DIR, `load-results-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+    const file = path.join(
+      OUTPUT_DIR,
+      `load-results-${new Date().toISOString().replace(/[:.]/g, "-")}.json`
+    );
     fs.writeFileSync(
       file,
       JSON.stringify(
@@ -282,6 +512,8 @@ async function main() {
           generatedAt: new Date().toISOString(),
           baseUrl: BASE_URL,
           durationSeconds: DURATION,
+          margin: REGRESSION_MARGIN,
+          violations,
           results,
         },
         null,
@@ -289,7 +521,22 @@ async function main() {
       )
     );
     console.log(`Wrote raw results → ${file}`);
+  }
+
+  if (WRITE_DOCS) {
     updateDocs(results);
+  }
+
+  if (CHECK_REGRESSIONS && violations.length > 0) {
+    console.error(`\n❌ Performance regression check FAILED (${violations.length} violation(s)):`);
+    for (const v of violations) {
+      console.error(
+        `  • ${v.endpoint} (connections=${v.connections}): ${v.metric} measured=${v.measured}, baseline=${v.baseline} (max allowed=${v.allowed})`
+      );
+    }
+    process.exit(1);
+  } else if (CHECK_REGRESSIONS) {
+    console.log(`\n✔ All observed metrics within documented baseline thresholds (+${Math.round(REGRESSION_MARGIN * 100)}% margin).`);
   }
 }
 
@@ -302,4 +549,14 @@ if (require.main === module) {
 }
 
 // Re-exported for tests.
-module.exports = { ENDPOINTS, runPass, summaryRow, buildBaselinesSection, updateDocs };
+module.exports = {
+  ENDPOINTS,
+  runPass,
+  summaryRow,
+  buildBaselinesSection,
+  updateDocs,
+  parseBaselinesFromDocs,
+  checkRegressions,
+  formatStepSummary,
+  DOCS_PATH,
+};

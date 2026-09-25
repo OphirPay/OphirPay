@@ -77,14 +77,17 @@ Config (all optional):
 Raw JSON results are written to `tests/load/results/` (gitignored) so you can
 diff runs without polluting the repo.
 
-### CI-optional
+### CI & Scheduled Regression Testing (CI-optional on PRs)
 
-Load tests are **not** part of the required CI pipeline. They need a live
-instance and a test DB, and their numbers are environment-dependent — running
-them on shared CI runners produces noise, not signal. Treat them as a
-developer-run gate: run before merging any change to a hot API path
-(`src/app/api/**`, `src/lib/prisma.ts`, `src/proxy.ts`), and update the
-baselines below when behavior intentionally changes.
+Load tests are **CI-optional** on regular pull request pushes to keep PR turnaround fast and avoid noisy numbers from shared ephemeral runners.
+
+However, to prevent documented baselines from silently rotting and to catch performance regressions before production, the suite is scheduled automatically in CI:
+- **Workflow:** [`.github/workflows/load-tests.yml`](../.github/workflows/load-tests.yml)
+- **Schedule:** Weekly (Sundays at 03:00 UTC) and manually via `workflow_dispatch`.
+- **Environment:** Dedicated Postgres 16 and Redis service containers against a compiled production Next.js build.
+- **Enforcement:** Runs `node scripts/load-test.js` and `node scripts/sse-load-test.mjs` unmodified. The run asserts observed p95 latency and error rates against the committed baselines below within a configurable margin (`PERFORMANCE_MARGIN`, default +30%).
+- **Reporting:** Publishes a Markdown table breakdown directly to the GitHub Job Summary and uploads JSON test metrics as a workflow artifact.
+- **Failure condition:** If p95 latency or error rates exceed the documented baseline threshold, the CI run fails with the exact measured, baseline, and allowable values.
 
 ## What the numbers mean
 
@@ -154,3 +157,67 @@ If p95 or error rate worsens by >20% with no intentional change, suspect:
    on large offsets, no unconditional `COUNT(*)`).
 4. **Rate limiting** — 429s masquerade as errors; confirm `RATE_LIMIT_RPM` is
    generous during baseline runs.
+
+## How to update baselines deliberately
+
+The numbers recorded in the **Baselines (local reference run)** table are committed to version control and act as the contract for CI regression tests. They must **never be casually updated** to mask real performance degradations.
+
+### When to update baselines
+Update baselines deliberately only when:
+- An intended architectural change or query alteration changes the expected latency profile (and the trade-off is accepted by maintainers).
+- A new route or concurrency profile is introduced into `scripts/load-test.js`.
+- Performance improvements warrant ratcheting the thresholds lower to lock in optimizations.
+
+### Procedure for updating baselines
+Follow these steps whenever a baseline update is warranted:
+
+1. **Prepare clean local test infrastructure:**
+   Ensure Postgres and Redis services are running and the database is seeded:
+   ```bash
+   docker compose up -d db redis
+   npx prisma db push
+   npx tsx prisma/seed.ts
+   ```
+
+2. **Disable request throttling during the test:**
+   Ensure `RATE_LIMIT_RPM=100000` is exported so HTTP 429s do not skew results.
+
+3. **Build the production bundle:**
+   Always benchmark against an optimized production build, not the development server:
+   ```bash
+   npm run build
+   npm start &
+   ```
+
+4. **Generate a test API key:**
+   ```bash
+   export LOAD_TEST_API_KEY=$(node scripts/generate-load-test-key.mjs)
+   ```
+
+5. **Regenerate baselines with `--write-docs`:**
+   ```bash
+   LOAD_TEST_API_KEY=$LOAD_TEST_API_KEY node scripts/load-test.js --write-docs
+   ```
+   This automatically:
+   - Measures p50, p95, p99, throughput, and error rates across all concurrency levels.
+   - Updates the Markdown table in `docs/PERFORMANCE.md` between `## Baselines` and `## Methodology`.
+   - Saves a raw JSON snapshot to `tests/load/results/`.
+
+6. **Inspect the git diff:**
+   ```bash
+   git diff docs/PERFORMANCE.md
+   ```
+   Verify that only the intended endpoints and metrics shifted, and that the delta aligns with expectations.
+
+7. **Commit with explicit rationale:**
+   Commit the updated `docs/PERFORMANCE.md` with a descriptive message citing the reason for the change, measured before/after numbers, and the related PR or issue:
+   ```bash
+   git commit -m "perf(docs): update load test baselines after payments index optimization"
+   ```
+
+8. **Verify regression assertions:**
+   Confirm that the regression check succeeds against the updated numbers:
+   ```bash
+   CHECK_REGRESSIONS=true LOAD_TEST_API_KEY=$LOAD_TEST_API_KEY node scripts/load-test.js
+   ```
+

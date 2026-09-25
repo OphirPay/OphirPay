@@ -23,6 +23,8 @@
 // The test requires a running OphirPay server (dev or production build).
 // It exits 0 on success and 1 on any failed acceptance check.
 
+import fs from "fs";
+
 const BASE_URL = (process.env.BASE_URL || process.env.E2E_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
 const ENDPOINT = `${BASE_URL}/api/events`;
 const METRICS_URL = `${BASE_URL}/api/metrics`;
@@ -349,6 +351,44 @@ async function runLoadTest() {
   console.log(` Open after teardown   : ${after.sseOpen ?? "unknown"}`);
   console.log(` Server heap growth    : +${mb(peakHeapDelta ?? 0)} during, +${mb(Math.max(0, (after.heapUsed ?? 0) - (baseline.heapUsed ?? 0)))} after`);
   console.log("───────────────────────────────────────────────────────────");
+
+  // Report to GitHub Job Summary when running in GitHub Actions
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    try {
+      const sseLines = [];
+      sseLines.push("### 🔄 SSE Stream Load Test Results (100 Concurrent Clients)");
+      sseLines.push("");
+      sseLines.push(`- **Endpoint:** \`${ENDPOINT}\``);
+      sseLines.push(`- **Clients:** ${CONCURRENCY}`);
+      sseLines.push(`- **Duration:** ${(DURATION_MS / 1000).toFixed(0)}s`);
+      sseLines.push("");
+      sseLines.push("| Check | Measured Result | Expected / Limit | Status |");
+      sseLines.push("|---|---|---|---|");
+      sseLines.push(`| Connected Clients | ${state.connected}/${CONCURRENCY} | ${CONCURRENCY}/${CONCURRENCY} | ${state.connected === CONCURRENCY ? "✅ Pass" : "❌ Fail"} |`);
+      sseLines.push(`| Heartbeats Delivered | ${totalHeartbeats} (${(totalHeartbeats / CONCURRENCY).toFixed(1)}/client) | >= 1/client | ${noHeartbeat.length === 0 ? "✅ Pass" : "❌ Fail"} |`);
+      sseLines.push(`| Peak Open Connections | ${peakOpen} | >= ${CONCURRENCY} | ${peakOpen >= CONCURRENCY ? "✅ Pass" : "❌ Fail"} |`);
+      sseLines.push(`| Post-Teardown Leaks | ${after.sseOpen ?? "unknown"} | 0 connections | ${after.sseOpen === 0 ? "✅ Pass" : (after.sseOpen === null ? "ℹ️ N/A" : "❌ Fail")} |`);
+      sseLines.push(`| Post-Teardown Fresh Probes | ${probeOk}/5 | 5/5 | ${probeOk === 5 ? "✅ Pass" : "❌ Fail"} |`);
+      if (peakHeapDelta !== null) {
+        sseLines.push(`| Server Peak Heap Delta | +${mb(peakHeapDelta)} | <= ${mb(MAX_SERVER_HEAP_DELTA)} | ${peakHeapDelta <= MAX_SERVER_HEAP_DELTA ? "✅ Pass" : "❌ Fail"} |`);
+        sseLines.push(`| Server Peak RSS Delta | +${mb(peakRssDelta ?? 0)} | <= ${mb(MAX_SERVER_RSS_DELTA)} | ${(peakRssDelta ?? 0) <= MAX_SERVER_RSS_DELTA ? "✅ Pass" : "❌ Fail"} |`);
+      }
+      sseLines.push("");
+      if (failures.length > 0) {
+        sseLines.push(`#### ❌ SSE Failures (${failures.length})`);
+        for (const f of failures) {
+          sseLines.push(`- ${f}`);
+        }
+        sseLines.push("");
+      } else {
+        sseLines.push("✅ **All SSE acceptance checks passed.**");
+        sseLines.push("");
+      }
+      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, sseLines.join("\n") + "\n");
+    } catch (err) {
+      console.error("Failed to write to GITHUB_STEP_SUMMARY:", err.message);
+    }
+  }
 
   if (failures.length > 0) {
     for (const f of failures) fail(f);

@@ -1,0 +1,74 @@
+{
+  "$comment": "Committed JavaScript first-load bundle size budgets for OphirPay routes. Values in kilobytes (kB) gzip-compressed. See docs/BUNDLE_BUDGET.md.",
+  "budgets": {
+    "/": {
+      "budgetKb": 450,
+      "description": "Dashboard / home overview"
+    },
+    "/analytics": {
+      "budgetKb": 450,
+      "description": "Analytics dashboard with charting and time-series data"
+    },
+    "/payments": {
+      "budgetKb": 450,
+      "description": "Payments list and management"
+    },
+    "/batches": {
+      "budgetKb": 450,
+      "description": "Batch payments list"
+    },
+    "/batches/new": {
+      "budgetKb": 460,
+      "description": "Batch payment creation wizard"
+    },
+    "/webhooks": {
+      "budgetKb": 450,
+      "description": "Webhook configuration and delivery logs"
+    },
+    "/keys": {
+      "budgetKb": 450,
+      "description": "API keys admin page"
+    },
+    "/hooks": {
+      "budgetKb": 450,
+      "description": "Notification hooks admin page"
+    },
+    "/fee-config": {
+      "budgetKb": 450,
+      "description": "Dynamic fee configuration admin page"
+    },
+    "/rbac": {
+      "budgetKb": 450,
+      "description": "Role-based access control admin page"
+    },
+    "/timelock": {
+      "budgetKb": 450,
+      "description": "Timelock governance admin page"
+    },
+    "/pause-controls": {
+      "budgetKb": 450,
+      "description": "Emergency pause controls page"
+    },
+    "/refunds": {
+      "budgetKb": 450,
+      "description": "Refund lifecycle management page"
+    },
+    "/governance": {
+      "budgetKb": 450,
+      "description": "Governance proposals page"
+    },
+    "/multisig": {
+      "budgetKb": 450,
+      "description": "Multisig signing workflows"
+    },
+    "/receive": {
+      "budgetKb": 450,
+      "description": "Receive payments and QR code generator"
+    },
+    "/send": {
+      "budgetKb": 600,
+      "description": "Send payment transaction form and Soroban simulation"
+    }
+  },
+  "defaultRouteBudgetKb": 450
+}

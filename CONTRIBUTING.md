@@ -80,7 +80,11 @@ npm run coverage      # Coverage report
 npm run typecheck     # TypeScript check
 npm run lint          # ESLint
 npm run test:openapi  # OpenAPI spec ↔ implementation conformance (drift)
+npm run analyze       # Generate bundle analyzer report (.next/analyze/client.html)
+npm run bundle:check  # Validate First Load JS against bundle-budget.json
 ```
+
+See [Bundle Size Budget Guide](docs/BUNDLE_BUDGET.md) for route budgets and chunk details.
 
 ## Changelog
 

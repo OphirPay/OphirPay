@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import bundleAnalyzer from "@next/bundle-analyzer";
 
 // NOTE: the Content-Security-Policy is set per-request in src/middleware.ts
 // with a per-request nonce (Next.js reads it from the x-nonce request header
@@ -57,4 +58,9 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+  openAnalyzer: process.env.OPEN_ANALYZER === "true",
+});
+
+export default withBundleAnalyzer(nextConfig);

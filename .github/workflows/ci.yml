@@ -163,3 +163,34 @@ jobs:
             exit 1
           fi
 
+  # ══════════════════════════════════════════════════════════════
+  # 5. BUNDLE SIZE BUDGET — Enforce JS size limits and upload report
+  # ══════════════════════════════════════════════════════════════
+  bundle-size:
+    name: "4️⃣ Frontend — Bundle Size Budget"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with: { node-version-file: '.nvmrc', cache: "npm" }
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Build Next.js with bundle analyzer
+        env:
+          ANALYZE: "true"
+          NEXT_TELEMETRY_DISABLED: "1"
+          DATABASE_URL: "file:./dev.db"
+          DATABASE_PROVIDER: "sqlite"
+        run: npm run analyze
+      - name: Verify bundle size budget
+        run: node scripts/check-bundle-budget.mjs
+      - name: Upload bundle analyzer report
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: bundle-analysis-report
+          path: .next/analyze/
+          retention-days: 14
+
+

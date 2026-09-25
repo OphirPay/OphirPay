@@ -1,0 +1,206 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: 'Inter', sans-serif;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 2rem;
+  color: #1a1a1a;
+}
+
+.stateBadge {
+  padding: 0.5rem 1rem;
+  border-radius: 2rem;
+  font-weight: bold;
+  text-transform: capitalize;
+}
+
+.pending {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
+
+.active {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.passed {
+  background-color: #10b981;
+  color: white;
+}
+
+.failed {
+  background-color: #ef4444;
+  color: white;
+}
+
+.executed {
+  background-color: #8b5cf6;
+  color: white;
+}
+
+.cancelled {
+  background-color: #6b7280;
+  color: white;
+}
+
+.section {
+  background: white;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.metadata,
+.config {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.metadata div,
+.config div {
+  padding: 0.5rem;
+  background: #f9fafb;
+  border-radius: 0.25rem;
+}
+
+.voteTally {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 2rem;
+}
+
+.voteCounts {
+  background: #f9fafb;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.voteCounts div {
+  margin-bottom: 0.5rem;
+}
+
+.voteHistory {
+  background: white;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.voteHistory h3 {
+  margin-top: 0;
+  color: #6b7280;
+}
+
+.voteItem {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.voter {
+  font-weight: bold;
+  color: #3b82f6;
+}
+
+.voteDirection {
+  color: #6b7280;
+}
+
+.timers {
+  display: flex;
+  gap: 2rem;
+  margin: 2rem 0;
+  font-size: 0.9rem;
+}
+
+.executeButton {
+  background: #10b981;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.executeButton:hover {
+  background: #059669;
+}
+
+.loading, .error, .notFound {
+  padding: 2rem;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+.error {
+  color: #ef4444;
+}
+
+.listContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.proposalCard {
+  background: white;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+  text-decoration: none;
+  color: inherit;
+}
+
+.proposalCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.proposalId {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  color: #6b7280;
+}
+
+.proposalTitle {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  color: #1a1a1a;
+}
+
+.proposalState {
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-transform: capitalize;
+  text-align: center;
+}

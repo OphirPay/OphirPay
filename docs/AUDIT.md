@@ -300,8 +300,11 @@ and re-run the IP/hostname check against the final resolved address after follow
    insurance, KYC, routing, gas, oracle, dispute resolution). The large reserved catalog exists
    to keep the TS error catalog and the contract enum in lockstep, but the unused variants add
    code size and a false sense of coverage.
-7. **`set_multisig_config`** does not deduplicate signers or enforce the documented
-   `MaxSignersExceeded` (error 91) / `MaxSignersExceeded` caps.
+7. **`set_multisig_config`** — **FIXED (issue #694).** Deduplicates signer list preserving order of
+   first appearance, enforces `MAX_SIGNERS` (50) with `PaymentError::MaxSignersExceeded`, validates
+   `threshold > 0` and `threshold <= unique_signers.len()` with `PaymentError::InvalidAmount`, and
+   returns normalized signer configuration in `get_multisig_config`. Covered by
+   `contracts/ophirpay/tests/issue694.rs` and `contracts/ophirpay/tests/integration_tests.rs`.
 8. **`create_batch`** uses unchecked `total_amount += amount` (potential `i128` overflow with 100
    near-max entries).
 9. **Webhook HMAC signs the wrong body** — ✅ **FIXED (2026-08-14).** `buildSignedPayload` now

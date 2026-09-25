@@ -124,6 +124,7 @@ const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 // `get_audit_log_range`, `get_payments_range`, `get_fee_config_history` and
 // `get_reason_code_analytics`.
 const MAX_READER_ENTRIES: u32 = 100;
+pub const MAX_SIGNERS: u32 = 50;
 
 // ── Data Types ─────────────────────────────────────────────────
 
@@ -1489,7 +1490,7 @@ impl OphirPayContract {
             }
         }
 
-        if unique_signers.len() > 50 {
+        if unique_signers.len() > MAX_SIGNERS {
             return Err(PaymentError::MaxSignersExceeded);
         }
 

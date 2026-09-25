@@ -536,3 +536,53 @@ export async function emergencyUnpauseAll(
   ];
   return signAndSubmit(caller, CONTRACT_ID, "emergency_unpause_all", args);
 }
+
+/**
+ * Set scoped pause state for a feature domain.
+ * Owner-only — requires wallet signing via Freighter.
+ */
+export async function setScopePaused(
+  caller: string,
+  scope: string,
+  paused: boolean,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(scope, { type: "symbol" }),
+    nativeToScVal(paused, { type: "bool" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "set_scope_paused", args);
+}
+
+/**
+ * Check if a specific scope is paused on-chain.
+ */
+export async function isScopePaused(scope: string): Promise<boolean> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(scope, { type: "symbol" }),
+  ];
+  const result = await simulateContractCall(
+    CONTRACT_ID,
+    "is_scope_paused",
+    CHAIN_READ_SOURCE,
+    args,
+  );
+  if (result.status === "SIMULATION_FAILED") return false;
+  return result.returnValue === true;
+}
+
+/**
+ * Get all currently paused scopes on-chain.
+ */
+export async function getPausedScopes(): Promise<string[]> {
+  const result = await simulateContractCall(
+    CONTRACT_ID,
+    "get_paused_scopes",
+    CHAIN_READ_SOURCE,
+  );
+  if (result.status === "SIMULATION_FAILED" || !Array.isArray(result.returnValue)) {
+    return [];
+  }
+  return result.returnValue.map((s: unknown) => String(s));
+}
+

@@ -7,7 +7,7 @@ use ophirpay_contract::{
 };
 use ophirpay_emitter::{EmitterError, PaymentEventEmitter, PaymentEventEmitterClient};
 use soroban_sdk::testutils::{Address as _, Ledger as _};
-use soroban_sdk::{token, Address, Env, String, Vec};
+use soroban_sdk::{token, Address, Env, String, Symbol, Vec};
 
 // ── Test Fixture ─────────────────────────────────────────────────────────────
 
@@ -231,6 +231,121 @@ fn test_paused_contract_blocks_payments() {
     fix.client.emergency_unpause_all(&fix.owner);
     assert_eq!(fix.client.is_paused(), false);
 
+    let pid = fix
+        .client
+        .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert_eq!(pid, 1);
+}
+
+#[test]
+fn test_scoped_pause_isolation_and_getters() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let scope_escrows = Symbol::new(&fix.env, "escrows");
+    let scope_payments = Symbol::new(&fix.env, "payments");
+
+    // Pause escrows scope only
+    fix.client.set_scope_paused(&fix.owner, &scope_escrows, &true);
+    assert_eq!(fix.client.is_scope_paused(&scope_escrows), true);
+    assert_eq!(fix.client.is_scope_paused(&scope_payments), false);
+    assert_eq!(fix.client.is_paused(), false);
+
+    let paused_scopes = fix.client.get_paused_scopes();
+    assert_eq!(paused_scopes.len(), 1);
+    assert_eq!(paused_scopes.get(0).unwrap(), scope_escrows);
+
+    // Escrow creation should be blocked
+    fix.mint(&payer, 1_000_000);
+    let meta_escrow = String::from_str(&fix.env, "escrow_meta");
+    let res_escrow = fix.client.try_create_escrow(
+        &payer,
+        &payee,
+        &None,
+        &500_000i128,
+        &fix.token_id,
+        &1_005_000u64,
+        &meta_escrow,
+    );
+    assert!(res_escrow.is_err());
+
+    // Record payment (payments scope) should succeed
+    let tx = String::from_str(&fix.env, "0xscoped_tx");
+    let meta = String::from_str(&fix.env, "scoped_meta");
+    let pid = fix.client.record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert_eq!(pid, 1);
+
+    // Getters still work even for escrows
+    assert_eq!(fix.client.get_escrow_count(), 0);
+
+    // Unpause escrows scope
+    fix.client.set_scope_paused(&fix.owner, &scope_escrows, &false);
+    assert_eq!(fix.client.is_scope_paused(&scope_escrows), false);
+    assert_eq!(fix.client.get_paused_scopes().len(), 0);
+
+    // Escrow creation now succeeds
+    let eid = fix.client.create_escrow(
+        &payer,
+        &payee,
+        &None,
+        &500_000i128,
+        &fix.token_id,
+        &1_005_000u64,
+        &meta_escrow,
+    );
+    assert_eq!(eid, 1);
+}
+
+#[test]
+fn test_scoped_pause_global_override() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let scope_payments = Symbol::new(&fix.env, "payments");
+
+    // Scope 'payments' is unpaused (false)
+    assert_eq!(fix.client.is_scope_paused(&scope_payments), false);
+
+    // Global pause is turned ON
+    fix.client.emergency_pause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), true);
+
+    // Even though 'payments' scope is NOT paused, global pause blocks it
+    let tx = String::from_str(&fix.env, "0xglobal_override");
+    let meta = String::from_str(&fix.env, "meta");
+    let res = fix
+        .client
+        .try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert!(res.is_err());
+
+    // Unpause global
+    fix.client.emergency_unpause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), false);
+
+    // Payment now succeeds
+    let pid = fix
+        .client
+        .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert_eq!(pid, 1);
+}
+
+#[test]
+fn test_scoped_pause_unknown_scope() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let unknown_scope = Symbol::new(&fix.env, "unknown_scope");
+
+    // Pause an arbitrary/unknown scope
+    fix.client.set_scope_paused(&fix.owner, &unknown_scope, &true);
+    assert_eq!(fix.client.is_scope_paused(&unknown_scope), true);
+
+    // Standard scopes (payments, escrows, etc.) are unaffected
+    let scope_payments = Symbol::new(&fix.env, "payments");
+    assert_eq!(fix.client.is_scope_paused(&scope_payments), false);
+
+    let tx = String::from_str(&fix.env, "0xunknown_scope_tx");
+    let meta = String::from_str(&fix.env, "meta");
     let pid = fix
         .client
         .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);

@@ -17,6 +17,17 @@ const STREAM_COUNT: Symbol = symbol_short!("STR_CNT");
 const BATCH_COUNT: Symbol = symbol_short!("BAT_CNT");
 const OWNER: Symbol = symbol_short!("OWNER");
 const PAUSED: Symbol = symbol_short!("PAUSED");
+const PAUSE_SCOPE_KEY: Symbol = symbol_short!("P_SCOPE");
+const PAUSED_SCOPES: Symbol = symbol_short!("P_SCOPES");
+
+const SCOPE_PAYMENTS: Symbol = symbol_short!("payments");
+const SCOPE_ESCROWS: Symbol = symbol_short!("escrows");
+const SCOPE_STREAMS: Symbol = symbol_short!("streams");
+const SCOPE_RECURRING: Symbol = symbol_short!("recurring");
+const SCOPE_REFUNDS: Symbol = symbol_short!("refunds");
+const SCOPE_HOOKS: Symbol = symbol_short!("hooks");
+const SCOPE_BATCHES: Symbol = symbol_short!("batches");
+
 const VERSION: Symbol = symbol_short!("VERSION");
 const UPGRADE_HASH: Symbol = symbol_short!("UPG_HASH");
 const UPGRADE_TIMELOCK: Symbol = symbol_short!("UPG_LOCK");
@@ -1297,10 +1308,18 @@ fn require_owner(env: &Env, caller: &Address) -> Result<(), PaymentError> {
     Ok(())
 }
 
-/// Guard: reject all write operations while the contract is paused.
-fn require_not_paused(env: &Env) -> Result<(), PaymentError> {
-    let paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
-    if paused {
+/// Guard: reject all write operations while the contract is paused globally or in the specific scope.
+fn require_not_paused(env: &Env, scope: Symbol) -> Result<(), PaymentError> {
+    let global_paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
+    if global_paused {
+        return Err(PaymentError::ContractPaused);
+    }
+    let scope_paused: bool = env
+        .storage()
+        .instance()
+        .get(&(PAUSE_SCOPE_KEY, scope))
+        .unwrap_or(false);
+    if scope_paused {
         return Err(PaymentError::ContractPaused);
     }
     Ok(())
@@ -1564,7 +1583,7 @@ impl OphirPayContract {
         tx_hash: String,
     ) -> Result<u64, PaymentError> {
         proposer.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_PAYMENTS)?;
 
         let config: MultisigConfig = env
             .storage()
@@ -1624,7 +1643,7 @@ impl OphirPayContract {
         request_id: u64,
     ) -> Result<bool, PaymentError> {
         signer.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_PAYMENTS)?;
 
         let config: MultisigConfig = env
             .storage()
@@ -1678,7 +1697,7 @@ impl OphirPayContract {
         request_id: u64,
     ) -> Result<u64, PaymentError> {
         caller.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_PAYMENTS)?;
 
         let config: MultisigConfig = env
             .storage()
@@ -2072,7 +2091,7 @@ impl OphirPayContract {
     ) -> Result<u64, PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         proposer.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, Symbol::new(&env, "governance"))?;
 
         let config: GovernanceConfig = env
             .storage()
@@ -2160,7 +2179,7 @@ impl OphirPayContract {
         support: bool, // true = yes, false = no
     ) -> Result<(), PaymentError> {
         voter.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, Symbol::new(&env, "governance"))?;
 
         let mut proposal: Proposal = env
             .storage()
@@ -2441,7 +2460,7 @@ impl OphirPayContract {
         metadata: String,
     ) -> Result<u64, PaymentError> {
         payer.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_PAYMENTS)?;
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
@@ -2911,6 +2930,79 @@ impl OphirPayContract {
         env.storage().instance().get(&PAUSED).unwrap_or(false)
     }
 
+    /// Pause or unpause a specific scope (payments, escrows, streams, recurring, refunds, governance, hooks, batches).
+    /// Only the contract owner can change scope pause states.
+    pub fn set_scope_paused(
+        env: Env,
+        caller: Address,
+        scope: Symbol,
+        paused: bool,
+    ) -> Result<(), PaymentError> {
+        let _guard = acquire_reentrancy_lock(&env)?;
+        caller.require_auth();
+        require_owner(&env, &caller)?;
+
+        env.storage()
+            .instance()
+            .set(&(PAUSE_SCOPE_KEY, scope.clone()), &paused);
+
+        // Maintain the list of currently paused scopes
+        let paused_scopes: Vec<Symbol> = env
+            .storage()
+            .instance()
+            .get(&PAUSED_SCOPES)
+            .unwrap_or(Vec::new(&env));
+
+        let mut new_list = Vec::new(&env);
+        let mut found = false;
+        for s in paused_scopes.iter() {
+            if s == scope {
+                found = true;
+                if paused {
+                    new_list.push_back(s);
+                }
+            } else {
+                new_list.push_back(s);
+            }
+        }
+        if paused && !found {
+            new_list.push_back(scope.clone());
+        }
+
+        env.storage().instance().set(&PAUSED_SCOPES, &new_list);
+        env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        env.events().publish(
+            (Symbol::new(&env, "scope_pause"), scope),
+            paused,
+        );
+
+        record_audit(
+            &env,
+            "scope_pause_changed",
+            &caller,
+            0,
+            "Scope pause state updated",
+        );
+        Ok(())
+    }
+
+    /// Check if a specific scope is paused.
+    pub fn is_scope_paused(env: Env, scope: Symbol) -> bool {
+        env.storage()
+            .instance()
+            .get(&(PAUSE_SCOPE_KEY, scope))
+            .unwrap_or(false)
+    }
+
+    /// Get all currently paused scopes.
+    pub fn get_paused_scopes(env: Env) -> Vec<Symbol> {
+        env.storage()
+            .instance()
+            .get(&PAUSED_SCOPES)
+            .unwrap_or(Vec::new(&env))
+    }
+
     /// Get the current locked balance (escrows, streams, proposal deposits).
     pub fn get_locked_balance(env: Env) -> i128 {
         env.storage().instance().get(&LOCKED_BALANCE).unwrap_or(0)
@@ -3295,7 +3387,7 @@ impl OphirPayContract {
         metadata: String,
     ) -> Result<u64, PaymentError> {
         payer.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_PAYMENTS)?;
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
@@ -3427,7 +3519,7 @@ impl OphirPayContract {
         // every token-moving call (even with otherwise-invalid inputs).
         let _guard = acquire_reentrancy_lock(&env)?;
         depositor.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_ESCROWS)?;
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
@@ -3485,7 +3577,7 @@ impl OphirPayContract {
     pub fn release_escrow(env: Env, owner: Address, escrow_id: u64) -> Result<(), PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         owner.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_ESCROWS)?;
         let stored_owner: Address = env
             .storage()
             .instance()
@@ -3544,7 +3636,7 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         arbiter.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_ESCROWS)?;
 
         let mut escrow: Escrow = env
             .storage()
@@ -3604,7 +3696,7 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         beneficiary.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_ESCROWS)?;
 
         let mut escrow: Escrow = env
             .storage()
@@ -3680,7 +3772,7 @@ impl OphirPayContract {
     ) -> Result<u64, PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         creator.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_STREAMS)?;
         if total_amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
@@ -3750,7 +3842,7 @@ impl OphirPayContract {
     ) -> Result<i128, PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         recipient.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_STREAMS)?;
 
         let mut stream: Stream = env
             .storage()
@@ -3816,7 +3908,7 @@ impl OphirPayContract {
     pub fn cancel_stream(env: Env, creator: Address, stream_id: u64) -> Result<i128, PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         creator.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_STREAMS)?;
 
         let mut stream: Stream = env
             .storage()
@@ -3895,7 +3987,7 @@ impl OphirPayContract {
         metadata: String,
     ) -> Result<u64, PaymentError> {
         creator.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_RECURRING)?;
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
@@ -3955,7 +4047,7 @@ impl OphirPayContract {
         recurring_id: u64,
     ) -> Result<u64, PaymentError> {
         caller.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_RECURRING)?;
 
         let mut recurring: RecurringPayment = env
             .storage()
@@ -4118,7 +4210,7 @@ impl OphirPayContract {
         reason_code: RefundReasonCode,
     ) -> Result<u64, PaymentError> {
         requester.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_REFUNDS)?;
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
@@ -4195,7 +4287,7 @@ impl OphirPayContract {
     pub fn approve_refund(env: Env, caller: Address, refund_id: u64) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_REFUNDS)?;
 
         let mut refund: Refund = env
             .storage()
@@ -4231,7 +4323,7 @@ impl OphirPayContract {
     pub fn reject_refund(env: Env, caller: Address, refund_id: u64) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_REFUNDS)?;
 
         let mut refund: Refund = env
             .storage()
@@ -4268,7 +4360,7 @@ impl OphirPayContract {
         let _guard = acquire_reentrancy_lock(&env)?;
         caller.require_auth();
         require_owner(&env, &caller)?;
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_REFUNDS)?;
 
         let mut refund: Refund = env
             .storage()
@@ -4376,7 +4468,7 @@ impl OphirPayContract {
         webhook_url: String,
     ) -> Result<u64, PaymentError> {
         subscriber.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_HOOKS)?;
         if event_type.is_empty() || webhook_url.is_empty() {
             return Err(PaymentError::InvalidAmount);
         }
@@ -4556,7 +4648,7 @@ impl OphirPayContract {
         tx_hash: String,
     ) -> Result<BatchCreateResult, PaymentError> {
         creator.require_auth();
-        require_not_paused(&env)?;
+        require_not_paused(&env, SCOPE_BATCHES)?;
 
         let len = payees.len();
         if len == 0 {

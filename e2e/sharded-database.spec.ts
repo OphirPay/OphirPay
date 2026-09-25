@@ -7,7 +7,7 @@ import {
 } from "../src/lib/db/shard-router";
 import {
   ShardedTestFixtureManager,
-} from "../src/lib/db/sharded-test-fixture";
+} from "../tests/support/sharded-test-fixture";
 
 test.describe("E2E: Sharded Database Infrastructure & Lifecycle", () => {
   const testShards: ShardConfig[] = [

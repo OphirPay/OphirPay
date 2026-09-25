@@ -528,6 +528,7 @@ export default function WebhooksPage() {
 {`curl -X POST <your-endpoint> \\
   -H "Content-Type: application/json" \\
   -H "X-OphirPay-Event: payment.created" \\
+  -H "X-OphirPay-Timestamp: <timestamp>" \\
   -H "X-OphirPay-Signature: <signature>" \\
   -d '{"event":"payment.created","timestamp":"...","data":{}}'`}
               </pre>

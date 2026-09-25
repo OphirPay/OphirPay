@@ -18,8 +18,8 @@ const samplePayload = {
   data: { id: "p_123", amount: 100 },
 };
 
-// The docs sample: secret + canonical form => this exact signature.
-const SAMPLE_SIGNATURE = "647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64";
+// The docs sample: secret + timestamp + canonical form => this exact signature.
+const SAMPLE_SIGNATURE = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
 
 interface RunResult {
   status: number | null;
@@ -43,34 +43,56 @@ const hasPython = spawnSync("python3", ["--version"], { encoding: "utf8" }).stat
 
 describe("webhook verification examples — Node (verify.mjs)", () => {
   it("verifies a payload produced by buildSignedPayload", () => {
-    const { body, signature } = buildSignedPayload(
+    const { body, signature, timestamp } = buildSignedPayload(
       { ...samplePayload, timestamp: new Date().toISOString() },
       SECRET
     );
-    const res = runNode(["--secret", SECRET, "--signature", signature], body);
+    const res = runNode(["--secret", SECRET, "--signature", signature, "--timestamp", timestamp], body);
     expect(res.status).toBe(0);
     expect(res.stdout.trim()).toBe("VALID");
   });
 
   it("rejects a tampered body", () => {
-    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
     const tampered = body.replace('"amount":100', '"amount":999');
-    const res = runNode(["--secret", SECRET, "--signature", signature, "--now", "2026-08-14T00:00:30Z"], tampered);
+    const res = runNode(
+      ["--secret", SECRET, "--signature", signature, "--timestamp", timestamp, "--now", "2026-08-14T00:00:30Z"],
+      tampered
+    );
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("INVALID");
+    expect(res.stderr).toContain("signature mismatch");
+  });
+
+  it("rejects a tampered timestamp header", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    // Attacker sends altered timestamp to bypass age check
+    const res = runNode(
+      ["--secret", SECRET, "--signature", signature, "--timestamp", "2026-08-14T01:00:00Z", "--now", "2026-08-14T01:00:30Z"],
+      body
+    );
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("signature mismatch");
   });
 
   it("rejects a wrong secret", () => {
-    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
-    const res = runNode(["--secret", "wrong-secret", "--signature", signature, "--now", "2026-08-14T00:00:30Z"], body);
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const res = runNode(
+      ["--secret", "wrong-secret", "--signature", signature, "--timestamp", timestamp, "--now", "2026-08-14T00:00:30Z"],
+      body
+    );
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("INVALID");
+    expect(res.stderr).toContain("signature mismatch");
   });
 
   it("rejects a replayed (too old) delivery", () => {
-    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
     // 1 hour after the payload timestamp exceeds the default 300s window.
-    const res = runNode(["--secret", SECRET, "--signature", signature, "--now", "2026-08-14T01:00:00Z"], body);
+    const res = runNode(
+      ["--secret", SECRET, "--signature", signature, "--timestamp", timestamp, "--now", "2026-08-14T01:00:00Z"],
+      body
+    );
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("too old");
   });
@@ -79,7 +101,16 @@ describe("webhook verification examples — Node (verify.mjs)", () => {
     const body = fs.readFileSync(SAMPLE_PAYLOAD, "utf8");
     // Timestamp is fixed in the sample; simulate receipt 30s later.
     const res = runNode(
-      ["--secret", SECRET, "--signature", SAMPLE_SIGNATURE, "--now", "2026-08-14T00:00:30Z"],
+      [
+        "--secret",
+        SECRET,
+        "--signature",
+        SAMPLE_SIGNATURE,
+        "--timestamp",
+        "2026-08-14T00:00:00Z",
+        "--now",
+        "2026-08-14T00:00:30Z",
+      ],
       body
     );
     expect(res.status).toBe(0);
@@ -89,33 +120,54 @@ describe("webhook verification examples — Node (verify.mjs)", () => {
 
 describe("webhook verification examples — Python (verify.py)", () => {
   it.skipIf(!hasPython)("verifies a payload produced by buildSignedPayload", () => {
-    const { body, signature } = buildSignedPayload(
+    const { body, signature, timestamp } = buildSignedPayload(
       { ...samplePayload, timestamp: new Date().toISOString() },
       SECRET
     );
-    const res = runPython(["--secret", SECRET, "--signature", signature], body);
+    const res = runPython(["--secret", SECRET, "--signature", signature, "--timestamp", timestamp], body);
     expect(res.status).toBe(0);
     expect(res.stdout.trim()).toBe("VALID");
   });
 
   it.skipIf(!hasPython)("rejects a tampered body", () => {
-    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
     const tampered = body.replace('"amount":100', '"amount":999');
-    const res = runPython(["--secret", SECRET, "--signature", signature, "--now", "2026-08-14T00:00:30Z"], tampered);
+    const res = runPython(
+      ["--secret", SECRET, "--signature", signature, "--timestamp", timestamp, "--now", "2026-08-14T00:00:30Z"],
+      tampered
+    );
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("INVALID");
+    expect(res.stderr).toContain("signature mismatch");
+  });
+
+  it.skipIf(!hasPython)("rejects a tampered timestamp header", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const res = runPython(
+      ["--secret", SECRET, "--signature", signature, "--timestamp", "2026-08-14T01:00:00Z", "--now", "2026-08-14T01:00:30Z"],
+      body
+    );
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("signature mismatch");
   });
 
   it.skipIf(!hasPython)("rejects a wrong secret", () => {
-    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
-    const res = runPython(["--secret", "wrong-secret", "--signature", signature, "--now", "2026-08-14T00:00:30Z"], body);
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const res = runPython(
+      ["--secret", "wrong-secret", "--signature", signature, "--timestamp", timestamp, "--now", "2026-08-14T00:00:30Z"],
+      body
+    );
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("INVALID");
+    expect(res.stderr).toContain("signature mismatch");
   });
 
   it.skipIf(!hasPython)("rejects a replayed (too old) delivery", () => {
-    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
-    const res = runPython(["--secret", SECRET, "--signature", signature, "--now", "2026-08-14T01:00:00Z"], body);
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const res = runPython(
+      ["--secret", SECRET, "--signature", signature, "--timestamp", timestamp, "--now", "2026-08-14T01:00:00Z"],
+      body
+    );
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("too old");
   });
@@ -123,7 +175,16 @@ describe("webhook verification examples — Python (verify.py)", () => {
   it.skipIf(!hasPython)("verifies the docs sample payload (sample-payload.json)", () => {
     const body = fs.readFileSync(SAMPLE_PAYLOAD, "utf8");
     const res = runPython(
-      ["--secret", SECRET, "--signature", SAMPLE_SIGNATURE, "--now", "2026-08-14T00:00:30Z"],
+      [
+        "--secret",
+        SECRET,
+        "--signature",
+        SAMPLE_SIGNATURE,
+        "--timestamp",
+        "2026-08-14T00:00:00Z",
+        "--now",
+        "2026-08-14T00:00:30Z",
+      ],
       body
     );
     expect(res.status).toBe(0);
@@ -150,6 +211,7 @@ describe("webhook verification examples — docs consistency", () => {
       body,
       signature: SAMPLE_SIGNATURE,
       secret: SECRET,
+      timestamp: "2026-08-14T00:00:00Z",
       maxAgeSeconds: 0,
     });
     expect(valid).toBe(true);

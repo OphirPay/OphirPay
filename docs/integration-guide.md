@@ -120,6 +120,7 @@ Your endpoint receives HMAC-SHA256 signed payloads:
 POST /hooks HTTP/1.1
 Content-Type: application/json
 X-OphirPay-Signature: <hmac-sha256 hex>
+X-OphirPay-Timestamp: 2026-08-06T12:00:00Z
 X-OphirPay-Event: payment_recorded
 
 {
@@ -130,21 +131,23 @@ X-OphirPay-Event: payment_recorded
 }
 ```
 
-The signature is HMAC-SHA256 (hex) over the payload with the `signature`
-field **emptied** (set to `""`, the key is kept) and re-serialized with
-stable key order — using the secret returned when you registered the
-webhook. The same value is mirrored in the `X-OphirPay-Signature` header for
-convenience. Verify by recomputing over the exact canonical form:
+The signature is HMAC-SHA256 (hex) computed over `${timestamp}.${canonical}`
+where `canonical` is the payload with the `signature` field **emptied** (set
+to `""`, the key is kept) and re-serialized with stable key order — using the
+secret returned when you registered the webhook. The timestamp is read from the
+`X-OphirPay-Timestamp` header. Verify by recomputing over the exact canonical form:
 
 ```typescript
 import { createHmac, timingSafeEqual } from "crypto";
 
 const received = await request.json();
+const timestamp = request.headers.get("x-ophirpay-timestamp") ?? received.timestamp;
 // Canonicalize: empty the signature field (keep the key, set it to "") and
 // re-serialize with the received key order — matches buildSignedPayload.
 const canonical = JSON.stringify({ ...received, signature: "" });
+const toSign = `${timestamp}.${canonical}`;
 const expected = createHmac("sha256", yourSecret)
-  .update(canonical)
+  .update(toSign)
   .digest("hex");
 const provided = request.headers.get("x-ophirpay-signature") ?? "";
 const ok = provided.length === expected.length &&
@@ -152,9 +155,9 @@ const ok = provided.length === expected.length &&
 ```
 
 Always compare with a constant-time comparison (`timingSafeEqual`), verify
-against the **header** value, and reject requests missing a valid signature.
-See [Webhook Signature Verification](webhook-verification.md) for the exact
-canonical form, replay protection, and runnable Node/Python reference
+against the **header** value, and reject requests missing a valid signature or
+outside the 5-minute freshness window. See [Webhook Signature Verification](webhook-verification.md)
+for the exact canonical form, replay protection, and runnable Node/Python reference
 implementations.
 
 ### Rotating your webhook secret

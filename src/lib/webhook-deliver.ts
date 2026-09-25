@@ -5,6 +5,8 @@ import { incMetric } from "@/lib/metrics-counters";
 import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
 import crypto from "crypto";
 
+export const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = 300; // 5 minutes
+
 export interface WebhookPayload {
   event: string;
   timestamp: string;
@@ -21,39 +23,152 @@ export interface WebhookDeliveryResult {
   errorMessage?: string;
 }
 
-/**
- * Generate HMAC-SHA256 signature for a webhook payload.
- * Receiving endpoints can verify authenticity by recomputing the signature.
- */
-export function signWebhookPayload(payload: WebhookPayload, secret: string): string {
-  const body = JSON.stringify(payload);
-  return crypto.createHmac("sha256", secret).update(body).digest("hex");
+export interface VerifyWebhookOptions {
+  body: string;
+  signature: string;
+  secret: string;
+  timestamp?: string;
+  maxAgeSeconds?: number;
+  now?: Date;
+}
+
+export interface VerifyWebhookResult {
+  valid: boolean;
+  reason: string;
 }
 
 /**
- * Build the exact HTTP body that will be transmitted and sign it, so a
- * receiver verifying the HMAC over the received body always matches.
+ * Build the canonical string a receiver must sign, byte-for-byte identical
+ * to what `buildSignedPayload` signs on the sender side.
+ */
+export function canonicalizeWebhookBody(body: string): {
+  canonical: string;
+  parsed: Record<string, unknown>;
+} {
+  const parsed = JSON.parse(body);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("body must be a JSON object");
+  }
+  return {
+    canonical: JSON.stringify({ ...parsed, signature: "" }),
+    parsed: parsed as Record<string, unknown>,
+  };
+}
+
+/**
+ * Generate HMAC-SHA256 signature covering the timestamp plus the canonical body.
+ * Receiving endpoints verify authenticity and freshness against X-OphirPay-Signature.
+ */
+export function signWebhookPayload(
+  payload: WebhookPayload,
+  secret: string,
+  timestamp?: string,
+): string {
+  const ts = timestamp || payload.timestamp || new Date().toISOString();
+  const canonical = JSON.stringify({ ...payload, timestamp: ts, signature: "" });
+  const toSign = `${ts}.${canonical}`;
+  return crypto.createHmac("sha256", secret).update(toSign).digest("hex");
+}
+
+/**
+ * Build the exact HTTP body that will be transmitted and sign it, covering
+ * the timestamp plus the canonical body.
  *
- * Canonicalization: the HMAC is computed over the body with the signature
- * field emptied — `JSON.stringify({...payload, signature: ""})`. A receiver
- * recomputes identically: parse the received body, empty the `signature`
- * field, re-serialize (stable key order), and compare against the
- * `X-OphirPay-Signature` header.
+ * Canonicalization: the HMAC is computed over `${timestamp}.${canonical}`
+ * where `canonical` is `JSON.stringify({...payload, signature: ""})`.
+ * A receiver recomputes identically: parse received body, empty `signature`
+ * field, re-serialize (stable key order), prepend `${timestamp}.`, and
+ * compare against `X-OphirPay-Signature`.
  */
 export function buildSignedPayload(
   payload: WebhookPayload,
-  secret: string
-): { body: string; signature: string } {
-  const canonical = JSON.stringify({ ...payload, signature: "" });
+  secret: string,
+  timestamp?: string,
+): { body: string; signature: string; timestamp: string } {
+  const ts = timestamp || payload.timestamp || new Date().toISOString();
+  const payloadWithTs = { ...payload, timestamp: ts };
+  const canonical = JSON.stringify({ ...payloadWithTs, signature: "" });
+  const toSign = `${ts}.${canonical}`;
   const signature = crypto
     .createHmac("sha256", secret)
-    .update(canonical)
+    .update(toSign)
     .digest("hex");
-  return { body: JSON.stringify({ ...payload, signature }), signature };
+  return {
+    body: JSON.stringify({ ...payloadWithTs, signature }),
+    signature,
+    timestamp: ts,
+  };
 }
 
 /**
- * Deliver a webhook event to a registered endpoint with retries and signing.
+ * Verify an OphirPay webhook delivery against secret, signature, and timestamp.
+ * Returns { valid: true, reason: "valid" } or { valid: false, reason: "..." }.
+ */
+export function verifyWebhookSignature({
+  body,
+  signature,
+  secret,
+  timestamp,
+  maxAgeSeconds = DEFAULT_WEBHOOK_TOLERANCE_SECONDS,
+  now = new Date(),
+}: VerifyWebhookOptions): VerifyWebhookResult {
+  let canonical: string;
+  let parsed: Record<string, unknown>;
+  try {
+    const res = canonicalizeWebhookBody(body);
+    canonical = res.canonical;
+    parsed = res.parsed;
+  } catch (err) {
+    return {
+      valid: false,
+      reason: `invalid body: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const effectiveTimestamp =
+    timestamp || (typeof parsed.timestamp === "string" ? parsed.timestamp : undefined);
+  if (!effectiveTimestamp) {
+    return { valid: false, reason: "missing or invalid timestamp" };
+  }
+
+  const toSign = `${effectiveTimestamp}.${canonical}`;
+  const expected = crypto.createHmac("sha256", secret).update(toSign).digest("hex");
+  const provided = Buffer.from(String(signature ?? ""));
+  const expectedBuf = Buffer.from(expected);
+
+  const matches =
+    provided.length === expectedBuf.length &&
+    crypto.timingSafeEqual(provided, expectedBuf);
+  if (!matches) {
+    return { valid: false, reason: "signature mismatch" };
+  }
+
+  if (maxAgeSeconds > 0) {
+    const ts = Date.parse(effectiveTimestamp);
+    if (Number.isNaN(ts)) {
+      return { valid: false, reason: "missing or invalid timestamp" };
+    }
+    const ageSeconds = (now.getTime() - ts) / 1000;
+    if (ageSeconds > maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload too old (${Math.round(ageSeconds)}s > ${maxAgeSeconds}s) — possible replay`,
+      };
+    }
+    if (ageSeconds < -maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload timestamp is in the future (${Math.round(-ageSeconds)}s ahead)`,
+      };
+    }
+  }
+
+  return { valid: true, reason: "valid" };
+}
+
+/**
+ * Deliver a webhook event to a registered endpoint with retries, timestamp, and signing.
+ * Transmits X-OphirPay-Signature, X-OphirPay-Timestamp, and X-OphirPay-Event headers.
  * Returns delivery outcome including HTTP status when available.
  */
 export async function deliverWebhook(
@@ -63,7 +178,7 @@ export async function deliverWebhook(
   maxRetries = 3
 ): Promise<WebhookDeliveryResult> {
   const startedAt = Date.now();
-  const { body, signature } = buildSignedPayload(payload, secret);
+  const { body, signature, timestamp } = buildSignedPayload(payload, secret);
 
   // Re-validate the destination at delivery time to mitigate DNS rebinding.
   if (!(await isSafeWebhookUrlAtDelivery(url))) {
@@ -90,6 +205,7 @@ export async function deliverWebhook(
         headers: {
           "Content-Type": "application/json",
           "X-OphirPay-Signature": signature,
+          "X-OphirPay-Timestamp": timestamp,
           "X-OphirPay-Event": payload.event,
         },
         body,

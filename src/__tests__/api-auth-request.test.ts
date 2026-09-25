@@ -30,9 +30,13 @@ import {
   withApiAuth,
   hashApiKey,
   deriveKeyPrefix,
+  apiKeyLookupHashes,
+  API_KEY_PREFIX,
 } from "@/lib/api-auth";
 
-function requestWithKey(key = "oph_livekeyvalue"): Request {
+const VALID_KEY = `${API_KEY_PREFIX}${"a1b2c3d4".repeat(8)}`; // 64 hex chars
+
+function requestWithKey(key = VALID_KEY): Request {
   return new Request("http://localhost/api/payments", {
     headers: { authorization: `Bearer ${key}` },
   });
@@ -65,7 +69,7 @@ describe("authenticateRequest", () => {
   it("looks the key up by hash + prefix and returns the auth result", async () => {
     mocks.findFirst.mockResolvedValue(storedKey());
 
-    const result = await authenticateRequest(requestWithKey("oph_livekeyvalue"));
+    const result = await authenticateRequest(requestWithKey(VALID_KEY));
 
     expect(result).toEqual({
       userId: "user_1",
@@ -76,11 +80,17 @@ describe("authenticateRequest", () => {
 
     expect(mocks.findFirst).toHaveBeenCalledWith({
       where: {
-        keyHash: hashApiKey("oph_livekeyvalue"),
-        prefix: deriveKeyPrefix("oph_livekeyvalue"),
+        keyHash: { in: apiKeyLookupHashes(VALID_KEY) },
+        prefix: deriveKeyPrefix(VALID_KEY),
       },
       select: { id: true, userId: true, name: true, expiresAt: true, scopes: true },
     });
+
+    // Both the version-tagged and the legacy digest are tried (issue #701).
+    const where = mocks.findFirst.mock.calls[0]![0]!.where as {
+      keyHash: { in: string[] };
+    };
+    expect(where.keyHash.in).toContain(hashApiKey(VALID_KEY));
 
     // lastUsed / request log are fire-and-forget writes.
     expect(mocks.update).toHaveBeenCalled();

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { timeAgo, getStatusColor, formatAmount, shortenAddress } from "@/lib/utils";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { AssetDisplayName } from "@/components/AssetDisplayName";
 import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
 import type { BatchWithProgress } from "@/types";
 
@@ -202,6 +203,13 @@ export default function BatchDetailPage() {
                         </td>
                         <td className="py-3 px-5 font-mono font-medium text-gray-900 dark:text-white">
                           {formatAmount(item.amount, item.assetCode)}
+                          {item.assetIssuer && (
+                            <AssetDisplayName
+                              code={item.assetCode}
+                              issuer={item.assetIssuer}
+                              className="block font-sans font-normal"
+                            />
+                          )}
                         </td>
                         <td className="py-3 px-5">
                           <span

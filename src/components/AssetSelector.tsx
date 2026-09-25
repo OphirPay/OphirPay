@@ -8,11 +8,13 @@ import {
   XLM_ASSET,
   USDC_TESTNET,
   USDC_MAINNET,
+  getAssetDisplayParts,
   type AssetInfo,
 } from "@/lib/assets";
 import { fetchAllBalances, type AssetBalance } from "@/lib/stellar";
 import { checkTrustline } from "@/lib/trustline";
 import { STELLAR_NETWORK } from "@/lib/stellar";
+import { useAssetMetadata } from "@/hooks/useAssetMetadata";
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -20,6 +22,12 @@ const KNOWN_ASSETS: AssetInfo[] = [
   XLM_ASSET,
   STELLAR_NETWORK === "PUBLIC" ? USDC_MAINNET : USDC_TESTNET,
 ];
+
+function isKnownAsset(asset: AssetInfo): boolean {
+  return KNOWN_ASSETS.some(
+    (a) => a.code === asset.code && a.issuer === asset.issuer,
+  );
+}
 
 function findAssetBalance(
   balances: AssetBalance[],
@@ -99,6 +107,22 @@ export function AssetSelector({
 
   const balance = findAssetBalance(balances, selectedAsset);
 
+  // Custom assets (not in the known list) carry only a raw code + issuer —
+  // resolve the issuer's SEP-1 TOML so the trigger shows a real name when
+  // one is published, and the shortened issuer when it isn't.
+  const isCustom = !isKnownAsset(selectedAsset);
+  const { metadata: customMetadata } = useAssetMetadata(
+    isCustom ? selectedAsset.code : undefined,
+    isCustom ? selectedAsset.issuer : undefined,
+  );
+  const customDisplay = isCustom
+    ? getAssetDisplayParts(
+        selectedAsset.code,
+        selectedAsset.issuer,
+        customMetadata?.name,
+      )
+    : null;
+
   return (
     <div className={cn("relative", className)}>
       <button
@@ -116,8 +140,22 @@ export function AssetSelector({
           <span className="w-6 h-6 rounded-full bg-ophir-100 dark:bg-ophir-900/30 flex items-center justify-center text-xs font-bold text-ophir-700 dark:text-ophir-300">
             {selectedAsset.code.slice(0, 2)}
           </span>
-          <span className="text-gray-900 dark:text-white font-medium">
-            {selectedAsset.code}
+          <span className="text-left">
+            <span className="block text-gray-900 dark:text-white font-medium">
+              {selectedAsset.code}
+            </span>
+            {customDisplay &&
+              (customDisplay.title !== selectedAsset.code ||
+                customDisplay.subtitle) && (
+                <span
+                  className="block text-xs text-gray-400"
+                  title={selectedAsset.issuer}
+                >
+                  {customDisplay.title !== selectedAsset.code
+                    ? customDisplay.title
+                    : customDisplay.subtitle}
+                </span>
+              )}
           </span>
         </span>
 

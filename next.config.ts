@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
 
-// NOTE: the Content-Security-Policy is set per-request in src/middleware.ts
-// with a per-request nonce (Next.js reads it from the x-nonce request header
-// and applies it to its inline streaming/hydration scripts). A static CSP
-// cannot express that nonce, so it must NOT live here.
+// NOTE: The Content-Security-Policy is set per-request in src/proxy.ts
+// (Next 16 custom proxy/middleware) rather than statically here.
+// In Next.js 16 App Router, inline streaming hydration scripts require
+// 'unsafe-inline' in script-src because per-request nonces cannot be
+// propagated across static prerendering and standalone builds without
+// breaking hydration. See SECURITY.md and docs/AUDIT.md for full details.
 
 const nextConfig: NextConfig = {
   // Standalone output — required by the Docker image (copies .next/standalone).

@@ -26,7 +26,7 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 
 - **Branch naming**: `feat/feature-name`, `fix/bug-description`, `docs/what-changed`, `ci/what-changed`, `test/what-changed`
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org)
-- **Before submitting**: Run `npm run ci` (typecheck → lint → test → build)
+- **Before submitting**: Run `npm run verify` — the full gate (typecheck → lint → prisma → tests → build → deploy config). See [Verify before you push](#verify-before-you-push).
 
 ### Dependency Updates
 
@@ -45,6 +45,39 @@ ecosystems once a week.
 ### Adding or changing an API endpoint
 
 Before adding or modifying an API endpoint, read the [API Endpoint Guide](docs/API_GUIDE.md). It documents the mandatory conventions: file structure, Zod validation, the error-handling pattern, auth middleware usage, the response envelope, rate-limit integration, a copy-pasteable worked example, and a pre-merge checklist.
+
+## Verify before you push
+
+One command defines "green" for both CI and local development:
+
+```bash
+npm run verify        # full gate — run this before every push
+npm run verify:quick  # fast loop — typecheck + unit tests only
+```
+
+`npm run verify` executes [`scripts/check-submission.sh`](scripts/check-submission.sh) — the same script the `verify` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs. CI and local therefore run the same steps, in the same order, from a single definition. `npm run ci` is kept as an alias of `npm run verify`.
+
+### Step ↔ CI job ↔ command mapping
+
+| `npm run verify` step | Command it runs | CI job | Command on its own |
+|---|---|---|---|
+| 1. Typecheck | `npx tsc --noEmit` | `verify` | `npm run typecheck` |
+| 2. Lint | `npx eslint . --max-warnings 0` | `verify` | `npm run lint -- --max-warnings 0` |
+| 3. Prisma | `npx prisma validate && npx prisma generate` | `verify` | `npm run db:validate` |
+| 4. Unit tests | `npx vitest run` | `verify` | `npm test` |
+| 5. Build | `npm run build` | `verify` | `npm run build` |
+| 6. Contract tests | `cargo test` in `contracts/ophirpay` and `contracts/emitter` (auto-skipped when `cargo` is not installed) | `contract-wasm` | `cd contracts/ophirpay && cargo test` |
+| 7. Deploy config | `bash scripts/validate-deploy-config.sh` | `verify` | `bash scripts/validate-deploy-config.sh` |
+| — Secrets scan | `gitleaks detect --config .gitleaks.toml` | `secrets-scan` | see the workflow |
+
+Everything above runs in both places, with two documented deviations:
+
+- **Contract tests** — the CI `verify` job sets `SKIP_CONTRACTS=1` because the dedicated `contract-wasm` job already builds both contracts with the pinned toolchain and runs their tests; locally the step runs whenever `cargo` is on your `PATH`.
+- **Secrets scan** — `gitleaks` is not an npm dependency, so it stays a standalone CI job (and a standalone local binary you can run by hand).
+
+Any step can be skipped for a quicker pass with a `SKIP_*` variable, e.g. `SKIP_BUILD=1 npm run verify` — see the header of [`scripts/check-submission.sh`](scripts/check-submission.sh) for the full list.
+
+The workflow additionally keeps focused jobs (`lint`, `build`, `deploy-config`, `helm-lint`, …) so a single failing concern is easy to spot; the `verify` job is what runs the whole gate end-to-end, exactly as you run it locally.
 
 ## CI/CD Pipeline
 
@@ -211,7 +244,7 @@ Soroban protocol limit) by the `contract-regression` job in
    `integration/staging` while batch mode is active): `feat/my-feature` or
    `fix/my-bug`
 2. Make your changes, following existing code conventions
-3. Run `npm run ci` locally to verify everything passes
+3. Run `npm run verify` locally to verify everything passes
 4. Push and open a PR against that branch — CI runs automatically
 5. Ensure all required checks pass (✅ green)
 6. Request review from a maintainer (CODEOWNERS auto-assigns reviewers)
@@ -280,7 +313,7 @@ are the contract for payout — the PR must satisfy them exactly.
 4. **Create your branch** from `main` using the issue's suggested branch name
    (e.g. `feat(wasm)/compute-WASM-hash-early-and-display-before-simulat`).
 5. **Implement** following the issue's key-files hints and this guide's
-   conventions (Conventional Commits, `npm run ci` green, tests added).
+   conventions (Conventional Commits, `npm run verify` green, tests added).
 6. **Open the PR** referencing the issue with **`Closes #<number>`** in the
    description so the issue auto-closes on merge.
 7. **Make sure CI is green** — all required checks must pass.
@@ -338,7 +371,7 @@ and the required CI checks listed above.
 
 - [ ] Branch is based on current `main` and named `feat/…`, `fix/…`,
       `docs/…`, `ci/…`, or `test/…`
-- [ ] `npm run ci` passes locally (typecheck → lint → test → build)
+- [ ] `npm run verify` passes locally (typecheck → lint → prisma → tests → build → deploy config)
 - [ ] PR description explains **what** changed and **why**, references the
       issue with `Closes #…`, and includes a test plan
 - [ ] All required CI checks are green on the PR

@@ -36,6 +36,7 @@ fully-green repository.
 ### Up Next
 - [ ] Contract modularization (split into Payment/Escrow/Governance modules)
 - [x] Redis-backed distributed rate limiting (`REDIS_URL`; https REST for the edge global limit, redis:// via ioredis for Node buckets — #703)
+- [x] Real-time WebSocket live-event server (RFC 6455 server & dual-transport fallback client implemented in `src/lib/events/`; see [docs/WEBSOCKET.md](docs/WEBSOCKET.md))
 - [ ] Bug bounty program on Immunefi
 
 ## Q4 2026
@@ -45,7 +46,7 @@ fully-green repository.
 - [ ] Mobile wallet SDK (React Native)
 - [ ] Fiat on-ramp integration (Kado, MoonPay)
 - [ ] Cross-chain bridge support (Sep-38 anchors)
-- [ ] Real-time WebSocket API (replace SSE polling)
+- [ ] Complete WebSocket client integration & clustering (server-side daemon and fallback client exist; remaining: migrate `useNotifications` to `connectLiveEvents` and add Redis pub/sub broker for multi-instance deployments)
 - [ ] Automated market maker for fee distribution
 
 ## Q1 2027

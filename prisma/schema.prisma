@@ -508,6 +508,7 @@ model Webhook {
   /// Owner of this webhook (see User).
   user        User              @relation(fields: [userId], references: [id])
   deliveries  WebhookDelivery[]
+  deadLetters WebhookDeadLetter[]
 
   /// Speeds up "all webhooks for a user".
   @@index([userId])
@@ -769,4 +770,23 @@ model PaymentSyncRun {
   @@index([status])
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
+}
+
+model WebhookDeadLetter {
+  id               String    @id @default(cuid())
+  webhookId        String
+  deliveryId       String    @unique
+  eventId          String
+  payload          String
+  attempts         Int
+  lastResponseCode Int?
+  lastErrorMessage String?
+  failedAt         DateTime  @default(now())
+  replayedAt       DateTime?
+  replayDeliveryId String?
+
+  webhook Webhook @relation(fields: [webhookId], references: [id])
+
+  @@index([webhookId, failedAt])
+  @@index([replayedAt])
 }

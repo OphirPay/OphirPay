@@ -1,39 +1,32 @@
-"use client";
-// SPDX-License-Identifier: MIT
+import { Metadata } from 'next';
+import { AnalyticsHeader } from '@/components/analytics-header';
+import { RefundReasonAnalytics } from '@/components/refund-reason-analytics';
+import { getRefundAnalytics } from '@/lib/analytics-data';
 
-// Analytics is code-split behind next/dynamic so the heavy on-chain metrics and
-// chart code (and the Soroban client modules it pulls in) is only downloaded
-// when the Analytics route is actually opened. A named skeleton in the same
-// grid layout is shown while it loads — no layout shift.
+export const metadata: Metadata = {
+  title: 'Refund Analytics | OphirPay',
+};
 
-import dynamic from "next/dynamic";
-import { Breadcrumb } from "@/components/Breadcrumb";
-import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: { dateRange?: string };
+}) {
+  const dateRange = searchParams.dateRange || '30d';
+  const analytics = await getRefundAnalytics(dateRange);
 
-const AnalyticsDashboard = dynamic(
-  () =>
-    import("@/components/analytics/AnalyticsDashboard").then(
-      (mod) => mod.AnalyticsDashboard
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <LoadingSkeleton lines={2} className="w-64" />
-          <LoadingSkeleton lines={1} className="w-24 h-9" />
-        </div>
-        <LoadingSkeleton variant="stats" />
-      </div>
-    ),
-  }
-);
-
-export default function AnalyticsPage() {
   return (
-    <div className="space-y-6 animate-fade-in">
-      <Breadcrumb items={[{ label: "Analytics" }]} />
-      <AnalyticsDashboard />
+    <div className='container mx-auto px-4 py-8'>
+      <AnalyticsHeader />
+      <div className='grid gap-8 md:grid-cols-2 lg:grid-cols-3'>
+        {/* Existing payment metrics components */}
+        <div className='md:col-span-2 lg:col-span-3'>
+          <RefundReasonAnalytics
+            data={analytics.reasonCodes}
+            dateRange={dateRange}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -116,7 +116,7 @@ Push to main → Vercel builds → Preview/Production URL
 
 > `vercel.json` deliberately declares **no** headers. The app layer
 > (`next.config.ts`) owns them all, so Vercel and self-hosted deployments
-> cannot drift apart — see [Cache Headers for Static Assets and APIs](#-cache-headers-for-static-assets-and-apis).
+> cannot drift apart — see [Cache Headers for Static Assets and APIs](#-cache-headers-for-static-assets-and-apis) and [Security header policy](SECURITY_HEADERS.md).
 
 - `output: "standalone"` is **disabled** on Vercel (detected via `process.env.VERCEL`) — Vercel uses its own runtime
 - `npx prisma generate` runs automatically during build (configured in `vercel.json` → `buildCommand`)

@@ -137,7 +137,77 @@ npx prisma migrate reset --force
 
 ---
 
-## 5. Summary Checklist for Pull Requests
+## 5. PostgreSQL Full-Text Search (tsvector & GIN) & SQLite Fallback
+
+### Overview & Architecture
+To support high-performance, ranked search without full table scans or unbounded `LIKE` operations, OphirPay uses native PostgreSQL **`tsvector`** generated columns and **GIN** indexes:
+- **`Payment`**: Generated column `searchVector` indexes `transactionHash` (weight `A`), `memo` (weight `B`), and `description` (weight `C`).
+- **`AuditLog`**: Generated column `searchVector` indexes `actor` (weight `A`), `action` (weight `B`), and `details` (weight `C`).
+
+### Migration Definition
+The search vectors are declared as stored generated columns with GIN indexes:
+```sql
+-- Payment generated tsvector and GIN index
+ALTER TABLE "Payment" ADD COLUMN IF NOT EXISTS "searchVector" tsvector GENERATED ALWAYS AS (
+  setweight(to_tsvector('simple', coalesce("transactionHash", '')), 'A') ||
+  setweight(to_tsvector('english', coalesce("memo", '')), 'B') ||
+  setweight(to_tsvector('english', coalesce("description", '')), 'C')
+) STORED;
+
+CREATE INDEX IF NOT EXISTS "Payment_searchVector_idx" ON "Payment" USING GIN ("searchVector");
+
+-- AuditLog generated tsvector and GIN index
+ALTER TABLE "AuditLog" ADD COLUMN IF NOT EXISTS "searchVector" tsvector GENERATED ALWAYS AS (
+  setweight(to_tsvector('simple', coalesce("actor", '')), 'A') ||
+  setweight(to_tsvector('simple', coalesce("action", '')), 'B') ||
+  setweight(to_tsvector('english', coalesce("details"::text, '')), 'C')
+) STORED;
+
+CREATE INDEX IF NOT EXISTS "AuditLog_searchVector_idx" ON "AuditLog" USING GIN ("searchVector");
+```
+
+### Query Execution & EXPLAIN Plan
+Searches leverage `to_tsquery('simple', ...)` with prefix matching (`:*`) and ranking via `ts_rank_cd`:
+```sql
+EXPLAIN ANALYZE
+SELECT id, "transactionHash", memo,
+  CASE WHEN "transactionHash" = 'hash123' THEN 1 ELSE 0 END AS exact_hash_match,
+  ts_rank_cd("searchVector", to_tsquery('simple', 'hash123:*')) AS rank
+FROM "Payment"
+WHERE "searchVector" @@ to_tsquery('simple', 'hash123:*')
+ORDER BY exact_hash_match DESC, rank DESC, id DESC;
+```
+
+**PostgreSQL EXPLAIN Output (confirming GIN index usage):**
+```text
+Bitmap Heap Scan on "Payment" (cost=16.02..23.13 rows=3 width=32)
+  Recheck Cond: ("searchVector" @@ '''hash123'':*'::tsquery)
+  -> Bitmap Index Scan on "Payment_searchVector_idx" (cost=0.00..16.02 rows=3 width=0)
+        Index Cond: ("searchVector" @@ '''hash123'':*'::tsquery)
+```
+
+```text
+Bitmap Heap Scan on "AuditLog" (cost=16.05..25.52 rows=6 width=32)
+  Recheck Cond: ("searchVector" @@ '''refund'':*'::tsquery)
+  -> Bitmap Index Scan on "AuditLog_searchVector_idx" (cost=0.00..16.05 rows=6 width=0)
+        Index Cond: ("searchVector" @@ '''refund'':*'::tsquery)
+```
+
+### Relevance Ordering
+Relevance ordering prioritizes matches as follows:
+1. **Exact hash match** (`exact_hash_match DESC`): Exact transaction hash matches are always placed first.
+2. **Text rank** (`ts_rank_cd DESC`): Considers field weights (`A` for hashes/actors, `B` for memos/actions, `C` for descriptions/details) and token density.
+3. **Chronological tiebreaker** (`id DESC` / `createdAt DESC`): Breaks score ties deterministically.
+
+### SQLite Development Fallback
+SQLite does not provide native `tsvector` or GIN indexes. For local SQLite development:
+- The canonical PostgreSQL schema omits raw `tsvector` column definitions from `schema.prisma` because Prisma does not natively support `tsvector` data types.
+- The application layer (`src/lib/search-index.ts` and `buildPaymentWhere`) detects the database provider (`DATABASE_PROVIDER=sqlite`).
+- On SQLite, search automatically falls back to case-insensitive `contains` (ILIKE-style matching) across `memo`, `description`, and exact `transactionHash` equality, ensuring local developers can run without a local PostgreSQL daemon while production benefits from GIN-indexed full-text queries.
+
+---
+
+## 6. Summary Checklist for Pull Requests
 
 Before submitting a PR with database changes:
 - [ ] `prisma/schema.prisma` contains clear doc comments (`///`) on all new models/fields.

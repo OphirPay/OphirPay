@@ -15,6 +15,7 @@ All notable changes to OphirPay will be documented in this file.
 ## [Unreleased] — 2026-08-26
 
 ### Added
+- **Postgres full-text search for payments and audit entries (#823)**: introduced PostgreSQL `tsvector` generated columns and GIN indexes for searchable fields on `Payment` (`transactionHash` [A], `memo` [B], `description` [C]) and `AuditLog` (`actor` [A], `action` [B], `details` [C]). Added search query helpers in `src/lib/search-index.ts` with sanitized `to_tsquery` formatting, prefix matching for partial terms, sensible relevance ranking (exact transaction hash matches ranked first), and automated fallback to substring/contains matching for local SQLite development.
 - **Request-id + duration structured request logging**: every API request now emits a single structured log line with the request id, HTTP method, path, response status, and duration in ms. `withRequestLogging()` wraps every route handler (the proxy cannot observe a handler's final status/duration), the proxy threads the `X-Request-Id` it mints into the downstream request headers so handlers and error logs correlate with the response header, and `logger.request()`/`handleApiError()` now include the request id in their structured context. Rate-limited (429) rejections are logged from the proxy with the same request id.
 
 ## [Unreleased] — 2026-08-12 (submission hardening pass)

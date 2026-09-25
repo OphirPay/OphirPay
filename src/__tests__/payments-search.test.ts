@@ -134,3 +134,48 @@ describe("GET /api/payments — search combined with filters & pagination", () =
     });
   });
 });
+
+describe("Postgres full-text search & SQLite fallback (Issue #823)", () => {
+  it("formats sanitized tsquery strings with prefix matching for partial terms", async () => {
+    const { formatTsQuery } = await import("@/lib/search-index");
+    expect(formatTsQuery("invoice")).toBe("invoice:*");
+    expect(formatTsQuery("invoice 42")).toBe("invoice:* & 42:*");
+    expect(formatTsQuery("foo:bar & (baz | qux)*")).toBe("foo:* & bar:* & baz:* & qux:*");
+    expect(formatTsQuery("  'test' \"query\"  ")).toBe("test:* & query:*");
+    expect(formatTsQuery("")).toBeNull();
+    expect(formatTsQuery("   ")).toBeNull();
+  });
+
+  it("builds fallback OR filters for payments and audit logs", async () => {
+    const { buildPaymentSearchFilter, buildAuditLogSearchFilter } = await import("@/lib/search-index");
+    const paymentFilter = buildPaymentSearchFilter("invoice-123");
+    expect(paymentFilter.tsQuery).toBe("invoice-123:*");
+    expect(paymentFilter.fallbackOr).toEqual([
+      { description: { contains: "invoice-123" } },
+      { memo: { contains: "invoice-123", mode: "insensitive" } },
+      { transactionHash: { equals: "invoice-123" } },
+    ]);
+
+    const auditFilter = buildAuditLogSearchFilter("refund");
+    expect(auditFilter.tsQuery).toBe("refund:*");
+    expect(auditFilter.fallbackOr).toEqual([
+      { actor: { contains: "refund", mode: "insensitive" } },
+      { action: { contains: "refund", mode: "insensitive" } },
+    ]);
+  });
+
+  it("ranks exact transaction hash match first over partial or memo matches", async () => {
+    const { rankSearchResults } = await import("@/lib/search-index");
+    const HASH = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    const records = [
+      { id: "1", transactionHash: "other_hash", memo: `Payment for ${HASH}`, description: "Normal" },
+      { id: "2", transactionHash: HASH, memo: "Invoice payment", description: "First" },
+      { id: "3", transactionHash: "other_hash_2", memo: "Unrelated", description: `Mentions ${HASH}` },
+    ];
+
+    const results = rankSearchResults(records, HASH, ["transactionHash", "memo", "description"]);
+    expect(results[0].id).toBe("2");
+    expect(results[0].transactionHash).toBe(HASH);
+    expect(results[0]._score).toBeGreaterThan(results[1]._score);
+  });
+});

@@ -3,6 +3,8 @@
 import { logger } from "@/lib/logger";
 import { incMetric } from "@/lib/metrics-counters";
 import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { RETRY_CONFIG } from "@/lib/retry-config";
 import crypto from "crypto";
 
 export interface WebhookPayload {
@@ -68,7 +70,7 @@ export async function deliverWebhook(
   url: string,
   secret: string,
   payload: WebhookPayload,
-  maxRetries = 3
+  maxRetries = RETRY_CONFIG.webhook.maxAttempts
 ): Promise<WebhookDeliveryResult> {
   const startedAt = Date.now();
   const { body, signature } = buildSignedPayload(payload, secret);
@@ -102,22 +104,21 @@ export async function deliverWebhook(
 
     attempts = attempt;
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-OphirPay-Signature": signature,
-          "X-OphirPay-Event": payload.event,
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-OphirPay-Signature": signature,
+            "X-OphirPay-Event": payload.event,
+          },
+          body,
+          redirect: "manual",
         },
-        body,
-        signal: controller.signal,
-        redirect: "manual",
-      });
+        RETRY_CONFIG.webhook.timeoutMs,
+      );
 
-      clearTimeout(timeout);
       lastStatusCode = response.status;
 
       if (response.ok) {
@@ -139,7 +140,11 @@ export async function deliverWebhook(
     }
 
     if (attempt < maxRetries) {
-      await new Promise((r) => setTimeout(r, Math.pow(2, attempt - 1) * 1000));
+      const backoffMs = Math.min(
+        Math.pow(2, attempt - 1) * RETRY_CONFIG.webhook.baseDelayMs,
+        RETRY_CONFIG.webhook.maxDelayMs,
+      );
+      await new Promise((r) => setTimeout(r, backoffMs));
     }
   }
 

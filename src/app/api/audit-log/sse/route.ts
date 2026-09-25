@@ -112,8 +112,7 @@ export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(asyn
       };
 
       // Typed cancel hook — runs when the client disconnects.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (controller as any).signal?.addEventListener("abort", cleanup);
+      (controller as unknown as { signal?: AbortSignal }).signal?.addEventListener("abort", cleanup);
 
       // Safety: auto-cleanup after 10 minutes even without an explicit
       // disconnect (e.g. runtimes that never surface the abort signal).

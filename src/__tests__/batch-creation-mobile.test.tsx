@@ -68,8 +68,11 @@ vi.mock("@/components/ui/CopyButton", () => ({
 
 // Mock next/link
 vi.mock("next/link", () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  default: ({ children, href, ...props }: Record<string, any>) => (
+  default: ({
+    children,
+    href,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => (
     <a href={href} {...props}>
       {children}
     </a>

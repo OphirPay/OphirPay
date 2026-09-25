@@ -17,7 +17,7 @@ describe("scripts/load-test.js", () => {
   });
 
   it("load-tests the required endpoints at increasing concurrency", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require of CJS load-test script
     const mod = require(SCRIPT);
     const names = mod.ENDPOINTS.map((e: { name: string }) => e.name);
     expect(names).toContain("/api/health");
@@ -29,7 +29,7 @@ describe("scripts/load-test.js", () => {
   });
 
   it("reports req/s, p95 latency, and error rate in its summary builder", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require of CJS load-test script
     const mod = require(SCRIPT);
     const row = mod.summaryRow({
       endpoint: "/api/health",
@@ -49,7 +49,7 @@ describe("scripts/load-test.js", () => {
   });
 
   it("marks SSE rows as n/a for req/s and latency (stream semantics)", () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require of CJS load-test script
     const mod = require(SCRIPT);
     const row = mod.summaryRow({
       endpoint: "/api/events",

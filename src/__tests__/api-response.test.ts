@@ -125,22 +125,34 @@ describe("serverError", () => {
 
 describe("handleApiError", () => {
   it("maps Prisma P2002 → 409", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const err = new (Prisma.PrismaClientKnownRequestError as any)("unique", {
-      code: "P2002",
-      clientVersion: "5.0",
-      meta: { target: ["email"] },
-    });
+    type PrismaErrorConstructor = new (
+      message: string,
+      userFacingError: { code: string; clientVersion: string; meta?: Record<string, unknown> }
+    ) => Error;
+    const err = new (Prisma.PrismaClientKnownRequestError as unknown as PrismaErrorConstructor)(
+      "unique",
+      {
+        code: "P2002",
+        clientVersion: "5.0",
+        meta: { target: ["email"] },
+      }
+    );
     const res = handleApiError(err, "POST /users");
     expect(res.status).toBe(409);
   });
 
   it("maps Prisma P2025 → 404", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const err = new (Prisma.PrismaClientKnownRequestError as any)("not found", {
-      code: "P2025",
-      clientVersion: "5.0",
-    });
+    type PrismaErrorConstructor = new (
+      message: string,
+      userFacingError: { code: string; clientVersion: string }
+    ) => Error;
+    const err = new (Prisma.PrismaClientKnownRequestError as unknown as PrismaErrorConstructor)(
+      "not found",
+      {
+        code: "P2025",
+        clientVersion: "5.0",
+      }
+    );
     const res = handleApiError(err);
     expect(res.status).toBe(404);
   });

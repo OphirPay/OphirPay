@@ -2,13 +2,54 @@ import { globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+const suppressionGuardPlugin = {
+  rules: {
+    "require-description": {
+      meta: {
+        type: "problem",
+        docs: {
+          description: "Require a justification description for all eslint-disable directives",
+        },
+        schema: [],
+        messages: {
+          missingDescription:
+            "eslint-disable directives must include a justification explanation (e.g. '-- <reason>')",
+        },
+      },
+      create(context) {
+        return {
+          Program() {
+            const comments = context.sourceCode.getAllComments();
+            for (const comment of comments) {
+              const text = comment.value.trim();
+              if (/^eslint-disable(-next-line|-line)?(\s|$)/.test(text)) {
+                if (!/--\s*\S+/.test(text)) {
+                  context.report({
+                    loc: comment.loc,
+                    messageId: "missingDescription",
+                  });
+                }
+              }
+            }
+          },
+        };
+      },
+    },
+  },
+};
+
 // eslint-config-next >= 16 ships native flat config arrays via its
 // `core-web-vitals` and `typescript` subpath exports — no FlatCompat needed.
 const eslintConfig = [
   ...nextVitals,
   ...nextTs,
   {
+    plugins: {
+      "suppression-guard": suppressionGuardPlugin,
+    },
     rules: {
+      "@typescript-eslint/no-explicit-any": "error",
+      "suppression-guard/require-description": "error",
       "@typescript-eslint/no-unused-vars": [
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },

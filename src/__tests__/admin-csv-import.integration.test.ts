@@ -49,7 +49,7 @@ async function isTestDatabaseReachable(): Promise<boolean> {
 // against Postgres instead of a client built with no datasource.
 vi.mock("@/lib/prisma", () => {
   // vi.mock factories are hoisted above imports; only `require` (also hoisted by Node) can resolve @prisma/client here.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- vi.mock factory is hoisted above ES imports
   const { PrismaClient } = require("@prisma/client") as typeof import("@prisma/client");
   return {
     default: new PrismaClient({

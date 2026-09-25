@@ -11,9 +11,9 @@ export function getBuildId(): string {
 
   // Next.js injects __NEXT_DATA__ with the buildId
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = (window as any).__NEXT_DATA__;
-    if (data?.buildId) return data.buildId as string;
+    const win = window as unknown as { __NEXT_DATA__?: { buildId?: string } };
+    const data = win.__NEXT_DATA__;
+    if (data?.buildId) return data.buildId;
   } catch {
     // Not a Next.js runtime
   }

@@ -44,4 +44,11 @@ COPY --from=builder /app/.next/static ./.next/static
 EXPOSE 3000
 
 ENV PORT=3000
+
+# Healthcheck probing process liveness without external dependencies.
+# The distroless base image has no shell (no sh, curl, or wget), so we execute
+# a lightweight Node.js one-liner directly with the bundled node runtime.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD ["node", "-e", "require('http').get('http://127.0.0.1:3000/api/health?probe=liveness', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"]
+
 CMD ["server.js"]

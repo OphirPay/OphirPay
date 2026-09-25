@@ -53,8 +53,26 @@ async function pingJsonRpc(
   }
 }
 
-export const GET = withMetrics("GET /api/health", withRequestLogging(async function GET() {
+export const GET = withMetrics("GET /api/health", withRequestLogging(async function GET(req?: Request) {
   try {
+    const url = req ? new URL(req.url, "http://localhost") : null;
+    const probe = url?.searchParams.get("probe") || url?.searchParams.get("type");
+
+    // Lightweight liveness probe: verifies process is alive and event loop is responsive.
+    // Does not check external dependencies to avoid container restart loops during transient dependency outages.
+    if (probe === "liveness") {
+      return successResponse(
+        {
+          status: "ok",
+          probe: "liveness",
+          uptime: process.uptime(),
+          timestamp: new Date().toISOString(),
+        },
+        { timestamp: new Date().toISOString() },
+        200
+      );
+    }
+
     // Critical check: database connectivity
     let dbStatus: "ok" | "error" = "ok";
     let dbLatency: number | null = null;
@@ -129,6 +147,7 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     return successResponse(
       {
         status: overallStatus,
+        probe: "readiness",
         version: "0.1.0",
         services: {
           database: { status: dbStatus, latencyMs: dbLatency },

@@ -37,11 +37,20 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/node_modules ./node_modules
+# Next.js standalone output contains pruned production dependencies.
+# Only copy the generated Prisma client & query engine which standalone does not bundle.
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 3000
 
 ENV PORT=3000
+
+# Healthcheck probing process liveness without external dependencies.
+# The distroless base image has no shell (no sh, curl, or wget), so we execute
+# a lightweight Node.js one-liner directly with the bundled node runtime.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD ["node", "-e", "require('http').get('http://127.0.0.1:3000/api/health?probe=liveness', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"]
+
 CMD ["server.js"]

@@ -545,6 +545,10 @@ curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/api/health
 # 4. Verify database connectivity
 curl -s https://your-domain.com/api/health | jq .database
 # Expected: "connected"
+
+# 5. Verify SEP-1 Stellar discovery
+curl -s https://your-domain.com/.well-known/stellar.toml
+# Expected: 200 with valid TOML document declaring VERSION="2.0.0", NETWORK_PASSPHRASE, and CONTRACTS
 ```
 
 ### Manual Smoke Test

@@ -86,6 +86,22 @@ cp .env.example .env.local
 | `NEXT_PUBLIC_STELLAR_HORIZON_URL` | `https://horizon-testnet.stellar.org` | `https://horizon.stellar.org` |
 | `STELLAR_NETWORK_PASSPHRASE` | `Test SDF Network ; September 2015` | `Public Global Stellar Network ; September 2015` |
 
+### SEP-1 Discovery (`stellar.toml`)
+
+Wallets and explorers discover this deployment at
+`GET /.well-known/stellar.toml`. The document is generated from the
+environment on every request (`src/lib/stellar-toml.ts`), so the network
+passphrase, contract ids and app URL track deployment config — verify with:
+
+```bash
+curl https://<your-domain>/.well-known/stellar.toml
+```
+
+After changing `STELLAR_NETWORK_PASSPHRASE`, `NEXT_PUBLIC_CONTRACT_ID`,
+`NEXT_PUBLIC_EMITTER_CONTRACT_ID` or `NEXT_PUBLIC_APP_URL`, re-check the
+endpoint: `src/__tests__/stellar-toml.test.ts` fails if the served file
+drifts from configuration.
+
 ---
 
 ## Option 1: Vercel (Recommended)

@@ -491,6 +491,22 @@ curl -s https://your-domain.com/api/health | jq .database
 4. Check the payment appears in the Payments page
 5. Verify the on-chain record: `stellar contract invoke --id <CONTRACT_ID> -- get_payment_count`
 
+### Artifact Verification & Provenance (SBOM)
+
+Before deploying container images or contract WASM binaries in production or audit environments, verify build provenance and inspect the Software Bill of Materials (SBOM):
+
+```bash
+# 1. Verify container image build provenance (Sigstore / GitHub Artifact Attestations)
+gh attestation verify oci://ghcr.io/ophirpay/ophirpay:<tag> --owner OphirPay
+
+# 2. Verify SBOM attestation
+gh attestation verify ophirpay-node-sbom.cdx.json --owner OphirPay
+
+# 3. Generate and inspect local SBOM on demand
+npm run generate:sbom
+jq '.components[] | {name, version, purl}' build/sbom/ophirpay-node-sbom.cdx.json
+```
+
 ---
 
 ## Troubleshooting

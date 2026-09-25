@@ -207,48 +207,41 @@ The file is accessible at:
    `x-csrf-token` header against the CSRF cookie value using constant-time
    comparison to prevent timing attacks.
 
-### Rules
-
-1. **Do not** exploit the vulnerability beyond what is necessary to demonstrate it
-2. **Do not** access, modify, or delete other users' data
-3. **Do not** disrupt the live service (ophirpay.vercel.app)
-4. **Do not** disclose the vulnerability publicly before it is resolved
-5. Provide a clear proof-of-concept with steps to reproduce
-6. Report vulnerabilities in good faith
-
 - **Production (HTTPS)**: Cookie named `__Host-csrf` with `Secure` attribute
 - **Development (HTTP)**: Cookie named `csrf` without `Secure` attribute
   (browsers reject `__Host-` cookies without Secure on non-localhost HTTP)
-
-1. Report via one of the [private channels](#how-to-report) above
-2. We acknowledge within 48 hours
-3. We validate and determine severity within 5 business days
-4. We ship a fix and publish an advisory
-5. You receive credit in the advisory + reward (with your consent)
-
-> Payouts are in XLM or USDC on Stellar. We follow
-> [CVSS v3.1](https://www.first.org/cvss/v3.1/specification-document) scoring.
 
 ```typescript
 // Method 1: Manual enforcement
 import { verifyCsrf } from "@/lib/csrf";
 
-OphirPay implements the following security headers
-([`next.config.ts`](next.config.ts) is the single source of truth; `vercel.json`
-does not duplicate them):
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `X-XSS-Protection: 0` (the legacy `1; mode=block` filter is deprecated and
-  must not be re-enabled)
-- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`
-
 // Method 2: Higher-order function wrapper
 import { withCsrf } from "@/lib/csrf";
+```
+
+## Security Headers Policy
+
+OphirPay enforces an authoritative security header policy across [`next.config.ts`](next.config.ts) (static baseline and caching) and [`src/proxy.ts`](src/proxy.ts) (dynamic CSP, correlation IDs, and rate limiting). `vercel.json` does not duplicate headers, ensuring uniform behavior between Vercel and self-hosted environments.
+
+For the complete header matrix, layer precedence, deliberate relaxation justifications, and the verification runbook, see **[`docs/SECURITY_HEADERS.md`](docs/SECURITY_HEADERS.md)**.
+
+### Baseline Headers
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `X-XSS-Protection: 0` (the legacy `1; mode=block` filter is deprecated and must not be re-enabled)
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+- `Cross-Origin-Opener-Policy: same-origin`
+- `Cross-Origin-Resource-Policy: same-origin` (Pages) / `cross-origin` (`/api/*`)
+- `Content-Security-Policy`: Configured per-request in `src/proxy.ts`
+
+## Smart Contract Security
 
 - All contract functions use proper access control
 - Cross-contract calls are validated and propagate failures atomically (see
-  `docs/architecture.md` for the system overview)
+  [`docs/architecture.md`](docs/architecture.md) for the system overview)
 - Contracts use Result types for error handling
 - Timestamps and metadata are recorded for audit trails
 - State-changing operations — governance proposal execution, the
@@ -257,3 +250,4 @@ import { withCsrf } from "@/lib/csrf";
   are guarded by reentrancy locks
 - Sensitive admin actions are protected by two-step ownership transfer (24h
   timelock) and timelocked upgrades
+

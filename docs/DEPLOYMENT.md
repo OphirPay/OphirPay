@@ -545,6 +545,9 @@ curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/api/health
 # 4. Verify database connectivity
 curl -s https://your-domain.com/api/health | jq .database
 # Expected: "connected"
+
+# 5. Verify security headers (see docs/SECURITY_HEADERS.md)
+curl -sI https://your-domain.com/ | grep -E -i "(content-security-policy|x-frame-options|x-content-type-options|strict-transport-security)"
 ```
 
 ### Manual Smoke Test

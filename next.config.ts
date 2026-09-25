@@ -5,6 +5,7 @@ import bundleAnalyzer from "@next/bundle-analyzer";
 // Note that 'unsafe-inline' is retained because the per-request nonce never
 // reaches the App Router renderer. A static CSP cannot express that nonce,
 // so it must NOT live here.
+// For the complete policy matrix and rationales, see docs/SECURITY_HEADERS.md.
 //
 // NOTE: this file is the single source of truth for static security headers
 // (issue #681). vercel.json used to repeat the same headers over the

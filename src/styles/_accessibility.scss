@@ -1,0 +1,27 @@
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.focusable:focus {
+  position: static;
+  width: auto;
+  height: auto;
+  clip: auto;
+  overflow: visible;
+  background: #000;
+  color: #fff;
+  padding: 0.5rem;
+  z-index: 100;
+}
+
+.main-landmark {
+  padding: 2rem 0;
+}

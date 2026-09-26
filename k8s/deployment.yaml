@@ -60,14 +60,21 @@ spec:
             limits:
               cpu: 1000m
               memory: 512Mi
+          # ── Probes (issue #738) ──────────────────────────────
+          # Liveness must NOT depend on a backing service: /api/health/live
+          # only proves the process is serving, so a Postgres/Soroban/Redis
+          # outage cannot restart-loop a healthy pod.
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /api/health/live
               port: 3000
             initialDelaySeconds: 30
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
+          # Readiness is dependency-aware: /api/health returns 503 when the
+          # database is unreachable, which drains traffic from the pod without
+          # killing it. Timings differ from liveness for the same reason.
           readinessProbe:
             httpGet:
               path: /api/health

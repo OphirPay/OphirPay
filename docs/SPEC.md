@@ -146,18 +146,46 @@ Duplicate approvals from the same signer MUST be rejected.
 
 ---
 
-### INV-7: Pause Blocks All Mutations
+### INV-7: Pause Blocks Mutations (Global Override + Scopes)
 
-**Statement:** When the contract is paused (`PAUSED = true`), all
-state-mutating functions MUST return `ContractPaused`. Read-only functions
-(getters) SHALL continue to work.
+**Statement:** When the contract is globally paused (`PAUSED = true`), all
+state-mutating functions MUST return `ContractPaused`; read-only functions
+(getters) SHALL continue to work. Independently, a single feature scope can be
+paused so only that subsystem's mutating entrypoints return `ContractPaused`.
+The global pause always overrides the scope flags, so a scope can never
+re-enable a write while the contract is globally paused.
 
-**Code evidence:** `require_not_paused()` is called at the beginning of every
-write function. It reads the `PAUSED` instance key and returns
-`ContractPaused` if true.
+**Scopes:** `PauseScope` enumerates eight feature domains exposed by numeric id:
+`Payments = 0`, `Escrows = 1`, `Streams = 2`, `Recurring = 3`, `Refunds = 4`,
+`Governance = 5`, `Hooks = 6`, `Batches = 7`.
 
-**Test:** `test_pause_blocks_writes` — verifies all mutating functions reject
-when paused, and all getters still return data.
+**Code evidence:**
+- `require_not_paused(env, scope)` starts every write function. It returns
+  `ContractPaused` when the global `PAUSED` flag is set **or** when that
+  operation's scope is paused; the global check runs first, so it overrides.
+- `set_scope_paused(caller, scope, paused)` is owner-only, stores one instance
+  flag per scope and records a `scope_paused` / `scope_resumed` audit entry.
+  Unknown scope ids are rejected with `InvalidPauseScope`.
+- `is_scope_paused(scope)` and `get_paused_scopes()` expose the scope flags to
+  the read API without a signature.
+- `emergency_pause_all` / `emergency_unpause_all` keep their atomic
+  cross-contract propagation to the Emitter and only toggle the global flag, so
+  scope flags are preserved across an emergency unpause.
+
+**Test:**
+- `test_pause_blocks_record_payment`, `test_pause_blocks_create_escrow` and
+  `test_pause_blocks_create_stream` — a global pause rejects writes while
+  getters keep returning data.
+- `test_paused_contract_blocks_payments` (integration) — a globally paused
+  contract rejects `record_payment` and accepts it again after unpause.
+- `test_scoped_pause_blocks_only_that_scope` (integration) — pausing `Payments`
+  blocks `record_payment` while escrows and getters keep working, and resuming
+  the scope restores payments.
+- `test_global_pause_overrides_scopes` (integration) — with no scope flag set,
+  `emergency_pause_all` blocks both payments and escrows while getters still
+  answer.
+- `test_unknown_pause_scope_is_rejected` (integration) — `set_scope_paused(8, …)`
+  and `is_scope_paused(8)` return `InvalidPauseScope`.
 
 ---
 

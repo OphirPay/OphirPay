@@ -14,6 +14,7 @@ vi.mock("@/lib/webhook-url-guard", () => ({
 import {
   signWebhookPayload,
   buildSignedPayload,
+  buildWebhookRequestPreview,
   deliverWebhook,
   BLOCKED_WEBHOOK_TARGET_ERROR,
   canonicalizeWebhookBody,
@@ -98,6 +99,19 @@ describe("buildSignedPayload", () => {
       .digest("hex");
     expect(signature).toBe(expected);
     expect(received.signature).toBe(signature);
+  });
+
+  it("exposes the exact canonical input, wire body, and headers used by delivery", () => {
+    const preview = buildWebhookRequestPreview(samplePayload, SECRET);
+    const signed = buildSignedPayload(samplePayload, SECRET);
+    expect(preview.canonicalBody).toBe(JSON.stringify({ ...samplePayload, signature: "" }));
+    expect(preview.body).toBe(signed.body);
+    expect(preview.headers).toEqual({
+      "Content-Type": "application/json",
+      "X-OphirPay-Signature": signed.signature,
+      "X-OphirPay-Event": samplePayload.event,
+      [WEBHOOK_TIMESTAMP_HEADER]: samplePayload.timestamp,
+    });
   });
 
   it("signs over the body with the signature field emptied (not the raw payload)", () => {

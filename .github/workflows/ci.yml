@@ -31,9 +31,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npm run lint -- --max-warnings 0
 
   # ══════════════════════════════════════════════════════════════
@@ -45,10 +43,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npx tsc --noEmit
 
   # ══════════════════════════════════════════════════════════════
@@ -60,10 +55,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npx vitest run --reporter=verbose
 
   # ══════════════════════════════════════════════════════════════
@@ -77,10 +69,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npm run build
       - name: Verify build output
         run: |

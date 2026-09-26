@@ -261,4 +261,115 @@ describe("OpenAPI schema-conformance", () => {
     }
     expect(failures).toEqual([]);
   });
+
+  it("provides a request example for every operation that accepts a body", () => {
+    const failures: string[] = [];
+    for (const { method, path, operation } of operations) {
+      if (!operation.requestBody) continue;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const requestBody = operation.requestBody as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const resolved = requestBody.$ref ? (resolveRef(requestBody.$ref) as any) : requestBody;
+      const content = resolved?.content;
+      const jsonContent = content?.["application/json"];
+      const hasExample =
+        resolved?.example !== undefined ||
+        resolved?.examples !== undefined ||
+        jsonContent?.example !== undefined ||
+        jsonContent?.examples !== undefined ||
+        (content &&
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Object.values(content).some((c: any) => c.example !== undefined || c.examples !== undefined));
+
+      if (!hasExample) {
+        failures.push(`${method} ${path}: requestBody does not declare an example`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("provides a success response example for every path and operation", () => {
+    const failures: string[] = [];
+    for (const { method, path, operation } of operations) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const responses = operation.responses as Record<string, any> | undefined;
+      if (!responses) continue;
+
+      const successCodes = Object.keys(responses).filter(
+        (code) => /^2\d\d$/.test(code) || code === "default"
+      );
+      if (successCodes.length === 0) {
+        failures.push(`${method} ${path}: no success response declared`);
+        continue;
+      }
+
+      let hasAtLeastOneExample = false;
+      for (const code of successCodes) {
+        const resp = responses[code];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const resolved = resp.$ref ? (resolveRef(resp.$ref) as any) : resp;
+        const content = resolved?.content;
+        const hasExample =
+          resolved?.example !== undefined ||
+          resolved?.examples !== undefined ||
+          (content &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            Object.values(content).some(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (c: any) => c.example !== undefined || c.examples !== undefined
+            ));
+        if (hasExample) {
+          hasAtLeastOneExample = true;
+          break;
+        }
+      }
+
+      if (!hasAtLeastOneExample) {
+        failures.push(
+          `${method} ${path}: primary success response (${successCodes.join(", ")}) has no example`
+        );
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("documents machine error codes for error responses", () => {
+    const failures: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const componentResponses = (spec.components?.responses ?? {}) as Record<string, any>;
+    for (const [name, resp] of Object.entries(componentResponses)) {
+      const jsonContent = resp.content?.["application/json"];
+      const example = jsonContent?.example || resp.example;
+      if (!example || !example.error?.code) {
+        failures.push(`components.responses.${name}: missing machine error code in example`);
+      }
+      if (!resp.description || !/code:\s*[A-Z_]+/.test(resp.description)) {
+        failures.push(`components.responses.${name}: description does not mention machine code`);
+      }
+    }
+
+    for (const { method, path, operation } of operations) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const responses = (operation.responses ?? {}) as Record<string, any>;
+      for (const [code, resp] of Object.entries(responses)) {
+        if (/^[45]\d\d$/.test(code)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const resolved = resp.$ref ? (resolveRef(resp.$ref) as any) : resp;
+          if (!resolved) {
+            failures.push(`${method} ${path} ${code}: unresolvable response`);
+            continue;
+          }
+          const jsonContent = resolved.content?.["application/json"];
+          const example = jsonContent?.example || resolved.example;
+          const hasCodeInExample = !!example?.error?.code;
+          const hasCodeInDesc = !!resolved.description && /code:\s*[A-Z_]+/.test(resolved.description);
+          if (!hasCodeInExample && !hasCodeInDesc && !resp.$ref) {
+            failures.push(`${method} ${path} ${code}: error response does not document machine code`);
+          }
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
 });
+

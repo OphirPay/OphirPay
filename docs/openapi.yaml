@@ -1,4 +1,4 @@
-openapi: "3.1.0"
+openapi: 3.1.0
 info:
   title: OphirPay API
   description: |
@@ -9,7 +9,7 @@ info:
     **Authentication** — two modes:
     - `Authorization: Bearer <api-key>` (recommended)
     - `X-API-Key: <api-key>`
-    
+
     API keys are generated at `POST /api/keys` and shown only once.
 
     **Conventions** — see [docs/API_GUIDE.md](./API_GUIDE.md) for the
@@ -21,17 +21,14 @@ info:
   license:
     name: MIT
     url: https://github.com/ophirpay/ophirpay/blob/main/LICENSE
-
 servers:
   - url: http://localhost:3000
     description: Local development
   - url: https://api.ophirpay.com
     description: Production
-
 security:
   - ApiKeyAuth: []
   - BearerAuth: []
-
 tags:
   - name: Payments
     description: Individual payment operations
@@ -81,12 +78,11 @@ tags:
     description: Aggregate on-chain contract statistics
   - name: Session
     description: Wallet session issuance and revocation
-
 paths:
-  # ── Payments ──────────────────────────────────────────────
   /api/payments:
     get:
-      tags: [Payments]
+      tags:
+        - Payments
       summary: List payments
       description: |
         Lists the authenticated user's payments, newest first
@@ -107,32 +103,44 @@ paths:
       parameters:
         - name: page
           in: query
-          schema: { type: integer, default: 1 }
+          schema:
+            type: integer
+            default: 1
           description: Offset page number. Ignored when cursor is provided.
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
         - name: cursor
           in: query
-          schema: { type: string }
-          description: >-
-            Opaque keyset cursor from a previous response's meta.nextCursor.
-            Preferred over page for large datasets — it never deep-skips.
+          schema:
+            type: string
+          description: Opaque keyset cursor from a previous response's meta.nextCursor. Preferred over page for large datasets — it never deep-skips.
         - name: status
           in: query
           schema:
             type: string
-            enum: [CREATED, PENDING, COMPLETED, FAILED, CANCELLED]
+            enum:
+              - CREATED
+              - PENDING
+              - COMPLETED
+              - FAILED
+              - CANCELLED
         - name: search
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Search in description, memo, or transaction hash
         - name: includeDeleted
           in: query
-          schema: { type: boolean, default: false }
-          description: >
-            Admin/debug opt-in: also return soft-deleted rows. Still scoped to
-            the authenticated user — soft-deleted rows are hidden by default.
+          schema:
+            type: boolean
+            default: false
+          description: |
+            Admin/debug opt-in: also return soft-deleted rows. Still scoped to the authenticated user — soft-deleted rows are hidden by default.
       responses:
         "200":
           description: Paginated payment list (keyset or offset mode)
@@ -140,12 +148,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaginatedPayments"
+              example:
+                data:
+                  - id: pay_98234ab1c09d
+                    amount: 150
+                    assetCode: USDC
+                    assetIssuer: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                    description: "Consulting invoice payout #0881"
+                    memo: INV-2026-001
+                    status: COMPLETED
+                    transactionHash: 9b12a84efc713b194d3f5481d9f8e4c3a2105e6b7d8c9a0f1e2d3c4b5a6f7e8d
+                    sourceAccountId: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                    userId: usr_01hv89q7a4mpx3n
+                    batchId: null
+                    createdAt: "2026-08-26T18:15:00.000Z"
+                    completedAt: "2026-08-26T18:15:04.000Z"
+                    errorMessage: null
+                meta:
+                  page: 1
+                  limit: 20
+                  total: 1
+                  totalPages: 1
+                  hasMore: false
+                  nextCursor: null
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Payments]
+      tags:
+        - Payments
       summary: Create a payment
       requestBody:
         required: true
@@ -153,6 +185,14 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreatePaymentRequest"
+            example:
+              amount: 150
+              sourceAccountId: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+              destAddress: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+              assetCode: USDC
+              assetIssuer: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+              description: "Consulting invoice payout #0881"
+              memo: INV-2026-001
       responses:
         "201":
           description: Payment created
@@ -160,21 +200,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaymentResponse"
+              example:
+                id: pay_98234ab1c09d
+                amount: 150
+                assetCode: USDC
+                assetIssuer: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                description: "Consulting invoice payout #0881"
+                memo: INV-2026-001
+                status: PENDING
+                transactionHash: null
+                sourceAccountId: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                userId: usr_01hv89q7a4mpx3n
+                batchId: null
+                createdAt: "2026-08-26T18:15:00.000Z"
+                completedAt: null
+                errorMessage: null
         "400":
           $ref: "#/components/responses/ValidationError"
         "500":
           $ref: "#/components/responses/ServerError"
-
   /api/payments/{id}:
     get:
-      tags: [Payments]
+      tags:
+        - Payments
       summary: Get a payment by ID
       description: Soft-deleted payments return 404, consistent with list queries.
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Payment details
@@ -182,16 +238,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaymentResponse"
+              example:
+                id: pay_98234ab1c09d
+                amount: 150
+                assetCode: USDC
+                assetIssuer: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                description: "Consulting invoice payout #0881"
+                memo: INV-2026-001
+                status: COMPLETED
+                transactionHash: 9b12a84efc713b194d3f5481d9f8e4c3a2105e6b7d8c9a0f1e2d3c4b5a6f7e8d
+                sourceAccountId: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                userId: usr_01hv89q7a4mpx3n
+                batchId: null
+                createdAt: "2026-08-26T18:15:00.000Z"
+                completedAt: "2026-08-26T18:15:04.000Z"
+                errorMessage: null
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [Payments]
+      tags:
+        - Payments
       summary: Update payment status or metadata
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         content:
           application/json:
@@ -200,37 +273,64 @@ paths:
               properties:
                 status:
                   type: string
-                  enum: [CREATED, PENDING, COMPLETED, FAILED, CANCELLED]
+                  enum:
+                    - CREATED
+                    - PENDING
+                    - COMPLETED
+                    - FAILED
+                    - CANCELLED
                 description:
                   type: string
                 memo:
                   type: string
+            example:
+              status: COMPLETED
+              description: Updated invoice description
+              memo: INV-2026-001
       responses:
         "200":
           description: Payment updated
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: pay_98234ab1c09d
+                  status: COMPLETED
+                  description: Updated invoice description
+                  memo: INV-2026-001
+                  updatedAt: "2026-08-26T18:25:00.000Z"
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [Payments]
+      tags:
+        - Payments
       summary: Soft-delete a payment
-      description: >
-        Marks the payment as deleted (sets `deletedAt`) instead of removing
-        the row, so audit trails and analytics survive. The row is hidden from
-        lists and behaves like it doesn't exist (404) for GET/PATCH afterwards.
+      description: |
+        Marks the payment as deleted (sets `deletedAt`) instead of removing the row, so audit trails and analytics survive. The row is hidden from lists and behaves like it doesn't exist (404) for GET/PATCH afterwards.
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Payment soft-deleted
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: pay_98234ab1c09d
+                  deleted: true
+                  deletedAt: "2026-08-26T18:30:00.000Z"
         "404":
           $ref: "#/components/responses/NotFound"
-
   /api/payments/retry:
     post:
-      tags: [Payments]
+      tags:
+        - Payments
       summary: Retry a failed payment
       description: |
         Retries a failed payment in place: the original amount, recipient and
@@ -238,18 +338,23 @@ paths:
         a NEW idempotency key, so the previous failed attempt is never
         duplicated. The row returns to PENDING and flows through the normal
         submit path (PENDING → SIGNED → SUBMITTED → … → COMPLETED).
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id]
+              required:
+                - id
               properties:
                 id:
                   type: string
                   description: Id of the FAILED payment to retry
+            example:
+              id: pay_98234ab1c09d
       responses:
         "200":
           description: Payment reset to PENDING with a new idempotency key
@@ -257,50 +362,77 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaymentResponse"
+              example:
+                id: pay_98234ab1c09d
+                amount: 150
+                assetCode: USDC
+                status: PENDING
+                idempotencyKey: retry_8f7b2c9e4a1d
+                sourceAccountId: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                userId: usr_01hv89q7a4mpx3n
+                createdAt: "2026-08-26T18:15:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Payment is not in a retryable (FAILED) state
+          description: "Payment is not in a retryable (FAILED) state (code: STATE_CONFLICT)"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-
+              example:
+                success: false
+                error:
+                  code: STATE_CONFLICT
+                  message: Payment is not in a retryable (FAILED) state
   /api/payments/cancel:
     post:
-      tags: [Payments]
+      tags:
+        - Payments
       summary: Cancel a payment
       description: |
         Soft-cancels a payment by transaction hash: the row is flipped to
         CANCELLED so the UI can reflect the status change while the chain
         confirms. Scoped to the authenticated user's own payments.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [txHash]
+              required:
+                - txHash
               properties:
                 txHash:
                   type: string
                   description: Transaction hash of the payment to cancel
+            example:
+              id: pay_98234ab1c09d
       responses:
         "200":
           description: Payment cancelled
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: pay_98234ab1c09d
+                  status: CANCELLED
+                  cancelledAt: "2026-08-26T18:20:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-
   /api/payments/export:
     get:
-      tags: [Payments]
+      tags:
+        - Payments
       summary: Export payments as CSV
       description: |
         Server-side CSV export of the CURRENT filter results — every row
@@ -309,7 +441,9 @@ paths:
         attachment that includes all key fields plus memo and transaction hash.
         The response includes an `X-Export-Truncated` header set to `true`
         when the result set exceeds the export row cap.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: status
           in: query
@@ -331,264 +465,506 @@ paths:
               description: true when the result set was truncated to the export cap
               schema:
                 type: string
-                enum: ["true", "false"]
+                enum:
+                  - "true"
+                  - "false"
           content:
             text/csv:
               schema:
                 type: string
+              example: |-
+                id,amount,assetCode,status,destAddress,createdAt
+                pay_98234ab1c09d,150.00,USDC,COMPLETED,GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN,2026-08-26T18:15:00.000Z
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Escrows ───────────────────────────────────────────────
   /api/escrows:
     get:
-      tags: [Escrows]
+      tags:
+        - Escrows
       summary: List escrows or fetch one by id
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: query
-          schema: { type: integer }
+          schema:
+            type: integer
           description: Fetch a single escrow by on-chain id
       responses:
         "200":
           description: Escrow list or single escrow
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: escrow_019a48f2
+                    contractAddress: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+                    status: FUNDED
+                    amount: 5000000000
+                    assetCode: USDC
+                    payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                    releaseAfter: 1735689600
+                    createdAt: "2026-08-26T18:45:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Escrows]
+      tags:
+        - Escrows
       summary: Create an on-chain escrow
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [payee, amount]
+              required:
+                - payee
+                - amount
               properties:
-                payee: { type: string, description: "Recipient Stellar address" }
-                amount: { type: number, description: "Amount in stroops" }
-                assetCode: { type: string, default: XLM }
-                releaseAfter: { type: integer, description: "Unix timestamp" }
-                releaseTo: { type: string, description: "Stellar address, defaults to caller" }
-                memo: { type: string, maxLength: 28 }
+                payee:
+                  type: string
+                  description: Recipient Stellar address
+                amount:
+                  type: number
+                  description: Amount in stroops
+                assetCode:
+                  type: string
+                  default: XLM
+                releaseAfter:
+                  type: integer
+                  description: Unix timestamp
+                releaseTo:
+                  type: string
+                  description: Stellar address, defaults to caller
+                memo:
+                  type: string
+                  maxLength: 28
+            example:
+              payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+              amount: 5000000000
+              assetCode: USDC
+              releaseAfter: 1735689600
+              memo: ESCROW-MILESTONE-1
       responses:
         "201":
           description: Escrow created
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: escrow_019a48f2
+                  contractAddress: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+                  status: FUNDED
+                  amount: 5000000000
+                  assetCode: USDC
+                  payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                  releaseAfter: 1735689600
+                  createdAt: "2026-08-26T18:45:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/escrows/{id}:
     get:
-      tags: [Escrows]
+      tags:
+        - Escrows
       summary: Get an escrow by id
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: integer }
+          schema:
+            type: integer
       responses:
         "200":
           description: Escrow details
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: escrow_019a48f2
+                  contractAddress: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+                  status: FUNDED
+                  amount: 5000000000
+                  assetCode: USDC
+                  payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                  releaseAfter: 1735689600
+                  createdAt: "2026-08-26T18:45:00.000Z"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  # ── Streams ───────────────────────────────────────────────
   /api/streams:
     get:
-      tags: [Streams]
+      tags:
+        - Streams
       summary: List streams or fetch one by id
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: query
-          schema: { type: integer }
+          schema:
+            type: integer
           description: Fetch a single stream by on-chain id
       responses:
         "200":
           description: Stream list or single stream
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: stream_4418a99b
+                    streamAddress: CCQ75YJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC019
+                    status: ACTIVE
+                    totalDeposit: 10000000000
+                    ratePerSecond: 3858
+                    payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                    startTime: 1724695200
+                    endTime: 1727287200
+                    createdAt: "2026-08-26T18:50:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Streams]
+      tags:
+        - Streams
       summary: Create an on-chain payment stream
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [payee, amount]
+              required:
+                - payee
+                - amount
               properties:
-                payee: { type: string, description: "Recipient Stellar address" }
-                amount: { type: number, description: "Total amount in stroops" }
-                assetCode: { type: string, default: XLM }
-                startTime: { type: integer, description: "Unix timestamp" }
-                endTime: { type: integer, description: "Unix timestamp" }
-                memo: { type: string, maxLength: 28 }
+                payee:
+                  type: string
+                  description: Recipient Stellar address
+                amount:
+                  type: number
+                  description: Total amount in stroops
+                assetCode:
+                  type: string
+                  default: XLM
+                startTime:
+                  type: integer
+                  description: Unix timestamp
+                endTime:
+                  type: integer
+                  description: Unix timestamp
+                memo:
+                  type: string
+                  maxLength: 28
+            example:
+              payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+              amount: 10000000000
+              assetCode: USDC
+              startTime: 1724695200
+              endTime: 1727287200
+              memo: STREAM-SALARY
       responses:
         "201":
           description: Stream created
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: stream_4418a99b
+                  streamAddress: CCQ75YJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC019
+                  status: ACTIVE
+                  totalDeposit: 10000000000
+                  ratePerSecond: 3858
+                  payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                  startTime: 1724695200
+                  endTime: 1727287200
+                  createdAt: "2026-08-26T18:50:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/streams/{id}:
     get:
-      tags: [Streams]
+      tags:
+        - Streams
       summary: Get a stream by id
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: integer }
+          schema:
+            type: integer
       responses:
         "200":
           description: Stream details
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: stream_4418a99b
+                  streamAddress: CCQ75YJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC019
+                  status: ACTIVE
+                  totalDeposit: 10000000000
+                  ratePerSecond: 3858
+                  withdrawnAmount: 2500000000
+                  remainingBalance: 7500000000
+                  payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                  startTime: 1724695200
+                  endTime: 1727287200
         "404":
           $ref: "#/components/responses/NotFound"
-
-  # ── Timelock ──────────────────────────────────────────────
   /api/timelock:
     get:
-      tags: [Timelock]
+      tags:
+        - Timelock
       summary: List pending timelocked actions
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: query
-          schema: { type: integer, minimum: 1 }
+          schema:
+            type: integer
+            minimum: 1
           description: Fetch a single timelocked action; rejected if non-numeric
       responses:
         "200":
           description: Timelock list or single action
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  actions:
+                    - actionId: 1
+                      target: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+                      eta: 1724781600
+                      executed: false
+                      proposedAt: 1724695200
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── RBAC ──────────────────────────────────────────────────
   /api/rbac:
     get:
-      tags: [RBAC]
+      tags:
+        - RBAC
       summary: Look up role assignments
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: addr
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Stellar address to look up; returns the full role map when omitted
       responses:
         "200":
           description: Role assignment(s)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  address: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                  roles:
+                    - admin
+                    - operator
+                  permissions:
+                    - payments:write
+                    - multisig:propose
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Fee Config ────────────────────────────────────────────
   /api/fee-config:
     get:
-      tags: [Fee Config]
+      tags:
+        - Fee Config
       summary: Get the current fee configuration
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Fee configuration
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  baseFeeBps: 15
+                  minFeeStroops: 10000
+                  maxFeeStroops: 5000000
+                  feeCollector: GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2
+                  updatedAt: "2026-08-26T18:00:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/fee-config/collector:
     get:
-      tags: [Fee Config]
+      tags:
+        - Fee Config
       summary: Get the fee collector address
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Fee collector address
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  feeCollector: GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/fee-config/history:
     get:
-      tags: [Fee Config]
+      tags:
+        - Fee Config
       summary: Get fee configuration version history
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Fee config history
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - version: 2
+                    baseFeeBps: 15
+                    updatedBy: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                    effectiveAt: "2026-08-26T18:00:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Policy Versions ───────────────────────────────────────
   /api/policy-versions:
     get:
-      tags: [Policy Versions]
+      tags:
+        - Policy Versions
       summary: Get fee and multisig config version history
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Version history
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  versions:
+                    - version: 1
+                      type: fee_policy
+                      hash: 3f9821a0b4e5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1
+                      timestamp: 1724695200
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Contracts ─────────────────────────────────────────────
   /api/contracts:
     get:
-      tags: [Contracts]
+      tags:
+        - Contracts
       summary: Get contract deployment info and version
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Contract version and owner
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  contractId: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+                  version: 0.1.0
+                  owner: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                  network: testnet
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Stats ─────────────────────────────────────────────────
   /api/stats:
     get:
-      tags: [Stats]
+      tags:
+        - Stats
       summary: Aggregate on-chain contract statistics
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Payment/escrow/stream/batch counters and total amounts
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  totalPayments: 1250
+                  totalBatches: 85
+                  totalEscrows: 42
+                  totalStreams: 18
+                  totalVolumeStroops: 950000000000
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Batches ────────────────────────────────────────────────
   /api/batches:
     get:
-      tags: [Batches]
+      tags:
+        - Batches
       summary: List batches with pagination
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: page
           in: query
-          schema: { type: integer, default: 1 }
+          schema:
+            type: integer
+            default: 1
           description: Offset page number. Ignored when cursor is provided.
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
         - name: cursor
           in: query
-          schema: { type: string }
-          description: >-
-            Opaque keyset cursor from a previous response's meta.nextCursor.
-            Preferred over page for large datasets — it never deep-skips.
+          schema:
+            type: string
+          description: Opaque keyset cursor from a previous response's meta.nextCursor. Preferred over page for large datasets — it never deep-skips.
         - name: status
           in: query
-          schema: { type: string }
+          schema:
+            type: string
         - name: search
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Search in name or description
       responses:
         "200":
@@ -597,33 +973,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaginatedBatches"
+              example:
+                success: true
+                data:
+                  - id: batch_7710a9c82e
+                    name: August Payroll Distribution
+                    status: COMPLETED
+                    totalAmount: 6050
+                    recipientCount: 2
+                    createdAt: "2026-08-26T18:30:00.000Z"
+                meta:
+                  page: 1
+                  limit: 20
+                  total: 1
+                  hasMore: false
+                  nextCursor: null
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Batches]
+      tags:
+        - Batches
       summary: Create a batch payment (idempotent)
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: Idempotency-Key
           in: header
           required: false
-          schema: { type: string, minLength: 8, maxLength: 255 }
-          description: >-
-            Per-user key that makes submission idempotent. Re-sending the same
-            key returns the already-created batch (200) instead of double
-            sending; if the first attempt crashed before inserting child
-            payments, a retry resumes only the missing ones. An equivalent
-            `idempotencyKey` body field is accepted when no header is sent, but
-            the header takes precedence.
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 255
+          description: Per-user key that makes submission idempotent. Re-sending the same key returns the already-created batch (200) instead of double sending; if the first attempt crashed before inserting child payments, a retry resumes only the missing ones. An equivalent `idempotencyKey` body field is accepted when no header is sent, but the header takes precedence.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateBatchRequest"
+            example:
+              name: August Payroll Distribution
+              description: Monthly contractor payouts
+              sourceAccountId: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+              recipients:
+                - address: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                  amount: 3200
+                  assetCode: USDC
+                  memo: PAYROLL-ENG-01
+                - address: GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2
+                  amount: 2850
+                  assetCode: USDC
+                  memo: PAYROLL-ENG-02
       responses:
         "200":
           description: Already-processed batch returned for a replayed idempotency key (meta.deduplicated is true)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: batch_7710a9c82e
+                  name: August Payroll Distribution
+                  status: CREATED
+                  totalAmount: 6050
+                  recipientCount: 2
+                  createdAt: "2026-08-26T18:30:00.000Z"
+                meta:
+                  deduplicated: true
         "201":
           description: Batch created with child payments
           content:
@@ -631,43 +1048,80 @@ paths:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean, const: true }
+                  success:
+                    type: boolean
+                    const: true
                   data:
                     $ref: "#/components/schemas/BatchResponse"
+              example:
+                success: true
+                data:
+                  id: batch_7710a9c82e
+                  name: August Payroll Distribution
+                  status: CREATED
+                  totalAmount: 6050
+                  recipientCount: 2
+                  createdAt: "2026-08-26T18:30:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "409":
           $ref: "#/components/responses/Conflict"
-
   /api/batches/{id}:
     get:
-      tags: [Batches]
+      tags:
+        - Batches
       summary: Get a batch with its child payments
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Batch details with child payments
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: batch_7710a9c82e
+                  userId: usr_01hv89q7a4mpx3n
+                  name: August Payroll Distribution
+                  description: Monthly contractor payouts
+                  status: COMPLETED
+                  items:
+                    - id: pay_98234ab1c09d
+                      amount: 3200
+                      assetCode: USDC
+                      status: sent
+                      memo: PAYROLL-ENG-01
+                  progress:
+                    total: 2
+                    pending: 0
+                    sent: 2
+                    failed: 0
+                  createdAt: "2026-08-26T18:30:00.000Z"
+                  updatedAt: "2026-08-26T18:31:00.000Z"
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [Batches]
+      tags:
+        - Batches
       summary: Bulk-cancel a batch's PENDING payments
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
-      description: >
-        Cancels all PENDING payments of the batch in one request. Payments that
-        have already been submitted (any non-PENDING status) are left untouched
-        and reported via `skipped`, so callers see exactly what changed.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      description: |
+        Cancels all PENDING payments of the batch in one request. Payments that have already been submitted (any non-PENDING status) are left untouched and reported via `skipped`, so callers see exactly what changed.
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Counts of cancelled / skipped / total payments
@@ -675,48 +1129,101 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BulkCancelBatchResponse"
+              example:
+                success: true
+                data:
+                  batchId: batch_7710a9c82e
+                  cancelled: 2
+                  skipped: 0
+                  total: 2
+                meta:
+                  timestamp: "2026-08-26T18:31:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-
   /api/batches/summary:
     get:
-      tags: [Batches]
+      tags:
+        - Batches
       summary: Batch status summary for the authenticated user
       description: |
         Per-status counts of the user's batches with optional drill-down into
         the newest batch of each status (including per-payment progress
         counts). Useful for dashboard badges.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: drillDown
           in: query
-          schema: { type: boolean, default: false }
+          schema:
+            type: boolean
+            default: false
           description: Include the newest batch per status with payment counts
       responses:
         "200":
           description: Per-status batch counts (with optional drill-down)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  counts:
+                    CREATED: 1
+                    PROCESSING: 2
+                    COMPLETED: 15
+                    PARTIALLY_COMPLETED: 0
+                    FAILED: 1
+                    total: 19
+                  progress:
+                    total: 120
+                    pending: 15
+                    sent: 100
+                    failed: 5
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Recurring Payments ────────────────────────────────────
   /api/recurring:
     get:
-      tags: [Recurring]
+      tags:
+        - Recurring
       summary: List recurring payments
       parameters:
         - name: page
           in: query
-          schema: { type: integer, default: 1 }
+          schema:
+            type: integer
+            default: 1
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         "200":
           description: Paginated recurrence list
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: rec_009941a8
+                    name: Cloud Server Hosting
+                    status: ACTIVE
+                    destAddress: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                    assetCode: USDC
+                    amount: 49
+                    frequency: MONTHLY
+                    nextExecution: "2026-09-26T18:35:00.000Z"
+                meta:
+                  page: 1
+                  limit: 20
+                  total: 1
     post:
-      tags: [Recurring]
+      tags:
+        - Recurring
       summary: Create a recurring payment
       requestBody:
         required: true
@@ -724,101 +1231,197 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateRecurrenceRequest"
+            example:
+              name: Cloud Server Hosting
+              frequency: MONTHLY
+              amount: 49
+              assetCode: USDC
+              destAddress: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+              sourceAccountId: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+              description: Monthly recurring infrastructure bill
       responses:
         "201":
           description: Recurrence created
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: rec_009941a8
+                  name: Cloud Server Hosting
+                  status: ACTIVE
+                  frequency: MONTHLY
+                  amount: 49
+                  assetCode: USDC
+                  destAddress: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                  nextExecution: "2026-09-26T18:35:00.000Z"
+                  createdAt: "2026-08-26T18:35:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
     patch:
-      tags: [Recurring]
+      tags:
+        - Recurring
       summary: Pause or resume a recurring payment
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id, paused]
+              required:
+                - id
+                - paused
               properties:
                 id:
                   type: string
                 paused:
                   type: boolean
                   description: true pauses the schedule, false resumes it
+            example:
+              id: rec_009941a8
+              paused: true
       responses:
         "200":
           description: Recurrence updated
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: rec_009941a8
+                  status: PAUSED
+                  paused: true
+                  updatedAt: "2026-08-26T18:40:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Recurrence not found
-
+          $ref: "#/components/responses/NotFound"
   /api/recurring/{id}:
     get:
-      tags: [Recurring]
+      tags:
+        - Recurring
       summary: Get a recurring payment by id
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Recurrence details
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: rec_009941a8
+                  name: Cloud Server Hosting
+                  status: ACTIVE
+                  frequency: MONTHLY
+                  amount: 49
+                  assetCode: USDC
+                  destAddress: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                  nextExecution: "2026-09-26T18:35:00.000Z"
+                  createdAt: "2026-08-26T18:35:00.000Z"
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [Recurring]
+      tags:
+        - Recurring
       summary: Cancel (deactivate) a recurring payment
       description: |
         Deactivates the schedule so the scheduler stops firing it, preserving
         its run history. Scoped to the authenticated user's own schedules.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Recurrence deactivated
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: rec_009941a8
+                  status: DEACTIVATED
+                  active: false
+                  deactivatedAt: "2026-08-26T18:45:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Scheduled Payments ────────────────────────────────────
   /api/scheduled:
     get:
-      tags: [Scheduled Payments]
+      tags:
+        - Scheduled Payments
       summary: List scheduled payments (soonest first)
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: page
           in: query
-          schema: { type: integer, default: 1 }
+          schema:
+            type: integer
+            default: 1
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         "200":
           description: Paginated scheduled payments
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: sch_991823ab
+                    destAddress: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                    amount: 500
+                    assetCode: USDC
+                    scheduledAt: "2026-09-01T00:00:00.000Z"
+                    status: SCHEDULED
+                meta:
+                  page: 1
+                  limit: 20
+                  total: 1
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Scheduled Payments]
+      tags:
+        - Scheduled Payments
       summary: Create a scheduled payment
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [amount, assetCode, destAddress, scheduledAt]
+              required:
+                - amount
+                - assetCode
+                - destAddress
+                - scheduledAt
               properties:
                 amount:
                   type: number
@@ -830,7 +1433,7 @@ paths:
                   type: string
                 destAddress:
                   type: string
-                  pattern: "^G[A-Z0-9]{55}$"
+                  pattern: ^G[A-Z0-9]{55}$
                 memo:
                   type: string
                   maxLength: 28
@@ -838,35 +1441,65 @@ paths:
                   type: string
                   format: date-time
                   description: Must be in the future
+            example:
+              amount: 500
+              assetCode: USDC
+              destAddress: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+              scheduledAt: "2026-09-01T00:00:00.000Z"
+              memo: SEP-BONUS
       responses:
         "201":
           description: Scheduled payment created
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: sch_991823ab
+                  destAddress: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                  amount: 500
+                  assetCode: USDC
+                  scheduledAt: "2026-09-01T00:00:00.000Z"
+                  status: SCHEDULED
+                  createdAt: "2026-08-26T18:50:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
     delete:
-      tags: [Scheduled Payments]
+      tags:
+        - Scheduled Payments
       summary: Cancel a scheduled payment that has not executed
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: query
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Scheduled payment cancelled
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: sch_991823ab
+                  status: CANCELLED
+                  cancelledAt: "2026-08-26T18:55:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-
   /api/scheduled/run:
     get:
-      tags: [Scheduled Payments]
+      tags:
+        - Scheduled Payments
       summary: Trigger the scheduled-payment sweep (cron ping)
       description: |
         Executes due scheduled payments. Invoked by Vercel Cron with the
@@ -875,32 +1508,65 @@ paths:
       responses:
         "200":
           description: Run summary (picked / executed / failed / skipped)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  picked: 3
+                  executed: 3
+                  failed: 0
+                  skipped: 0
+                  timestamp: "2026-08-26T19:00:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "503":
-          description: Scheduler not configured (missing secrets)
+          $ref: "#/components/responses/ServiceUnavailable"
     post:
-      tags: [Scheduled Payments]
+      tags:
+        - Scheduled Payments
       summary: Trigger the scheduled-payment sweep manually
       description: Same run as GET, for external schedulers and manual triggering.
       responses:
         "200":
           description: Run summary (picked / executed / failed / skipped)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  picked: 3
+                  executed: 3
+                  failed: 0
+                  skipped: 0
+                  timestamp: "2026-08-26T19:00:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "503":
-          description: Scheduler not configured (missing secrets)
-
-  # ── Payment Requests ──────────────────────────────────────
+          $ref: "#/components/responses/ServiceUnavailable"
   /api/requests:
     get:
-      tags: [Payment Requests]
+      tags:
+        - Payment Requests
       summary: List payment requests
       responses:
         "200":
           description: List of payment requests
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: req_88194fbc
+                    paymentUrl: https://ophirpay.com/pay/req_88194fbc
+                    status: OPEN
+                    amount: 1500
+                    assetCode: USDC
+                    expiresAt: "2026-08-29T18:40:00.000Z"
+                    createdAt: "2026-08-26T18:40:00.000Z"
     post:
-      tags: [Payment Requests]
+      tags:
+        - Payment Requests
       summary: Create a payment request / payment link
       requestBody:
         required: true
@@ -908,95 +1574,185 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreatePaymentRequestSchema"
+            example:
+              amount: 1500
+              assetCode: USDC
+              description: Design Systems consulting retainer
+              recipientAddress: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
       responses:
         "201":
           description: Payment request created
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: req_88194fbc
+                  paymentUrl: https://ophirpay.com/pay/req_88194fbc
+                  status: OPEN
+                  amount: 1500
+                  assetCode: USDC
+                  expiresAt: "2026-08-29T18:40:00.000Z"
+                  createdAt: "2026-08-26T18:40:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
-
-  # ── Webhooks ──────────────────────────────────────────────
   /api/webhooks:
     get:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: List registered webhooks (secrets redacted)
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Webhook list
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: wh_019a99824c
+                    url: https://backend.example.com/api/webhooks/ophirpay
+                    events:
+                      - payment.completed
+                      - payment.failed
+                    isActive: true
+                    createdAt: "2026-08-26T19:05:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: Register a new webhook
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateWebhookRequest"
+            example:
+              url: https://backend.example.com/api/webhooks/ophirpay
+              events:
+                - payment.completed
+                - payment.failed
+                - escrow.released
+              isActive: true
       responses:
         "201":
           description: Webhook registered (secret returned once)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: wh_019a99824c
+                  url: https://backend.example.com/api/webhooks/ophirpay
+                  events:
+                    - payment.completed
+                    - payment.failed
+                    - escrow.released
+                  secret: sec_mock_webhook_example_8f7b2c9e4a1d
+                  isActive: true
+                  createdAt: "2026-08-26T19:05:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
     patch:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: Rotate a webhook signing secret
-      description: >
-        Generates a new HMAC-SHA256 signing secret and revokes the previous
-        one immediately — the next delivery is signed with the new secret.
-        The new secret is returned exactly once.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      description: |
+        Generates a new HMAC-SHA256 signing secret and revokes the previous one immediately — the next delivery is signed with the new secret. The new secret is returned exactly once.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: query
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Secret rotated (new secret returned once)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: wh_019a99824c
+                  secret: sec_mock_new_secret_returned_once_9f2d
+                  rotatedAt: "2026-08-26T19:10:00.000Z"
         "400":
-          description: Missing webhook ID or webhook not found
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
     delete:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: Delete a webhook
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: query
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Webhook deleted
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: wh_019a99824c
+                  deleted: true
+                  deletedAt: "2026-08-26T19:15:00.000Z"
         "400":
-          description: Missing webhook ID
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/webhooks/{id}:
     get:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: Get a single webhook (secret redacted)
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Webhook details (signing secret redacted)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: wh_019a99824c
+                  url: https://backend.example.com/api/webhooks/ophirpay
+                  events:
+                    - payment.completed
+                    - payment.failed
+                  isActive: true
+                  createdAt: "2026-08-26T19:05:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-
   /api/webhooks/{id}/test:
     get:
       tags: [Webhooks]
@@ -1016,6 +1772,23 @@ paths:
       responses:
         "200":
           description: Exact canonical body, wire body, headers, and validated target URL
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  targetUrl: "https://backend.example.com/api/webhooks/ophirpay"
+                  event: "payment.completed"
+                  timestamp: "2026-08-26T19:15:00.000Z"
+                  preview:
+                    canonicalBody: '{"event":"payment.completed","timestamp":"2026-08-26T19:15:00.000Z","data":{},"signature":""}'
+                    body: '{"event":"payment.completed","timestamp":"2026-08-26T19:15:00.000Z","data":{},"signature":"abc123def456"}'
+                    signature: "abc123def456"
+                    headers:
+                      Content-Type: "application/json"
+                      X-OphirPay-Signature: "abc123def456"
+                      X-OphirPay-Event: "payment.completed"
+                      X-OphirPay-Timestamp: "2026-08-26T19:15:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -1023,37 +1796,53 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: Send a test webhook delivery
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Test event delivered
+          content:
+            application/json:
+              example:
+                delivered: true
+                status: delivered
+                event: payment.completed
+                test: true
+                durationMs: 145
+                sentAt: "2026-08-26T19:15:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-
   /api/webhooks/{id}/replay:
     post:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: Replay stored webhook events within a bounded date range
       description: |
         Re-delivers stored events from the last 7 days (max 100 per request).
         Each replay attempt is recorded as a delivery for dashboard visibility.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: false
         content:
@@ -1074,115 +1863,202 @@ paths:
                   minimum: 1
                   maximum: 100
                   description: Max events to replay (default 50)
+            example:
+              since: "2026-08-25T00:00:00.000Z"
+              until: "2026-08-26T00:00:00.000Z"
+              limit: 50
       responses:
         "200":
           description: Replay summary with delivery counts
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  replayedCount: 12
+                  successfulCount: 12
+                  failedCount: 0
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/webhooks/{id}/deliveries:
     get:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: List delivery history for a webhook
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         "200":
           description: Delivery history (original + replay attempts)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: del_01884abc
+                    webhookId: wh_019a99824c
+                    event: payment.completed
+                    statusCode: 200
+                    success: true
+                    durationMs: 110
+                    attemptedAt: "2026-08-26T19:10:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/webhooks/{id}/deliveries/{deliveryId}:
     get:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: Get a webhook delivery record
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - name: deliveryId
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Full webhook delivery record, including request preview and response body
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: del_01884abc
+                  webhookId: wh_019a99824c
+                  eventId: evt_019a99824c
+                  status: SUCCESS
+                  responseCode: 200
+                  latencyMs: 110
+                  attempts: 1
+                  test: true
+                  targetUrl: https://backend.example.com/api/webhooks/ophirpay
+                  canonicalBody: '{"event":"payment.completed","signature":""}'
+                  requestBody: '{"event":"payment.completed","signature":"abc..."}'
+                  signature: abc...
+                  requestHeaders: '{"Content-Type":"application/json"}'
+                  responseBody: OK
+                  durationMs: 110
+                  createdAt: "2026-08-26T19:10:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-
   /api/webhooks/{id}/deliveries/{deliveryId}/redeliver:
     post:
-      tags: [Webhooks]
+      tags:
+        - Webhooks
       summary: Redeliver a webhook payload from a prior delivery
       description: |
         Re-sends the stored payload from the original event associated with a
         prior delivery and records a new delivery row for dashboard
         visibility.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - name: deliveryId
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: New delivery recorded and attempted
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: del_01884abd
+                  previousDeliveryId: del_01884abc
+                  statusCode: 200
+                  success: true
+                  attemptedAt: "2026-08-26T19:20:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  # ── API Keys ──────────────────────────────────────────────
   /api/keys:
     get:
-      tags: [API Keys]
+      tags:
+        - API Keys
       summary: List API keys (hashes hidden)
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: API key list (id, name, prefix, scopes, timestamps)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: key_01hv89q7a4mpx3n
+                    name: Production Backend Worker
+                    prefix: oph_8f7b2c9e4a1d
+                    scopes:
+                      - payments:read
+                      - payments:write
+                      - webhooks:manage
+                    lastUsed: "2026-08-26T18:05:00.000Z"
+                    createdAt: "2026-08-26T18:00:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [API Keys]
+      tags:
+        - API Keys
       summary: Generate a new API key (raw key shown once)
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name]
+              required:
+                - name
               properties:
                 name:
                   type: string
                   description: Label for this key
                 scopes:
                   type: array
-                  description: >
-                    Permitted scopes for the key. Allowed values:
-                    read:payments, write:payments, read:analytics, admin.
-                    The admin scope grants all scopes. Empty means no access.
+                  description: |
+                    Permitted scopes for the key. Allowed values: read:payments, write:payments, read:analytics, admin. The admin scope grants all scopes. Empty means no access.
                   items:
                     type: string
                     enum:
@@ -1190,6 +2066,12 @@ paths:
                       - write:payments
                       - read:analytics
                       - admin
+            example:
+              name: Production Backend Worker
+              scopes:
+                - payments:read
+                - payments:write
+                - webhooks:manage
       responses:
         "201":
           description: Key generated — store the raw key immediately
@@ -1198,32 +2080,54 @@ paths:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean, const: true }
+                  success:
+                    type: boolean
+                    const: true
                   data:
                     type: object
                     properties:
-                      id: { type: string }
-                      name: { type: string }
-                      prefix: { type: string }
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      prefix:
+                        type: string
                       scopes:
                         type: array
-                        items: { type: string }
+                        items:
+                          type: string
                       key:
                         type: string
                         description: Raw API key — shown only once
+              example:
+                success: true
+                data:
+                  id: key_01hv89q7a4mpx3n
+                  name: Production Backend Worker
+                  prefix: oph_8f7b2c9e4a1d
+                  scopes:
+                    - payments:read
+                    - payments:write
+                    - webhooks:manage
+                  key: oph_8f7b2c9e4a1d0f62b8e3c1a93817f39a48b021ef9a7c3d2e
         "400":
           $ref: "#/components/responses/ValidationError"
     patch:
-      tags: [API Keys]
+      tags:
+        - API Keys
       summary: Update the scopes of an existing API key
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [id, scopes]
+              required:
+                - id
+                - scopes
               properties:
                 id:
                   type: string
@@ -1237,50 +2141,89 @@ paths:
                       - write:payments
                       - read:analytics
                       - admin
+            example:
+              id: key_01hv89q7a4mpx3n
+              scopes:
+                - payments:read
       responses:
         "200":
           description: Scopes updated
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: key_01hv89q7a4mpx3n
+                  scopes:
+                    - payments:read
         "400":
-          description: Missing key ID or invalid scope
+          $ref: "#/components/responses/ValidationError"
     delete:
-      tags: [API Keys]
+      tags:
+        - API Keys
       summary: Revoke an API key
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: query
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         "200":
           description: Key revoked
+          content:
+            application/json:
+              example:
+                message: API key revoked successfully.
         "400":
-          description: Missing key ID
-
+          $ref: "#/components/responses/ValidationError"
   /api/keys/stats:
     get:
-      tags: [API Keys]
+      tags:
+        - API Keys
       summary: API key usage statistics
       description: |
         Aggregated request counts per API key over the chosen window
         (24h / 7d / 30d), alongside each key's metadata and last-used time.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: window
           in: query
-          schema: { type: string, enum: [24h, 7d, 30d], default: 30d }
+          schema:
+            type: string
+            enum:
+              - 24h
+              - 7d
+              - 30d
+            default: 30d
       responses:
         "200":
           description: Per-key usage stats for the window
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  window: 24h
+                  totalRequests: 8420
+                  activeKeys: 4
+                  usageByKey:
+                    - id: key_01hv89q7a4mpx3n
+                      name: Production Backend Worker
+                      requests: 7910
         "400":
-          description: Window must be 24h, 7d, or 30d
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Session ───────────────────────────────────────────────
   /api/auth/session:
     post:
-      tags: [Session]
+      tags:
+        - Session
       summary: Issue a signed session cookie for a connected wallet
       description: |
         Called by the UI after a successful wallet connect. Sets an HttpOnly
@@ -1291,25 +2234,48 @@ paths:
           application/json:
             schema:
               type: object
-              required: [publicKey, signature]
+              required:
+                - publicKey
+                - signature
               properties:
-                publicKey: { type: string, description: "Stellar wallet public key" }
-                signature: { type: string, description: "Wallet-signed payload proving ownership" }
+                publicKey:
+                  type: string
+                  description: Stellar wallet public key
+                signature:
+                  type: string
+                  description: Wallet-signed payload proving ownership
+            example:
+              publicKey: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+              signature: c3ab41d9e2b10a9c8f7e6d5c4b3a210f9e8d7c6b5a412039485761a2b3c4d5e6f7
       responses:
         "200":
           description: Session cookie issued
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  authenticated: true
+                  publicKey: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                  issuedAt: "2026-08-26T18:00:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
     delete:
-      tags: [Session]
+      tags:
+        - Session
       summary: Revoke the session cookie
       responses:
         "200":
           description: Session revoked
-
+          content:
+            application/json:
+              example:
+                authenticated: false
+                message: Session revoked
   /api/auth/challenge:
     get:
-      tags: [Session]
+      tags:
+        - Session
       summary: Mint a proof-of-ownership challenge for a wallet
       description: |
         Returns a short-lived, server-signed challenge plus the exact message
@@ -1330,7 +2296,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [challenge, message, expiresIn]
+                required:
+                  - challenge
+                  - message
+                  - expiresIn
                 properties:
                   challenge:
                     type: string
@@ -1341,12 +2310,16 @@ paths:
                   expiresIn:
                     type: integer
                     description: Challenge lifetime in seconds
+              example:
+                challenge: chl_98234ab1c09d8e7f
+                message: "Sign this message to authenticate with OphirPay: chl_98234ab1c09d8e7f"
+                expiresIn: 300
         "400":
-          description: Invalid or missing public key
-
+          $ref: "#/components/responses/ValidationError"
   /api/csrf:
     get:
-      tags: [Session]
+      tags:
+        - Session
       summary: Mint a CSRF token for this session
       description: |
         Sets the HttpOnly `__Host-csrf` cookie AND returns the token in the
@@ -1355,11 +2328,17 @@ paths:
       responses:
         "200":
           description: CSRF token issued
-
-  # ── Multisig ──────────────────────────────────────────────
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  csrfToken: csrf_019a88f24bc910ae
+                  headerName: x-csrf-token
   /api/multisig:
     get:
-      tags: [Multisig]
+      tags:
+        - Multisig
       summary: Get current multisig configuration
       responses:
         "200":
@@ -1369,17 +2348,31 @@ paths:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean }
+                  success:
+                    type: boolean
                   data:
                     type: object
                     properties:
-                      threshold: { type: integer }
+                      threshold:
+                        type: integer
                       signers:
                         type: array
-                        items: { type: string }
-                      enabled: { type: boolean }
+                        items:
+                          type: string
+                      enabled:
+                        type: boolean
+              example:
+                success: true
+                data:
+                  threshold: 2
+                  signers:
+                    - GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                    - GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                    - GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2
+                  enabled: true
     post:
-      tags: [Multisig]
+      tags:
+        - Multisig
       summary: Configure multisig (owner-only on-chain)
       requestBody:
         content:
@@ -1387,18 +2380,39 @@ paths:
             schema:
               type: object
               properties:
-                threshold: { type: integer }
+                threshold:
+                  type: integer
                 signers:
                   type: array
-                  items: { type: string }
-                enabled: { type: boolean }
+                  items:
+                    type: string
+                enabled:
+                  type: boolean
+            example:
+              threshold: 2
+              signers:
+                - GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                - GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                - GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2
+              enabled: true
       responses:
         "201":
           description: Multisig configured
-
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  threshold: 2
+                  signers:
+                    - GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                    - GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                    - GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2
+                  enabled: true
   /api/multisig/propose:
     post:
-      tags: [Multisig]
+      tags:
+        - Multisig
       summary: Propose a payment for multisig approval
       requestBody:
         required: true
@@ -1406,21 +2420,43 @@ paths:
           application/json:
             schema:
               type: object
-              required: [payee, amount]
+              required:
+                - payee
+                - amount
               properties:
-                payee: { type: string }
-                amount: { type: number }
-                assetCode: { type: string }
-                memo: { type: string }
+                payee:
+                  type: string
+                amount:
+                  type: number
+                assetCode:
+                  type: string
+                memo:
+                  type: string
+            example:
+              payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+              amount: 1000
+              assetCode: USDC
+              memo: MULTISIG-PAY-01
       responses:
         "201":
           description: Proposal created
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  proposalId: 1
+                  requiredSignatures: 2
+                  currentSignatures: 1
+                  status: PENDING_APPROVAL
+                  proposer: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                  createdAt: "2026-08-26T19:00:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
-
   /api/multisig/approve:
     post:
-      tags: [Multisig]
+      tags:
+        - Multisig
       summary: Approve a pending multisig proposal
       requestBody:
         required: true
@@ -1428,18 +2464,31 @@ paths:
           application/json:
             schema:
               type: object
-              required: [requestId]
+              required:
+                - requestId
               properties:
-                requestId: { type: integer }
+                requestId:
+                  type: integer
+            example:
+              requestId: 1
       responses:
         "200":
           description: Proposal approved
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  requestId: 1
+                  approvals: 2
+                  threshold: 2
+                  readyToExecute: true
         "400":
           $ref: "#/components/responses/ValidationError"
-
   /api/multisig/execute:
     post:
-      tags: [Multisig]
+      tags:
+        - Multisig
       summary: Execute a fully approved multisig payment
       requestBody:
         required: true
@@ -1447,25 +2496,48 @@ paths:
           application/json:
             schema:
               type: object
-              required: [requestId]
+              required:
+                - requestId
               properties:
-                requestId: { type: integer }
+                requestId:
+                  type: integer
+            example:
+              requestId: 1
       responses:
         "200":
           description: Payment executed
-
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  requestId: 1
+                  status: EXECUTED
+                  transactionHash: 8f33190e21a8b94ec174591a2bc0d8e12a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d
   /api/multisig/requests:
     get:
-      tags: [Multisig]
+      tags:
+        - Multisig
       summary: List pending approval requests
       responses:
         "200":
           description: Pending requests list
-
-  # ── Governance ────────────────────────────────────────────
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - requestId: 1
+                    payee: GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
+                    amount: 1000
+                    assetCode: USDC
+                    approvals: 1
+                    threshold: 2
+                    executed: false
   /api/governance/proposals:
     get:
-      tags: [Governance]
+      tags:
+        - Governance
       summary: List governance proposals (most recent first)
       description: |
         Enumerates the contract's proposals, capped at the 100 most recent to
@@ -1479,7 +2551,9 @@ paths:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean, const: true }
+                  success:
+                    type: boolean
+                    const: true
                   data:
                     type: object
                     properties:
@@ -1488,86 +2562,180 @@ paths:
                         items:
                           type: object
                           properties:
-                            id: { type: integer }
-                            title: { type: string }
-                            description: { type: string }
-                            action_type: { type: string }
-                            yes_votes: { type: integer }
-                            no_votes: { type: integer }
-                            voting_ends_at: { type: [integer, 'null'] }
-                            executed: { type: boolean }
-                            proposer: { type: string }
-                      total: { type: integer, description: "Total proposal count on-chain" }
-                      truncated: { type: boolean, description: "True when older proposals were dropped" }
+                            id:
+                              type: integer
+                            title:
+                              type: string
+                            description:
+                              type: string
+                            action_type:
+                              type: string
+                            yes_votes:
+                              type: integer
+                            no_votes:
+                              type: integer
+                            voting_ends_at:
+                              type:
+                                - integer
+                                - "null"
+                            executed:
+                              type: boolean
+                            proposer:
+                              type: string
+                      total:
+                        type: integer
+                        description: Total proposal count on-chain
+                      truncated:
+                        type: boolean
+                        description: True when older proposals were dropped
+              example:
+                success: true
+                data:
+                  items:
+                    - id: 1
+                      title: Reduce Base Fee to 10 BPS
+                      description: Proposal to decrease base transfer fee across all payments
+                      action_type: update_fee
+                      yes_votes: 120000
+                      no_votes: 5000
+                      voting_ends_at: 1725300000
+                      executed: false
+                      proposer: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                  total: 1
+                  truncated: false
     post:
-      tags: [Governance]
+      tags:
+        - Governance
       summary: Create a governance proposal (on-chain)
       requestBody:
         content:
           application/json:
             schema:
               type: object
-              required: [proposer, title]
+              required:
+                - proposer
+                - title
               properties:
-                proposer: { type: string }
-                title: { type: string }
-                description: { type: string }
-                actionType: { type: string }
-                target: { type: string }
-                data: { type: string }
-                depositAsset: { type: string, description: "Stellar asset address for deposit" }
-                depositAmount: { type: integer, description: "Deposit amount (must be >= min_proposal_deposit)" }
+                proposer:
+                  type: string
+                title:
+                  type: string
+                description:
+                  type: string
+                actionType:
+                  type: string
+                target:
+                  type: string
+                data:
+                  type: string
+                depositAsset:
+                  type: string
+                  description: Stellar asset address for deposit
+                depositAmount:
+                  type: integer
+                  description: Deposit amount (must be >= min_proposal_deposit)
+            example:
+              proposer: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+              title: Reduce Base Fee to 10 BPS
+              description: Proposal to decrease base transfer fee across all payments
+              actionType: update_fee
+              target: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+              data: 0000000a
+              depositAsset: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+              depositAmount: 100000000
       responses:
         "201":
           description: Proposal created
-
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  proposalId: 1
+                  title: Reduce Base Fee to 10 BPS
+                  status: ACTIVE
+                  votingEndsAt: 1725300000
+                  createdAt: "2026-08-26T19:00:00.000Z"
   /api/governance/vote:
     post:
-      tags: [Governance]
+      tags:
+        - Governance
       summary: Cast a vote on a proposal (on-chain, 1 vote per address)
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         content:
           application/json:
             schema:
               type: object
-              required: [voter, proposalId]
+              required:
+                - voter
+                - proposalId
               properties:
-                proposalId: { type: integer }
-                voter: { type: string }
-                support: { type: boolean }
+                proposalId:
+                  type: integer
+                voter:
+                  type: string
+                support:
+                  type: boolean
+            example:
+              proposalId: 1
+              voter: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+              support: true
       responses:
         "200":
           description: Vote cast
-
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  proposalId: 1
+                  voter: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                  support: true
+                  votingPower: 50000
   /api/governance/execute:
     post:
-      tags: [Governance]
+      tags:
+        - Governance
       summary: Execute a passed proposal
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [proposalId]
+              required:
+                - proposalId
               properties:
                 proposalId:
                   type: integer
                   minimum: 1
+            example:
+              proposalId: 1
       responses:
         "200":
           description: Proposal executed
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  proposalId: 1
+                  status: EXECUTED
+                  transactionHash: 8f33190e21a8b94ec174591a2bc0d8e12a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── Analytics ─────────────────────────────────────────────
   /api/analytics:
     get:
-      tags: [Analytics]
+      tags:
+        - Analytics
       summary: Aggregated payment analytics
       responses:
         "200":
@@ -1577,226 +2745,410 @@ paths:
               schema:
                 type: object
                 properties:
-                  success: { type: boolean }
+                  success:
+                    type: boolean
                   data:
                     type: object
                     properties:
-                      totalPayments: { type: integer }
-                      completedPayments: { type: integer }
-                      failedPayments: { type: integer }
-                      totalVolume: { type: number }
-                      averageAmount: { type: number }
-                      successRate: { type: integer }
+                      totalPayments:
+                        type: integer
+                      completedPayments:
+                        type: integer
+                      failedPayments:
+                        type: integer
+                      totalVolume:
+                        type: number
+                      averageAmount:
+                        type: number
+                      successRate:
+                        type: integer
                       volumeByDay:
                         type: array
                         items:
                           type: object
                           properties:
-                            date: { type: string }
-                            volume: { type: number }
-                            count: { type: integer }
-
-  # ── Refunds ───────────────────────────────────────────────
+                            date:
+                              type: string
+                            volume:
+                              type: number
+                            count:
+                              type: integer
+              example:
+                success: true
+                data:
+                  totalPayments: 3840
+                  completedPayments: 3834
+                  failedPayments: 6
+                  totalVolume: 1428500
+                  averageAmount: 372
+                  successRate: 99
+                  volumeByDay:
+                    - date: "2026-08-26"
+                      volume: 48200
+                      count: 120
   /api/refunds:
     get:
-      tags: [Refunds]
+      tags:
+        - Refunds
       summary: List refunds or refund analytics
       parameters:
         - name: analytics
           in: query
-          schema: { type: boolean }
+          schema:
+            type: boolean
           description: Return reason-code buckets instead of full refund list
       responses:
         "200":
           description: Refund data
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: ref_001948ba
+                    paymentId: 1024
+                    onChainId: 12
+                    amount: 250
+                    asset: USDC
+                    reason: Product damaged in shipping
+                    reasonCode: 1
+                    status: COMPLETED
+                    createdAt: "2026-08-26T19:00:00.000Z"
     post:
-      tags: [Refunds]
+      tags:
+        - Refunds
       summary: Persist a refund ledger row after an on-chain request_refund
       description: |
         Called by the UI AFTER the on-chain request_refund transaction succeeds.
         Stores the contract's refund id (`onChainId`, captured from the tx
         return value) so approve/process can later target the right record.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [paymentId, amount]
+              required:
+                - paymentId
+                - amount
               properties:
-                paymentId: { type: integer, description: "On-chain payment id" }
-                amount: { type: number, description: "Refund amount in stroops" }
-                asset: { type: string, default: native }
-                reason: { type: string, maxLength: 500 }
-                reasonCode: { type: integer, minimum: 0, maximum: 5 }
-                onChainId: { type: integer, description: "Contract refund id from the tx return value" }
+                paymentId:
+                  type: integer
+                  description: On-chain payment id
+                amount:
+                  type: number
+                  description: Refund amount in stroops
+                asset:
+                  type: string
+                  default: native
+                reason:
+                  type: string
+                  maxLength: 500
+                reasonCode:
+                  type: integer
+                  minimum: 0
+                  maximum: 5
+                onChainId:
+                  type: integer
+                  description: Contract refund id from the tx return value
+            example:
+              paymentId: 1024
+              amount: 2500000000
+              asset: USDC
+              reason: Product damaged in shipping
+              reasonCode: 1
+              onChainId: 12
       responses:
         "201":
           description: Refund ledger row created
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: ref_001948ba
+                  paymentId: 1024
+                  onChainId: 12
+                  amount: 2500000000
+                  asset: USDC
+                  reason: Product damaged in shipping
+                  reasonCode: 1
+                  status: REQUESTED
+                  createdAt: "2026-08-26T19:00:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/refunds/{id}:
     patch:
-      tags: [Refunds]
+      tags:
+        - Refunds
       summary: Update the lifecycle status of a refund ledger row
       description: |
         Mirrors an on-chain transition (approve_refund / process_refund) onto
         the ledger row so the list reflects Request → Approve → Process.
         Owner-scoped — only the row's user can update it.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [status]
+              required:
+                - status
               properties:
-                status: { type: string, enum: [APPROVED, PROCESSED, REJECTED] }
+                status:
+                  type: string
+                  enum:
+                    - APPROVED
+                    - PROCESSED
+                    - REJECTED
+            example:
+              status: APPROVED
       responses:
         "200":
           description: Refund status updated
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: ref_001948ba
+                  status: APPROVED
+                  updatedAt: "2026-08-26T19:15:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  # ── Hooks ─────────────────────────────────────────────────
   /api/hooks:
     get:
-      tags: [Hooks]
+      tags:
+        - Hooks
       summary: List notification hooks
       parameters:
         - name: event_type
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Filter by event type
       responses:
         "200":
           description: Hook list
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: hk_019a88bc
+                    eventType: payment.completed
+                    webhookUrl: https://backend.example.com/api/hooks
+                    onChainId: 4
+                    active: true
+                    createdAt: "2026-08-26T19:00:00.000Z"
     post:
-      tags: [Hooks]
+      tags:
+        - Hooks
       summary: Persist a hook ledger row after an on-chain register_hook
       description: |
         Called by the UI AFTER the on-chain register_hook transaction succeeds.
         Stores the contract's hook id (`onChainId`, captured from the tx return
         value) so Deactivate can later target the right record.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [eventType, webhookUrl]
+              required:
+                - eventType
+                - webhookUrl
               properties:
-                eventType: { type: string, maxLength: 100 }
-                webhookUrl: { type: string, format: uri }
-                onChainId: { type: integer, description: "Contract hook id from the tx return value" }
+                eventType:
+                  type: string
+                  maxLength: 100
+                webhookUrl:
+                  type: string
+                  format: uri
+                onChainId:
+                  type: integer
+                  description: Contract hook id from the tx return value
+            example:
+              eventType: payment.completed
+              webhookUrl: https://backend.example.com/api/hooks
+              onChainId: 4
       responses:
         "201":
           description: Hook ledger row created
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: hk_019a88bc
+                  eventType: payment.completed
+                  webhookUrl: https://backend.example.com/api/hooks
+                  onChainId: 4
+                  active: true
+                  createdAt: "2026-08-26T19:00:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/hooks/{id}:
     patch:
-      tags: [Hooks]
+      tags:
+        - Hooks
       summary: Deactivate a hook ledger row after an on-chain unregister_hook
       description: Owner-scoped — only the row's user can update it.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [active]
+              required:
+                - active
               properties:
-                active: { type: boolean }
+                active:
+                  type: boolean
+            example:
+              active: false
       responses:
         "200":
           description: Hook updated
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  id: hk_019a88bc
+                  active: false
+                  updatedAt: "2026-08-26T19:20:00.000Z"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  # ── Audit Log ─────────────────────────────────────────────
   /api/audit-log:
     get:
-      tags: [Audit Log]
+      tags:
+        - Audit Log
       summary: Query contract audit log
       description: |
         Offset-paginated audit log with combined, server-side applied filters
         (`actor`, `action`, `resource`, `since`/`until` date range) and stable
         ordering (newest first by default). `total` reflects the filtered set.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: page
           in: query
-          schema: { type: integer, minimum: 1, default: 1 }
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
         - name: limit
           in: query
-          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
         - name: actor
           in: query
-          schema: { type: string }
-          description: >
-            Filter by Stellar address (substring match, case-insensitive).
-            Combine with `action`, `since`, and `until`; all filters compose
-            with `page`/`limit` pagination.
+          schema:
+            type: string
+          description: |
+            Filter by Stellar address (substring match, case-insensitive). Combine with `action`, `since`, and `until`; all filters compose with `page`/`limit` pagination.
         - name: action
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Filter by exact action type (e.g. `payment_recorded`)
         - name: resource
           in: query
-          schema: { type: integer }
+          schema:
+            type: integer
           description: Filter by the affected entity id (matches target_id)
         - name: since
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Inclusive start of the date range — Unix seconds or ISO 8601
         - name: until
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Inclusive end of the date range — Unix seconds or ISO 8601
         - name: order
           in: query
-          schema: { type: string, enum: [asc, desc], default: desc }
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
           description: Result ordering by entry id (newest first by default)
         - name: source
           in: query
-          schema: { type: string, enum: [contract, db, all], default: contract }
+          schema:
+            type: string
+            enum:
+              - contract
+              - db
+              - all
+            default: contract
           description: Backing store — on-chain ledger, persisted audit trail, or both
       responses:
         "200":
-          description: >
-            Paginated audit log entries. Response `meta.total` reflects the
-            filtered result set, so pagination composes with filters.
+          description: |
+            Paginated audit log entries. Response `meta.total` reflects the filtered result set, so pagination composes with filters.
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - id: audit_88194a
+                    actor: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+                    action: ESCROW_CREATED
+                    target: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+                    timestamp: "2026-08-26T19:00:00.000Z"
+                meta:
+                  page: 1
+                  limit: 10
+                  total: 1
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/audit-log/sse:
     get:
-      tags: [Audit Log]
+      tags:
+        - Audit Log
       summary: Subscribe to the live audit-log stream
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       description: |
         Server-Sent Events stream that polls the contract audit log every few
         seconds and pushes new entries to connected clients.
@@ -1807,55 +3159,74 @@ paths:
             text/event-stream:
               schema:
                 type: string
+              example: |+
+                data: {"id":"audit_88194a","action":"ESCROW_CREATED","timestamp":"2026-08-26T19:00:00.000Z"}
 
   /api/audit-log/export:
     get:
-      tags: [Audit Log]
+      tags:
+        - Audit Log
       summary: Export contract audit log to CSV
       description: |
         Streaming CSV download of the audit log applying the same filters as
         GET /api/audit-log. Rows are streamed chunk-by-chunk from the contract,
         so the full result set is never held in memory.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       parameters:
         - name: actor
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Filter by exact Stellar actor address
         - name: action
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Filter by exact action type
         - name: resource
           in: query
-          schema: { type: integer }
+          schema:
+            type: integer
           description: Filter by the affected entity id (matches target_id)
         - name: since
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Inclusive start of the date range — Unix seconds or ISO 8601
         - name: until
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Inclusive end of the date range — Unix seconds or ISO 8601
         - name: order
           in: query
-          schema: { type: string, enum: [asc, desc], default: desc }
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
           description: Result ordering by entry id
       responses:
         "200":
           description: CSV attachment
+          content:
+            text/csv:
+              example: |-
+                id,actor,action,target,timestamp
+                audit_88194a,GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5,ESCROW_CREATED,CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC,2026-08-26T19:00:00.000Z
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-  # ── SSE Events ────────────────────────────────────────────
   /api/events:
     get:
-      tags: [Events]
+      tags:
+        - Events
       summary: Subscribe to real-time payment events
       description: |
         Server-Sent Events stream. Polls the Stellar emitter contract every 10 seconds.
-        
+
         Events:
         - `connected` — stream established
         - `heartbeat` — keep-alive every 15s
@@ -1867,30 +3238,39 @@ paths:
             text/event-stream:
               schema:
                 type: string
+              example: |+
+                data: {"type":"payment.completed","id":"pay_98234ab1c09d","amount":150.00,"timestamp":"2026-08-26T18:15:04.000Z"}
 
   /api/events/history:
     get:
-      tags: [Events]
+      tags:
+        - Events
       summary: Fetch on-chain payment event history
       parameters:
         - name: limit
           in: query
-          schema: { type: integer, default: 50, maximum: 200 }
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
           description: Number of recent events to return
       responses:
         "200":
           description: Recent event history
-
-  # ── Health ────────────────────────────────────────────────
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  - type: payment.completed
+                    id: pay_98234ab1c09d
+                    timestamp: "2026-08-26T18:15:04.000Z"
   /api/health:
     get:
-      tags: [Health]
+      tags:
+        - Health
       summary: Service health check
-      description: >-
-        Reports per-check status for the database (critical), Stellar RPC and
-        Horizon reachability, Redis (when configured), and configured contract
-        IDs. Returns 200 with status `ok` or `degraded` (only optional checks
-        failing) and 503 with status `down` when the database is unreachable.
+      description: Reports per-check status for the database (critical), Stellar RPC and Horizon reachability, Redis (when configured), and configured contract IDs. Returns 200 with status `ok` or `degraded` (only optional checks failing) and 503 with status `down` when the database is unreachable.
       responses:
         "200":
           description: Healthy or degraded (optional checks failing)
@@ -1898,16 +3278,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+              example:
+                success: true
+                data:
+                  status: ok
+                  version: 0.1.0
+                  services:
+                    database:
+                      status: ok
+                      latencyMs: 12
+                    redis:
+                      status: ok
+                      latencyMs: 3
+                    stellar:
+                      network: testnet
+                      rpcUrl: https://soroban-testnet.stellar.org
+                      horizonUrl: https://horizon-testnet.stellar.org
+                      rpc:
+                        status: ok
+                        latencyMs: 45
+                      horizon:
+                        status: ok
+                        latencyMs: 38
+                    contract:
+                      id: CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+                      status: ok
+                  uptime: 12450.5
+                meta:
+                  timestamp: "2026-08-26T19:10:00.000Z"
         "503":
-          description: Critical dependency (database) unavailable
+          description: "Critical dependency unavailable (code: SERVICE_UNAVAILABLE)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: SERVICE_UNAVAILABLE
+                  message: Critical dependency (database) unavailable
 
   /api/health/live:
     get:
-      tags: [Health]
+      tags:
+        - Health
       summary: Liveness probe (process only)
       description: >-
         Lightweight liveness signal (issue #738): proves the Node process is up
@@ -1941,11 +3355,19 @@ paths:
                     type: object
                     properties:
                       timestamp: { type: string, format: date-time }
-
-  # ── Metrics ───────────────────────────────────────────────
+              example:
+                success: true
+                data:
+                  status: ok
+                  probe: liveness
+                  version: "0.1.0"
+                  uptime: 124.5
+                meta:
+                  timestamp: "2026-08-26T19:10:00.000Z"
   /api/metrics:
     get:
-      tags: [Metrics]
+      tags:
+        - Metrics
       summary: Prometheus metrics endpoint
       description: |
         Prometheus text exposition. Now authenticated: send
@@ -1961,13 +3383,18 @@ paths:
             text/plain:
               schema:
                 type: string
+              example: |-
+                # HELP http_requests_total Total HTTP requests
+                # TYPE http_requests_total counter
+                http_requests_total{method="GET",path="/api/health",status="200"} 1420
         "401":
           $ref: "#/components/responses/Unauthorized"
 
   # ── Jobs & Cron ──────────────────────────────────────────
   /api/cron:
     get:
-      tags: [Jobs & Cron]
+      tags:
+        - Jobs & Cron
       summary: Scheduled-payment execution sweep (Vercel Cron ping)
       description: |
         Executes due scheduled payments. Vercel Cron invokes the GET path
@@ -1977,31 +3404,54 @@ paths:
       responses:
         "200":
           description: Run summary (picked / executed / failed / skipped)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  picked: 2
+                  executed: 2
+                  failed: 0
+                  skipped: 0
+                  timestamp: "2026-08-26T19:00:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "503":
-          description: Scheduler not configured (missing secrets)
+          $ref: "#/components/responses/ServiceUnavailable"
     post:
-      tags: [Jobs & Cron]
+      tags:
+        - Jobs & Cron
       summary: Run the scheduled-payment sweep manually
       description: Same work as the GET cron ping, for external schedulers.
       responses:
         "200":
           description: Run summary (picked / executed / failed / skipped)
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  picked: 2
+                  executed: 2
+                  failed: 0
+                  skipped: 0
+                  timestamp: "2026-08-26T19:00:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "503":
-          description: Scheduler not configured (missing secrets)
-
+          $ref: "#/components/responses/ServiceUnavailable"
   /api/jobs/process-due-recurring:
     post:
-      tags: [Jobs & Cron]
+      tags:
+        - Jobs & Cron
       summary: Claim and execute due recurring schedules
       description: |
         Claims due recurring schedules (atomically, per-schedule) and creates
         the payment for each. Intended for cron / worker invocation with an
         authenticated session.
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       requestBody:
         required: false
         content:
@@ -2013,15 +3463,26 @@ paths:
                   type: integer
                   minimum: 1
                   description: Max schedules to process this run
+            example:
+              limit: 10
       responses:
         "200":
           description: Processed run summary
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  processed: 5
+                  succeeded: 5
+                  failed: 0
+                  timestamp: "2026-08-26T19:00:00.000Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
-
   /api/pause-state:
     get:
-      tags: [Contracts]
+      tags:
+        - Contracts
       summary: Contract pause state
       description: |
         Reads the on-chain `is_paused` flag from the payment contract via a
@@ -2029,14 +3490,22 @@ paths:
         `get_paused_scopes` for the per-feature pause flags (0 Payments,
         1 Escrows, 2 Streams, 3 Recurring, 4 Refunds, 5 Governance, 6 Hooks,
         7 Batches).
-      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: Pause state ({ paused, available, scopes })
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  paused: false
+                  available: true
+                  scopes: []
         "401":
           $ref: "#/components/responses/Unauthorized"
-
-# ── Components ────────────────────────────────────────────────
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -2049,31 +3518,65 @@ components:
       scheme: bearer
       bearerFormat: oph_
       description: Same API key, passed as Bearer token
-
   schemas:
     PaymentResponse:
       type: object
       properties:
-        id: { type: string }
-        amount: { type: number }
-        assetCode: { type: string }
-        assetIssuer: { type: [string, 'null'] }
-        description: { type: [string, 'null'] }
-        memo: { type: [string, 'null'] }
-        status: { type: string }
-        transactionHash: { type: [string, 'null'] }
-        idempotencyKey: { type: [string, 'null'], description: 'Per-attempt key; regenerated on every retry' }
-        sourceAccountId: { type: string }
-        userId: { type: string }
-        batchId: { type: [string, 'null'] }
-        createdAt: { type: string, format: date-time }
-        completedAt: { type: [string, 'null'], format: date-time }
-        errorMessage: { type: [string, 'null'] }
-
+        id:
+          type: string
+        amount:
+          type: number
+        assetCode:
+          type: string
+        assetIssuer:
+          type:
+            - string
+            - "null"
+        description:
+          type:
+            - string
+            - "null"
+        memo:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+        transactionHash:
+          type:
+            - string
+            - "null"
+        idempotencyKey:
+          type:
+            - string
+            - "null"
+          description: Per-attempt key; regenerated on every retry
+        sourceAccountId:
+          type: string
+        userId:
+          type: string
+        batchId:
+          type:
+            - string
+            - "null"
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        errorMessage:
+          type:
+            - string
+            - "null"
     PaginatedPayments:
       type: object
       properties:
-        success: { type: boolean, const: true }
+        success:
+          type: boolean
+          const: true
         data:
           type: array
           items:
@@ -2085,37 +3588,60 @@ components:
             when `includeTotal=true`). Offset mode (when `page` is passed):
             `page`, `limit`, `total`, `totalPages`, `hasNext`, `hasPrev`.
           properties:
-            page: { type: integer }
-            limit: { type: integer }
-            total: { type: integer }
-            nextCursor: { type: [string, 'null'] }
-            hasMore: { type: boolean }
-
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            nextCursor:
+              type:
+                - string
+                - "null"
+            hasMore:
+              type: boolean
     BatchResponse:
       type: object
       properties:
-        id: { type: string }
-        userId: { type: string }
-        name: { type: string }
-        description: { type: [string, 'null'] }
+        id:
+          type: string
+        userId:
+          type: string
+        name:
+          type: string
+        description:
+          type:
+            - string
+            - "null"
         status:
           type: string
-          enum: [CREATED, PROCESSING, COMPLETED, PARTIALLY_COMPLETED, FAILED]
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+          enum:
+            - CREATED
+            - PROCESSING
+            - COMPLETED
+            - PARTIALLY_COMPLETED
+            - FAILED
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
         payments:
           type: array
           items:
             $ref: "#/components/schemas/PaymentResponse"
-
     BulkCancelBatchResponse:
       type: object
       properties:
-        success: { type: boolean, const: true }
+        success:
+          type: boolean
+          const: true
         data:
           type: object
           properties:
-            batchId: { type: string }
+            batchId:
+              type: string
             cancelled:
               type: integer
               description: Number of PENDING payments flipped to CANCELLED
@@ -2128,12 +3654,15 @@ components:
         meta:
           type: object
           properties:
-            timestamp: { type: string, format: date-time }
-
+            timestamp:
+              type: string
+              format: date-time
     PaginatedBatches:
       type: object
       properties:
-        success: { type: boolean, const: true }
+        success:
+          type: boolean
+          const: true
         data:
           type: array
           items:
@@ -2141,15 +3670,22 @@ components:
         meta:
           type: object
           properties:
-            page: { type: integer }
-            limit: { type: integer }
-            total: { type: integer }
-            nextCursor: { type: [string, 'null'] }
-            hasMore: { type: boolean }
-
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            nextCursor:
+              type:
+                - string
+                - "null"
+            hasMore:
+              type: boolean
     CreatePaymentRequestSchema:
       type: object
-      required: [amount]
+      required:
+        - amount
       properties:
         amount:
           type: number
@@ -2167,12 +3703,14 @@ components:
           maxLength: 500
         recipientAddress:
           type: string
-          pattern: "^G[A-Z0-9]{55}$"
+          pattern: ^G[A-Z0-9]{55}$
           description: Optional recipient Stellar address
-
     CreatePaymentRequest:
       type: object
-      required: [amount, sourceAccountId, destAddress]
+      required:
+        - amount
+        - sourceAccountId
+        - destAddress
       properties:
         amount:
           type: number
@@ -2196,12 +3734,14 @@ components:
           description: Source Stellar account
         destAddress:
           type: string
-          pattern: "^G[A-Z0-9]{55}$"
+          pattern: ^G[A-Z0-9]{55}$
           description: Destination Stellar address (56 chars, starts with G)
-
     CreateBatchRequest:
       type: object
-      required: [name, recipients, sourceAccountId]
+      required:
+        - name
+        - recipients
+        - sourceAccountId
       properties:
         name:
           type: string
@@ -2221,11 +3761,13 @@ components:
           maxItems: 100
           items:
             type: object
-            required: [address, amount]
+            required:
+              - address
+              - amount
             properties:
               address:
                 type: string
-                pattern: "^G[A-Z0-9]{55}$"
+                pattern: ^G[A-Z0-9]{55}$
               amount:
                 type: number
                 minimum: 0
@@ -2238,10 +3780,14 @@ components:
                 maxLength: 28
         sourceAccountId:
           type: string
-
     CreateRecurrenceRequest:
       type: object
-      required: [name, frequency, amount, destAddress, sourceAccountId]
+      required:
+        - name
+        - frequency
+        - amount
+        - destAddress
+        - sourceAccountId
       properties:
         name:
           type: string
@@ -2249,7 +3795,13 @@ components:
           maxLength: 100
         frequency:
           type: string
-          enum: [DAILY, WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, YEARLY]
+          enum:
+            - DAILY
+            - WEEKLY
+            - BIWEEKLY
+            - MONTHLY
+            - QUARTERLY
+            - YEARLY
         amount:
           type: number
           minimum: 0
@@ -2259,16 +3811,17 @@ components:
           default: XLM
         destAddress:
           type: string
-          pattern: "^G[A-Z0-9]{55}$"
+          pattern: ^G[A-Z0-9]{55}$
         description:
           type: string
           maxLength: 500
         sourceAccountId:
           type: string
-
     CreateWebhookRequest:
       type: object
-      required: [url, events]
+      required:
+        - url
+        - events
       properties:
         url:
           type: string
@@ -2298,7 +3851,6 @@ components:
         isActive:
           type: boolean
           default: true
-
     TestWebhookResponse:
       type: object
       properties:
@@ -2307,7 +3859,9 @@ components:
           description: Whether the endpoint returned a 2xx response
         status:
           type: string
-          enum: [delivered, failed]
+          enum:
+            - delivered
+            - failed
         event:
           type: string
           description: The simulated event type (e.g. payment.completed)
@@ -2320,131 +3874,241 @@ components:
         sentAt:
           type: string
           format: date-time
-
     HealthResponse:
       type: object
       properties:
-        success: { type: boolean }
+        success:
+          type: boolean
         data:
           type: object
           properties:
-            version: { type: string }
-            status: { type: string, enum: [ok, degraded, down] }
+            version:
+              type: string
+            status:
+              type: string
+              enum:
+                - ok
+                - degraded
+                - down
             services:
               type: object
               properties:
                 database:
                   type: object
                   properties:
-                    status: { type: string, enum: [ok, error] }
-                    latencyMs: { type: [integer, 'null'] }
+                    status:
+                      type: string
+                      enum:
+                        - ok
+                        - error
+                    latencyMs:
+                      type:
+                        - integer
+                        - "null"
                 redis:
                   type: object
                   properties:
-                    status: { type: string, enum: [ok, error, disabled] }
-                    latencyMs: { type: [integer, 'null'] }
+                    status:
+                      type: string
+                      enum:
+                        - ok
+                        - error
+                        - disabled
+                    latencyMs:
+                      type:
+                        - integer
+                        - "null"
                 stellar:
                   type: object
                   properties:
-                    network: { type: string }
-                    rpcUrl: { type: string }
-                    horizonUrl: { type: string }
+                    network:
+                      type: string
+                    rpcUrl:
+                      type: string
+                    horizonUrl:
+                      type: string
                     rpc:
                       type: object
                       properties:
-                        status: { type: string, enum: [ok, error, unchecked] }
-                        latencyMs: { type: [integer, 'null'] }
+                        status:
+                          type: string
+                          enum:
+                            - ok
+                            - error
+                            - unchecked
+                        latencyMs:
+                          type:
+                            - integer
+                            - "null"
                     horizon:
                       type: object
                       properties:
-                        status: { type: string, enum: [ok, error, unchecked] }
-                        latencyMs: { type: [integer, 'null'] }
+                        status:
+                          type: string
+                          enum:
+                            - ok
+                            - error
+                            - unchecked
+                        latencyMs:
+                          type:
+                            - integer
+                            - "null"
                     contracts:
                       type: object
                       properties:
-                        status: { type: string, enum: [ok, error] }
+                        status:
+                          type: string
+                          enum:
+                            - ok
+                            - error
                         ophirpay:
                           type: object
                           properties:
-                            id: { type: [string, 'null'] }
-                            status: { type: string, enum: [ok, error, not_configured] }
+                            id:
+                              type:
+                                - string
+                                - "null"
+                            status:
+                              type: string
+                              enum:
+                                - ok
+                                - error
+                                - not_configured
                         emitter:
                           type: object
                           properties:
-                            id: { type: [string, 'null'] }
-                            status: { type: string, enum: [ok, error, not_configured] }
+                            id:
+                              type:
+                                - string
+                                - "null"
+                            status:
+                              type: string
+                              enum:
+                                - ok
+                                - error
+                                - not_configured
                         chainReadSource:
                           type: object
                           properties:
-                            id: { type: [string, 'null'] }
-                            status: { type: string, enum: [ok, error, not_configured] }
-            uptime: { type: number }
+                            id:
+                              type:
+                                - string
+                                - "null"
+                            status:
+                              type: string
+                              enum:
+                                - ok
+                                - error
+                                - not_configured
+            uptime:
+              type: number
         meta:
           type: object
           properties:
-            timestamp: { type: string }
-
+            timestamp:
+              type: string
     ErrorResponse:
       type: object
       properties:
-        success: { type: boolean, const: false }
+        success:
+          type: boolean
+          const: false
         error:
           type: object
           properties:
-            code: { type: string }
-            message: { type: string }
-
+            code:
+              type: string
+            message:
+              type: string
   responses:
     ValidationError:
-      description: Invalid request data
+      description: "Invalid request data (code: VALIDATION_ERROR)"
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: VALIDATION_ERROR
+              message: "Invalid request payload: destination address is required"
     NotFound:
-      description: Resource not found
+      description: "Resource not found (code: NOT_FOUND)"
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: Requested resource was not found
     Unauthorized:
-      description: Missing or invalid API key
+      description: "Missing or invalid API key (code: UNAUTHORIZED)"
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: UNAUTHORIZED
+              message: Authentication required. Missing or invalid API key.
     Forbidden:
-      description: Insufficient permissions
+      description: "Insufficient permissions (code: FORBIDDEN)"
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: FORBIDDEN
+              message: Insufficient permissions to perform this action
     Conflict:
-      description: Resource state conflict
+      description: "Resource state conflict (code: CONFLICT)"
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: CONFLICT
+              message: Resource already exists or conflicting state transition
     RateLimited:
-      description: Too many requests
+      description: "Too many requests (code: RATE_LIMITED)"
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: RATE_LIMITED
+              message: Rate limit exceeded. Please back off before retrying.
     ServerError:
-      description: Internal server error
+      description: "Internal server error (code: INTERNAL_ERROR)"
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: INTERNAL_ERROR
+              message: An internal server error occurred
     ServiceUnavailable:
-      description: Service temporarily unavailable
+      description: "Service temporarily unavailable (code: SERVICE_UNAVAILABLE)"
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
-
-  # ── Error Codes Catalog (209 codes across 11 HTTP status classes) ──
+          example:
+            success: false
+            error:
+              code: SERVICE_UNAVAILABLE
+              message: Service or critical dependency temporarily unavailable
   x-error-codes:
     "400":
       - BAD_REQUEST

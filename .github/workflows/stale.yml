@@ -3,6 +3,7 @@ name: "🧹 Stale Issue & PR Management"
 on:
   schedule:
     - cron: "0 8 * * 1" # Every Monday at 08:00 UTC
+  workflow_dispatch:
 
 permissions:
   issues: write
@@ -36,7 +37,7 @@ jobs:
           # Exempting them by label stops the bot from closing work that is
           # still up for grabs (issue #736). The policy is documented in
           # CONTRIBUTING.md → "Issue triage & stale policy".
-          exempt-issue-labels: "pinned,security,blocked,good first issue,help wanted,bounty,Stellar Wave"
+          exempt-issue-labels: "pinned,security,blocked,good first issue,help wanted,bounty,Stellar Wave,long-running"
           # Claimed work must never be closed under the contributor: any issue
           # with an assignee is exempt from staling. Unassigned non-wave issues
           # still go stale after 60 days of inactivity and close 14 days later.

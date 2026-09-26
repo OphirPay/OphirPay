@@ -598,6 +598,10 @@ curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/api/health
 # 4. Verify database connectivity
 curl -s https://your-domain.com/api/health | jq .database
 # Expected: "connected"
+
+# 5. Verify SEP-1 discovery document (stellar.toml)
+curl -s -i https://your-domain.com/.well-known/stellar.toml
+# Expected: 200 OK, Content-Type: text/plain, Access-Control-Allow-Origin: *
 ```
 
 ### Manual Smoke Test

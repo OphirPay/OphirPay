@@ -1,6 +1,7 @@
 {
   "$comment": "First-load JavaScript budget per route, gzip-compressed, measured by scripts/check-bundle-budget.mjs from the App Router client-reference manifests. Values are the 2026-09-25 Turbopack baseline plus ~8% headroom. Budgets are raised deliberately in a PR (with a reason) and never lowered to make a red build green. See CONTRIBUTING.md → 'Bundle-size budget'.",
   "defaultBudgetKb": 500,
+  "defaultRouteBudgetKb": 500,
   "routes": {
     "/": 485,
     "/address-book": 475,
@@ -30,5 +31,35 @@
     "/timelock": 485,
     "/webhooks": 485,
     "/webhooks/[id]": 480
+  },
+  "budgets": {
+    "/": { "budgetKb": 485, "description": "Dashboard / home overview" },
+    "/address-book": { "budgetKb": 475, "description": "Address book" },
+    "/analytics": { "budgetKb": 475, "description": "Analytics dashboard" },
+    "/audit-log": { "budgetKb": 480, "description": "Audit log" },
+    "/batches": { "budgetKb": 480, "description": "Batches" },
+    "/batches/[id]": { "budgetKb": 480, "description": "Batch detail" },
+    "/batches/new": { "budgetKb": 485, "description": "Batch creation" },
+    "/contracts": { "budgetKb": 475, "description": "Contracts" },
+    "/events": { "budgetKb": 475, "description": "Events" },
+    "/fee-config": { "budgetKb": 485, "description": "Fee config" },
+    "/governance": { "budgetKb": 480, "description": "Governance" },
+    "/hooks": { "budgetKb": 485, "description": "Hooks" },
+    "/keys": { "budgetKb": 480, "description": "API keys" },
+    "/multisig": { "budgetKb": 485, "description": "Multisig" },
+    "/pay/[address]": { "budgetKb": 470, "description": "Pay" },
+    "/payments": { "budgetKb": 490, "description": "Payments" },
+    "/payments/[id]": { "budgetKb": 485, "description": "Payment detail" },
+    "/pause-controls": { "budgetKb": 485, "description": "Pause controls" },
+    "/policy-versions": { "budgetKb": 480, "description": "Policy versions" },
+    "/rbac": { "budgetKb": 485, "description": "RBAC" },
+    "/receive": { "budgetKb": 485, "description": "Receive" },
+    "/recurring": { "budgetKb": 480, "description": "Recurring" },
+    "/refunds": { "budgetKb": 485, "description": "Refunds" },
+    "/requests": { "budgetKb": 480, "description": "Requests" },
+    "/send": { "budgetKb": 640, "description": "Send" },
+    "/timelock": { "budgetKb": 485, "description": "Timelock" },
+    "/webhooks": { "budgetKb": 485, "description": "Webhooks" },
+    "/webhooks/[id]": { "budgetKb": 480, "description": "Webhook detail" }
   }
 }

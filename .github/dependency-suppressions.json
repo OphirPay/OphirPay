@@ -12,6 +12,25 @@
       "package": "@prisma/config",
       "reason": "Transitive path of GHSA-ggr8-5vv4-36mx (deepmerge-ts 7.1.5). Same justification: Prisma CLI config merging, dev tooling only, no upstream fix yet.",
       "expires": "2027-01-01"
+    },
+    {
+      "id": "GHSA-82x6-q7mm-w9cf",
+      "package": "toml",
+      "reason": "Transitive dependency of @stellar/stellar-sdk; TOML parsing is only used internally by Stellar SDK for SEP-0001 stellar.toml resolution and not exposed to arbitrary untrusted user inputs in OphirPay runtime.",
+      "expires": "2027-01-01",
+      "tracking": "https://github.com/advisories/GHSA-82x6-q7mm-w9cf"
+    },
+    {
+      "id": "GHSA-v5mp-jgw5-2x6j",
+      "package": "toml",
+      "reason": "Transitive dependency of @stellar/stellar-sdk; prototype pollution in toml-node is not reachable through OphirPay endpoints.",
+      "expires": "2027-01-01",
+      "tracking": "https://github.com/advisories/GHSA-v5mp-jgw5-2x6j"
+    },
+    {
+      "package": "@stellar/stellar-sdk",
+      "reason": "Transitive path of toml GHSA-82x6-q7mm-w9cf and GHSA-v5mp-jgw5-2x6j. Fix requires breaking major version bump of @stellar/stellar-sdk which is tracked separately.",
+      "expires": "2027-01-01"
     }
   ]
 }

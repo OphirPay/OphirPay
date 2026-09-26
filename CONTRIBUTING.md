@@ -163,8 +163,9 @@ npm run test:openapi  # OpenAPI spec ↔ implementation conformance (drift)
 npm run test:e2e      # E2E tests (requires a running server at E2E_BASE_URL)
 npm run test:visual   # Visual regression tests
 npm run test:visual:update # Update visual baselines
+npm run analyze       # Generate bundle analyzer report (.next/analyze/client.html)
+npm run bundle:check  # Validate First Load JS against bundle-budget.json
 ```
-
 ### Coverage ratchet
 
 Coverage is enforced by **per-directory budgets**, not one global number

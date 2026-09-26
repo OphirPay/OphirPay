@@ -17,7 +17,10 @@ export type PaymentEventType =
   | "payment.received"
   | "payment.batch_completed"
   | "payment.created"
-  | "payment.failed";
+  | "payment.failed"
+  | "request.overdue"
+  | "request.paid"
+  | "request.reminder_sent";
 
 export interface PaymentNotification {
   id: string;
@@ -148,7 +151,13 @@ export function normalizePaymentEvent(raw: RawPaymentEventPayload): PaymentNotif
   const rawType = (raw.type || raw.event || "").toLowerCase().replace(":", ".");
   let type: PaymentEventType = "payment.created";
 
-  if (rawType.includes("sent")) {
+  if (rawType.includes("overdue") || rawType.includes("expired")) {
+    type = "request.overdue";
+  } else if (rawType.includes("request.paid") || rawType === "request.paid") {
+    type = "request.paid";
+  } else if (rawType.includes("reminder")) {
+    type = "request.reminder_sent";
+  } else if (rawType.includes("sent")) {
     type = "payment.sent";
   } else if (rawType.includes("received")) {
     type = "payment.received";
@@ -198,6 +207,15 @@ export function normalizePaymentEvent(raw: RawPaymentEventPayload): PaymentNotif
       case "payment.failed":
         title = "Payment Failed";
         break;
+      case "request.overdue":
+        title = amount ? `Payment Request Overdue: ${amount}` : "Payment Request Overdue";
+        break;
+      case "request.paid":
+        title = amount ? `Payment Request Paid: ${amount}` : "Payment Request Paid";
+        break;
+      case "request.reminder_sent":
+        title = "Payment Reminder Sent";
+        break;
       case "payment.created":
       default:
         title = "Payment Recorded";
@@ -224,6 +242,15 @@ export function normalizePaymentEvent(raw: RawPaymentEventPayload): PaymentNotif
         break;
       case "payment.failed":
         message = `Payment transaction failed to execute.`;
+        break;
+      case "request.overdue":
+        message = `A payment request of ${amount || "funds"} is now overdue.`;
+        break;
+      case "request.paid":
+        message = `Payment request for ${amount || "funds"} was successfully paid.`;
+        break;
+      case "request.reminder_sent":
+        message = `Reminder successfully dispatched to recipient.`;
         break;
       case "payment.created":
       default:
@@ -405,6 +432,32 @@ export const NOTIFY = {
       amount,
       title: "Batch Payment Complete",
       message: `Successfully sent payments to ${recipients} recipients.`,
+    });
+  },
+  requestOverdue: (description: string, amount: string, requestId: string) => {
+    emitPaymentNotification({
+      type: "request.overdue",
+      amount,
+      id: `overdue_${requestId}`,
+      title: `Payment Request Overdue: ${amount}`,
+      message: `Request "${description || requestId}" has passed its due date.`,
+    });
+  },
+  requestPaid: (description: string, amount: string, txHash?: string) => {
+    emitPaymentNotification({
+      type: "request.paid",
+      amount,
+      txHash,
+      title: `Payment Request Paid: ${amount}`,
+      message: `Payment request "${description || "payment"}" was completed on Stellar.`,
+    });
+  },
+  requestReminder: (description: string, recipient: string, count: number) => {
+    emitPaymentNotification({
+      type: "request.reminder_sent",
+      payee: recipient,
+      title: "Payment Reminder Sent",
+      message: `Reminder #${count} sent for "${description || "request"}" to ${shortenAddress(recipient, 4)}.`,
     });
   },
 };

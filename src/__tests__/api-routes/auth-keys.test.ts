@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHash } from "node:crypto";
 
 // Mock dependencies
 vi.mock("@/lib/prisma", () => ({
@@ -277,7 +278,19 @@ describe("API Routes: Auth, CSRF & Keys", () => {
       expect(res.status).toBe(201);
       const data = await res.json();
       expect(data.data.id).toBe("key_created_1");
-      expect(data.data.key).toMatch(/^oph_[a-f0-9]+$/);
+      // Issue #701: 32 CSPRNG bytes (64 hex) behind the oph_ prefix.
+      expect(data.data.key).toMatch(/^oph_[a-f0-9]{64}$/);
+
+      const createArgs = vi.mocked(prisma.apiKey.create).mock.calls[0]![0] as {
+        data: { keyHash: string; prefix: string };
+      };
+      // Stored digest is version-tagged; the lookup prefix is the raw key's
+      // first 8 characters (a mismatch here breaks every authenticated call).
+      expect(createArgs.data.keyHash).toMatch(/^v1:[a-f0-9]{64}$/);
+      expect(createArgs.data.prefix).toBe(data.data.key.slice(0, 8));
+      expect(createArgs.data.keyHash).toBe(
+        `v1:${createHash("sha256").update(data.data.key).digest("hex")}`
+      );
     });
 
     it("DELETE returns 401 when unauthenticated", async () => {

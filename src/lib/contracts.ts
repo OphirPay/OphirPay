@@ -52,6 +52,17 @@ export const CHAIN_READ_SOURCE =
 // Legacy alias
 export const DEFAULT_CONTRACT_ID = OPHIRPAY_CONTRACT_ID;
 
+/**
+ * Maximum entries an enumerating contract reader returns in a single call.
+ *
+ * Mirrors `MAX_READER_ENTRIES` in `contracts/ophirpay/src/lib.rs` (issue #742,
+ * SPEC.md INV-11): `get_payments_by_batch` and `get_subscriber_hooks` return
+ * `{ items, total, truncated }` capped at this many entries. API routes that
+ * expose the same data apply the identical ceiling and surface the same
+ * truncation flag, so a client never mistakes a capped list for a complete one.
+ */
+export const CONTRACT_READER_ENTRY_CAP = 100;
+
 // ── 3 Error Types ──────────────────────────────────────────────
 
 export enum ContractErrorType {
@@ -321,7 +332,11 @@ export async function submitContractInvocation(signedXdr: string): Promise<{
   }
 }
 
-// ── On-Chain Payment Recording ─────────────────────────────────
+// Exported operations object to enable mocking and spying of intra-module calls in tests
+export const contractOps = {
+  invokeContractFunction,
+  submitContractInvocation,
+};
 
 export interface RecordOnChainResult {
   status: "RECORDED" | "FAILED";
@@ -380,7 +395,7 @@ export async function recordPaymentOnChain(params: {
         : xdr.ScVal.scvVoid(), // idempotency_key: Option<String>
     ];
 
-    const txInfo = await invokeContractFunction(
+    const txInfo = await contractOps.invokeContractFunction(
       DEFAULT_CONTRACT_ID,
       "record_payment",
       payer,
@@ -399,7 +414,7 @@ export async function recordPaymentOnChain(params: {
       networkPassphrase,
     });
 
-    const result = await submitContractInvocation(signedXdr);
+    const result = await contractOps.submitContractInvocation(signedXdr);
 
     if (result.status !== "SUCCESS") {
       return {

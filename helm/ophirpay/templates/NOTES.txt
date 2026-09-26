@@ -1,0 +1,44 @@
+{{- /*
+OphirPay — post-install / post-upgrade notes.
+*/ -}}
+OphirPay {{ .Chart.AppVersion }} (chart {{ .Chart.Version }}) is deployed in namespace {{ .Release.Namespace }}.
+
+Service : {{ include "ophirpay.fullname" . }}:{{ .Values.service.port }}
+{{- if and .Values.ingress.enabled .Values.ingress.hosts }}
+Ingress : {{ (first .Values.ingress.hosts).host }}
+{{- else }}
+Ingress : disabled
+{{- end }}
+
+⚠️  NEXT_PUBLIC_* VARIABLES ARE BUILD-TIME ONLY
+──────────────────────────────────────────────────────────────────────
+Next.js inlines every NEXT_PUBLIC_* variable into the JavaScript bundles
+during `next build`. A prebuilt image therefore IGNORES the runtime values of:
+
+{{- range $key, $val := .Values.config }}
+{{- if hasPrefix "NEXT_PUBLIC_" $key }}
+  • {{ $key }}
+{{- end }}
+{{- end }}
+
+Setting these through `--set config.NEXT_PUBLIC_*` or a ConfigMap edit will
+NOT change the network, RPC endpoint or Horizon endpoint the running app uses.
+
+To target a different Stellar network, build your own image with those values
+set and point this release at it:
+
+  docker build \
+    --build-arg NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
+    --build-arg NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org:443 \
+    --build-arg NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \
+    -t <registry>/ophirpay:<tag> .
+
+  helm upgrade --install {{ .Release.Name }} ./helm/ophirpay \
+    --set image.repository=<registry>/ophirpay --set image.tag=<tag>
+
+See docs/DEPLOYMENT.md → "Kubernetes (Helm)" for the full procedure, and
+docs/MAINNET_RUNBOOK.md before pointing anything at Stellar Mainnet.
+
+Configuration sources for this release:
+  • ConfigMap: {{ include "ophirpay.fullname" . }}-config
+  • Secret   : {{ include "ophirpay.fullname" . }}-secrets

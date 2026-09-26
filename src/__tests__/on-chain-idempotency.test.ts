@@ -33,6 +33,10 @@ vi.mock("@/lib/auth-session", () => ({
 
 vi.mock("@/lib/contracts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/contracts")>();
+  if (actual.contractOps) {
+    actual.contractOps.invokeContractFunction = mockInvokeContractFunction;
+    actual.contractOps.submitContractInvocation = mockSubmitContractInvocation;
+  }
   return {
     ...actual,
     invokeContractFunction: mockInvokeContractFunction,
@@ -64,8 +68,8 @@ function csrfHeaders(): Record<string, string> {
 }
 
 const USER_ID = "user-123";
-const SOURCE_ACCOUNT = "GDHJ3K2LQ7F5XQZPX6YWNMYKXWQXVZKBJZQFYX3F6KRLV4WDXHJMB2UY";
-const DEST_ADDRESS = "GA5AZNWWOW5PXPNHBVRJOB2ZPZO3PXN5VTXTXOIJTACZZHE5ZA7CAH7H";
+const SOURCE_ACCOUNT = "GBQMIN7KLT4R473IGGFBGUYM2UNPGKZRTX2LZ4M2KQIY2ASYJL6ACBMZ";
+const DEST_ADDRESS = "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU";
 
 describe("On-Chain Idempotency Schema & API Agreement", () => {
   beforeEach(() => {
@@ -185,7 +189,7 @@ describe("recordPaymentOnChain Contract Helper", () => {
     mockSubmitContractInvocation.mockResolvedValue({
       status: "SUCCESS",
       txHash: "0xhash123",
-      returnValue: 1n,
+      returnValue: BigInt(1),
     });
 
     const signTx = vi.fn().mockResolvedValue("AAAA_SIGNED_XDR");
@@ -200,7 +204,7 @@ describe("recordPaymentOnChain Contract Helper", () => {
       signTransaction: signTx,
     });
 
-    expect(result.status).toBe("CONFIRMED");
+    expect(result.status).toBe("RECORDED");
     expect(mockInvokeContractFunction).toHaveBeenCalledWith(
       expect.any(String),
       "record_payment",
@@ -230,13 +234,13 @@ describe("Advanced Contract Idempotency Functions", () => {
     mockSubmitContractInvocation.mockResolvedValue({
       status: "SUCCESS",
       txHash: "0xidem_call_hash",
-      returnValue: 5n,
+      returnValue: BigInt(5),
     });
 
     const result = await recordPaymentOnChainIdempotent(
       SOURCE_ACCOUNT,
       DEST_ADDRESS,
-      50_000_000n,
+      BigInt(50_000_000),
       "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
       "0xtxhash",
       "meta",
@@ -262,7 +266,7 @@ describe("Advanced Contract Idempotency Functions", () => {
     mockSubmitContractInvocation.mockResolvedValue({
       status: "SUCCESS",
       txHash: "0xemit_hash",
-      returnValue: 1n,
+      returnValue: BigInt(1),
     });
 
     const result = await emitPaymentIdempotent(
@@ -270,7 +274,7 @@ describe("Advanced Contract Idempotency Functions", () => {
       "OphirPay",
       SOURCE_ACCOUNT,
       DEST_ADDRESS,
-      100_000_000n,
+      BigInt(100_000_000),
       "0xhash_emit",
       "emitter-key-77"
     );
@@ -289,13 +293,13 @@ describe("Advanced Contract Idempotency Functions", () => {
   it("getPaymentIdByIdempotencyKey simulates read-only query", async () => {
     mockSimulateContractCall.mockResolvedValue({
       status: "SUCCESS",
-      returnValue: 10n,
+      returnValue: BigInt(10),
     });
 
     const res = await getPaymentIdByIdempotencyKey(SOURCE_ACCOUNT, "query-key-1");
     expect(mockSimulateContractCall).toHaveBeenCalledWith(
       expect.any(String),
-      "get_payment_id_by_idempotency_key",
+      "get_payment_id_by_idempotency",
       SOURCE_ACCOUNT,
       expect.any(Array)
     );
@@ -304,7 +308,7 @@ describe("Advanced Contract Idempotency Functions", () => {
   it("getPaymentByIdempotencyKey simulates read-only query", async () => {
     mockSimulateContractCall.mockResolvedValue({
       status: "SUCCESS",
-      returnValue: { id: 10n, amount: 50_000_000n },
+      returnValue: { id: BigInt(10), amount: BigInt(50_000_000) },
     });
 
     const res = await getPaymentByIdempotencyKey(SOURCE_ACCOUNT, "query-key-1");

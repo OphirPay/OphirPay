@@ -259,11 +259,11 @@ proptest! {
 //
 // The contract permits up to `MAX_BATCH_SIZE = 100` payees, but a single
 // Soroban invocation caps the size of the *contract events* it may emit at
-// 16 KiB. Each valid payee emits a payment event (~170 B), so a batch of
-// 97+ fully-valid entries is rejected by the host (`Budget, ExceededLimit`)
-// before the contract returns. Hence:
-//   - success is fuzzed up to 96 payees (the largest size a single mock
-//     invocation can record), with exact accounting; and
+// 16 KiB. Each valid payee emits a payment event containing amount and optional
+// idempotency metadata (~190 B), so a batch of 86+ fully-valid entries reaches
+// the host (`Budget, ExceededLimit`) limit before the contract returns. Hence:
+//   - success is fuzzed up to 85 payees (the largest size a single mock
+//     invocation can record with event metadata), with exact accounting; and
 //   - rejection is fuzzed for 101+ payees (the documented `BatchTooLarge`
 //     guard in `create_batch`), which emits no events and is unbounded.
 
@@ -273,7 +273,7 @@ proptest! {
     /// The largest batch a single invocation can fully record still succeeds
     /// with exact accounting — no panic, no overflow, no locked funds.
     #[test]
-    fn prop_batch_size_max_success_accounting(n in 88u32..=96u32) {
+    fn prop_batch_size_max_success_accounting(n in 80u32..=85u32) {
         let h = AmountHarness::new();
         let payees = h.make_payees(n);
         let amounts: Vec<i128> = h.make_amounts(&vec![10_000i128; n as usize]);
@@ -344,8 +344,10 @@ proptest! {
         prop_assert_eq!(batch.timestamp, timestamp);
 
         let payments = h.client.get_payments_by_batch(&summary.batch_id);
-        prop_assert_eq!(payments.len(), 2);
-        for p in payments.iter() {
+        prop_assert_eq!(payments.total, 2);
+        prop_assert!(!payments.truncated);
+        prop_assert_eq!(payments.items.len(), 2);
+        for p in payments.items.iter() {
             prop_assert_eq!(p.timestamp, timestamp);
         }
         prop_assert_eq!(h.client.get_locked_balance(), 0);

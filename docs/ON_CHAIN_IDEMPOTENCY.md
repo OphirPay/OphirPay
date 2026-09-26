@@ -62,7 +62,7 @@ Indexers and webhooks can inspect the data payload to instantly deduplicate inco
 
 ### 4. Query Functions
 
-- `get_payment_id_by_idempotency_key(env: Env, idempotency_key: String) -> Option<u64>`: Returns the payment ID associated with the idempotency key, or `None`.
+- `get_payment_id_by_idempotency(env: Env, idempotency_key: String) -> Option<u64>`: Returns the payment ID associated with the idempotency key, or `None` (named within Soroban's 32-character symbol limit).
 - `get_payment_by_idempotency_key(env: Env, idempotency_key: String) -> Result<Payment, PaymentError>`: Returns the full `Payment` struct, or `PaymentError::PaymentNotFound`.
 
 ---

@@ -1864,6 +1864,13 @@ paths:
     get:
       tags: [Metrics]
       summary: Prometheus metrics endpoint
+      description: |
+        Prometheus text exposition. Now authenticated: send
+        `Authorization: Bearer $METRICS_TOKEN`, or an API key carrying the
+        `admin` scope via `Authorization: Bearer` / `X-API-Key`. Unauthenticated
+        requests receive `401` with no metric body. See
+        `docs/metrics-endpoints.md` for the scrape configuration.
+      security: [{ BearerAuth: [] }, { ApiKeyAuth: [] }]
       responses:
         "200":
           description: Prometheus text format metrics
@@ -1871,6 +1878,8 @@ paths:
             text/plain:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ── Jobs & Cron ──────────────────────────────────────────
   /api/cron:

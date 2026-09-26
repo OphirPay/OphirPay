@@ -293,12 +293,16 @@ fn test_batch_payment_happy_path() {
     assert_eq!(batch.payment_ids.len(), 4);
 
     // Verify payments by batch
+    // Bounded reader (#742): a `PaymentList` of at most 100 entries, newest
+    // first, with an explicit truncation flag.
     let batch_payments = fix.client.get_payments_by_batch(&1);
-    assert_eq!(batch_payments.len(), 4);
-    assert_eq!(batch_payments.get(0).unwrap().payee, p1);
-    assert_eq!(batch_payments.get(0).unwrap().amount, 100_000);
-    assert_eq!(batch_payments.get(3).unwrap().payee, p4);
-    assert_eq!(batch_payments.get(3).unwrap().amount, 150_000);
+    assert_eq!(batch_payments.total, 4);
+    assert!(!batch_payments.truncated);
+    assert_eq!(batch_payments.items.len(), 4);
+    assert_eq!(batch_payments.items.get(0).unwrap().payee, p4);
+    assert_eq!(batch_payments.items.get(0).unwrap().amount, 150_000);
+    assert_eq!(batch_payments.items.get(3).unwrap().payee, p1);
+    assert_eq!(batch_payments.items.get(3).unwrap().amount, 100_000);
 }
 
 #[test]
@@ -806,7 +810,7 @@ fn test_record_payment_idempotency_integration() {
     assert_eq!(payment_1.idempotency_key, Some(key1.clone()));
 
     // Verify lookup queries by idempotency key
-    assert_eq!(fix.client.get_payment_id_by_idempotency_key(&key1), Some(1));
+    assert_eq!(fix.client.get_payment_id_by_idempotency(&key1), Some(1));
     let looked_up = fix.client.get_payment_by_idempotency_key(&key1);
     assert_eq!(looked_up.id, 1);
     assert_eq!(looked_up.amount, 5_000_000);
@@ -825,6 +829,61 @@ fn test_record_payment_idempotency_integration() {
     );
     assert_eq!(id_2, 2);
     assert_eq!(fix.client.get_payment_count(), 2);
-    assert_eq!(fix.client.get_payment_id_by_idempotency_key(&key2), Some(2));
+    assert_eq!(fix.client.get_payment_id_by_idempotency(&key2), Some(2));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 13. STREAM VESTING OVERFLOW (AUDIT LOW-1 / issue #691)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A stream large enough that `total_amount * elapsed` overflows `i128` must
+/// still vest linearly: the recipient is paid the correct remaining balance at
+/// every step, is never silently under-vested, and is never over-paid (INV-5).
+#[test]
+fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+
+    let total = i128::MAX;
+    fix.mint(&creator, total);
+
+    let now = fix.env.ledger().timestamp();
+    let stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total,
+        &fix.token_id,
+        &now,
+        &(now + 4),
+        &String::from_str(&fix.env, "overflow e2e"),
+    );
+    assert_eq!(stream_id, 1);
+
+    // Half-way through the schedule: `total * 2` overflows i128. Before the
+    // fix this vested 0, so the recipient could claim nothing at all.
+    fix.env.ledger().set_timestamp(now + 2);
+    let claimed = fix.client.claim_stream(&recipient, &stream_id);
+    assert!(claimed > 0, "overflow must not collapse vesting to zero");
+    assert_eq!(claimed, total / 2);
+
+    // Past the end time the remainder is claimable and drains the stream.
+    fix.env.ledger().set_timestamp(now + 100);
+    let remainder = fix.client.claim_stream(&recipient, &stream_id);
+    assert_eq!(remainder, total - (total / 2));
+
+    assert_eq!(fix.token_client.balance(&recipient), total);
+    assert_eq!(fix.client.get_stream(&stream_id).claimed_amount, total);
+
+    // A fully claimed stream rejects further claims and stays fully paid — no
+    // double-spend and no over-payment.
+    let res = fix.client.try_claim_stream(&recipient, &stream_id);
+    assert!(res.is_err());
+    assert_eq!(fix.token_client.balance(&recipient), total);
+
+    // Cancelling a fully vested stream refunds nothing to the creator.
+    let refunded = fix.client.cancel_stream(&creator, &stream_id);
+    assert_eq!(refunded, 0);
+    assert_eq!(fix.token_client.balance(&recipient), total);
 }
 

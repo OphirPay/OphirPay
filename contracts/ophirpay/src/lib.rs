@@ -113,6 +113,19 @@ const BUMP_MIN_TTL: u32 = 5_000;
 const BUMP_MAX_TTL: u32 = 50_000;
 const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 
+// ── Enumeration Cap (docs/AUDIT.md MEDIUM-2, issue #742) ───────
+// Every *enumerating* reader is bounded by this many entries, newest first.
+// The upstream collections are only bounded by what a writer pushed into them
+// (a subscriber can register an unlimited number of hooks, and a batch written
+// before the `BatchTooLarge` guard existed can hold more ids than
+// `create_batch` accepts today), so without a cap a single read could walk an
+// arbitrarily long stored vector and exceed the instruction budget. Capping
+// turns that into a bounded result plus an explicit `truncated` flag instead of
+// an unreliable endpoint. Matches the existing 100-entry caps in
+// `get_audit_log_range`, `get_payments_range`, `get_fee_config_history` and
+// `get_reason_code_analytics`.
+const MAX_READER_ENTRIES: u32 = 100;
+
 // ── Data Types ─────────────────────────────────────────────────
 
 #[contracttype]
@@ -128,6 +141,20 @@ pub struct Payment {
     pub metadata: String,
     pub cancelled: bool,
     pub idempotency_key: Option<String>,
+}
+
+/// Bounded, most-recent-first view of a batch's payments (#742).
+///
+/// `total` is the number of payment ids the batch actually holds and
+/// `truncated` is true when the reader had to stop before exhausting them, so
+/// callers can tell a complete list apart from a capped one instead of
+/// silently acting on partial data.
+#[contracttype]
+#[derive(Clone)]
+pub struct PaymentList {
+    pub items: Vec<Payment>,
+    pub total: u32,
+    pub truncated: bool,
 }
 
 /// An escrow that locks funds until released by the owner, claimed after
@@ -460,342 +487,664 @@ pub struct NotificationHook {
     pub created_at: u64,
 }
 
+/// Bounded, most-recent-first view of a subscriber's notification hooks
+/// (#742). Mirrors [`PaymentList`] — see that type for the meaning of `total`
+/// and `truncated`.
+#[contracttype]
+#[derive(Clone)]
+pub struct HookList {
+    pub items: Vec<NotificationHook>,
+    pub total: u32,
+    pub truncated: bool,
+}
+
 #[contracterror]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum PaymentError {
     // ── Core Errors (1-10) ───────────────────────────────────
+    /// Contract not initialized: call init() first
     NotInitialized = 1,
+    /// Contract already initialized
     AlreadyInitialized = 2,
+    /// Payment not found
     PaymentNotFound = 3,
+    /// Unauthorized: caller does not have permission
     Unauthorized = 4,
+    /// Invalid amount: must be greater than zero
     InvalidAmount = 5,
+    /// Escrow not yet due: deadline has not passed
     EscrowNotDue = 6,
+    /// Escrow already released
     EscrowAlreadyReleased = 7,
+    /// Escrow not found
     EscrowNotFound = 8,
+    /// Stream not started: start time is in the future
     StreamNotStarted = 9,
+    /// Stream already cancelled
     StreamAlreadyCancelled = 10,
     // ── Stream + Batch Errors (11-20) ────────────────────────
+    /// Stream not found
     StreamNotFound = 11,
+    /// Stream fully claimed: no remaining balance
     StreamFullyClaimed = 12,
+    /// Batch too large: exceeds maximum recipients
     BatchTooLarge = 13,
+    /// Batch empty: no recipients provided
     BatchEmpty = 14,
+    /// Token transfer failed
     TokenTransferFailed = 15,
+    /// Insufficient balance to cover payment
     InsufficientBalance = 16,
+    /// Payment already cancelled
     PaymentAlreadyCancelled = 17,
+    /// Contract paused: operations are temporarily disabled
     ContractPaused = 18,
+    /// No tokens available to withdraw
     NoTokensToWithdraw = 19,
+    /// Upgrade not proposed: call propose_upgrade() first
     UpgradeNotProposed = 20,
     // ── Upgrade + Multisig Errors (21-30) ────────────────────
+    /// Upgrade timelock active: 24-hour delay has not elapsed
     UpgradeTimelockActive = 21,
+    /// Multisig not configured: call set_multisig_config() first
     MultisigNotConfigured = 22,
+    /// Not a signer: you are not in the multisig signer list
     NotASigner = 23,
+    /// Already approved: duplicate approval detected
     AlreadyApproved = 24,
+    /// Threshold not met: insufficient approvals
     ThresholdNotMet = 25,
+    /// Already executed: this action has already been processed
     AlreadyExecuted = 26,
+    /// Not a role holder: insufficient RBAC permissions
     NotARoleHolder = 27,
+    /// Audit log empty: no entries recorded
     AuditLogEmpty = 28,
+    /// Audit entry not found
     AuditEntryNotFound = 29,
+    /// Recurring payment not found
     RecurringNotFound = 30,
     // ── Recurring + Fee Errors (31-40) ────────────────────
+    /// Recurring payment not yet due
     RecurringNotDue = 31,
+    /// Recurring payment already cancelled
     RecurringAlreadyCancelled = 32,
+    /// Recurring payment expired: all payments completed
     RecurringExpired = 33,
+    /// Fee configuration not found
     FeeConfigNotFound = 34,
+    /// Fee too high: exceeds maximum 1000 bps (10%)
     FeeTooHigh = 35,
+    /// Timelocked action not found
     TimelockNotFound = 36,
+    /// Timelocked action not yet due: 24-hour delay has not elapsed
     TimelockNotDue = 37,
+    /// Timelocked action already executed
     TimelockAlreadyExecuted = 38,
+    /// Governance not configured: call configure_governance() first
     GovernanceNotConfigured = 39,
+    /// Proposal not found
     ProposalNotFound = 40,
     // ── Governance + Spend Errors (41-52) ───────────────────
+    /// Voting period ended: proposal is closed
     VotingPeriodEnded = 41,
+    /// Proposal already executed
     ProposalAlreadyExecuted = 42,
+    /// Quorum not met: insufficient votes cast
     QuorumNotMet = 43,
+    /// Proposal defeated: no votes exceeded yes votes
     ProposalDefeated = 44,
+    /// Deposit too low: must meet minimum proposal deposit
     DepositTooLow = 45,
+    /// Spending limit expired: limit has been deactivated or expired
     SpendingLimitExpired = 46,
+    /// Refund not found
     RefundNotFound = 47,
+    /// Refund already processed
     RefundAlreadyProcessed = 48,
+    /// Payment already refunded
     PaymentAlreadyRefunded = 49,
+    /// Refund window expired
     RefundWindowExpired = 50,
+    /// Already voted: each address may vote only once per proposal
     AlreadyVoted = 51,
+    /// Reentrant call detected: cross-contract reentry blocked
     ReentrantCall = 52,
     // ── Spend + Dispute Errors (53-59) ──────────────────────
+    /// Spending cap exceeded: total spend exceeds authorization
     SpendCapExceeded = 53,
+    /// Dispute already filed: a dispute exists for this transaction
     DisputeAlreadyFiled = 54,
+    /// Dispute not found
     DisputeNotFound = 55,
+    /// Dispute window expired: too late to file a dispute
     DisputeWindowExpired = 56,
+    /// Refund rejected: refund request was denied
     RefundRejected = 57,
+    /// Insufficient liquidity: pool cannot fulfill the order
     InsufficientLiquidity = 58,
+    /// Asset depegged: stablecoin is off its target peg
     AssetDepegged = 59,
     // ── Extended Errors (60-99) ───────────────────────────────
+    /// Proposal not passed: insufficient yes votes
     ProposalNotPassed = 60,
+    /// Invalid signature: recovered signer does not match
     InvalidSignature = 61,
+    /// Hook not found
     HookNotFound = 62,
+    /// Hook already exists: duplicate hook registration
     HookAlreadyExists = 63,
+    /// Rate limit exceeded: too many requests
     RateLimitExceeded = 64,
+    /// Asset not supported by this contract
     AssetNotSupported = 65,
+    /// Invalid metadata length: exceeds maximum allowed
     InvalidMetadataLength = 66,
+    /// Maximum recipients exceeded
     MaxRecipientsExceeded = 67,
+    /// Duplicate recipient in batch
     DuplicateRecipient = 68,
+    /// Stream end time must be after start time
     StreamEndBeforeStart = 69,
+    /// Escrow deadline must be in the future
     EscrowDeadlineInPast = 70,
+    /// Pending ownership transfer: accept or cancel first
     PendingOwnershipTransfer = 71,
+    /// Ownership transfer expired: timelock elapsed without acceptance
     OwnershipTransferExpired = 72,
+    /// Invalid address format
     InvalidAddressFormat = 73,
+    /// Batch item failed: individual payment in batch error
     BatchItemFailed = 74,
+    /// Invalid recurring schedule type
     RecurringScheduleInvalid = 75,
+    /// Fee collector address not set
     FeeCollectorNotSet = 76,
+    /// Emitter contract not linked: call set_emitter() first
     EmitterNotLinked = 77,
+    /// Proposal deposit is locked: cannot withdraw while voting
     ProposalDepositLocked = 78,
+    /// Multisig signer limit exceeded
     MultisigSignerLimit = 79,
+    /// Invalid token contract address
     InvalidTokenContract = 80,
+    /// Storage limit exceeded: contract storage is full
     StorageLimitExceeded = 81,
+    /// Contract migration required: upgrade to continue
     ContractMigrationRequired = 82,
+    /// Invalid event type for notification hook
     InvalidEventType = 83,
+    /// Webhook URL too long: exceeds maximum length
     WebhookUrlTooLong = 84,
+    /// Maximum notification hooks exceeded
     MaxHooksExceeded = 85,
+    /// Notification hook is not active
     HookNotActive = 86,
+    /// Cross-contract call failed
     CrossContractCallFailed = 87,
+    /// Invalid ScVal encoding in parameters
     InvalidScValEncoding = 88,
+    /// Unsupported operation: not available in this version
     UnsupportedOperation = 89,
+    /// Contract not linked: configure linked contract first
     ContractNotLinked = 90,
+    /// Maximum signers exceeded for multisig
     MaxSignersExceeded = 91,
+    /// Zero address not allowed for this operation
     ZeroAddressNotAllowed = 92,
+    /// Invalid network: wrong Stellar network configured
     InvalidNetwork = 93,
     // ── Staking & Rewards (94-109) ───────────────────────────
+    /// Staking not configured: call configure_staking() first
     StakingNotConfigured = 94,
+    /// Staking already active: cannot modify while staking
     StakingAlreadyActive = 95,
+    /// Rewards pool empty: no rewards available for distribution
     RewardsPoolEmpty = 96,
+    /// Unstaking period active: funds are still in cooldown
     UnstakingPeriodActive = 97,
+    /// Minimum stake not met: stake must exceed the minimum
     MinimumStakeNotMet = 98,
+    /// Maximum stake exceeded: stake cannot exceed the cap
     MaximumStakeExceeded = 99,
+    /// Rewards already claimed for this epoch
     RewardsAlreadyClaimed = 100,
+    /// Delegation not allowed: delegator is not authorized
     DelegationNotAllowed = 101,
+    /// Validator not active: selected validator is offline
     ValidatorNotActive = 102,
+    /// Slashing condition met: stake is subject to penalty
     SlashingConditionMet = 103,
+    /// Staking is currently paused
     StakingPaused = 104,
+    /// Compound rewards failed: auto-compound error
     CompoundRewardsFailed = 105,
+    /// Yield too low: below minimum acceptable rate
     YieldTooLow = 106,
+    /// Staking period not ended: cannot unstake yet
     StakingPeriodNotEnded = 107,
+    /// Reward distribution failed: transfer error
     RewardDistributionFailed = 108,
+    /// Delegator not authorized for this validator
     UnauthorizedDelegator = 109,
     // ── Cross-Chain & Bridge (110-119) ──────────────────────
+    /// Bridge not configured: call configure_bridge() first
     BridgeNotConfigured = 110,
+    /// Bridge is currently paused
     BridgePaused = 111,
+    /// Invalid source chain identifier
     InvalidSourceChain = 112,
+    /// Invalid destination chain identifier
     InvalidDestinationChain = 113,
+    /// Cross-chain proof invalid: verification failed
     CrossChainProofInvalid = 114,
+    /// Bridge relayer not set: configure relayer address
     BridgeRelayerNotSet = 115,
+    /// Bridge amount too low: below minimum transfer
     BridgeAmountTooLow = 116,
+    /// Bridge amount too high: exceeds maximum transfer
     BridgeAmountTooHigh = 117,
+    /// Bridge transaction expired: timeout reached
     BridgeTransactionExpired = 118,
+    /// Unsupported token pair for bridge transfer
     UnsupportedTokenPair = 119,
     // ── Insurance & Risk (120-129) ──────────────────────────
+    /// Insurance fund not configured
     InsuranceFundNotConfigured = 120,
+    /// Insurance fund empty: no funds available for claims
     InsuranceFundEmpty = 121,
+    /// Insurance claim already filed for this event
     InsuranceClaimAlreadyFiled = 122,
+    /// Insurance claim rejected: does not meet criteria
     InsuranceClaimRejected = 123,
+    /// Insurance claim window expired
     InsuranceClaimWindowExpired = 124,
+    /// Coverage limit exceeded: claim exceeds policy cap
     CoverageLimitExceeded = 125,
+    /// Premium not paid: insurance coverage is inactive
     PremiumNotPaid = 126,
+    /// Risk score too high: coverage denied
     RiskScoreTooHigh = 127,
+    /// Underwriting failed: risk assessment error
     UnderwritingFailed = 128,
+    /// Insurance operations are currently paused
     InsurancePaused = 129,
     // ── Identity & Compliance (130-139) ─────────────────────
+    /// KYC not completed: identity verification required
     KYCNotCompleted = 130,
+    /// KYC tier too low: upgrade verification level
     KYCTierTooLow = 131,
+    /// AML flag raised: transaction blocked for review
     AMLFlagRaised = 132,
+    /// Sanctions list match: address is restricted
     SanctionsListMatch = 133,
+    /// Identity verification failed: documents invalid
     IdentityVerificationFailed = 134,
+    /// Travel rule violation: beneficiary info required
     TravelRuleViolation = 135,
+    /// Jurisdiction not supported for this operation
     JurisdictionNotSupported = 136,
+    /// Residency check failed: proof of residency required
     ResidencyCheckFailed = 137,
+    /// Accreditation required: investor status not verified
     AccreditationRequired = 138,
+    /// Age verification failed: minimum age not met
     AgeVerificationFailed = 139,
     // ── Payment Routing & Splitting (140-149) ───────────────
+    /// Payment route not found: no valid path
     PaymentRouteNotFound = 140,
+    /// Payment split failed: distribution error
     PaymentSplitFailed = 141,
+    /// Split percentage invalid: must sum to 100%
     SplitPercentageInvalid = 142,
+    /// Route hop limit exceeded: path too long
     RouteHopLimitExceeded = 143,
+    /// Path payment too expensive: exceeds max fee
     PathPaymentTooExpensive = 144,
+    /// Liquidity pool not found for asset pair
     LiquidityPoolNotFound = 145,
+    /// Slippage exceeded: price moved beyond tolerance
     SlippageExceeded = 146,
+    /// Deadline exceeded: transaction too old
     DeadlineExceeded = 147,
+    /// Price oracle stale: last update too old
     PriceOracleStale = 148,
+    /// Flash loan not repaid in same transaction
     FlashLoanNotRepaid = 149,
     // ── Gas & Resource Management (150-159) ─────────────────
+    /// Out of gas: computation budget exhausted
     OutOfGas = 150,
+    /// Gas price too low: below network minimum
     GasPriceTooLow = 151,
+    /// Gas refund failed: refund transfer error
     GasRefundFailed = 152,
+    /// Memory limit exceeded: allocation too large
     MemoryLimitExceeded = 153,
+    /// Stack depth exceeded: too many nested calls
     StackDepthExceeded = 154,
+    /// Instruction budget exceeded: too many operations
     InstructionBudgetExceeded = 155,
+    /// Read budget exceeded: too many storage reads
     ReadBudgetExceeded = 156,
+    /// Write budget exceeded: too many storage writes
     WriteBudgetExceeded = 157,
+    /// TTL too low: entry would expire too soon
     TTLTooLow = 158,
+    /// Ledger entry limit reached: cannot create more
     LedgerEntryLimitReached = 159,
     // ── Oracle & Data Feeds (160-169) ───────────────────────
+    /// Oracle not configured: call set_oracle() first
     OracleNotConfigured = 160,
+    /// Oracle timeout: response took too long
     OracleTimeout = 161,
+    /// Oracle price deviation: outlier detected
     OraclePriceDeviation = 162,
+    /// Data feed unavailable: source is offline
     DataFeedUnavailable = 163,
+    /// Data feed tampered: integrity check failed
     DataFeedTampered = 164,
+    /// Oracle already active: duplicate registration
     OracleAlreadyActive = 165,
+    /// Price feed stale: last update exceeds threshold
     PriceFeedStale = 166,
+    /// Confidence interval too wide: price uncertain
     ConfidenceIntervalTooWide = 167,
+    /// Oracle signature invalid: attestation failed
     OracleSignatureInvalid = 168,
+    /// Maximum price age exceeded: feed too old
     MaxPriceAgeExceeded = 169,
     // ── Batch & Streaming Advanced (170-179) ────────────────
+    /// Batch execution timeout: not all items finished
     BatchExecutionTimeout = 170,
+    /// Batch partial failure: some items failed
     BatchPartialFailure = 171,
+    /// Stream rate invalid: must be positive non-zero
     StreamRateInvalid = 172,
+    /// Stream duration too long: exceeds maximum
     StreamTooLong = 173,
+    /// Stream claim too early: minimum interval not met
     StreamClaimTooEarly = 174,
+    /// Batch authorization failed: signer rejected
     BatchAuthorizationFailed = 175,
+    /// Batch duplicate ID: transaction already processed
     BatchDuplicateId = 176,
+    /// Stream beneficiary unchanged: same as current
     StreamBeneficiaryUnchanged = 177,
+    /// Stream transfer not allowed: stream is non-transferable
     StreamTransferNotAllowed = 178,
+    /// Batch cleanup failed: stale state removal error
     BatchCleanupFailed = 179,
     // ── Dispute Resolution (180-189) ────────────────────────
+    /// Dispute not open: no active dispute found
     DisputeNotOpen = 180,
+    /// Dispute arbiter not set: configure arbiter first
     DisputeArbiterNotSet = 181,
+    /// Dispute evidence required: must submit proof
     DisputeEvidenceRequired = 182,
+    /// Dispute already resolved: final decision made
     DisputeAlreadyResolved = 183,
+    /// Dispute resolution timed out: arbiter did not respond
     DisputeResolutionTimedOut = 184,
+    /// Arbiter not authorized: not in approved list
     ArbiterNotAuthorized = 185,
+    /// Mediation failed: parties could not agree
     MediationFailed = 186,
+    /// Appeal window closed: too late to appeal
     AppealWindowClosed = 187,
+    /// Dispute bond insufficient: must stake more
     DisputeBondInsufficient = 188,
+    /// Dispute escalation failed: higher authority error
     DisputeEscalationFailed = 189,
     // ── Miscellaneous Guards (190-199) ──────────────────────
+    /// Maximum storage entries reached: ledger full
     MaxStorageEntriesReached = 190,
+    /// Storage fee not paid: rent payment required
     StorageFeeNotPaid = 191,
+    /// Archive entry not found: record already pruned
     ArchiveEntryNotFound = 192,
+    /// State sync mismatch: ledger state inconsistent
     StateSyncMismatch = 193,
+    /// Migration in progress: try again later
     MigrationInProgress = 194,
+    /// Rollback detected: chain reorganization
     RollbackDetected = 195,
+    /// Snapshot verification failed: hash mismatch
     SnapshotVerificationFailed = 196,
+    /// Contract deprecated: use the new version
     ContractDeprecated = 197,
+    /// Emergency shutdown active: all operations blocked
     EmergencyShutdownActive = 198,
+    /// System overloaded: too many concurrent requests
     SystemOverloaded = 199,
     // ── Advanced Governance (200-209) ───────────────────────
+    /// Delegate not active: delegator is offline or disabled
     DelegateNotActive = 200,
+    /// Delegation expired: delegation period has ended
     DelegationExpired = 201,
+    /// Vote delegation mismatch: delegate does not match voter
     VoteDelegationMismatch = 202,
+    /// Proposal cancelled: proposal was withdrawn by creator
     ProposalCancelled = 203,
+    /// Proposal quorum changed: quorum was modified mid-vote
     ProposalQuorumChanged = 204,
+    /// Emergency governance paused: voting is temporarily suspended
     EmergencyGovernancePaused = 205,
+    /// Governance token locked: tokens are in a lockup period
     GovernanceTokenLocked = 206,
+    /// Voting power frozen: votes are immobilized by a freeze
     VotingPowerFrozen = 207,
+    /// Proposal execution failed: on-chain execution reverted
     ProposalExecutionFailed = 208,
+    /// Governance upgrade pending: upgrade has not been finalized
     GovernanceUpgradePending = 209,
     // ── Treasury & Reserves (210-219) ───────────────────────
+    /// Treasury not configured: call configure_treasury() first
     TreasuryNotConfigured = 210,
+    /// Treasury withdrawal pending: timelock has not elapsed
     TreasuryWithdrawalPending = 211,
+    /// Reserve requirement not met: minimum reserve ratio breached
     ReserveRequirementNotMet = 212,
+    /// Treasury multisig required: threshold signatures missing
     TreasuryMultisigRequired = 213,
+    /// Reserve asset unavailable: asset cannot be used as reserve
     ReserveAssetUnavailable = 214,
+    /// Treasury report mismatch: balance does not match ledger
     TreasuryReportMismatch = 215,
+    /// Reserve ratio breached: reserves fell below the minimum
     ReserveRatioBreached = 216,
+    /// Treasury audit failed: reconciliation check did not pass
     TreasuryAuditFailed = 217,
+    /// Reserve rebalance failed: allocation update reverted
     ReserveRebalanceFailed = 218,
+    /// Treasury access revoked: caller permissions were removed
     TreasuryAccessRevoked = 219,
     // ── Token & Asset Management (220-229) ──────────────────
+    /// Token already listed: asset is already supported
     TokenAlreadyListed = 220,
+    /// Token delisting pending: removal is awaiting timelock
     TokenDelistingPending = 221,
+    /// Asset pair not found: no market exists for the pair
     AssetPairNotFound = 222,
+    /// Token supply cap exceeded: mint would exceed the cap
     TokenSupplyCapExceeded = 223,
+    /// Minting paused: new issuance is temporarily disabled
     MintingPaused = 224,
+    /// Burning paused: token destruction is temporarily disabled
     BurningPaused = 225,
+    /// Token frozen: asset transfers are blocked
     TokenFrozen = 226,
+    /// Asset trustline missing: trustline must be established
     AssetTrustlineMissing = 227,
+    /// Token metadata invalid: name, symbol, or decimals malformed
     TokenMetadataInvalid = 228,
+    /// Asset migration pending: upgrade to new contract incomplete
     AssetMigrationPending = 229,
     // ── Lending & Credit (230-239) ──────────────────────────
+    /// Lending pool not configured: call configure_lending() first
     LendingPoolNotConfigured = 230,
+    /// Loan not found
     LoanNotFound = 231,
+    /// Loan already repaid: no outstanding balance
     LoanAlreadyRepaid = 232,
+    /// Collateral insufficient: below required ratio
     CollateralInsufficient = 233,
+    /// Liquidation pending: position is in the process of liquidation
     LiquidationPending = 234,
+    /// Interest rate invalid: outside allowed bounds
     InterestRateInvalid = 235,
+    /// Credit limit exceeded: borrow would exceed the limit
     CreditLimitExceeded = 236,
+    /// Loan maturity reached: repayment is now due
     LoanMaturityReached = 237,
+    /// Collateral frozen: collateral cannot be moved
     CollateralFrozen = 238,
+    /// Lending paused: borrow and lend operations are suspended
     LendingPaused = 239,
     // ── Recurring & Subscriptions (240-249) ─────────────────
+    /// Subscription not found
     SubscriptionNotFound = 240,
+    /// Subscription already cancelled
     SubscriptionAlreadyCancelled = 241,
+    /// Subscription renewal failed: payment did not settle
     SubscriptionRenewalFailed = 242,
+    /// Billing cycle invalid: interval is not supported
     BillingCycleInvalid = 243,
+    /// Subscription paused: renewals are temporarily halted
     SubscriptionPaused = 244,
+    /// Trial period expired: paid plan is now required
     TrialPeriodExpired = 245,
+    /// Payment method invalid: token or method not accepted
     PaymentMethodInvalid = 246,
+    /// Subscription tier not allowed: upgrade is restricted
     SubscriptionTierNotAllowed = 247,
+    /// Usage quota exceeded: plan allowance has been reached
     UsageQuotaExceeded = 248,
+    /// Subscription upgrade pending: change has not been applied
     SubscriptionUpgradePending = 249,
     // ── Privacy & Zero-Knowledge (250-259) ──────────────────
+    /// Zero-knowledge proof invalid: verification failed
     ZkProofInvalid = 250,
+    /// Privacy pool not configured: call configure_privacy() first
     PrivacyPoolNotConfigured = 251,
+    /// Commitment already spent: double-spend detected
     CommitmentAlreadySpent = 252,
+    /// Nullifier already used: proof was previously consumed
     NullifierAlreadyUsed = 253,
+    /// Merkle path invalid: membership proof is malformed
     MerklePathInvalid = 254,
+    /// Privacy deposit too low: below the minimum amount
     PrivacyDepositTooLow = 255,
+    /// Privacy withdrawal pending: timelock has not elapsed
     PrivacyWithdrawalPending = 256,
+    /// Stealth address invalid: cannot derive recipient
     StealthAddressInvalid = 257,
+    /// Confidential transfer failed: shielded amount mismatch
     ConfidentialTransferFailed = 258,
+    /// Privacy paused: shielded operations are suspended
     PrivacyPaused = 259,
     // ── Messaging & Notifications (260-269) ─────────────────
+    /// Notification service down: delivery backend unavailable
     NotificationServiceDown = 260,
+    /// Message too long: exceeds maximum length
     MessageTooLong = 261,
+    /// Recipient unsubscribed: target has opted out
     RecipientUnsubscribed = 262,
+    /// Notification delivery failed: could not reach recipient
     NotificationDeliveryFailed = 263,
+    /// Notification rate limited: too many messages sent
     NotificationRateLimited = 264,
+    /// Message signature invalid: sender could not be verified
     MessageSignatureInvalid = 265,
+    /// Inbox full: recipient storage limit reached
     InboxFull = 266,
+    /// Notification template invalid: malformed payload
     NotificationTemplateInvalid = 267,
+    /// Message expired: delivery window has passed
     MessageExpired = 268,
+    /// Notification channel closed: channel is no longer active
     NotificationChannelClosed = 269,
     // ── Analytics & Reporting (270-279) ─────────────────────
+    /// Report generation failed: aggregation error
     ReportGenerationFailed = 270,
+    /// Analytics data missing: required metrics unavailable
     AnalyticsDataMissing = 271,
+    /// Metric out of range: value exceeds allowed bounds
     MetricOutOfRange = 272,
+    /// Report too large: exceeds maximum output size
     ReportTooLarge = 273,
+    /// Snapshot not found: requested point-in-time state missing
     SnapshotNotFound = 274,
+    /// Aggregation window invalid: time range is malformed
     AggregationWindowInvalid = 275,
+    /// Data retention expired: historical data was pruned
     DataRetentionExpired = 276,
+    /// Report access denied: insufficient permissions
     ReportAccessDenied = 277,
+    /// Analytics quota exceeded: too many report requests
     AnalyticsQuotaExceeded = 278,
+    /// Export format unsupported: requested format is not available
     ExportFormatUnsupported = 279,
     // ── Interoperability & Standards (280-289) ──────────────
+    /// SEP protocol violation: interface contract was not honored
     SepProtocolViolation = 280,
+    /// Asset not SEP-compliant: missing required SEP behavior
     AssetNotSepCompliant = 281,
+    /// Cross-contract version mismatch: incompatible API versions
     CrossContractVersionMismatch = 282,
+    /// Interface not implemented: required method is missing
     InterfaceNotImplemented = 283,
+    /// Standards compliance failed: validation did not pass
     StandardsComplianceFailed = 284,
+    /// Protocol upgrade required: dependency is out of date
     ProtocolUpgradeRequired = 285,
+    /// Interop handshake failed: connection could not be established
     InteropHandshakeFailed = 286,
+    /// Namespace collision: identifier is already registered
     NamespaceCollision = 287,
+    /// External system unavailable: dependency is offline
     ExternalSystemUnavailable = 288,
+    /// Interop rate limit exceeded: too many cross-system calls
     InteropRateLimitExceeded = 289,
     // ── System & Protocol Guards (290-300) ──────────────────
+    /// Contract upgrade scheduled: upgrade is pending execution
     ContractUpgradeScheduled = 290,
+    /// Maintenance mode active: operations temporarily disabled
     MaintenanceModeActive = 291,
+    /// Circuit breaker tripped: safety threshold was exceeded
     CircuitBreakerTripped = 292,
+    /// Emergency freeze active: all state changes are blocked
     EmergencyFreezeActive = 293,
+    /// System clock drift detected: ledger time is inconsistent
     SystemClockDriftDetected = 294,
+    /// Ledger version unsupported: network upgrade required
     LedgerVersionUnsupported = 295,
+    /// Network partition detected: consensus is unavailable
     NetworkPartitionDetected = 296,
+    /// Resource exhaustion warning: limits are near capacity
     ResourceExhaustionWarning = 297,
+    /// Grace period active: transitional restrictions in effect
     GracePeriodActive = 298,
+    /// Configuration invalid: stored configuration is malformed
     ConfigurationInvalid = 299,
+    /// System fatal error: unrecoverable internal failure
     SystemFatalError = 300,
     // ── Two-Step Revocation (301-305) ──────────────────────
+    /// Revocation not found
     RevocationNotFound = 301,
+    /// Revocation not due
     RevocationNotDue = 302,
+    /// Revocation already executed
     RevocationAlreadyExecuted = 303,
+    /// Cannot revoke self
     CannotRevokeSelf = 304,
+    /// No pending ownership transfer
+    NoPendingOwner = 305,
+    /// Math overflow
+    MathOverflow = 306,
+    // ── Stream Accounting Guards (307) ─────────────────────
+    /// Stream accounting invariant violated: refused to pay an inconsistent amount
+    StreamInvariantViolated = 307,
 }
 
 // ── Native Events ──────────────────────────────────────────────
@@ -1003,7 +1352,17 @@ fn release_reentrancy_lock(env: &Env) {
     env.storage().instance().set(&REENTRANCY_LOCK, &false);
 }
 
-/// Calculate linearly vested amount with overflow protection.
+/// Calculate the linearly vested amount without ever losing precision.
+///
+/// `total_amount * elapsed` can exceed `i128::MAX` for very large streams
+/// (AUDIT LOW-1). Returning `0` on overflow silently under-vests the recipient
+/// — the stream stops paying out exactly when the amount is large enough to
+/// matter. Capping at `total_amount` instead is just as wrong in the other
+/// direction: it would treat a barely-started stream as fully vested and let
+/// the recipient drain the contract (INV-5).
+///
+/// The multiply is therefore performed at 256-bit precision so the result is
+/// always the exact linear vesting value and can never exceed `total_amount`.
 fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u64) -> i128 {
     if now >= end_time {
         return total_amount;
@@ -1016,11 +1375,31 @@ fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u64) 
     if total_duration == 0 {
         return total_amount;
     }
-    // Checked multiply to prevent overflow; return 0 on overflow (safe default)
-    total_amount
-        .checked_mul(elapsed)
-        .map(|product| product / total_duration)
-        .unwrap_or(0)
+
+    if let Some(product) = total_amount.checked_mul(elapsed) {
+        return product / total_duration;
+    }
+
+    // The 128-bit product overflowed. `create_stream` rejects non-positive
+    // amounts, so `total_amount > 0`, and `now < end_time` guarantees
+    // `0 < elapsed < total_duration`. The exact result is therefore
+    //
+    //     floor(a * b / d) == (a / d) * b + floor((a % d) * b / d)
+    //
+    // with `a = total_amount`, `b = elapsed`, `d = total_duration`. Both `b`
+    // and `d` originate from u64 timestamps, so `(a % d) * b` fits in u128 and
+    // the sum is bounded by `total_amount` — no precision is lost and the
+    // INV-5 ceiling holds.
+    if total_amount <= 0 {
+        // Unreachable for streams; keeps the u128 casts below value-preserving.
+        return total_amount;
+    }
+    let amount = total_amount as u128;
+    let divisor = total_duration as u128;
+    let multiplier = elapsed as u128;
+    let whole = (amount / divisor) * multiplier;
+    let fractional = ((amount % divisor) * multiplier) / divisor;
+    (whole + fractional) as i128
 }
 
 // ── Contract ───────────────────────────────────────────────────
@@ -1110,12 +1489,25 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
-        if threshold == 0 || threshold > signers.len() {
+
+        let mut unique_signers = Vec::new(&env);
+        for signer in signers.into_iter() {
+            if !unique_signers.contains(signer.clone()) {
+                unique_signers.push_back(signer);
+            }
+        }
+
+        if unique_signers.len() > 50 {
+            return Err(PaymentError::MaxSignersExceeded);
+        }
+
+        if threshold == 0 || threshold > unique_signers.len() {
             return Err(PaymentError::InvalidAmount);
         }
+
         let config = MultisigConfig {
             threshold,
-            signers,
+            signers: unique_signers,
             enabled,
         };
 
@@ -2736,7 +3128,7 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
-        let unlock_at = env.ledger().timestamp() + 86400; // 24 hours
+        let unlock_at = env.ledger().timestamp().saturating_add(TMLOCK_DELAY); // 24 hours
         env.storage().instance().set(&UPGRADE_HASH, &new_wasm_hash);
         env.storage().instance().set(&UPGRADE_TIMELOCK, &unlock_at);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -2830,7 +3222,7 @@ impl OphirPayContract {
             .storage()
             .instance()
             .get(&PENDING_OWNER)
-            .ok_or(PaymentError::UpgradeNotProposed)?; // reuse: no pending transfer
+            .ok_or(PaymentError::NoPendingOwner)?; // no pending transfer
 
         if caller != pending {
             return Err(PaymentError::Unauthorized);
@@ -2999,7 +3391,7 @@ impl OphirPayContract {
     }
 
     /// Get payment ID by idempotency key
-    pub fn get_payment_id_by_idempotency_key(
+    pub fn get_payment_id_by_idempotency(
         env: Env,
         idempotency_key: String,
     ) -> Option<u64> {
@@ -3447,7 +3839,13 @@ impl OphirPayContract {
         // Calculate vested amount linearly with overflow protection
         let vested = compute_vested(stream.total_amount, stream.start_time, stream.end_time, now);
 
-        let claimable = vested - stream.claimed_amount;
+        // INV-5: `vested` is monotonically non-decreasing over time and is the
+        // only value ever written to `claimed_amount`, so this subtraction must
+        // be non-negative. Check rather than wrap: an impossible negative (or
+        // wrapped) claimable would pay the recipient a nonsensical amount.
+        let claimable = vested
+            .checked_sub(stream.claimed_amount)
+            .ok_or(PaymentError::StreamInvariantViolated)?;
         if claimable <= 0 {
             return Err(PaymentError::StreamFullyClaimed);
         }
@@ -4108,7 +4506,7 @@ impl OphirPayContract {
             .storage()
             .persistent()
             .get(&(HOOK_KEY, hook_id))
-            .ok_or(PaymentError::AuditEntryNotFound)?; // reuse closest error
+            .ok_or(PaymentError::HookNotFound)?;
 
         if hook.subscriber != caller {
             return Err(PaymentError::Unauthorized);
@@ -4161,8 +4559,13 @@ impl OphirPayContract {
         results
     }
 
-    /// Get all hooks for a specific subscriber.
-    pub fn get_subscriber_hooks(env: Env, subscriber: Address) -> Vec<NotificationHook> {
+    /// Get a subscriber's hooks, most recently registered first.
+    ///
+    /// Bounded enumeration (#742): a subscriber can register an unbounded
+    /// number of hooks, so the read is capped at [`MAX_READER_ENTRIES`] and
+    /// reports whether it had to stop early — callers can then page or narrow
+    /// the query instead of treating an incomplete list as complete.
+    pub fn get_subscriber_hooks(env: Env, subscriber: Address) -> HookList {
         let sub_key = (Symbol::new(&env, "HOOK_SUB"), subscriber.clone());
         let hook_ids: Vec<u64> = env
             .storage()
@@ -4170,18 +4573,33 @@ impl OphirPayContract {
             .get(&sub_key)
             .unwrap_or(Vec::new(&env));
 
-        let mut hooks = Vec::new(&env);
-        for id in hook_ids.iter() {
+        let total = hook_ids.len();
+        let mut items = Vec::new(&env);
+        let mut scanned: u32 = 0;
+
+        for index in 0..total {
+            if items.len() >= MAX_READER_ENTRIES {
+                break;
+            }
+            scanned += 1;
+            // Newest first: `register_hook` appends, so the tail of the index
+            // vector holds the most recently created hooks.
+            let id = hook_ids.get(total - 1 - index).unwrap_or(0);
             if let Some(hook) = env
                 .storage()
                 .persistent()
                 .get::<_, NotificationHook>(&(HOOK_KEY, id))
             {
-                hooks.push_back(hook);
+                items.push_back(hook);
             }
         }
 
-        hooks
+        HookList {
+            items,
+            total,
+            // Exact: true only when the index vector was not fully walked.
+            truncated: scanned < total,
+        }
     }
 
     /// Get total registered hook count.
@@ -4234,7 +4652,7 @@ impl OphirPayContract {
             if amount <= 0 {
                 continue;
             }
-            total_amount += amount;
+            total_amount = total_amount.checked_add(amount).ok_or(PaymentError::MathOverflow)?;
             pay_count += 1;
             actual_recipients += 1;
             payment_ids.push_back(pay_count);
@@ -4332,20 +4750,41 @@ impl OphirPayContract {
         env.storage().instance().get(&BATCH_COUNT).unwrap_or(0)
     }
 
-    /// Get all payment IDs belonging to a batch, then fetch each payment.
-    pub fn get_payments_by_batch(env: Env, batch_id: u64) -> Vec<Payment> {
+    /// Get the payments belonging to a batch, most recent first.
+    ///
+    /// Bounded enumeration (#742): the batch's id vector is only as small as
+    /// the writer made it — batches created before the `BatchTooLarge` guard
+    /// can hold more than `create_batch` accepts today — so the read is capped
+    /// at [`MAX_READER_ENTRIES`] and reports truncation instead of walking the
+    /// whole vector inside a single invocation.
+    pub fn get_payments_by_batch(env: Env, batch_id: u64) -> PaymentList {
         let batch: Option<BatchPayment> = env.storage().persistent().get(&(BATCH_KEY, batch_id));
-        let mut payments = Vec::new(&env);
+        let mut items = Vec::new(&env);
+        let mut total: u32 = 0;
+        let mut scanned: u32 = 0;
 
         if let Some(b) = batch {
-            for pid in b.payment_ids.iter() {
-                if let Some(p) = env.storage().persistent().get(&(PAYMENT_KEY, pid)) {
-                    payments.push_back(p);
+            total = b.payment_ids.len();
+            for index in 0..total {
+                if items.len() >= MAX_READER_ENTRIES {
+                    break;
+                }
+                scanned += 1;
+                // Newest first: `create_batch` appends ids in creation order.
+                if let Some(pid) = b.payment_ids.get(total - 1 - index) {
+                    if let Some(p) = env.storage().persistent().get(&(PAYMENT_KEY, pid)) {
+                        items.push_back(p);
+                    }
                 }
             }
         }
 
-        payments
+        PaymentList {
+            items,
+            total,
+            // Exact: true only when the id vector was not fully walked.
+            truncated: scanned < total,
+        }
     }
 }
 
@@ -4515,7 +4954,7 @@ mod tests {
         assert_eq!(payment1.idempotency_key, Some(key1.clone()));
 
         // Verify idempotency lookup queries
-        assert_eq!(client.get_payment_id_by_idempotency_key(&key1), Some(1));
+        assert_eq!(client.get_payment_id_by_idempotency(&key1), Some(1));
         let looked_up = client.get_payment_by_idempotency_key(&key1);
         assert_eq!(looked_up.id, 1);
         assert_eq!(looked_up.amount, 1000);
@@ -4532,11 +4971,11 @@ mod tests {
         );
         assert_eq!(id2, 2);
         assert_eq!(client.get_payment_count(), 2);
-        assert_eq!(client.get_payment_id_by_idempotency_key(&key2), Some(2));
+        assert_eq!(client.get_payment_id_by_idempotency(&key2), Some(2));
 
         // 4. Missing/unkeyed lookup returns None / Error
         let unknown_key = String::from_str(&env, "non-existent-key");
-        assert_eq!(client.get_payment_id_by_idempotency_key(&unknown_key), None);
+        assert_eq!(client.get_payment_id_by_idempotency(&unknown_key), None);
         assert!(client.try_get_payment_by_idempotency_key(&unknown_key).is_err());
     }
 
@@ -4839,6 +5278,103 @@ mod tests {
         assert!(stream.cancelled);
     }
 
+    // ── Vesting Overflow (AUDIT LOW-1 / issue #691) ─────────
+
+    /// `i128::MAX * 2` overflows. The old code returned `0` here, silently
+    /// under-vesting a stream that is 50% through its schedule.
+    #[test]
+    fn test_compute_vested_overflow_is_exact_and_not_zero() {
+        let total = i128::MAX;
+        let start = 1_000u64;
+        let end = start + 4; // duration 4 seconds
+        let now = start + 2; // elapsed 2 seconds → exactly 50%
+
+        let vested = compute_vested(total, start, end, now);
+
+        assert!(vested > 0, "overflow must not collapse vesting to zero");
+        assert_eq!(vested, total / 2, "exact half of the stream must vest");
+        assert!(vested <= total, "vested amount must never exceed the total");
+    }
+
+    /// The widened multiply stays exact for quotients that are not a clean
+    /// fraction, and never exceeds the stream total (INV-5).
+    #[test]
+    fn test_compute_vested_overflow_is_bounded_and_monotonic() {
+        let total = i128::MAX;
+        let start = 0u64;
+        let end = 9u64;
+
+        assert_eq!(compute_vested(total, start, end, 3), total / 3);
+
+        let mut previous = 0i128;
+        for now in 1..=end {
+            let vested = compute_vested(total, start, end, now);
+            assert!(vested <= total, "vesting exceeded the stream total");
+            assert!(vested >= previous, "vesting must be non-decreasing");
+            previous = vested;
+        }
+        assert_eq!(previous, total);
+    }
+
+    /// `now >= end_time` short-circuits to the full amount even though the
+    /// multiply for a fully elapsed stream would overflow.
+    #[test]
+    fn test_compute_vested_overflow_fully_vests_at_end() {
+        let total = i128::MAX;
+        assert_eq!(compute_vested(total, 10, 20, 20), total);
+        assert_eq!(compute_vested(total, 10, 20, 1_000), total);
+    }
+
+    /// End-to-end: a stream whose vesting multiply overflows must still pay the
+    /// recipient the correct remaining balance at every step.
+    #[test]
+    fn test_claim_stream_with_overflowing_vesting_pays_correct_balance() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        sac_client.mint(&creator, &i128::MAX);
+
+        let now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+
+        let stream_id = client.create_stream(
+            &creator,
+            &recipient,
+            &i128::MAX,
+            &sac,
+            &now,
+            &(now + 4),
+            &String::from_str(&env, "overflow"),
+        );
+        assert_eq!(stream_id, 1);
+
+        // 50% through: the multiply (`MAX * 2`) overflows i128.
+        env.ledger().set_timestamp(now + 2);
+        let first = client.claim_stream(&recipient, &1);
+        assert_eq!(first, i128::MAX / 2, "half of the stream must be claimable");
+        assert!(first > 0, "claim must not silently pay nothing");
+
+        // Fully vested: the remainder is exactly what has not been claimed.
+        env.ledger().set_timestamp(now + 10);
+        let second = client.claim_stream(&recipient, &1);
+        assert_eq!(second, i128::MAX - (i128::MAX / 2));
+
+        assert_eq!(client.get_stream(&1).claimed_amount, i128::MAX);
+        let token_client = token::Client::new(&env, &sac);
+        assert_eq!(token_client.balance(&recipient), i128::MAX);
+
+        // Nothing is left to claim and the stream is not over-paid.
+        let third = client.try_claim_stream(&recipient, &1);
+        assert!(third.is_err(), "a fully claimed stream must reject further claims");
+    }
+
     // ── Batch Tests ────────────────────────────────────────
 
     #[test]
@@ -4878,9 +5414,11 @@ mod tests {
         assert_eq!(batch.total_recipients, 3);
         assert_eq!(batch.payment_ids.len(), 3);
 
-        // Query batch payments
+        // Query batch payments (#742: bounded, newest-first, with a flag)
         let batch_payments = client.get_payments_by_batch(&1);
-        assert_eq!(batch_payments.len(), 3);
+        assert_eq!(batch_payments.total, 3);
+        assert!(!batch_payments.truncated);
+        assert_eq!(batch_payments.items.len(), 3);
     }
 
     #[test]
@@ -5712,16 +6250,18 @@ mod tests {
         let hooks = client.get_hooks_by_event(&String::from_str(&env, "payment_recorded"));
         assert_eq!(hooks.len(), 1);
 
-        // Get subscriber hooks
+        // Get subscriber hooks (#742: bounded, newest-first, with a flag)
         let sub_hooks = client.get_subscriber_hooks(&subscriber);
-        assert_eq!(sub_hooks.len(), 1);
-        assert!(sub_hooks.get(0).unwrap().active);
+        assert_eq!(sub_hooks.total, 1);
+        assert!(!sub_hooks.truncated);
+        assert_eq!(sub_hooks.items.len(), 1);
+        assert!(sub_hooks.items.get(0).unwrap().active);
 
         // Unregister
         client.unregister_hook(&subscriber, &1);
 
         let sub_hooks = client.get_subscriber_hooks(&subscriber);
-        assert!(!sub_hooks.get(0).unwrap().active);
+        assert!(!sub_hooks.items.get(0).unwrap().active);
     }
 
     #[test]
@@ -6704,4 +7244,200 @@ mod tests {
         let b1 = client.get_batch(&1);
         assert_eq!(b1.total_amount, 200);
     }
+
+    // ── Bounded readers (issue #742) ────────────────────────
+
+    /// A subscriber can register an unbounded number of hooks, so the reader
+    /// must cap the result and say so rather than walking the whole index.
+    #[test]
+    fn test_get_subscriber_hooks_caps_and_flags_truncation() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let subscriber = Address::generate(&env);
+        let _ = client.init(&owner);
+
+        let overflow_count = MAX_READER_ENTRIES + 5;
+        for i in 0..overflow_count {
+            let hid = client.register_hook(
+                &subscriber,
+                &String::from_str(&env, "payment_recorded"),
+                &String::from_str(&env, "https://example.com/webhook"),
+            );
+            assert_eq!(hid, (i + 1) as u64);
+        }
+
+        let result = client.get_subscriber_hooks(&subscriber);
+
+        // Cap enforced, truncation reported, and the total stays accurate so a
+        // caller can page rather than guess.
+        assert_eq!(result.items.len(), MAX_READER_ENTRIES);
+        assert_eq!(result.total, overflow_count);
+        assert!(result.truncated);
+
+        // Most recent first: the last hook registered leads the list.
+        assert_eq!(result.items.get(0).unwrap().id, overflow_count as u64);
+        assert_eq!(
+            result
+                .items
+                .get(MAX_READER_ENTRIES - 1)
+                .unwrap()
+                .id,
+            (overflow_count - MAX_READER_ENTRIES + 1) as u64,
+        );
+    }
+
+    /// Exactly at the cap is a complete list, not a truncated one.
+    #[test]
+    fn test_get_subscriber_hooks_at_cap_is_not_truncated() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let subscriber = Address::generate(&env);
+        let _ = client.init(&owner);
+
+        for _ in 0..MAX_READER_ENTRIES {
+            client.register_hook(
+                &subscriber,
+                &String::from_str(&env, "refund_processed"),
+                &String::from_str(&env, "https://example.com/webhook"),
+            );
+        }
+
+        let result = client.get_subscriber_hooks(&subscriber);
+        assert_eq!(result.items.len(), MAX_READER_ENTRIES);
+        assert_eq!(result.total, MAX_READER_ENTRIES);
+        assert!(!result.truncated);
+    }
+
+    /// `create_batch` caps a batch at 100 recipients, but a batch written
+    /// before that guard existed can hold more ids than the writer accepts
+    /// today — the reader must still bound itself. The oversized record is
+    /// injected directly into storage to model exactly that legacy shape.
+    #[test]
+    fn test_get_payments_by_batch_caps_and_flags_truncation() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let _ = client.init(&owner);
+
+        let overflow_count: u64 = (MAX_READER_ENTRIES + 5) as u64;
+        for _ in 0..overflow_count {
+            client.record_payment(
+                &payer,
+                &payee,
+                &100i128,
+                &sac,
+                &String::from_str(&env, "tx_legacy"),
+                &String::from_str(&env, "legacy batch entry"),
+                &None,
+            );
+        }
+
+        let mut payment_ids = Vec::new(&env);
+        for id in 1..=overflow_count {
+            payment_ids.push_back(id);
+        }
+        let legacy_batch = BatchPayment {
+            id: 1,
+            creator: owner.clone(),
+            total_recipients: overflow_count as u32,
+            total_amount: (overflow_count as i128) * 100,
+            asset: sac.clone(),
+            timestamp: env.ledger().timestamp(),
+            tx_hash: String::from_str(&env, "legacy_batch_tx"),
+            payment_ids,
+        };
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .persistent()
+                .set(&(BATCH_KEY, 1u64), &legacy_batch);
+        });
+
+        let result = client.get_payments_by_batch(&1);
+        assert_eq!(result.items.len(), MAX_READER_ENTRIES);
+        assert_eq!(result.total, overflow_count as u32);
+        assert!(result.truncated);
+        // Newest first: the last payment recorded leads the list.
+        assert_eq!(result.items.get(0).unwrap().id, overflow_count);
+        assert_eq!(
+            result.items.get(MAX_READER_ENTRIES - 1).unwrap().id,
+            overflow_count - (MAX_READER_ENTRIES as u64) + 1,
+        );
+    }
+
+    /// A batch the writer accepted today (≤ 100 recipients) is complete and
+    /// must not claim truncation — and an unknown batch must not either.
+    #[test]
+    fn test_get_payments_by_batch_within_cap_is_not_truncated() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let _ = client.init(&owner);
+
+        // The batch record is written straight to storage rather than through
+        // `create_batch`: the writer emits one event per recipient and a
+        // 100-entry batch trips the *test host's* per-invocation event-size
+        // budget (soroban-env-host defaults), which has nothing to do with the
+        // reader boundary under test. Each `record_payment` is its own
+        // invocation, so the 100 payments themselves fit the budget.
+        for _ in 0..MAX_READER_ENTRIES {
+            client.record_payment(
+                &payer,
+                &payee,
+                &100i128,
+                &sac,
+                &String::from_str(&env, "tx_full"),
+                &String::from_str(&env, "full batch entry"),
+                &None,
+            );
+        }
+
+        let mut payment_ids = Vec::new(&env);
+        for id in 1..=(MAX_READER_ENTRIES as u64) {
+            payment_ids.push_back(id);
+        }
+        let full_batch = BatchPayment {
+            id: 1,
+            creator: owner.clone(),
+            total_recipients: MAX_READER_ENTRIES,
+            total_amount: (MAX_READER_ENTRIES as i128) * 100,
+            asset: sac.clone(),
+            timestamp: env.ledger().timestamp(),
+            tx_hash: String::from_str(&env, "full_batch_tx"),
+            payment_ids,
+        };
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .persistent()
+                .set(&(BATCH_KEY, 1u64), &full_batch);
+        });
+
+        let result = client.get_payments_by_batch(&1);
+        assert_eq!(result.items.len(), MAX_READER_ENTRIES);
+        assert_eq!(result.total, MAX_READER_ENTRIES);
+        assert!(!result.truncated);
+
+        let missing = client.get_payments_by_batch(&999);
+        assert_eq!(missing.items.len(), 0);
+        assert_eq!(missing.total, 0);
+        assert!(!missing.truncated);
+    }
 }
+

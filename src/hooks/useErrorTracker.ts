@@ -1,13 +1,17 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
 import { useCallback } from "react";
-import { captureError, captureMessage } from "@/lib/sentry";
+import { captureError, captureMessage, type ErrorReport } from "@/lib/sentry";
+
+export interface ErrorTrackerOptions {
+  segment?: string;
+  optInPii?: boolean;
+}
 
 /**
  * React hook wrapping the error tracking integration.
- * Provides a stable callback for capturing errors from component event handlers.
+ * Provides stable callbacks for capturing errors from component event handlers.
  *
  * @example
  * Capture a failed wallet-connect attempt with extra context:
@@ -33,19 +37,41 @@ import { captureError, captureMessage } from "@/lib/sentry";
  * }
  * ```
  */
-export function useErrorTracker(component?: string) {
+export function useErrorTracker(
+  component?: string,
+  options?: ErrorTrackerOptions
+) {
   const trackError = useCallback(
-    (error: Error, extra?: Record<string, unknown>) => {
-      captureError(error, { component, extra });
+    (
+      error: Error,
+      extra?: Record<string, unknown>,
+      tags?: Record<string, string>
+    ): ErrorReport => {
+      return captureError(error, {
+        component,
+        segment: options?.segment,
+        optInPii: options?.optInPii,
+        extra,
+        tags,
+      });
     },
-    [component]
+    [component, options?.segment, options?.optInPii]
   );
 
   const trackMessage = useCallback(
-    (message: string, level: "info" | "warning" | "error" = "error") => {
-      captureMessage(message, level);
+    (
+      message: string,
+      level: "info" | "warning" | "error" = "error",
+      extra?: Record<string, unknown>
+    ) => {
+      captureMessage(message, level, {
+        component,
+        segment: options?.segment,
+        optInPii: options?.optInPii,
+        extra,
+      });
     },
-    []
+    [component, options?.segment, options?.optInPii]
   );
 
   return { trackError, trackMessage };

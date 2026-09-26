@@ -1,0 +1,111 @@
+name: Release Artifacts, SBOM & Provenance
+
+# Generates Software Bill of Materials (SBOM) and cryptographic build provenance
+# attestations for all release artifacts (Node application dependencies, compiled
+# container images, and contracts).
+#
+# Attestations are published via GitHub Artifact Attestation and backed by Sigstore,
+# enabling downstream consumers to verify provenance using:
+#   gh attestation verify <artifact> --owner OphirPay
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and attest (e.g. v0.1.0)'
+        required: false
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write      # Required for Sigstore OIDC / GitHub Artifact Attestations
+  attestations: write  # Required for actions/attest-build-provenance and attest-sboms
+
+jobs:
+  sbom-and-provenance:
+    name: "Generate SBOM & Build Provenance Attestation"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve Release Tag
+        id: vars
+        run: |
+          TAG="${{ github.event.release.tag_name || github.ref_name || github.event.inputs.tag }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="v0.1.0-dev"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          mkdir -p build/sbom
+
+      - name: Generate Node Application Dependency SBOMs (CycloneDX & SPDX)
+        run: |
+          node scripts/generate-sbom.mjs --out-dir build/sbom
+
+      - name: Build Container Image
+        run: |
+          TAG="${{ steps.vars.outputs.tag }}"
+          echo "Building container image for tag: ${TAG}"
+          docker build -t "ghcr.io/ophirpay/ophirpay:${TAG}" -t "ghcr.io/ophirpay/ophirpay:${{ github.sha }}" .
+
+      - name: Generate Container Image SBOM (CycloneDX via Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: "ghcr.io/ophirpay/ophirpay:${{ steps.vars.outputs.tag }}"
+          format: "cyclonedx"
+          output: "build/sbom/ophirpay-container-sbom.cdx.json"
+
+      - name: Attest Build Provenance for Release Artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            build/sbom/ophirpay-node-sbom.cdx.json
+            build/sbom/ophirpay-node-sbom.spdx.json
+            build/sbom/ophirpay-container-sbom.cdx.json
+
+      - name: Attest Node SBOM
+        uses: actions/attest-sboms@v2
+        with:
+          subject-path: build/sbom/ophirpay-node-sbom.cdx.json
+          sbom-path: build/sbom/ophirpay-node-sbom.cdx.json
+
+      - name: Upload SBOMs as Workflow Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-sboms-${{ steps.vars.outputs.tag }}
+          path: build/sbom/
+          retention-days: 90
+
+      - name: Attach SBOMs to GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ steps.vars.outputs.tag }}" \
+            build/sbom/ophirpay-node-sbom.cdx.json \
+            build/sbom/ophirpay-node-sbom.spdx.json \
+            build/sbom/ophirpay-container-sbom.cdx.json \
+            --clobber

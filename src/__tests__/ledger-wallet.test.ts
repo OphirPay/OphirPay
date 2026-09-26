@@ -39,8 +39,8 @@ describe("Ledger Wallet Connector", () => {
       }),
     };
 
-    setLedgerTransportFactory(async () => mockTransport);
-    setLedgerAppFactory(() => mockStellarApp);
+    setLedgerTransportFactory(async () => mockTransport as unknown as { close: () => Promise<void> });
+    setLedgerAppFactory(() => mockStellarApp as any);
 
     // Mock window & navigator with WebUSB and secureContext
     vi.stubGlobal("window", {

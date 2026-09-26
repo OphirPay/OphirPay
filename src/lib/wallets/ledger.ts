@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { Keypair, Networks, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
+import { Keypair, Networks, StrKey, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 import type { WalletConnector, SignOptions } from "./types";
 
 /**
@@ -20,7 +20,7 @@ let activeStellarApp: unknown | null = null;
 // Pluggable transport & app factories for unit testing and dependency injection
 type TransportFactory = () => Promise<{ close: () => Promise<void> }>;
 type StellarAppFactory = (transport: unknown) => {
-  getPublicKey: (path: string, boolValidate?: boolean) => Promise<{ publicKey: string }>;
+  getPublicKey: (path: string, boolValidate?: boolean) => Promise<{ publicKey?: string; rawPublicKey?: Buffer }>;
   signTransaction: (path: string, transaction: Buffer) => Promise<{ signature: Buffer | Uint8Array }>;
 };
 
@@ -56,7 +56,7 @@ export function hasWebUsb(): boolean {
   if (typeof navigator === "undefined" || typeof window === "undefined") {
     return false;
   }
-  return !!navigator.usb && window.isSecureContext !== false;
+  return "usb" in navigator && !!(navigator as unknown as { usb?: unknown }).usb && window.isSecureContext !== false;
 }
 
 /**
@@ -161,14 +161,14 @@ async function getTransport(): Promise<{ close: () => Promise<void> }> {
 }
 
 async function getStellarApp(transport: unknown): Promise<{
-  getPublicKey: (path: string, boolValidate?: boolean) => Promise<{ publicKey: string }>;
+  getPublicKey: (path: string, boolValidate?: boolean) => Promise<{ publicKey?: string; rawPublicKey?: Buffer }>;
   signTransaction: (path: string, transaction: Buffer) => Promise<{ signature: Buffer | Uint8Array }>;
 }> {
   if (customAppFactory) {
     return customAppFactory(transport);
   }
   const Str = (await import("@ledgerhq/hw-app-str")).default;
-  return new Str(transport as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+  return new Str(transport as any) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
 export const ledgerConnector: WalletConnector = {
@@ -206,7 +206,10 @@ export const ledgerConnector: WalletConnector = {
       const app = await getStellarApp(transport);
       activeStellarApp = app;
 
-      const { publicKey } = await app.getPublicKey(currentDerivationPath, false);
+      const keyResult = await app.getPublicKey(currentDerivationPath, false);
+      const publicKey =
+        keyResult.publicKey ||
+        (keyResult.rawPublicKey ? StrKey.encodeEd25519PublicKey(keyResult.rawPublicKey) : "");
       if (!publicKey) {
         throw new Error("Ledger returned an empty public key.");
       }

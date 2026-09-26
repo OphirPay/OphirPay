@@ -1,0 +1,10 @@
+groups:
+  - name: test_undeclared
+    rules:
+      - alert: UndeliveredAlertWithTypo
+        expr: rate(ophirpay_nonexistent_metric_typo[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Undeclared metric alert"

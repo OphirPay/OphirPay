@@ -92,3 +92,25 @@ series can be used for latency SLOs and error-rate alerting per route.
   wrapped handler.
 - `src/lib/metrics-counters.ts` holds the storage and serialization helpers
   (`recordEndpointLatency`, `getEndpointMetrics`, `LATENCY_BUCKET_BOUNDS`).
+
+## Alert Rules Validation & Metric Cross-Check (Issue #754)
+
+`monitoring/prometheus-alerts.yml` defines the operational and fund-safety alert rules
+for OphirPay (e.g., contract balance anomalies, locked-fund divergence, batch and delivery failure rates).
+
+To prevent silent alert failures caused by typos or schema errors, CI validates alert rules using:
+1. **`promtool check rules --lint-fatal`**: Enforces strict Prometheus rule syntax, valid PromQL expressions, valid durations, and rejects duplicate rules.
+2. **Metric Cross-Check (`scripts/validate-prometheus-alerts.mjs`)**: Parses each alert expression and verifies that every referenced metric is either:
+   - Exposed directly by `src/app/api/metrics/route.ts`, or
+   - Explicitly documented inside the alert rule as an audited external metric using:
+     ```yaml
+     - alert: ContractBalanceBelowLocked
+       # external: ophirpay_contract_balance, ophirpay_locked_balance
+       expr: |
+         ophirpay_contract_balance - ophirpay_locked_balance < 0
+     ```
+
+Run the validation locally with:
+```bash
+npm run validate:alerts
+```

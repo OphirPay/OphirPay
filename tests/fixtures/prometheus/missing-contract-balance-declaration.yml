@@ -1,0 +1,12 @@
+groups:
+  - name: test_contract_balance
+    rules:
+      - alert: ContractBalanceBelowLocked
+        # Missing # external: ophirpay_contract_balance, ophirpay_locked_balance
+        expr: |
+          ophirpay_contract_balance - ophirpay_locked_balance < 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Contract balance dropped below locked funds"

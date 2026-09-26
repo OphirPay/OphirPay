@@ -342,3 +342,24 @@ jobs:
           fi
           exit "$fail"
 
+  # ══════════════════════════════════════════════════════════════
+  # 9. PROMETHEUS ALERTS — promtool & metric cross-check (issue #754)
+  # ══════════════════════════════════════════════════════════════
+  prometheus-alerts:
+    name: "1️⃣8️⃣ Monitoring — Prometheus Alerts (promtool + cross-check)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-prisma
+      - name: Install promtool (pinned v3.2.1)
+        run: |
+          PROM_VER="3.2.1"
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROM_VER}/prometheus-${PROM_VER}.linux-amd64.tar.gz" | tar xz
+          sudo mv "prometheus-${PROM_VER}.linux-amd64/promtool" /usr/local/bin/promtool
+          promtool --version
+      - name: Validate rules with promtool
+        run: promtool check rules --lint-fatal monitoring/prometheus-alerts.yml
+      - name: Cross-check alert metrics against exposed metrics
+        run: node scripts/validate-prometheus-alerts.mjs --require-promtool
+

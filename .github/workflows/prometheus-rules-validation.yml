@@ -1,0 +1,46 @@
+name: Prometheus Alert Rules Validation
+
+on:
+  push:
+    branches: [main, integration/staging]
+    paths:
+      - 'monitoring/prometheus-alerts.yml'
+      - 'src/app/api/metrics/**'
+      - 'scripts/validate-prometheus-alerts.mjs'
+      - '.github/workflows/prometheus-rules-validation.yml'
+      - 'tests/fixtures/prometheus/**'
+      - 'src/__tests__/prometheus-alerts-validation.test.ts'
+  pull_request:
+    branches: [main, integration/staging]
+    paths:
+      - 'monitoring/prometheus-alerts.yml'
+      - 'src/app/api/metrics/**'
+      - 'scripts/validate-prometheus-alerts.mjs'
+      - '.github/workflows/prometheus-rules-validation.yml'
+      - 'tests/fixtures/prometheus/**'
+      - 'src/__tests__/prometheus-alerts-validation.test.ts'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-alerts:
+    name: "Prometheus Alert Rules (promtool + cross-check)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-prisma
+      - name: Install promtool (pinned v3.2.1)
+        run: |
+          PROM_VER="3.2.1"
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROM_VER}/prometheus-${PROM_VER}.linux-amd64.tar.gz" | tar xz
+          sudo mv "prometheus-${PROM_VER}.linux-amd64/promtool" /usr/local/bin/promtool
+          promtool --version
+      - name: Validate rules with promtool
+        run: promtool check rules --lint-fatal monitoring/prometheus-alerts.yml
+      - name: Cross-check alert metrics against exposed metrics
+        run: node scripts/validate-prometheus-alerts.mjs --require-promtool
+      - name: Run validation test suite
+        run: npx vitest run src/__tests__/prometheus-alerts-validation.test.ts

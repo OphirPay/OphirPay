@@ -1,6 +1,15 @@
 # OphirPay — Prometheus Alert Rules
 # These rules monitor the OphirPay API server for conditions that require
 # immediate operator attention. Designed for Alertmanager → PagerDuty/Slack.
+#
+# Validation convention (Issue #754):
+# Alert rules and referenced metrics are validated in CI with promtool and
+# scripts/validate-prometheus-alerts.mjs.
+# Every metric referenced in an alert expression must be either:
+#   1. Exposed by src/app/api/metrics/route.ts, or
+#   2. Declared as an external metric inside the alert block using:
+#        # external: <metric_name>[, <metric_name>...]
+# Any undeclared metric or typo produces a CI validation failure.
 
 groups:
   - name: ophirpay_critical
@@ -9,6 +18,7 @@ groups:
       # ── Contract Balance Alerts ──────────────────────────────
 
       - alert: ContractBalanceBelowLocked
+        # external: ophirpay_contract_balance, ophirpay_locked_balance
         expr: |
           ophirpay_contract_balance - ophirpay_locked_balance < 0
         for: 1m
@@ -24,6 +34,7 @@ groups:
             IMMEDIATE ACTION: pause the contract and investigate.
 
       - alert: ContractBalanceDroppingFast
+        # external: ophirpay_contract_balance
         expr: |
           rate(ophirpay_contract_balance[5m]) < -10000000000
         for: 5m
@@ -37,6 +48,7 @@ groups:
             Check for unusual withdrawal activity.
 
       - alert: LockedBalanceDivergence
+        # external: ophirpay_contract_balance, ophirpay_locked_balance, ophirpay_unlocked_balance
         expr: |
           abs(ophirpay_contract_balance - ophirpay_locked_balance - ophirpay_unlocked_balance) > 10000000
         for: 5m
@@ -52,6 +64,7 @@ groups:
       # ── Payment Processing Alerts ────────────────────────────
 
       - alert: BatchPaymentFailureRateHigh
+        # external: ophirpay_batch_failed_items, ophirpay_batch_total_items
         expr: |
           rate(ophirpay_batch_failed_items[15m]) /
           rate(ophirpay_batch_total_items[15m]) > 0.5
@@ -66,6 +79,7 @@ groups:
             Check RPC connectivity and token contract state.
 
       - alert: PaymentProcessingLatencyHigh
+        # external: ophirpay_payment_duration_seconds_bucket
         expr: |
           histogram_quantile(0.95, rate(ophirpay_payment_duration_seconds_bucket[5m])) > 30
         for: 5m
@@ -81,6 +95,7 @@ groups:
       # ── Webhook Delivery Alerts ──────────────────────────────
 
       - alert: WebhookDeliveryFailureRateHigh
+        # ophirpay_delivery_final_outcomes_total is exposed by src/app/api/metrics/route.ts
         expr: |
           sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook",final_outcome="failure"}[15m])) /
           clamp_min(sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook"}[15m])), 1) > 0.25
@@ -96,6 +111,7 @@ groups:
             retry attempt distribution.
 
       - alert: WebhookQueueDepthHigh
+        # external: ophirpay_webhook_queue_depth
         expr: ophirpay_webhook_queue_depth > 1000
         for: 5m
         labels:
@@ -110,6 +126,8 @@ groups:
       # ── API Health Alerts ────────────────────────────────────
 
       - alert: ApiHighErrorRate
+        # external: ophirpay_http_errors_total
+        # Note: ophirpay_http_requests_total is exposed by src/app/api/metrics/route.ts
         expr: |
           rate(ophirpay_http_errors_total[5m]) /
           rate(ophirpay_http_requests_total[5m]) > 0.05
@@ -124,6 +142,7 @@ groups:
             Check logs for root cause.
 
       - alert: ApiDown
+        # external: up
         expr: up{job="ophirpay"} == 0
         for: 2m
         labels:
@@ -138,6 +157,7 @@ groups:
       # ── Database Alerts ──────────────────────────────────────
 
       - alert: DatabaseConnectionPoolExhausted
+        # external: ophirpay_db_pool_available
         expr: ophirpay_db_pool_available < 2
         for: 2m
         labels:
@@ -150,6 +170,7 @@ groups:
             connection leaks or increase pool size.
 
       - alert: DatabaseQueryLatencyHigh
+        # external: ophirpay_db_query_duration_seconds_bucket
         expr: |
           histogram_quantile(0.95, rate(ophirpay_db_query_duration_seconds_bucket[5m])) > 1
         for: 5m
@@ -165,6 +186,7 @@ groups:
       # ── Rate Limiting Alerts ─────────────────────────────────
 
       - alert: RateLimitHitsHigh
+        # external: ophirpay_rate_limit_hits_total
         expr: rate(ophirpay_rate_limit_hits_total[5m]) > 10
         for: 5m
         labels:

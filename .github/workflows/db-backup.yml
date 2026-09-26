@@ -2,16 +2,25 @@ name: Database Backup
 
 on:
   schedule:
-    - cron: "0 3 * * *"  # Daily at 3 AM UTC
-  workflow_dispatch:      # Manual trigger
+    - cron: "0 3 * * *"   # Daily at 3 AM UTC — create and upload the backup
+    - cron: "0 12 * * *"  # Daily at 12 PM UTC — assert the newest backup is fresh
+  workflow_dispatch:      # Manual trigger — runs both jobs
 
 env:
   BACKUP_BUCKET: ophirpay-backups
   BACKUP_RETENTION_DAYS: 30
+  BACKUP_MAX_AGE_HOURS: 26
+  # The freshness job runs at 12:00 UTC: late enough that a 3 AM run landing
+  # anywhere in its observed 07:00–09:00 UTC window is already uploaded, yet
+  # early enough that a missing nightly run is caught the same morning.
+  # See issue #752.
 
 jobs:
   backup:
     name: Backup Postgres
+    # Only the 3 AM schedule and manual runs create a backup; the 11 AM run
+    # is reserved for the freshness job below.
+    if: github.event_name != 'schedule' || github.event.schedule == '0 3 * * *'
     runs-on: ubuntu-latest
     env:
       DB_HOST: ${{ secrets.DB_HOST }}
@@ -85,7 +94,111 @@ jobs:
             fi
           done
 
-      - name: Notify on failure
-        if: failure()
+  freshness:
+    name: Check backup freshness
+    # Runs after the nightly backup window (the GitHub scheduler fires the
+    # 3 AM job hours late — recent runs land 07:00–09:00 UTC): fails when the
+    # newest object in the bucket is older than BACKUP_MAX_AGE_HOURS, which is
+    # how a pipeline that stopped running (no failure event anywhere) gets
+    # caught.
+    if: github.event_name != 'schedule' || github.event.schedule == '0 12 * * *'
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate AWS credentials
         run: |
-          echo "::error::Database backup failed! Check the logs."
+          : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID secret not set — add it to GitHub Actions secrets}"
+          : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY secret not set}"
+          : "${AWS_REGION:?AWS_REGION secret not set}"
+
+      - name: Assert the newest S3 backup is fresh
+        run: ./scripts/check-backup-freshness.sh
+
+  notify-failure:
+    name: Alert on failure
+    needs: [backup, freshness]
+    # `always()` keeps this job running when the sibling job is skipped (each
+    # job only runs on its own schedule); it then alerts for any failed job.
+    if: always() && (needs.backup.result == 'failure' || needs.freshness.result == 'failure')
+    runs-on: ubuntu-latest
+    # GITHUB_TOKEN is always available — unlike the repository secrets the
+    # backup needs — so this still alerts when the failure is a missing or
+    # rotated secret, i.e. when the workflow fails before touching the DB.
+    permissions:
+      issues: write
+    env:
+      # Only job results (fixed enums) and repo config reach this job — no
+      # event-controlled text is interpolated into the script below.
+      BACKUP_RESULT: ${{ needs.backup.result }}
+      FRESHNESS_RESULT: ${{ needs.freshness.result }}
+    steps:
+      - name: Open or update the tracking issue
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const MARKER = '<!-- db-backup-alert -->';
+            const TITLE = '[ops] Nightly database backup is failing';
+            const bucket = process.env.BACKUP_BUCKET ?? 'ophirpay-backups';
+
+            const failedJobs = Object.entries({
+              backup: process.env.BACKUP_RESULT,
+              freshness: process.env.FRESHNESS_RESULT,
+            })
+              .filter(([, result]) => result === 'failure')
+              .map(([name]) => name);
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const trigger =
+              context.eventName === 'schedule'
+                ? `schedule \`${context.payload.schedule}\``
+                : context.eventName;
+
+            const summary = [
+              `**Failed job(s):** ${failedJobs.join(', ') || 'unknown'}`,
+              `**Run:** ${runUrl} (${trigger})`,
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+            // Idempotent: comment on the open tracking issue if there is one,
+            // otherwise open it.
+            const existing = openIssues.find(
+              (issue) => !issue.pull_request && issue.title === TITLE
+            );
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body: `${MARKER}\nStill failing:\n${summary}`,
+              });
+              core.info(`Updated tracking issue #${existing.number} — ${runUrl}`);
+            } else {
+              const body = [
+                MARKER,
+                'The nightly database backup workflow (`db-backup.yml`) needs attention.',
+                '',
+                summary,
+                '',
+                'What to check:',
+                '- `backup` — the `pg_dump | gzip` step or the S3 upload failed. Read the run log and verify the `DB_*` and `AWS_*` repository secrets are still configured.',
+                `- \`freshness\` — no backup younger than the policy limit was found in \`s3://${bucket}/\`. Check that the scheduled workflow is still enabled and uploading ("Nightly backups" in docs/deployment-mainnet.md).`,
+                '',
+                'This issue is opened automatically on the first failure and gets a comment on every run that keeps failing. Close it once the backup is green again — a later failure opens a new tracking issue.',
+              ].join('\n');
+              const { data: created } = await github.rest.issues.create({ owner, repo, title: TITLE, body });
+              core.info(`Opened tracking issue #${created.number} — ${runUrl}`);
+            }

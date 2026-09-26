@@ -372,7 +372,34 @@ stellar contract invoke \
 ## 9. Maintenance
 
 ### Nightly backups
-Automated via `.github/workflows/db-backup.yml` — runs at 3 AM UTC, retains 30 days.
+Automated via [`.github/workflows/db-backup.yml`](../.github/workflows/db-backup.yml).
+
+- **Schedule** — `pg_dump` runs daily at **3 AM UTC** (cron `0 3 * * *`); the
+  GitHub scheduler can fire it a few hours late under load, which the policy
+  below accounts for. A manual `workflow_dispatch` runs the backup on demand.
+- **Location and format** — `s3://ophirpay-backups/` (single bucket, in the
+  region configured by the `AWS_REGION` secret), one gzip object per day named
+  `ophirpay-<UTC timestamp>.sql.gz`.
+- **Storage class** — `STANDARD_IA`.
+- **Retention** — **30 days** (`BACKUP_RETENTION_DAYS`). The `Cleanup old
+  backups` step in the workflow deletes objects older than the cutoff; there
+  is no S3 lifecycle rule, so retention is enforced by the workflow itself.
+  Expect up to 30 daily copies, one per successful night.
+- **Freshness assertion** — a second scheduled run at **12:00 UTC** fails when
+  the newest backup in the bucket is older than **26 hours**
+  (`BACKUP_MAX_AGE_HOURS`, `scripts/check-backup-freshness.sh`). This is what
+  catches a backup workflow that stopped running entirely, not just one that
+  failed visibly.
+- **Alerting** — when the backup or the freshness check fails, the
+  `Alert on failure` job opens a tracking issue titled
+  `[ops] Nightly database backup is failing` — or comments on the open one —
+  so maintainers and repository watchers get a GitHub notification instead of
+  an annotation buried in the Actions tab. The job needs only the
+  always-available `GITHUB_TOKEN`, so it also fires when the failure is a
+  missing or rotated DB/AWS secret. Escalate the issue per §5.3
+  ("DB backup missed").
+- **Restore** — see the monthly drill below and the rollback path in the
+  [Mainnet Runbook](./MAINNET_RUNBOOK.md).
 
 ### Monthly restore drill
 ```bash

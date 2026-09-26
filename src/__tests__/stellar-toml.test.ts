@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { buildStellarToml, readStellarTomlEnv } from "@/lib/stellar-toml";
 
-const { GET } = await import("@/app/.well-known/stellar.toml/route");
+const { GET, OPTIONS } = await import("@/app/.well-known/stellar.toml/route");
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -68,11 +68,19 @@ describe("GET /.well-known/stellar.toml", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/plain");
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
     const body = await res.text();
     expect(line(body, "NETWORK_PASSPHRASE")).toBe(
       'NETWORK_PASSPHRASE="Test SDF Network ; September 2015"',
     );
     expect(line(body, "PAYMENT")).toBe('PAYMENT="CCQGGUAAAA"');
     expect(line(body, "EMITTER")).toBe('EMITTER="CDAVU2BBBB"');
+  });
+
+  it("answers CORS preflight for cross-origin wallet fetches", async () => {
+    const res = await OPTIONS();
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toContain("GET");
   });
 });

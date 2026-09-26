@@ -16,6 +16,7 @@
 - [4. Rotation Checklists](#4-rotation-checklists)
 - [5. Incident Response — Suspected Compromise](#5-incident-response--suspected-compromise)
 - [6. Verification Steps](#6-verification-steps)
+- [7. API Key Format & Rotation](#7-api-key-format--rotation)
 
 ---
 
@@ -364,6 +365,57 @@ for i in $(seq 1 5); do
 done
 # All should return 200 (rate limiting working normally)
 ```
+
+---
+
+## 7. API Key Format & Rotation
+
+API keys are *not* environment secrets — they are minted per user via
+`POST /api/keys` and stored only as a digest. They are covered here because
+their strength determines whether a leaked `ApiKey.keyHash` column is
+offline-brute-forceable (issue #701).
+
+### 7.1 Required format
+
+| Property | Requirement |
+|----------|-------------|
+| Prefix | `oph_` |
+| Random material | **≥ 32 bytes from a CSPRNG** (256 bits of entropy) |
+| Encoding | lowercase hex |
+| Full key shape | `oph_` + 64 lowercase hex characters |
+| Canonical example | `oph_` followed by 64 hex chars (never shown again after creation) |
+
+Creation goes through `generateApiKey()` in `src/lib/api-auth.ts`, which mints
+32 `crypto.randomBytes` bytes and **fails closed** if the result does not match
+the documented shape. A human-chosen or short key can therefore no longer be
+stored: at 32 CSPRNG bytes, brute-forcing the digest is infeasible even if the
+database leaks. Existing keys minted with the older 24-byte format still
+authenticate — auth accepts both hex lengths during the rotation window.
+
+### 7.2 Stored digest
+
+`ApiKey.keyHash` stores a version-tagged digest:
+
+```
+v1:<sha256-hex-of-raw-key>
+```
+
+The `v1:` tag reserves room for a future peppered HMAC or memory-hard KDF
+migration without another schema change. Digests written before #701 are the
+bare SHA-256 hex; `authenticateRequest` looks up both forms, so rotations are
+non-breaking.
+
+### 7.3 Rotation
+
+API keys are rotated per user, not per deployment:
+
+1. Mint a replacement with `POST /api/keys` (the raw key is returned once).
+2. Switch the caller to the new key.
+3. Revoke the old key with `DELETE /api/keys?id=<keyId>`.
+
+Revocation is immediate — the key row is deleted, so auth fails closed on the
+next request. Use `lastUsed` (GET `/api/keys`) to confirm a key is no longer
+in use before revoking it.
 
 ---
 

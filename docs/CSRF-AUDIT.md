@@ -4,6 +4,10 @@
 > Every state-changing route (POST / PUT / PATCH / DELETE) is listed with its
 > CSRF protection status. The registry in `src/lib/csrf-route-registry.ts` is
 > the machine-readable source of truth; this document is the human-readable spec.
+>
+> Refreshed for [Issue #704](https://github.com/OphirPay/OphirPay/issues/704),
+> which added a drift guard so this table can no longer fall silently behind the
+> route tree.
 
 ## How CSRF works in OphirPay
 
@@ -13,6 +17,7 @@
 | **Verification** | Each mutating handler calls `verifyCsrf(request)` from `src/lib/csrf.ts` before auth or business logic. |
 | **Double-submit** | The client echoes the token via the `x-csrf-token` header; the server compares it to the cookie using timing-safe equality. |
 | **API key bypass** | Requests carrying `Authorization: Bearer <key>` or `X-API-Key` skip CSRF — browsers never attach these headers on cross-site requests. |
+| **Cron bypass** | Requests carrying `Authorization: Bearer <CRON_SECRET>` or `x-cron-secret` skip CSRF for the same reason. |
 | **No global middleware** | CSRF is **per-route**, not applied by `src/proxy.ts` or a Next.js middleware file. |
 
 ## Legend
@@ -21,8 +26,9 @@
 |--------|---------|
 | ✅ | `verifyCsrf(request)` called — browser sessions require a valid token |
 | 🔑 | Same as ✅, but API-key callers bypass the token check inside `verifyCsrf` |
+| ⏱ | Machine-invoked (cron / scheduler); authenticated by a shared secret, allowlisted in `CSRF_EXEMPT_ROUTES` |
 
-## Route Audit Table
+## Protected Route Audit Table
 
 | Route | Method | CSRF | Notes |
 |-------|--------|------|-------|
@@ -35,15 +41,25 @@
 | `/api/payments/[id]` | PATCH | 🔑 | Update payment status |
 | `/api/payments/[id]` | DELETE | 🔑 | Soft-delete payment |
 | `/api/payments/retry` | POST | 🔑 | Retry failed payment |
+| `/api/payments/cancel` | POST | 🔑 | Cancel payment |
 | `/api/escrows` | POST | 🔑 | Create escrow (client-side signing) |
 | `/api/streams` | POST | 🔑 | Create payment stream (client-side signing) |
 | `/api/batches` | POST | 🔑 | Create batch payment |
+| `/api/batches/[id]` | POST | 🔑 | Bulk-cancel a batch's pending payments |
 | `/api/recurring` | POST | 🔑 | Create recurring schedule |
+| `/api/recurring` | PATCH | 🔑 | Update recurrence settings |
+| `/api/recurring/[id]` | PATCH | 🔑 | Update recurring schedule |
 | `/api/requests` | POST | 🔑 | Create payment request |
+| `/api/scheduled` | POST | 🔑 | Create scheduled payment |
+| `/api/scheduled` | DELETE | 🔑 | Cancel scheduled payment |
 | `/api/refunds` | POST | 🔑 | Create refund record |
 | `/api/refunds/[id]` | PATCH | 🔑 | Update refund status |
 | `/api/webhooks` | POST | 🔑 | Register webhook |
+| `/api/webhooks` | PATCH | 🔑 | Update webhook |
 | `/api/webhooks` | DELETE | 🔑 | Revoke webhook |
+| `/api/webhooks/[id]/replay` | POST | 🔑 | Replay stored webhook events |
+| `/api/webhooks/[id]/test` | POST | 🔑 | Send test webhook |
+| `/api/webhooks/[id]/deliveries/[deliveryId]/redeliver` | POST | 🔑 | Redeliver a webhook payload |
 | `/api/hooks` | POST | 🔑 | Register notification hook |
 | `/api/hooks/[id]` | PATCH | 🔑 | Deactivate notification hook |
 | `/api/governance/proposals` | POST | 🔑 | Create governance proposal |
@@ -53,39 +69,39 @@
 | `/api/multisig/propose` | POST | 🔑 | Propose multisig payment |
 | `/api/multisig/approve` | POST | 🔑 | Approve multisig payment |
 | `/api/multisig/execute` | POST | 🔑 | Execute multisig payment |
-| `/api/jobs/process-due-recurring` | POST | 🔑 | Recurring scheduler sweep (cron / worker) |
 
-**Total:** 28 mutating handlers — **28 protected** (100% coverage).
+**Subtotal:** 37 mutating handlers — **37 protected** (100% coverage).
 
-## Gaps Found & Fixed
+## Allowlisted Routes (authenticate by shared secret)
 
-Prior to issue #563, only 14 of 28 mutating handlers called `verifyCsrf`. The
-following routes were missing protection for browser sessions:
+These are not registered in `MUTATING_ROUTES`; they are listed in
+`CSRF_EXEMPT_ROUTES` with a reason. They are invoked by a scheduler/worker, not
+a browser, and require `Authorization: Bearer $CRON_SECRET` or `x-cron-secret`.
+They still call `verifyCsrf()` as defence in depth.
 
-| Route | Method | Fix |
-|-------|--------|-----|
-| `/api/auth/session` | DELETE | Added `verifyCsrf` (prevents CSRF logout) |
-| `/api/keys` | POST, PATCH, DELETE | Added `verifyCsrf` |
-| `/api/payments` | POST | Added `verifyCsrf` |
-| `/api/payments/[id]` | PATCH, DELETE | Added `verifyCsrf` |
-| `/api/payments/retry` | POST | Added `verifyCsrf` |
-| `/api/escrows` | POST | Added `verifyCsrf` |
-| `/api/streams` | POST | Added `verifyCsrf` |
-| `/api/batches` | POST | Added `verifyCsrf` |
-| `/api/recurring` | POST | Added `verifyCsrf` |
-| `/api/requests` | POST | Added `verifyCsrf` |
-| `/api/multisig` | POST | Added `verifyCsrf` |
-| `/api/jobs/process-due-recurring` | POST | Added `verifyCsrf` |
+| Route | Method | CSRF | Reason |
+|-------|--------|------|--------|
+| `/api/jobs/process-due-recurring` | POST | ⏱ | Recurring scheduler sweep; authenticated by `CRON_SECRET`. |
+| `/api/cron` | POST | ⏱ | Scheduled-payment execution sweep (cron). |
+| `/api/scheduled/run` | POST | ⏱ | Trigger scheduled payment run (cron). |
 
-Additionally, `verifyCsrf` now skips validation when an API key header is
-present so machine-to-machine callers (cron jobs, CI, integrations) are not
-blocked.
+**Subtotal:** 3 handlers, all machine-invoked.
+
+> OphirPay delivers webhooks **outbound only**, so there is no inbound webhook
+> receiver route to list. If one is ever added it must be allowlisted here with
+> a reason (signature verification) rather than left to drift.
+
+**Total:** **40** mutating handlers — 37 protected + 3 allowlisted.
 
 ## Enforcement
 
-- **Registry:** `src/lib/csrf-route-registry.ts`
-- **Tests:** `src/__tests__/csrf-coverage.test.ts` — fails CI if a new mutating
-  route is added without registering it and calling `verifyCsrf`.
+- **Registry:** `src/lib/csrf-route-registry.ts` (`MUTATING_ROUTES` +
+  `CSRF_EXEMPT_ROUTES`).
+- **Tests:** `src/__tests__/csrf-coverage.test.ts` — globs
+  `src/app/api/**/route.ts`, extracts every exported mutating handler by HTTP
+  method, and fails if one is in neither list. The failure names the route and
+  prints the exact registry entry to add, so adding a new mutation cannot slip
+  through unregistered (#704).
 - **Client:** `useApiQuery.ts` / `apiFetch` auto-attach `x-csrf-token` and retry
   once on `CSRF_INVALID`.
 

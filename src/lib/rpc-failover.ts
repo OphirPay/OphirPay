@@ -2,6 +2,7 @@
 
 import { rpc } from "@stellar/stellar-sdk";
 import { logger } from "@/lib/logger";
+import { RPC_PROBE_TIMEOUT_MS, fetchWithTimeout, isTimeoutError } from "@/lib/timeout";
 
 /**
  * Soroban RPC failover with caching and circuit breaking.
@@ -32,8 +33,8 @@ const CACHE_TTL_MS = 60_000;
 /** How long a failed endpoint is excluded from probing. */
 const CIRCUIT_COOLDOWN_MS = 30_000;
 
-/** Timeout for individual health-check probes. */
-const PROBE_TIMEOUT_MS = 3_000;
+/** Timeout for individual health-check probes (configurable via RPC_PROBE_TIMEOUT_MS). */
+export const PROBE_TIMEOUT_MS = RPC_PROBE_TIMEOUT_MS;
 
 // ── State ──────────────────────────────────────────────────────
 
@@ -49,22 +50,23 @@ let cachedAt = 0;
 
 // ── Probe ──────────────────────────────────────────────────────
 
-async function probeHealth(url: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-
+async function probeHealth(url: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<boolean> {
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
-      signal: controller.signal,
-    });
+    const res = await fetchWithTimeout(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
+      },
+      timeoutMs
+    );
     return res.ok;
-  } catch {
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      logger.warn("RPC probe timed out", { url, timeoutMs });
+    }
     return false;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

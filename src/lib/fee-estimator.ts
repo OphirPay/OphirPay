@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { getHorizonServer } from "@/lib/stellar";
+import { withTimeout, STELLAR_TIMEOUT_MS } from "@/lib/timeout";
 
 interface FeeEstimate {
   baseFee: string;
@@ -18,7 +19,11 @@ export async function estimateTransactionFee(
 ): Promise<FeeEstimate> {
   try {
     const server = getHorizonServer();
-    const baseFeeResponse = await server.fetchBaseFee();
+    const baseFeeResponse = await withTimeout(
+      server.fetchBaseFee(),
+      STELLAR_TIMEOUT_MS,
+      "Stellar Horizon fetchBaseFee timed out"
+    );
     const baseFee = parseFloat(baseFeeResponse.toString());
     const estimated = baseFee * numOperations;
 

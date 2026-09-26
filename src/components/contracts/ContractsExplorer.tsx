@@ -144,6 +144,8 @@ export function ContractsExplorer() {
         return "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200";
       case ContractErrorType.USER_REJECTION:
         return "bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border-orange-200";
+      case ContractErrorType.TIMEOUT:
+        return "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200";
       default:
         return "";
     }
@@ -157,6 +159,8 @@ export function ContractsExplorer() {
         return "📜 Contract Error";
       case ContractErrorType.USER_REJECTION:
         return "🚫 User Rejected";
+      case ContractErrorType.TIMEOUT:
+        return "⏱️ Request Timed Out";
       default:
         return "Error";
     }

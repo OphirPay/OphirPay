@@ -22,8 +22,10 @@
  *    - When price source is unreachable, returns null / "Unavailable" / fallback string.
  */
 
+import { PRICE_TIMEOUT_MS, isTimeoutError, combineSignals } from "@/lib/timeout";
+
 export const PRICE_CACHE_TTL_MS = 60_000; // 60 seconds
-export const DEFAULT_PRICE_TIMEOUT_MS = 5_000; // 5 seconds
+export const DEFAULT_PRICE_TIMEOUT_MS = PRICE_TIMEOUT_MS; // configurable via PRICE_TIMEOUT_MS
 
 export const ROUNDING_RULES = {
   USD_STANDARD_DECIMALS: 2,
@@ -103,13 +105,16 @@ export async function fetchXlmPrice(options?: {
   }
 
   const fetchPromise = (async (): Promise<PriceResult> => {
+    let coingeckoTimedOut = false;
+    let coinbaseTimedOut = false;
+
     // Primary: CoinGecko
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       const controller = new AbortController();
       timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const combinedSignal = options?.signal
-        ? anySignal([options.signal, controller.signal])
+        ? combineSignals([options.signal, controller.signal])
         : controller.signal;
 
       const res = await fetch(
@@ -128,7 +133,8 @@ export async function fetchXlmPrice(options?: {
           return { price, source: "coingecko", timestamp: priceCache.timestamp };
         }
       }
-    } catch {
+    } catch (err) {
+      if (isTimeoutError(err)) coingeckoTimedOut = true;
       // Fall through to secondary source
     } finally {
       if (timeoutId) {
@@ -142,7 +148,7 @@ export async function fetchXlmPrice(options?: {
       const controller = new AbortController();
       secondaryTimeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const combinedSignal = options?.signal
-        ? anySignal([options.signal, controller.signal])
+        ? combineSignals([options.signal, controller.signal])
         : controller.signal;
 
       const res = await fetch("https://api.coinbase.com/v2/prices/XLM-USD/spot", {
@@ -159,7 +165,8 @@ export async function fetchXlmPrice(options?: {
           return { price, source: "coinbase", timestamp: priceCache.timestamp };
         }
       }
-    } catch {
+    } catch (err) {
+      if (isTimeoutError(err)) coinbaseTimedOut = true;
       // All sources failed
     } finally {
       if (secondaryTimeoutId) {
@@ -172,7 +179,9 @@ export async function fetchXlmPrice(options?: {
       return {
         price: priceCache.price,
         source: "cached",
-        error: "Price sources currently unreachable, using last known price",
+        error: coingeckoTimedOut || coinbaseTimedOut
+          ? "Price sources timed out, using last known price"
+          : "Price sources currently unreachable, using last known price",
         timestamp: priceCache.timestamp,
       };
     }
@@ -180,7 +189,9 @@ export async function fetchXlmPrice(options?: {
     return {
       price: null,
       source: null,
-      error: "XLM/USD price sources unavailable",
+      error: coingeckoTimedOut || coinbaseTimedOut
+        ? "XLM/USD price sources timed out"
+        : "XLM/USD price sources unavailable",
     };
   })();
 
@@ -268,19 +279,4 @@ export function formatFiatAmount(
   }).format(usdAmount);
 
   return `${prefix}${formatted}`;
-}
-
-/**
- * Helper to combine abort signals across environments.
- */
-function anySignal(signals: AbortSignal[]): AbortSignal {
-  const controller = new AbortController();
-  for (const signal of signals) {
-    if (signal.aborted) {
-      controller.abort();
-      return signal;
-    }
-    signal.addEventListener("abort", () => controller.abort(), { once: true });
-  }
-  return controller.signal;
 }

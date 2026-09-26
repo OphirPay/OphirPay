@@ -4,9 +4,12 @@
  * Client-side API fetch wrapper with error handling and type safety.
  */
 
+import { fetchWithTimeout, DEFAULT_TIMEOUT_MS } from "@/lib/timeout";
+
 interface ApiClientOptions {
   baseUrl?: string;
   headers?: Record<string, string>;
+  timeoutMs?: number;
 }
 
 interface ApiResponse<T> {
@@ -27,20 +30,26 @@ type ApiResult<T> = ApiResponse<T> | ApiError;
  */
 export function createApiClient(options: ApiClientOptions = {}) {
   const baseUrl = options.baseUrl || "";
+  const defaultTimeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   async function request<T>(
     path: string,
-    init?: RequestInit
+    init?: RequestInit & { timeoutMs?: number }
   ): Promise<T> {
     const url = `${baseUrl}${path}`;
-    const res = await fetch(url, {
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-        ...init?.headers,
+    const timeoutMs = init?.timeoutMs ?? defaultTimeout;
+    const res = await fetchWithTimeout(
+      url,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers,
+          ...init?.headers,
+        },
+        ...init,
       },
-      ...init,
-    });
+      timeoutMs
+    );
 
     const json = (await res.json()) as ApiResult<T>;
 

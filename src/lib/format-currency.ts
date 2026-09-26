@@ -11,7 +11,14 @@
  * payment UI.
  */
 
-const DEFAULT_LOCALE = "en-US";
+export const DEFAULT_LOCALE = "en-US";
+export const STROOPS_PER_XLM = 10_000_000; // 1e7
+export const MAX_STELLAR_DECIMALS = 7;
+
+export interface CurrencyFormatOptions {
+  locale?: string;
+  roundingMode?: "halfExpand" | "halfEven" | "floor" | "ceil" | "trunc";
+}
 
 /** Rendered in place of a value that is not a finite number. */
 export const NON_FINITE_AMOUNT = "—";
@@ -40,58 +47,91 @@ function toFiniteNumber(amount: number | string): number | null {
 
 /**
  * Format a raw stroop amount as a human-readable XLM string.
+ * Non-finite amounts produce NON_FINITE_AMOUNT ("—").
  */
-export function formatXlm(stroops: string | number, decimals = 2): string {
+export function formatXlm(
+  stroops: string | number,
+  decimals = 2,
+  options?: CurrencyFormatOptions
+): string {
   const parsed = toFiniteNumber(stroops);
   if (parsed === null) return NON_FINITE_AMOUNT;
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const locale = options?.locale || DEFAULT_LOCALE;
+
+  const intlOptions: Intl.NumberFormatOptions = {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(parsed / 1e7);
+  };
+  if (options?.roundingMode) {
+    intlOptions.roundingMode = options.roundingMode;
+  }
+
+  return new Intl.NumberFormat(locale, intlOptions).format(parsed / STROOPS_PER_XLM);
 }
 
 /**
  * Format any numeric amount as fiat currency (USD by default).
+ * Non-finite amounts produce NON_FINITE_AMOUNT ("—").
  */
 export function formatFiat(
   amount: number | string,
   currency = "USD",
-  decimals = 2
+  decimals = 2,
+  options?: CurrencyFormatOptions
 ): string {
   const num = toFiniteNumber(amount);
   if (num === null) return NON_FINITE_AMOUNT;
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const locale = options?.locale || DEFAULT_LOCALE;
+
+  const intlOptions: Intl.NumberFormatOptions = {
     style: "currency",
     currency,
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(num);
+  };
+  if (options?.roundingMode) {
+    intlOptions.roundingMode = options.roundingMode;
+  }
+
+  return new Intl.NumberFormat(locale, intlOptions).format(num);
 }
 
 /**
  * Format a token amount with its symbol.
+ * Non-finite amounts produce NON_FINITE_AMOUNT ("—").
  */
 export function formatTokenAmount(
   amount: number | string,
   symbol: string,
-  decimals = 2
+  decimals = 2,
+  options?: CurrencyFormatOptions
 ): string {
   const num = toFiniteNumber(amount);
   if (num === null) return NON_FINITE_AMOUNT;
-  const formatted = new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const locale = options?.locale || DEFAULT_LOCALE;
+
+  const intlOptions: Intl.NumberFormatOptions = {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(num);
+  };
+  if (options?.roundingMode) {
+    intlOptions.roundingMode = options.roundingMode;
+  }
+
+  const formatted = new Intl.NumberFormat(locale, intlOptions).format(num);
   return `${formatted} ${symbol}`;
 }
 
 /**
  * Compact number formatting (e.g. 1.2K, 3.4M).
+ * Non-finite amounts produce NON_FINITE_AMOUNT ("—").
  */
-export function formatCompact(amount: number | string): string {
+export function formatCompact(amount: number | string, options?: { locale?: string }): string {
   const num = toFiniteNumber(amount);
   if (num === null) return NON_FINITE_AMOUNT;
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const locale = options?.locale || DEFAULT_LOCALE;
+
+  return new Intl.NumberFormat(locale, {
     notation: "compact",
     compactDisplay: "short",
   }).format(num);

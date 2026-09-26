@@ -10,6 +10,7 @@ const SECRET = "test-secret-0123456789";
 const EXAMPLES_DIR = path.resolve(process.cwd(), "examples/webhook-verification");
 const NODE_VERIFY = path.join(EXAMPLES_DIR, "node/verify.mjs");
 const PY_VERIFY = path.join(EXAMPLES_DIR, "python/verify.py");
+const GO_VERIFY = path.join(EXAMPLES_DIR, "go/verify.go");
 const SAMPLE_PAYLOAD = path.join(EXAMPLES_DIR, "sample-payload.json");
 
 const samplePayload = {
@@ -39,9 +40,15 @@ function runPython(args: string[], input?: string): RunResult {
   return { status: res.status, stdout: String(res.stdout ?? ""), stderr: String(res.stderr ?? "") };
 }
 
+function runGo(args: string[], input?: string): RunResult {
+  const res = spawnSync("go", ["run", GO_VERIFY, ...args], { input, encoding: "utf8" });
+  return { status: res.status, stdout: String(res.stdout ?? ""), stderr: String(res.stderr ?? "") };
+}
+
 // Probe at module scope: `it.skipIf` evaluates its condition during test
 // collection, before `beforeAll` hooks run.
 const hasPython = spawnSync("python3", ["--version"], { encoding: "utf8" }).status === 0;
+const hasGo = spawnSync("go", ["version"], { encoding: "utf8" }).status === 0;
 
 describe("webhook verification examples — Node (verify.mjs)", () => {
   it("verifies a payload produced by buildSignedPayload", () => {
@@ -206,6 +213,50 @@ describe("webhook verification examples — Python (verify.py)", () => {
     );
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("too old");
+  });
+});
+
+describe("webhook verification examples — Go (verify.go)", () => {
+  it.skipIf(!hasGo)("verifies a payload produced by buildSignedPayload", () => {
+    const { body, signature } = buildSignedPayload(
+      { ...samplePayload, timestamp: new Date().toISOString() },
+      SECRET
+    );
+    const res = runGo(["--secret", SECRET, "--signature", signature], body);
+    expect(res.status).toBe(0);
+    expect(res.stdout.trim()).toBe("VALID");
+  });
+
+  it.skipIf(!hasGo)("rejects a tampered body", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const tampered = body.replace('"amount":100', '"amount":999');
+    const res = runGo(["--secret", SECRET, "--signature", signature, "--now", "2026-08-14T00:00:30Z"], tampered);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("INVALID");
+  });
+
+  it.skipIf(!hasGo)("rejects a wrong secret", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const res = runGo(["--secret", "wrong-secret", "--signature", signature, "--now", "2026-08-14T00:00:30Z"], body);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("INVALID");
+  });
+
+  it.skipIf(!hasGo)("rejects a replayed (too old) delivery", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const res = runGo(["--secret", SECRET, "--signature", signature, "--now", "2026-08-14T01:00:00Z"], body);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("too old");
+  });
+
+  it.skipIf(!hasGo)("verifies the docs sample payload (sample-payload.json)", () => {
+    const body = fs.readFileSync(SAMPLE_PAYLOAD, "utf8");
+    const res = runGo(
+      ["--secret", SECRET, "--signature", SAMPLE_SIGNATURE, "--now", "2026-08-14T00:00:30Z"],
+      body
+    );
+    expect(res.status).toBe(0);
+    expect(res.stdout.trim()).toBe("VALID");
   });
 });
 

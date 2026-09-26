@@ -5,10 +5,13 @@ import {
   fetchXlmPrice,
   convertXlmToUsd,
   formatFiatAmount,
+  formatPriceOrAsset,
   clearPriceCache,
   setCachedPrice,
   ROUNDING_RULES,
   PRICE_CACHE_TTL_MS,
+  PRICE_STALE_THRESHOLD_MS,
+  RATE_LIMIT_COOLDOWN_MS,
 } from "@/lib/price";
 
 describe("Price Utility & Precision Rules", () => {
@@ -221,6 +224,135 @@ describe("Price Utility & Precision Rules", () => {
       expect(ROUNDING_RULES.XLM_MIN_DECIMALS).toBe(2);
       expect(ROUNDING_RULES.XLM_MAX_DECIMALS).toBe(7);
       expect(PRICE_CACHE_TTL_MS).toBe(60_000);
+      expect(PRICE_STALE_THRESHOLD_MS).toBe(300_000);
+      expect(RATE_LIMIT_COOLDOWN_MS).toBe(30_000);
+    });
+  });
+
+  describe("Rate-Limit (HTTP 429) & Staleness Policy (Issue #814)", () => {
+    it("handles 429 rate limit gracefully with defined staleness marker", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        headers: new Headers({ "retry-after": "10" }),
+      });
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice();
+      expect(result.price).toBeNull();
+      expect(result.isStale).toBe(true);
+      expect(result.staleReason).toBe("rate_limited");
+      expect(result.error).toContain("rate-limited");
+    });
+
+    it("serves stale cache with defined marker when upstream returns 429", async () => {
+      setCachedPrice(0.14, "coingecko");
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+      });
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice({ forceRefresh: true });
+      expect(result.price).toBe(0.14);
+      expect(result.source).toBe("cached");
+      expect(result.isStale).toBe(true);
+      expect(result.staleReason).toBe("rate_limited");
+      expect(result.error).toContain("rate-limited (HTTP 429)");
+    });
+
+    it("bypasses rate-limited oracle during cooldown period", async () => {
+      // First call triggers 429 on CoinGecko, falls back to Coinbase
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { amount: "0.128" } }),
+        })
+        // Next call with forceRefresh: CoinGecko should be skipped due to cooldown!
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { amount: "0.129" } }),
+        });
+      global.fetch = mockFetch;
+
+      const first = await fetchXlmPrice();
+      expect(first.price).toBe(0.128);
+      expect(first.source).toBe("coinbase");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      const second = await fetchXlmPrice({ forceRefresh: true });
+      expect(second.price).toBe(0.129);
+      expect(second.source).toBe("coinbase");
+      // CoinGecko was skipped, so only 1 more call (Coinbase) was made
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it("sends API key header when provided in options", async () => {
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ stellar: { usd: 0.132 } }),
+      });
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice({ apiKey: "test-api-key" });
+      expect(result.price).toBe(0.132);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining("coingecko.com"),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "x-cg-demo-api-key": "test-api-key",
+          }),
+        })
+      );
+    });
+  });
+
+  describe("formatPriceOrAsset", () => {
+    it("displays formatted USD when price is fresh", () => {
+      const freshResult = {
+        price: 0.12,
+        source: "coingecko" as const,
+        timestamp: Date.now(),
+        isStale: false,
+      };
+
+      const formatted = formatPriceOrAsset(100, freshResult);
+      expect(formatted.display).toBe("~$12.00");
+      expect(formatted.isStale).toBe(false);
+      expect(formatted.isFiat).toBe(true);
+    });
+
+    it("falls back to asset unit when price is unavailable", () => {
+      const unavailResult = {
+        price: null,
+        source: null,
+        isStale: true,
+      };
+
+      const formatted = formatPriceOrAsset(250, unavailResult, "XLM");
+      expect(formatted.display).toBe("250 XLM");
+      expect(formatted.isStale).toBe(true);
+      expect(formatted.isFiat).toBe(false);
+    });
+
+    it("indicates staleness clearly when price is marked stale", () => {
+      const staleResult = {
+        price: 0.10,
+        source: "cached" as const,
+        timestamp: Date.now() - PRICE_STALE_THRESHOLD_MS - 1000,
+        isStale: true,
+      };
+
+      const formatted = formatPriceOrAsset(50, staleResult, "XLM");
+      expect(formatted.display).toContain("50 XLM (~$5.00 stale)");
+      expect(formatted.isStale).toBe(true);
+      expect(formatted.isFiat).toBe(false);
     });
   });
 });

@@ -31,11 +31,21 @@ vi.mock("@/lib/contract-advanced", () => ({
   executeGovernanceProposal: vi.fn(),
 }));
 
+vi.mock("@/lib/prisma", () => ({
+  default: {
+    auditLog: {
+      create: vi.fn().mockResolvedValue({}),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+  },
+}));
+
 import * as authSession from "@/lib/auth-session";
 import * as csrf from "@/lib/csrf";
 import * as contracts from "@/lib/contracts";
 import * as contractAdvanced from "@/lib/contract-advanced";
 import { GET as getProposals, POST as postProposals } from "@/app/api/governance/proposals/route";
+import { GET as getProposalDetail } from "@/app/api/governance/proposals/[id]/route";
 import { POST as postVote } from "@/app/api/governance/vote/route";
 import { POST as postExecuteGov } from "@/app/api/governance/execute/route";
 
@@ -102,6 +112,43 @@ describe("API Routes: Governance", () => {
       expect(data.data.truncated).toBe(true);
       expect(data.data.total).toBe(105);
       expect(data.data.items.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("GET /api/governance/proposals/[id]", () => {
+    it("rejects unauthenticated requests", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(null);
+      const res = await getProposalDetail(
+        new Request("http://localhost/api/governance/proposals/8"),
+        { params: Promise.resolve({ id: "8" }) },
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects invalid proposal IDs", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      const res = await getProposalDetail(
+        new Request("http://localhost/api/governance/proposals/nope"),
+        { params: Promise.resolve({ id: "nope" }) },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("returns proposal, governance config, and recorded vote history", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      vi.mocked(contracts.simulateContractCall)
+        .mockResolvedValueOnce({ status: "SIMULATED", returnValue: { id: 8, title: "Upgrade" } } as never)
+        .mockResolvedValueOnce({ status: "SIMULATED", returnValue: { quorum_bps: 500 } } as never);
+
+      const res = await getProposalDetail(
+        new Request("http://localhost/api/governance/proposals/8"),
+        { params: Promise.resolve({ id: "8" }) },
+      );
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.data.proposal.title).toBe("Upgrade");
+      expect(data.data.config.quorum_bps).toBe(500);
+      expect(data.data.voteHistory).toEqual([]);
     });
   });
 

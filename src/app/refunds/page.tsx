@@ -68,6 +68,7 @@ export default function RefundsPage() {
   const [showRequest, setShowRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"list" | "analytics">("list");
+  const [analyticsDays, setAnalyticsDays] = useState(30);
 
   const [formPaymentId, setFormPaymentId] = useState("");
   const [formAmount, setFormAmount] = useState("");
@@ -83,7 +84,13 @@ export default function RefundsPage() {
 
   const {
     data: rawAnalytics,
-  } = useApiQuery<RefundAnalytics[]>(["refunds", "analytics"], "/api/refunds?analytics=true");
+    isLoading: analyticsLoading,
+    isError: analyticsError,
+    refetch: refetchAnalytics,
+  } = useApiQuery<RefundAnalytics[]>(
+    ["refunds", "analytics", String(analyticsDays)],
+    `/api/refunds?analytics=true&days=${analyticsDays}`,
+  );
   const analytics = Array.isArray(rawAnalytics) ? rawAnalytics : [];
 
   const handleRequest = async () => {
@@ -281,13 +288,40 @@ export default function RefundsPage() {
 
       {activeTab === "analytics" && (
         <Card className="p-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Reason Code Analytics
-          </h2>
-          {analytics.length === 0 ? (
-            <p className="text-sm text-gray-500">No refund data yet.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Reason Code Analytics
+            </h2>
+            <label className="text-sm text-gray-600 dark:text-gray-300">
+              Date range{" "}
+              <select
+                value={analyticsDays}
+                onChange={(event) => setAnalyticsDays(Number(event.target.value))}
+                className="ml-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1"
+              >
+                <option value={7}>7 days</option>
+                <option value={30}>30 days</option>
+                <option value={90}>90 days</option>
+                <option value={365}>12 months</option>
+              </select>
+            </label>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Counts are limited to the most recent 100 refund records for your account, then filtered to the selected date range. They are not lifetime totals.
+          </p>
+          {analyticsLoading ? (
+            <LoadingSkeleton lines={3} />
+          ) : analyticsError ? (
+            <EmptyState
+              title="Could not load refund analytics"
+              description="Refund reason counts are temporarily unavailable."
+              actionLabel="Retry"
+              onAction={() => refetchAnalytics()}
+            />
+          ) : analytics.every((entry) => entry.count === 0) ? (
+            <p className="text-sm text-gray-500">No refunds in the selected date range.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {analytics.map((entry) => (
                 <div key={entry.code} className="flex items-center gap-3">
                   <span className="text-xs font-medium text-gray-600 dark:text-gray-400 w-32">

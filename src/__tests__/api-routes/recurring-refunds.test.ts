@@ -257,15 +257,25 @@ describe("API Routes: Recurring & Refunds", () => {
 
     it("GET with ?analytics=true returns aggregated reason code buckets", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
-      const mockRefunds = [{ reasonCode: 0 }, { reasonCode: 0 }, { reasonCode: 2 }];
+      const requestedAt = new Date();
+      const mockRefunds = [
+        { reasonCode: 0, requestedAt },
+        { reasonCode: 0, requestedAt },
+        { reasonCode: 2, requestedAt },
+        { reasonCode: 2, requestedAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) },
+      ];
       vi.mocked(prisma.refund.findMany).mockResolvedValueOnce(mockRefunds as never);
 
-      const res = await getRefunds(new Request("http://localhost/api/refunds?analytics=true"));
+      const res = await getRefunds(new Request("http://localhost/api/refunds?analytics=true&days=7"));
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.data).toHaveLength(6);
       expect(data.data[0]).toEqual({ code: 0, count: 2 });
       expect(data.data[2]).toEqual({ code: 2, count: 1 });
+      expect(prisma.refund.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        orderBy: { requestedAt: "desc" },
+        take: 100,
+      }));
     });
 
     it("POST returns 403 on CSRF failure", async () => {

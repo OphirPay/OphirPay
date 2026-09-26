@@ -67,7 +67,6 @@ export async function isAuthorizedMetricsRequest(
   // `admin` implicitly grants every scope, so an admin key can read metrics.
   return auth !== null && hasScope(auth.scopes, [ADMIN_SCOPE]);
 }
->>>>>>> cd3a509a7b0d67f18e2f9cd31bae2a6402e65050
 
 function escapeLabelValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');

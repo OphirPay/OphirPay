@@ -9,6 +9,7 @@ vi.mock("@/lib/logger", () => ({
     error: vi.fn(),
     info: vi.fn(),
     debug: vi.fn(),
+    request: vi.fn(),
   },
 }));
 
@@ -161,7 +162,12 @@ describe("Soroban RPC Failover and Health Signals", () => {
 
     await getWorkingRpcServer("TESTNET");
 
-    const res = await getMetrics();
+    const metricsToken = "test-metrics-token-123456789";
+    process.env.METRICS_TOKEN = metricsToken;
+    const req = new Request("http://localhost/api/metrics", {
+      headers: { authorization: `Bearer ${metricsToken}` },
+    });
+    const res = await getMetrics(req);
     expect(res.status).toBe(200);
     const text = await res.text();
 

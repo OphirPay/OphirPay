@@ -18,6 +18,8 @@
   </p>
 </div>
 
+<!-- readme-sync: 49e2c32c0d25832fc35725e57127231ead5bc8f3 -->
+
 ---
 
 ## 📑 目次
@@ -259,7 +261,7 @@ npm run ci   # typecheck → lint → test → build
 | **ウォレット** | Freighter · xBull · Rabet · Albedo · Lobstr · Ledger | 6コネクターの統合アブストラクション |
 | **データベース** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite | 型安全ORM、プロバイダー切り替え |
 | **テスト** | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | ユニット、統合、E2Eカバレッジ |
-| **CI/CD** | [GitHub Actions](https://github.com/features/actions) | 各プッシュで22ジョブのパイプライン |
+| **CI/CD** | [GitHub Actions](https://github.com/features/actions) | push/PRごとに4ジョブのCI + スケジュール実行ワークフロー |
 | **ホスティング** | [Vercel](https://vercel.com) | `main`から自動デプロイ、エッジネットワーク |
 
 ---

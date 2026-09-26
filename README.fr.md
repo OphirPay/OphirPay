@@ -18,6 +18,8 @@
   </p>
 </div>
 
+<!-- readme-sync: 49e2c32c0d25832fc35725e57127231ead5bc8f3 -->
+
 ---
 
 ## 📑 Table des Matières
@@ -259,7 +261,7 @@ npm run ci   # typecheck → lint → test → build
 | **Portefeuille** | Freighter · xBull · Rabet · Albedo · Lobstr · Ledger | Abstraction de 6 connecteurs |
 | **Base de données** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite | ORM typé, commutation de fournisseur |
 | **Tests** | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | Couverture unitaire, intégration et E2E |
-| **CI/CD** | [GitHub Actions](https://github.com/features/actions) | Pipeline de 22 jobs à chaque push |
+| **CI/CD** | [GitHub Actions](https://github.com/features/actions) | CI de 4 jobs sur push/PR + workflows planifiés |
 | **Hébergement** | [Vercel](https://vercel.com) | Déploiement auto depuis `main`, réseau edge |
 
 ---

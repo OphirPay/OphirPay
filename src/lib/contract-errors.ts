@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT
+// AUTO-GENERATED FILE. DO NOT EDIT BY HAND.
+// Run `npm run generate-errors` to update.
 
 /**
  * Soroban contract error decoding utilities.
@@ -6,8 +8,7 @@
  * Mirrors the PaymentError enum in contracts/ophirpay/src/lib.rs.
  */
 
-const CONTRACT_ERROR_MAP: Record<string, string> = {
-  // ── Core Errors (1-10) ───────────────────────────────────
+export const CONTRACT_ERROR_MAP: Record<string, string> = {
   "1": "Contract not initialized: call init() first",
   "2": "Contract already initialized",
   "3": "Payment not found",
@@ -18,7 +19,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "8": "Escrow not found",
   "9": "Stream not started: start time is in the future",
   "10": "Stream already cancelled",
-  // ── Stream + Batch Errors (11-20) ───────────────────────
   "11": "Stream not found",
   "12": "Stream fully claimed: no remaining balance",
   "13": "Batch too large: exceeds maximum recipients",
@@ -29,7 +29,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "18": "Contract paused: operations are temporarily disabled",
   "19": "No tokens available to withdraw",
   "20": "Upgrade not proposed: call propose_upgrade() first",
-  // ── Upgrade + Multisig Errors (21-30) ───────────────────
   "21": "Upgrade timelock active: 24-hour delay has not elapsed",
   "22": "Multisig not configured: call set_multisig_config() first",
   "23": "Not a signer: you are not in the multisig signer list",
@@ -40,7 +39,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "28": "Audit log empty: no entries recorded",
   "29": "Audit entry not found",
   "30": "Recurring payment not found",
-  // ── Recurring + Fee Errors (31-40) ────────────────────
   "31": "Recurring payment not yet due",
   "32": "Recurring payment already cancelled",
   "33": "Recurring payment expired: all payments completed",
@@ -51,7 +49,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "38": "Timelocked action already executed",
   "39": "Governance not configured: call configure_governance() first",
   "40": "Proposal not found",
-  // ── Governance + Spend Errors (41-52) ──────────────────
   "41": "Voting period ended: proposal is closed",
   "42": "Proposal already executed",
   "43": "Quorum not met: insufficient votes cast",
@@ -64,7 +61,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "50": "Refund window expired",
   "51": "Already voted: each address may vote only once per proposal",
   "52": "Reentrant call detected: cross-contract reentry blocked",
-  // ── Spend + Dispute Errors (53-59) ────────────────────────
   "53": "Spending cap exceeded: total spend exceeds authorization",
   "54": "Dispute already filed: a dispute exists for this transaction",
   "55": "Dispute not found",
@@ -72,7 +68,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "57": "Refund rejected: refund request was denied",
   "58": "Insufficient liquidity: pool cannot fulfill the order",
   "59": "Asset depegged: stablecoin is off its target peg",
-  // ── Extended Errors (60-99) ────────────────────────────
   "60": "Proposal not passed: insufficient yes votes",
   "61": "Invalid signature: recovered signer does not match",
   "62": "Hook not found",
@@ -107,7 +102,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "91": "Maximum signers exceeded for multisig",
   "92": "Zero address not allowed for this operation",
   "93": "Invalid network: wrong Stellar network configured",
-  // ── Staking & Rewards (94-109) ───────────────────────────
   "94": "Staking not configured: call configure_staking() first",
   "95": "Staking already active: cannot modify while staking",
   "96": "Rewards pool empty: no rewards available for distribution",
@@ -124,7 +118,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "107": "Staking period not ended: cannot unstake yet",
   "108": "Reward distribution failed: transfer error",
   "109": "Delegator not authorized for this validator",
-  // ── Cross-Chain & Bridge (110-119) ──────────────────────
   "110": "Bridge not configured: call configure_bridge() first",
   "111": "Bridge is currently paused",
   "112": "Invalid source chain identifier",
@@ -135,7 +128,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "117": "Bridge amount too high: exceeds maximum transfer",
   "118": "Bridge transaction expired: timeout reached",
   "119": "Unsupported token pair for bridge transfer",
-  // ── Insurance & Risk (120-129) ──────────────────────────
   "120": "Insurance fund not configured",
   "121": "Insurance fund empty: no funds available for claims",
   "122": "Insurance claim already filed for this event",
@@ -146,7 +138,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "127": "Risk score too high: coverage denied",
   "128": "Underwriting failed: risk assessment error",
   "129": "Insurance operations are currently paused",
-  // ── Identity & Compliance (130-139) ─────────────────────
   "130": "KYC not completed: identity verification required",
   "131": "KYC tier too low: upgrade verification level",
   "132": "AML flag raised: transaction blocked for review",
@@ -157,7 +148,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "137": "Residency check failed: proof of residency required",
   "138": "Accreditation required: investor status not verified",
   "139": "Age verification failed: minimum age not met",
-  // ── Payment Routing & Splitting (140-149) ───────────────
   "140": "Payment route not found: no valid path",
   "141": "Payment split failed: distribution error",
   "142": "Split percentage invalid: must sum to 100%",
@@ -168,7 +158,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "147": "Deadline exceeded: transaction too old",
   "148": "Price oracle stale: last update too old",
   "149": "Flash loan not repaid in same transaction",
-  // ── Gas & Resource Management (150-159) ─────────────────
   "150": "Out of gas: computation budget exhausted",
   "151": "Gas price too low: below network minimum",
   "152": "Gas refund failed: refund transfer error",
@@ -179,7 +168,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "157": "Write budget exceeded: too many storage writes",
   "158": "TTL too low: entry would expire too soon",
   "159": "Ledger entry limit reached: cannot create more",
-  // ── Oracle & Data Feeds (160-169) ───────────────────────
   "160": "Oracle not configured: call set_oracle() first",
   "161": "Oracle timeout: response took too long",
   "162": "Oracle price deviation: outlier detected",
@@ -190,7 +178,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "167": "Confidence interval too wide: price uncertain",
   "168": "Oracle signature invalid: attestation failed",
   "169": "Maximum price age exceeded: feed too old",
-  // ── Batch & Streaming Advanced (170-179) ────────────────
   "170": "Batch execution timeout: not all items finished",
   "171": "Batch partial failure: some items failed",
   "172": "Stream rate invalid: must be positive non-zero",
@@ -201,7 +188,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "177": "Stream beneficiary unchanged: same as current",
   "178": "Stream transfer not allowed: stream is non-transferable",
   "179": "Batch cleanup failed: stale state removal error",
-  // ── Dispute Resolution (180-189) ────────────────────────
   "180": "Dispute not open: no active dispute found",
   "181": "Dispute arbiter not set: configure arbiter first",
   "182": "Dispute evidence required: must submit proof",
@@ -212,7 +198,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "187": "Appeal window closed: too late to appeal",
   "188": "Dispute bond insufficient: must stake more",
   "189": "Dispute escalation failed: higher authority error",
-  // ── Miscellaneous Guards (190-199) ──────────────────────
   "190": "Maximum storage entries reached: ledger full",
   "191": "Storage fee not paid: rent payment required",
   "192": "Archive entry not found: record already pruned",
@@ -223,7 +208,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "197": "Contract deprecated: use the new version",
   "198": "Emergency shutdown active: all operations blocked",
   "199": "System overloaded: too many concurrent requests",
-  // ── Advanced Governance (200-209) ───────────────────────
   "200": "Delegate not active: delegator is offline or disabled",
   "201": "Delegation expired: delegation period has ended",
   "202": "Vote delegation mismatch: delegate does not match voter",
@@ -234,7 +218,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "207": "Voting power frozen: votes are immobilized by a freeze",
   "208": "Proposal execution failed: on-chain execution reverted",
   "209": "Governance upgrade pending: upgrade has not been finalized",
-  // ── Treasury & Reserves (210-219) ───────────────────────
   "210": "Treasury not configured: call configure_treasury() first",
   "211": "Treasury withdrawal pending: timelock has not elapsed",
   "212": "Reserve requirement not met: minimum reserve ratio breached",
@@ -245,7 +228,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "217": "Treasury audit failed: reconciliation check did not pass",
   "218": "Reserve rebalance failed: allocation update reverted",
   "219": "Treasury access revoked: caller permissions were removed",
-  // ── Token & Asset Management (220-229) ──────────────────
   "220": "Token already listed: asset is already supported",
   "221": "Token delisting pending: removal is awaiting timelock",
   "222": "Asset pair not found: no market exists for the pair",
@@ -256,7 +238,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "227": "Asset trustline missing: trustline must be established",
   "228": "Token metadata invalid: name, symbol, or decimals malformed",
   "229": "Asset migration pending: upgrade to new contract incomplete",
-  // ── Lending & Credit (230-239) ──────────────────────────
   "230": "Lending pool not configured: call configure_lending() first",
   "231": "Loan not found",
   "232": "Loan already repaid: no outstanding balance",
@@ -267,7 +248,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "237": "Loan maturity reached: repayment is now due",
   "238": "Collateral frozen: collateral cannot be moved",
   "239": "Lending paused: borrow and lend operations are suspended",
-  // ── Recurring & Subscriptions (240-249) ─────────────────
   "240": "Subscription not found",
   "241": "Subscription already cancelled",
   "242": "Subscription renewal failed: payment did not settle",
@@ -278,7 +258,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "247": "Subscription tier not allowed: upgrade is restricted",
   "248": "Usage quota exceeded: plan allowance has been reached",
   "249": "Subscription upgrade pending: change has not been applied",
-  // ── Privacy & Zero-Knowledge (250-259) ──────────────────
   "250": "Zero-knowledge proof invalid: verification failed",
   "251": "Privacy pool not configured: call configure_privacy() first",
   "252": "Commitment already spent: double-spend detected",
@@ -289,7 +268,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "257": "Stealth address invalid: cannot derive recipient",
   "258": "Confidential transfer failed: shielded amount mismatch",
   "259": "Privacy paused: shielded operations are suspended",
-  // ── Messaging & Notifications (260-269) ─────────────────
   "260": "Notification service down: delivery backend unavailable",
   "261": "Message too long: exceeds maximum length",
   "262": "Recipient unsubscribed: target has opted out",
@@ -300,7 +278,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "267": "Notification template invalid: malformed payload",
   "268": "Message expired: delivery window has passed",
   "269": "Notification channel closed: channel is no longer active",
-  // ── Analytics & Reporting (270-279) ─────────────────────
   "270": "Report generation failed: aggregation error",
   "271": "Analytics data missing: required metrics unavailable",
   "272": "Metric out of range: value exceeds allowed bounds",
@@ -311,7 +288,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "277": "Report access denied: insufficient permissions",
   "278": "Analytics quota exceeded: too many report requests",
   "279": "Export format unsupported: requested format is not available",
-  // ── Interoperability & Standards (280-289) ──────────────
   "280": "SEP protocol violation: interface contract was not honored",
   "281": "Asset not SEP-compliant: missing required SEP behavior",
   "282": "Cross-contract version mismatch: incompatible API versions",
@@ -322,7 +298,6 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "287": "Namespace collision: identifier is already registered",
   "288": "External system unavailable: dependency is offline",
   "289": "Interop rate limit exceeded: too many cross-system calls",
-  // ── System & Protocol Guards (290-300) ──────────────────
   "290": "Contract upgrade scheduled: upgrade is pending execution",
   "291": "Maintenance mode active: operations temporarily disabled",
   "292": "Circuit breaker tripped: safety threshold was exceeded",
@@ -334,6 +309,13 @@ const CONTRACT_ERROR_MAP: Record<string, string> = {
   "298": "Grace period active: transitional restrictions in effect",
   "299": "Configuration invalid: stored configuration is malformed",
   "300": "System fatal error: unrecoverable internal failure",
+  "301": "Revocation not found",
+  "302": "Revocation not due",
+  "303": "Revocation already executed",
+  "304": "Cannot revoke self",
+  "305": "No pending ownership transfer",
+  "306": "Math overflow",
+  "307": "Stream accounting invariant violated: refused to pay an inconsistent amount",
 };
 
 /**
@@ -362,8 +344,7 @@ export function decodeContractError(rawError: string): string {
  * Get all known contract errors for documentation / tooltips.
  */
 export function getContractErrorCatalog(): { code: string; message: string }[] {
-  return Object.entries(CONTRACT_ERROR_MAP).map(([code, message]) => ({
-    code,
-    message,
-  })).sort((a, b) => parseInt(a.code) - parseInt(b.code));
+  return Object.entries(CONTRACT_ERROR_MAP)
+    .map(([code, message]) => ({ code, message }))
+    .sort((a, b) => parseInt(a.code) - parseInt(b.code));
 }

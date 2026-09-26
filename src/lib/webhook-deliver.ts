@@ -22,14 +22,6 @@ export interface WebhookDeliveryResult {
 }
 
 /**
- * Delivery error surfaced when the SSRF guard refuses a target. Kept
- * descriptive so an operator can tell a blocked destination apart from a
- * network failure (issue #706).
- */
-export const BLOCKED_WEBHOOK_TARGET_ERROR =
-  "Webhook target rejected by the SSRF guard — URL resolves to a private/internal address or a disallowed port";
-
-/**
  * Header carrying the delivery timestamp (issue #702). Its value is part of
  * the signed material, so a receiver can trust it for replay protection
  * instead of trusting an unsigned header.
@@ -65,6 +57,14 @@ export function webhookSignedInput(
 export function canonicalizeWebhookBody(payload: WebhookPayload): string {
   return JSON.stringify({ ...payload, signature: "" });
 }
+
+/**
+ * Delivery error surfaced when the SSRF guard refuses a target. Kept
+ * descriptive so an operator can tell a blocked destination apart from a
+ * network failure (issue #706).
+ */
+export const BLOCKED_WEBHOOK_TARGET_ERROR =
+  "Webhook target rejected by the SSRF guard — URL resolves to a private/internal address or a disallowed port";
 
 /**
  * Generate HMAC-SHA256 signature for a webhook payload.

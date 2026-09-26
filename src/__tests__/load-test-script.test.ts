@@ -65,6 +65,166 @@ describe("scripts/load-test.js", () => {
     expect(row[3]).toBe("-"); // no p50
     expect(row[6]).toBe("0.00%"); // transport errors still reported
   });
+
+  it("parses documented baselines from docs/PERFORMANCE.md", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(SCRIPT);
+    const baselines = mod.parseBaselinesFromDocs();
+    expect(baselines.length).toBeGreaterThanOrEqual(15);
+
+    const health1 = baselines.find(
+      (b: { endpoint: string; connections: number }) =>
+        b.endpoint === "/api/health" && b.connections === 1
+    );
+    expect(health1).toBeDefined();
+    expect(health1.p95).toBe(187);
+    expect(health1.errorPct).toBe(0);
+
+    const payments10 = baselines.find(
+      (b: { endpoint: string; connections: number }) =>
+        b.endpoint === "/api/payments" && b.connections === 10
+    );
+    expect(payments10).toBeDefined();
+    expect(payments10.p95).toBe(212);
+  });
+
+  it("passes regression checks when results stay within allowed margin", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(SCRIPT);
+    const baselines = [
+      {
+        endpoint: "/api/health",
+        connections: 10,
+        requestsPerSecond: 80,
+        p50: 120,
+        p95: 174,
+        p99: 204,
+        errorPct: 0,
+        non2xxPct: 0,
+      },
+    ];
+
+    const results = [
+      {
+        endpoint: "/api/health",
+        sse: false,
+        connections: 10,
+        requests: { total: 800 },
+        requestsPerSecond: 80,
+        latency: { p50: 125, p95: 180, p99: 210 }, // 180 ms < 174 * 1.25 = 217.5 ms
+        errors: 0,
+        non2xx: 0,
+      },
+    ];
+
+    const violations = mod.checkRegressions(results, baselines, { margin: 0.25 });
+    expect(violations).toHaveLength(0);
+  });
+
+  it("fails regression checks with measured values when p95 latency exceeds threshold", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(SCRIPT);
+    const baselines = [
+      {
+        endpoint: "/api/payments",
+        connections: 10,
+        requestsPerSecond: 70,
+        p50: 135,
+        p95: 212,
+        p99: 258,
+        errorPct: 0,
+        non2xxPct: 0,
+      },
+    ];
+
+    // p95 doubled: 450 ms > 212 * 1.25 = 265 ms
+    const results = [
+      {
+        endpoint: "/api/payments",
+        sse: false,
+        connections: 10,
+        requests: { total: 700 },
+        requestsPerSecond: 60,
+        latency: { p50: 250, p95: 450, p99: 600 },
+        errors: 0,
+        non2xx: 0,
+      },
+    ];
+
+    const violations = mod.checkRegressions(results, baselines, { margin: 0.25 });
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations[0].endpoint).toBe("/api/payments");
+    expect(violations[0].metric).toBe("p95 latency");
+    expect(violations[0].measured).toBe("450 ms");
+    expect(violations[0].baseline).toBe("212 ms");
+    expect(violations[0].allowed).toContain("265 ms");
+  });
+
+  it("fails regression checks when error rates exceed threshold", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(SCRIPT);
+    const baselines = [
+      {
+        endpoint: "/api/health",
+        connections: 10,
+        requestsPerSecond: 80,
+        p50: 100,
+        p95: 150,
+        p99: 200,
+        errorPct: 0,
+        non2xxPct: 0,
+      },
+    ];
+
+    const results = [
+      {
+        endpoint: "/api/health",
+        sse: false,
+        connections: 10,
+        requests: { total: 500 },
+        requestsPerSecond: 50,
+        latency: { p50: 100, p95: 150, p99: 200 },
+        errors: 3, // 3/10 = 30% error rate > 1%
+        non2xx: 0,
+      },
+    ];
+
+    const violations = mod.checkRegressions(results, baselines, { maxErrorPct: 1.0 });
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations[0].metric).toBe("Error %");
+    expect(violations[0].measured).toBe("30.00%");
+  });
+
+  it("formats markdown summary tables for GitHub Step Summary", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(SCRIPT);
+    const baselines = [
+      {
+        endpoint: "/api/health",
+        connections: 1,
+        p95: 187,
+        errorPct: 0,
+      },
+    ];
+    const results = [
+      {
+        endpoint: "/api/health",
+        sse: false,
+        connections: 1,
+        requests: { total: 100 },
+        requestsPerSecond: 10,
+        latency: { p50: 100, p95: 180, p99: 250 },
+        errors: 0,
+        non2xx: 0,
+      },
+    ];
+
+    const md = mod.formatStepSummary(results, baselines, [], 0.30);
+    expect(md).toContain("### ⚡ API Load Test Results");
+    expect(md).toContain("| Endpoint | Concurrency | Req/s |");
+    expect(md).toContain("/api/health");
+    expect(md).toContain("✅ Passed");
+  });
 });
 
 describe("docs/PERFORMANCE.md", () => {
@@ -91,5 +251,32 @@ describe("docs/PERFORMANCE.md", () => {
   it("documents the CI-optional stance", () => {
     const doc = readFileSync(docPath, "utf8");
     expect(doc).toMatch(/CI-optional/i);
+  });
+
+  it("documents scheduled CI workflow and failure criteria", () => {
+    const doc = readFileSync(docPath, "utf8");
+    expect(doc).toContain("load-tests.yml");
+    expect(doc).toContain("PERFORMANCE_MARGIN");
+  });
+
+  it("documents how to update baselines deliberately", () => {
+    const doc = readFileSync(docPath, "utf8");
+    expect(doc).toContain("## How to update baselines deliberately");
+    expect(doc).toContain("--write-docs");
+    expect(doc).toContain("git diff docs/PERFORMANCE.md");
+  });
+});
+
+describe(".github/workflows/load-tests.yml", () => {
+  const workflowPath = path.join(ROOT, ".github", "workflows", "load-tests.yml");
+
+  it("exists and defines a valid scheduled load-test workflow", () => {
+    expect(existsSync(workflowPath)).toBe(true);
+    const content = readFileSync(workflowPath, "utf8");
+    expect(content).toContain("cron:");
+    expect(content).toContain("workflow_dispatch:");
+    expect(content).toContain("scripts/load-test.js");
+    expect(content).toContain("scripts/sse-load-test.mjs");
+    expect(content).toContain("actions/upload-artifact");
   });
 });

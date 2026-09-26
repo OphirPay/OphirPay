@@ -1,0 +1,138 @@
+name: Performance & Load Tests
+
+on:
+  schedule:
+    # Run weekly on Sundays at 03:00 UTC
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      margin:
+        description: "Allowed latency regression margin ratio (e.g. 0.30 for +30%)"
+        required: false
+        default: "0.30"
+      duration:
+        description: "Duration in seconds per load-test pass"
+        required: false
+        default: "8"
+      concurrency:
+        description: "Comma-separated concurrency levels"
+        required: false
+        default: "1,5,10,25,50"
+
+permissions:
+  contents: read
+
+jobs:
+  load-tests:
+    name: "API & SSE Load Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ophirpay
+          POSTGRES_PASSWORD: ophirpay
+          POSTGRES_DB: ophirpay
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ophirpay"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://ophirpay:ophirpay@localhost:5432/ophirpay
+      DIRECT_DATABASE_URL: postgresql://ophirpay:ophirpay@localhost:5432/ophirpay
+      REDIS_URL: redis://localhost:6379
+      NODE_ENV: production
+      RATE_LIMIT_RPM: "100000"
+      NEXT_TELEMETRY_DISABLED: "1"
+      LOAD_TEST_BASE_URL: http://localhost:3000
+      BASE_URL: http://localhost:3000
+      PERFORMANCE_MARGIN: ${{ inputs.margin || '0.30' }}
+      LOAD_TEST_DURATION: ${{ inputs.duration || '8' }}
+      LOAD_TEST_CONNECTIONS: ${{ inputs.concurrency || '1,5,10,25,50' }}
+      CHECK_REGRESSIONS: "true"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup database schema
+        run: npx prisma db push
+
+      - name: Seed database
+        run: npx tsx prisma/seed.ts
+
+      - name: Generate load-test API key
+        id: api_key
+        run: |
+          RAW_KEY=$(node scripts/generate-load-test-key.mjs)
+          echo "LOAD_TEST_API_KEY=$RAW_KEY" >> $GITHUB_ENV
+          echo "::add-mask::$RAW_KEY"
+
+      - name: Build Next.js application
+        run: npm run build
+
+      - name: Start production server
+        run: |
+          npm start &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+
+          # Wait for server readiness
+          echo "Waiting for http://localhost:3000/api/health?probe=liveness..."
+          for i in {1..30}; do
+            if curl -s -f http://localhost:3000/api/health?probe=liveness > /dev/null 2>&1; then
+              echo "Server is ready after $i seconds."
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run API Load Tests
+        run: node scripts/load-test.js
+
+      - name: Run SSE Load Tests (100 concurrent clients)
+        env:
+          CONCURRENCY: "100"
+          DURATION_MS: "30000"
+        run: node scripts/sse-load-test.mjs
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -n "$SERVER_PID" ]; then
+            kill $SERVER_PID 2>/dev/null || true
+          fi
+
+      - name: Upload load test results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: tests/load/results/
+          if-no-files-found: ignore
+          retention-days: 14

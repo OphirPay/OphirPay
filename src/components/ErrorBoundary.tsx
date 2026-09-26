@@ -3,10 +3,13 @@
 
 
 import { Component, type ReactNode } from "react";
+import { reportRenderedError } from "@/lib/analytics-events";
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  segment?: string;
+  onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
 }
 
 interface State {
@@ -26,14 +29,25 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("[OphirPay ErrorBoundary]", error.message, errorInfo.componentStack);
+    reportRenderedError(error, undefined, this.props.segment);
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+    }
   }
 
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
 
+      const title = this.props.segment
+        ? `Error in ${this.props.segment}`
+        : "Something went wrong";
+
       return (
-        <div className="min-h-[400px] flex items-center justify-center p-8 animate-fade-in">
+        <div
+          data-testid={this.props.segment ? `error-boundary-${this.props.segment}` : "error-boundary"}
+          className="min-h-[400px] flex items-center justify-center p-8 animate-fade-in"
+        >
           <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-8 text-center">
             <div className="h-16 w-16 mx-auto rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
               <svg
@@ -52,7 +66,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </svg>
             </div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-              Something went wrong
+              {title}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
               {this.state.error?.message || "An unexpected error occurred."}

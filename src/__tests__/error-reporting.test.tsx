@@ -149,6 +149,25 @@ describe("reportRenderedError", () => {
       message: "Render crash",
     });
   });
+
+  it("tags error_occurred event with segment when provided", () => {
+    const err = new Error("Payments failed");
+    reportRenderedError(err, undefined, "payments");
+
+    expect(trackEventSpy).toHaveBeenCalledWith("error_occurred", {
+      route: "/dashboard",
+      message: "Payments failed",
+      segment: "payments",
+    });
+  });
+
+  it("does not throttle the same error across different segments", () => {
+    const err = new Error("Crash");
+    reportRenderedError(err, undefined, "payments");
+    reportRenderedError(err, undefined, "batches");
+
+    expect(trackEventSpy).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ── Component integration: error.tsx ────────────────────────────────────────

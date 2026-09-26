@@ -172,21 +172,50 @@ export interface AuthResult {
   scopes: string[];
 }
 
+export type ApiKeyAuthFailureReason =
+  | "MISSING_KEY"
+  | "INVALID_KEY"
+  | "REVOKED_KEY"
+  | "EXPIRED_KEY"
+  | "ROTATION_EXPIRED_KEY"
+  | "DB_UNAVAILABLE";
+
+export interface ApiKeyAuthDetails {
+  ok: boolean;
+  auth?: AuthResult;
+  reason?: ApiKeyAuthFailureReason;
+  message?: string;
+  rotationExpiresAt?: Date;
+  supersededById?: string;
+}
+
 /**
- * Authenticate a request against stored API keys.
- *
- * Uses an indexed lookup on (keyHash, prefix) so the query hits an index
- * rather than scanning every row — safe at any key volume.
+ * Authenticate a request against stored API keys with detailed outcome classification.
+ * Supports zero-downtime rotation overlap windows, explicit revocations, and expiry.
  */
-export async function authenticateRequest(
+export async function authenticateApiKeyDetails(
   request: Request
-): Promise<AuthResult | null> {
+): Promise<ApiKeyAuthDetails> {
   const rawKey = extractApiKey(request);
-  if (!rawKey) return null;
+  if (!rawKey) {
+    return {
+      ok: false,
+      reason: "MISSING_KEY",
+      message:
+        "Valid API key required. Use Authorization: Bearer <key> or X-API-Key header.",
+    };
+  }
+
   // Reject obviously malformed material before hitting the database. Accepts
   // both the current 32-byte format and the legacy 24-byte format so keys
   // issued before #701 still authenticate.
-  if (!API_KEY_LOOKUP_PATTERN.test(rawKey)) return null;
+  if (!API_KEY_LOOKUP_PATTERN.test(rawKey)) {
+    return {
+      ok: false,
+      reason: "INVALID_KEY",
+      message: "Invalid API key.",
+    };
+  }
 
   const prefix = deriveKeyPrefix(rawKey);
   const keyHashes = apiKeyLookupHashes(rawKey);
@@ -200,32 +229,89 @@ export async function authenticateRequest(
         name: true,
         expiresAt: true,
         scopes: true,
+        supersededById: true,
+        rotationExpiresAt: true,
+        revokedAt: true,
       },
     });
 
-    if (!apiKey) return null;
+    if (!apiKey) {
+      return {
+        ok: false,
+        reason: "INVALID_KEY",
+        message: "Invalid API key.",
+      };
+    }
 
-    // Check expiration
-    if (apiKey.expiresAt && apiKey.expiresAt < new Date()) return null;
+    // Check explicit revocation
+    if (apiKey.revokedAt) {
+      return {
+        ok: false,
+        reason: "REVOKED_KEY",
+        message: "This API key has been revoked and cannot be used.",
+      };
+    }
+
+    // Check normal expiration
+    if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+      return {
+        ok: false,
+        reason: "EXPIRED_KEY",
+        message: "This API key has expired.",
+      };
+    }
+
+    // Check rotation overlap expiration
+    // While now < rotationExpiresAt, the superseded key remains valid (overlap window).
+    // Once now >= rotationExpiresAt, the superseded key is rejected with a distinct reason.
+    if (apiKey.rotationExpiresAt && apiKey.rotationExpiresAt < new Date()) {
+      return {
+        ok: false,
+        reason: "ROTATION_EXPIRED_KEY",
+        message: `This API key was rotated and its overlap grace period expired on ${apiKey.rotationExpiresAt.toISOString()}. Please use the replacement key.`,
+        rotationExpiresAt: apiKey.rotationExpiresAt,
+        supersededById: apiKey.supersededById ?? undefined,
+      };
+    }
 
     // Update lastUsed — fire-and-forget so auth latency is not gated on this write
     prisma.apiKey
       .update({ where: { id: apiKey.id }, data: { lastUsed: new Date() } })
       .catch(() => {});
     prisma.apiKeyRequestLog
-      .create({ data: { keyId: apiKey.id } })
-      .catch(() => {});
+      ?.create({ data: { keyId: apiKey.id } })
+      ?.catch?.(() => {});
 
     return {
-      userId: apiKey.userId,
-      keyId: apiKey.id,
-      keyName: apiKey.name,
-      scopes: apiKey.scopes ?? [],
+      ok: true,
+      auth: {
+        userId: apiKey.userId,
+        keyId: apiKey.id,
+        keyName: apiKey.name,
+        scopes: apiKey.scopes ?? [],
+      },
     };
   } catch {
     // DB unavailable — reject rather than fail open
-    return null;
+    return {
+      ok: false,
+      reason: "DB_UNAVAILABLE",
+      message: "Authentication service temporarily unavailable.",
+    };
   }
+}
+
+/**
+ * Authenticate a request against stored API keys.
+ *
+ * Uses an indexed lookup on (keyHash, prefix) so the query hits an index
+ * rather than scanning every row — safe at any key volume.
+ */
+export async function authenticateRequest(
+  request: Request
+): Promise<AuthResult | null> {
+  const result = await authenticateApiKeyDetails(request);
+  return result.ok && result.auth ? result.auth : null;
 }
 
 // ── Route Helpers ──────────────────────────────────────────────
@@ -248,10 +334,12 @@ export function withApiAuth(
       return handler(request, ...args);
     }
 
-    const auth = await authenticateRequest(request);
-    if (!auth) {
+    const details = await authenticateApiKeyDetails(request);
+    if (!details.ok || !details.auth) {
       return unauthorizedError(
-        "Valid API key required. Use Authorization: Bearer <key> or X-API-Key header."
+        details.message ||
+          "Valid API key required. Use Authorization: Bearer <key> or X-API-Key header.",
+        details.reason ? { reason: details.reason } : undefined
       );
     }
     return handler(request, ...args);
@@ -272,13 +360,16 @@ export async function requireScopes(
   request: Request,
   required: ApiScope | ApiScope[]
 ): Promise<AuthResult | NextResponse> {
-  const auth = await authenticateRequest(request);
-  if (!auth) {
+  const details = await authenticateApiKeyDetails(request);
+  if (!details.ok || !details.auth) {
     return unauthorizedError(
-      "Valid API key required. Use Authorization: Bearer <key> or X-API-Key header."
+      details.message ||
+        "Valid API key required. Use Authorization: Bearer <key> or X-API-Key header.",
+      details.reason ? { reason: details.reason } : undefined
     );
   }
 
+  const auth = details.auth;
   const requiredList = Array.isArray(required) ? required : [required];
   if (!hasScope(auth.scopes, requiredList)) {
     return forbiddenError(
@@ -302,11 +393,13 @@ export async function requireScopes(
 export async function requireAuth(
   request: Request
 ): Promise<{ userId: string; keyId: string } | NextResponse> {
-  const auth = await authenticateRequest(request);
-  if (!auth) {
+  const details = await authenticateApiKeyDetails(request);
+  if (!details.ok || !details.auth) {
     return unauthorizedError(
-      "Valid API key required. Provide Authorization: Bearer <key> or X-API-Key header."
+      details.message ||
+        "Valid API key required. Provide Authorization: Bearer <key> or X-API-Key header.",
+      details.reason ? { reason: details.reason } : undefined
     );
   }
-  return { userId: auth.userId, keyId: auth.keyId };
+  return { userId: details.auth.userId, keyId: details.auth.keyId };
 }

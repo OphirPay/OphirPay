@@ -144,8 +144,8 @@ export function serverError(message = "Internal server error") {
   return errorResponse(ERROR_CODES.INTERNAL_ERROR, message, 500);
 }
 
-export function unauthorizedError(message = "Unauthorized") {
-  return errorResponse(ERROR_CODES.UNAUTHORIZED, message, 401);
+export function unauthorizedError(message = "Unauthorized", details?: unknown) {
+  return errorResponse(ERROR_CODES.UNAUTHORIZED, message, 401, details);
 }
 
 

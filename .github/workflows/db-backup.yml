@@ -4,14 +4,25 @@ on:
   schedule:
     - cron: "0 3 * * *"  # Daily at 3 AM UTC
   workflow_dispatch:      # Manual trigger
+    inputs:
+      check_freshness_only:
+        description: "Only check backup freshness without creating a new backup"
+        required: false
+        type: boolean
+        default: false
 
 env:
   BACKUP_BUCKET: ophirpay-backups
   BACKUP_RETENTION_DAYS: 30
+  MAX_BACKUP_AGE_HOURS: 26
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   backup:
-    name: Backup Postgres
+    name: Backup Postgres & Assert Freshness
     runs-on: ubuntu-latest
     env:
       DB_HOST: ${{ secrets.DB_HOST }}
@@ -21,14 +32,18 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup PostgreSQL client
+        if: ${{ !inputs.check_freshness_only }}
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Create backup
+        if: ${{ !inputs.check_freshness_only }}
         run: |
           set -euo pipefail
           : "${DB_HOST:?DB_HOST secret not set — add it to GitHub Actions secrets}"
@@ -60,7 +75,7 @@ jobs:
           : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY secret not set}"
           : "${AWS_REGION:?AWS_REGION secret not set}"
 
-      - name: Upload to S3
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -68,12 +83,14 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Push to S3
+        if: ${{ !inputs.check_freshness_only }}
         run: |
           : "${BACKUP_FILE:?Create backup step did not run}"
           aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_FILE}" \
             --storage-class STANDARD_IA
 
       - name: Cleanup old backups
+        if: ${{ !inputs.check_freshness_only }}
         run: |
           CUTOFF=$(date -d "-${BACKUP_RETENTION_DAYS} days" -u +"%Y-%m-%d")
           aws s3 ls "s3://${BACKUP_BUCKET}/" | while read -r line; do
@@ -85,7 +102,85 @@ jobs:
             fi
           done
 
-      - name: Notify on failure
+      - name: Assert backup freshness
+        run: |
+          chmod +x scripts/assert-backup-freshness.sh
+          bash scripts/assert-backup-freshness.sh \
+            --bucket "${BACKUP_BUCKET}" \
+            --max-age-hours "${MAX_BACKUP_AGE_HOURS}"
+
+      - name: Notify on failure (Slack and GitHub Incident Issue)
         if: failure()
         run: |
-          echo "::error::Database backup failed! Check the logs."
+          echo "::error::Database backup workflow failed! Executing failure notification..."
+
+          # 1. Dispatch Slack webhook if configured
+          if [[ -n "${SLACK_WEBHOOK_URL:-}" ]]; then
+            echo "Sending notification to Slack..."
+            curl -s -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"🚨 *[OphirPay Alert]* Database backup workflow failed!\n*Repository:* \`${GITHUB_REPOSITORY}\`\n*Run:* ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\n*Trigger:* \`${GITHUB_EVENT_NAME}\`\n*Commit:* \`${GITHUB_SHA}\`\n*DR Runbook:* ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/main/docs/DISASTER_RECOVERY.md\"}" \
+              "${SLACK_WEBHOOK_URL}" || echo "::warning::Failed to send Slack alert"
+          fi
+
+          # 2. Create or update GitHub tracking issue
+          if command -v gh >/dev/null 2>&1 && [[ -n "${GH_TOKEN:-}" ]]; then
+            echo "Checking for existing open backup tracking issue..."
+            EXISTING_ISSUE=$(gh issue list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --state open \
+              --search "Automated Database Backup Failure in:title" \
+              --json number \
+              --jq '.[0].number' 2>/dev/null || echo "")
+
+            if [[ -n "$EXISTING_ISSUE" ]]; then
+              echo "Updating existing tracking issue #${EXISTING_ISSUE}..."
+              COMMENT_FILE=$(mktemp)
+              {
+                echo "⚠️ **Database backup workflow failed again**"
+                echo ""
+                echo "- **Workflow Run**: [Run #${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+                echo "- **Trigger**: \`${GITHUB_EVENT_NAME}\`"
+                echo "- **Commit**: \`${GITHUB_SHA}\`"
+                echo "- **Timestamp**: \`$(date -u +"%Y-%m-%dT%H:%M:%SZ")\`"
+                echo ""
+                echo "Please inspect the run logs immediately. Ensure backups and freshness assertions are restored."
+                echo "Refer to [docs/DISASTER_RECOVERY.md](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/main/docs/DISASTER_RECOVERY.md)."
+              } > "$COMMENT_FILE"
+              gh issue comment "${EXISTING_ISSUE}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --body-file "$COMMENT_FILE" || echo "::warning::Failed to comment on tracking issue"
+              rm -f "$COMMENT_FILE"
+            else
+              echo "Creating new tracking issue..."
+              ISSUE_FILE=$(mktemp)
+              {
+                echo "## 🚨 Automated Database Backup Workflow Failure"
+                echo ""
+                echo "The scheduled nightly PostgreSQL backup workflow has failed or backup freshness assertion did not pass."
+                echo ""
+                echo "### Incident Summary"
+                echo "- **Workflow Run**: [Run #${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+                echo "- **Workflow File**: \`.github/workflows/db-backup.yml\`"
+                echo "- **Trigger**: \`${GITHUB_EVENT_NAME}\`"
+                echo "- **Commit**: \`${GITHUB_SHA}\`"
+                echo "- **Timestamp**: \`$(date -u +"%Y-%m-%dT%H:%M:%SZ")\`"
+                echo ""
+                echo "### Impact"
+                echo "Database backup was either not created, failed compression verification, or S3 upload/freshness assertion failed."
+                echo "If unaddressed within 26 hours, this directly violates the 24-hour RPO guarantee."
+                echo ""
+                echo "### Immediate Actions"
+                echo "1. Review the [GitHub Actions Run Logs](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
+                echo "2. Check database status and credentials (\`DB_HOST\`, \`DB_USER\`, \`DB_PASSWORD\`)."
+                echo "3. Check AWS S3 access and bucket policy (\`s3://${BACKUP_BUCKET}/\`)."
+                echo "4. Follow the disaster recovery runbook in [docs/DISASTER_RECOVERY.md](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/main/docs/DISASTER_RECOVERY.md)."
+                echo "5. Trigger a manual backup to confirm resolution: gh workflow run db-backup.yml"
+              } > "$ISSUE_FILE"
+              gh issue create \
+                --repo "${GITHUB_REPOSITORY}" \
+                --title "[Incident] Automated Database Backup Failure" \
+                --label "ci,bug" \
+                --body-file "$ISSUE_FILE" || echo "::warning::Failed to create tracking issue"
+              rm -f "$ISSUE_FILE"
+            fi
+          fi

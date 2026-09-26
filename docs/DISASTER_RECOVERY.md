@@ -11,7 +11,12 @@
 
 ## Table of Contents
 
-1. [Recovery Objectives (RPO & RTO)](#1-recovery-objectives-rpo--rto)
+1. [Recovery Objectives & Backup Policy](#1-recovery-objectives--backup-policy)
+   - [1.1 Recovery Objectives (RPO & RTO)](#11-recovery-objectives-rpo--rto)
+   - [1.2 Storage Location & Backup Artifacts](#12-storage-location--backup-artifacts)
+   - [1.3 Retention, Expiration & Pruning Policy](#13-retention-expiration--pruning-policy)
+   - [1.4 Freshness Policy & Staleness Threshold (SLO)](#14-freshness-policy--staleness-threshold-slo)
+   - [1.5 Automated Failure Notification & Incident Tracking](#15-automated-failure-notification--incident-tracking)
 2. [When to Declare a Disaster](#2-when-to-declare-a-disaster)
 3. [Pre-Requisites](#3-pre-requisites)
 4. [Phase 1 — Isolate & Communicate](#phase-1--isolate--communicate)
@@ -26,16 +31,101 @@
 
 ---
 
-## 1. Recovery Objectives (RPO & RTO)
+## 1. Recovery Objectives & Backup Policy
+
+### 1.1 Recovery Objectives (RPO & RTO)
 
 | Metric | Target | How it is met |
 |--------|--------|---------------|
 | **RPO** (Recovery Point Objective — maximum acceptable data loss) | **24 hours** | `.github/workflows/db-backup.yml` runs `pg_dump → gzip → S3` every day at **03:00 UTC** (`cron: "0 3 * * *"`). The worst-case scenario is a failure that occurs just before the next backup, meaning up to 24 hours of transactions must be reconciled from on-chain state (see [Phase 4](#phase-4--chainvs-database-reconciliation)). |
 | **RTO** (Recovery Time Objective — time to restore service) | **2 hours** | Breakdown: ~15 min to locate the backup and spin up a fresh PostgreSQL instance, ~30 min to restore + verify (depending on database size), ~45 min for chain reconciliation, ~15 min for traffic cutover and smoke testing. The 2-hour target assumes a single on-call engineer with the required credentials and tool access. |
+| **Freshness SLO** (Staleness threshold before alert) | **26 hours** | Defined as the 24-hour RPO backup frequency plus a 2-hour buffer for queue latency and execution duration. If the latest S3 backup is older than 26 hours, freshness assertions fail and trigger critical failure alerts. |
 
-Backups are stored in **S3 bucket `ophirpay-backups`** with the `STANDARD_IA`
-storage class and a **30-day retention policy**. This means up to 30 recovery
-points are available at any given time.
+---
+
+### 1.2 Storage Location & Backup Artifacts
+
+All production database backups are pushed to AWS Simple Storage Service (S3):
+
+* **Bucket:** `s3://${BACKUP_BUCKET}` (default: `s3://ophirpay-backups/`).
+* **Region:** `$AWS_REGION` (e.g., `us-east-1` or production database co-located region).
+* **Storage Class:** `STANDARD_IA` (Infrequent Access) — provides immediate, millisecond-latency retrieval during a disaster while reducing long-term storage costs.
+* **Naming Scheme:** `ophirpay-<YYYY-MM-DDTHH-MM-SSZ>.sql.gz`
+  * Example: `ophirpay-2026-09-25T03-00-00Z.sql.gz`
+* **Format:** Plain-text SQL dump created with `pg_dump --no-owner --no-acl`, piped directly through `gzip` with `pipefail` enabled to guarantee zero silent truncated dumps:
+  ```bash
+  PGPASSWORD="$DB_PASSWORD" pg_dump \
+    -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" \
+    --no-owner --no-acl | gzip > "${BACKUP_FILE}"
+  ```
+* **Integrity Invariant:** Each backup file is validated prior to upload (`test -s` for non-empty payload and `gzip -t` for valid gzip archive structure).
+
+---
+
+### 1.3 Retention, Expiration & Pruning Policy
+
+The database backup lifecycle balances disaster recovery granularity against cloud storage costs:
+
+1. **Daily Cadence:** Backups run automatically every night at **03:00 UTC** via GitHub Actions workflow `.github/workflows/db-backup.yml`.
+2. **Retention Horizon:** **30 Days** (`BACKUP_RETENTION_DAYS: 30`).
+   * Exactly 30 rolling daily recovery points are maintained in the backup bucket at all times.
+3. **Automated Pruning Mechanism:**
+   * At the conclusion of every successful backup run, the workflow computes an expiration cutoff timestamp:
+     ```bash
+     CUTOFF=$(date -d "-${BACKUP_RETENTION_DAYS} days" -u +"%Y-%m-%d")
+     ```
+   * Any S3 backup archive older than the cutoff is automatically removed via `aws s3 rm`.
+4. **S3 Bucket Lifecycle Safeguard:**
+   * In addition to in-workflow pruning, the S3 bucket is configured with an AWS Lifecycle rule (`Expiration: Days: 30`) to guarantee that orphaned objects expire automatically even if a workflow run terminates prematurely.
+5. **Long-Term / Compliance Archival (Optional):**
+   * Monthly snapshots required for regulatory or audit retention can be tagged and transitioned to S3 Glacier Deep Archive.
+
+---
+
+### 1.4 Freshness Policy & Staleness Threshold (SLO)
+
+A scheduled backup workflow that stops running produces no visible error in ordinary monitoring; the failure is only realized during a restore attempt. To prevent silent backup outages:
+
+* **Policy Rule:** **Freshness is asserted rather than assumed.**
+* **Staleness Threshold:** **26 Hours** (`MAX_BACKUP_AGE_HOURS: 26`).
+  * If the newest valid `.sql.gz` backup in S3 is older than 26 hours, the system is in violation of its 24-hour RPO.
+* **Freshness Assertion Script:** [`scripts/assert-backup-freshness.sh`](../scripts/assert-backup-freshness.sh)
+  * Can be invoked locally, by automated CI workflows, or by external synthetic monitoring:
+    ```bash
+    ./scripts/assert-backup-freshness.sh --bucket ophirpay-backups --max-age-hours 26
+    ```
+  * Parses the latest backup filename and timestamp, computes the exact age in seconds, and exits with code `1` and a GitHub Actions `::error::` annotation if stale or missing.
+* **Continuous Verification:**
+  * Executed automatically as the final verification step of `.github/workflows/db-backup.yml`.
+  * Executed as Step 1.1 of monthly disaster recovery drills (`scripts/restore-drill.sh`).
+
+---
+
+### 1.5 Automated Failure Notification & Incident Tracking
+
+When a backup workflow fails (due to database connection timeout, `pg_dump` failure, corrupted gzip archive, AWS credentials failure, S3 upload rejection, or a freshness assertion violation), it **visibly notifies maintainers**:
+
+1. **GitHub Incident Tracking Issue:**
+   * The workflow uses repository permissions (`issues: write`) to query for open tracking issues titled `[Incident] Automated Database Backup Failure`.
+   * **If none exists:** A new high-priority issue labeled `ci` and `bug` is opened automatically with run logs, commit SHA, and links to this runbook.
+   * **If an open issue already exists:** The workflow adds a comment linking the latest failed run, maintaining a consolidated incident timeline.
+2. **Slack Channel Alert:**
+   * If the secret `SLACK_WEBHOOK_URL` is configured, an immediate alert payload is dispatched to the incident response channel (e.g. `#ops-critical` / `#ops-alerts`).
+3. **Actions Summary Annotation:**
+   * Emits workflow-level `::error::` annotations for quick triage in the GitHub Actions summary.
+
+#### Operator Action Checklist on Backup Failure:
+1. Navigate to the failed run URL in the incident issue or Slack notification.
+2. Identify the failed step (e.g. `Create backup`, `Push to S3`, or `Assert backup freshness`).
+3. Verify database availability (`DB_HOST`) and test AWS credentials per [docs/SECRETS_ROTATION.md](./SECRETS_ROTATION.md).
+4. Run an out-of-band manual backup:
+   ```bash
+   gh workflow run db-backup.yml --repo OphirPay/OphirPay
+   ```
+5. Confirm the freshness assertion passes:
+   ```bash
+   bash scripts/assert-backup-freshness.sh
+   ```
 
 ---
 

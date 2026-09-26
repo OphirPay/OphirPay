@@ -16,6 +16,10 @@ import { useApiQuery } from "@/hooks/useApiQuery";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { ConvertedAmount } from "@/components/ui/ConvertedAmount";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import Link from "next/link";
@@ -30,6 +34,8 @@ interface OnChainData {
 export default function TreasuryDashboard() {
   usePageTitle(PAGE_TITLES.HOME);
   const { wallet, fetchBalance } = useWallet();
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
 
   const {
     data,
@@ -80,7 +86,16 @@ export default function TreasuryDashboard() {
             </span>
           </div>
         </div>
-        {wallet.connected && (
+        <div className="flex flex-wrap items-center gap-3">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            showPrice={currency === "USD"}
+            price={xlmPrice}
+            isUnavailable={isPriceUnavailable}
+            size="sm"
+          />
+          {wallet.connected && (
           <Link href="/send">
             <Button
               leftIcon={
@@ -103,7 +118,8 @@ export default function TreasuryDashboard() {
               Send Payment
             </Button>
           </Link>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ── Stats Cards ────────────────────────────────────── */}
@@ -118,10 +134,7 @@ export default function TreasuryDashboard() {
                 wallet.balanceLoading ? (
                   "Loading..."
                 ) : (
-                  <AnimatedNumber
-                    value={totalBalance}
-                    format={(n) => formatAmount(n, "XLM")}
-                  />
+                  <ConvertedAmount xlmValue={totalBalance} currency={currency} xlmPrice={xlmPrice} />
                 )
               }
               icon="⭐"
@@ -153,19 +166,15 @@ export default function TreasuryDashboard() {
             icon="💳"
             trend="On-chain"
           />
-          <StatCard
-            title="Recorded Volume"
-            value={
-              <AnimatedNumber value={volume} format={(n) => formatAmount(n, "XLM")} />
-            }
+            <StatCard
+              title="Recorded Volume"
+              value={<ConvertedAmount xlmValue={volume} currency={currency} xlmPrice={xlmPrice} />}
             icon="📊"
             trend={`Last ${payments.length} records`}
           />
-          <StatCard
-            title="Avg Payment"
-            value={
-              <AnimatedNumber value={avgPayment} format={(n) => formatAmount(n, "XLM")} />
-            }
+            <StatCard
+              title="Avg Payment"
+              value={<ConvertedAmount xlmValue={avgPayment} currency={currency} xlmPrice={xlmPrice} />}
             icon="✅"
             trend="On-chain"
           />

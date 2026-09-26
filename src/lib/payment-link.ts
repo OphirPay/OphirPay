@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MIT
 
+import {
+  buildSep7PayUri,
+  buildSep7DeepLink,
+  isValidSep7Uri,
+  parseSep7Destination,
+} from "@/lib/stellar-uri";
 import { isValidStellarAddress } from "@/lib/stellar";
 
 /**
@@ -74,10 +80,50 @@ export function generateStellarDeepLink(params: PaymentLinkParams): string {
 }
 
 /**
+ * Generate a SEP-7 URI for mobile wallet handoff.
+ * Uses both `web+stellar:` (preferred) and `stellar:` (fallback) formats.
+ * The `web+stellar:` scheme is the SEP-7 standard; `stellar:` is the
+ * deep-link variant for wallets that don't handle web+stellar.
+ *
+ * @returns Object with both URI formats and a flag indicating if mobile
+ *          deep linking is supported.
+ */
+export function generateSep7PaymentUri(
+  params: PaymentLinkParams
+): {
+  webPlusStellarUri: string;
+  stellarDeepLink: string;
+  supportsMobileHandoff: boolean;
+} {
+  const sep7Params: Parameters<typeof buildSep7PayUri>[0] = {
+    destination: params.destination,
+    amount: params.amount,
+    memo: params.memo,
+    assetCode: params.assetCode,
+    msg: params.message,
+  };
+
+  return {
+    webPlusStellarUri: buildSep7PayUri(sep7Params),
+    stellarDeepLink: buildSep7DeepLink(sep7Params),
+    supportsMobileHandoff: typeof window !== "undefined" &&
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent),
+  };
+}
+
+/**
  * Generate a QR code data URL for a payment request.
- * For production, integrate with a QR library like qrcode.
+ * For SEP-7 compatible wallets, uses the web+stellar: URI.
+ * Falls back to the stellar: deep link if needed.
  */
 export function generatePaymentQrData(params: PaymentLinkParams): string {
-  const link = generateStellarDeepLink(params);
-  return link;
+  // Prefer SEP-7 web+stellar: URI
+  const sep7Uri = buildSep7PayUri({
+    destination: params.destination,
+    amount: params.amount,
+    memo: params.memo,
+    assetCode: params.assetCode,
+    msg: params.message,
+  });
+  return sep7Uri;
 }

@@ -626,8 +626,13 @@ curl -X GET "https://api.ophirpay.com/api/health"
 ```
 
 ### Prometheus Metrics Endpoint
+
+> Requires the scrape credential (`METRICS_TOKEN`) as a bearer token. See
+> [Per-Endpoint Metrics](./metrics-endpoints.md).
+
 ```bash
-curl -X GET "https://api.ophirpay.com/api/metrics"
+curl -X GET -H "Authorization: Bearer $METRICS_TOKEN" \
+  "https://api.ophirpay.com/api/metrics"
 ```
 **Response (`200 OK` - Text/Plain Prometheus format):**
 ```text

@@ -62,6 +62,11 @@ describe("CurrencyToggle Component", () => {
     render(<CurrencyToggle value="USD" onChange={vi.fn()} showPrice={true} isUnavailable={true} />);
     expect(screen.getByTitle("Price feed unavailable")).toBeInTheDocument();
   });
+
+  it("displays stale indicator when showPrice is true and price is marked stale", () => {
+    render(<CurrencyToggle value="USD" onChange={vi.fn()} showPrice={true} isStale={true} />);
+    expect(screen.getByTitle("Price feed stale")).toBeInTheDocument();
+  });
 });
 
 describe("useCurrencyDisplay Hook", () => {
@@ -194,5 +199,31 @@ describe("useXlmPrice Hook", () => {
 
     unmount();
     vi.useRealTimers();
+  });
+
+  it("exposes staleness and rate-limit metadata when price is stale or rate-limited", async () => {
+    vi.spyOn(priceModule, "fetchXlmPrice").mockResolvedValue({
+      price: 0.12,
+      source: "cached",
+      timestamp: Date.now() - 120_000,
+      isStale: true,
+      staleAgeMs: 120_000,
+      rateLimited: true,
+      staleReason: "rate_limited",
+      error: "Price sources rate-limited (HTTP 429), using last known price",
+    });
+
+    const { result } = renderHook(() => useXlmPrice());
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(result.current.price).toBe(0.12);
+    expect(result.current.isStale).toBe(true);
+    expect(result.current.staleAgeMs).toBe(120_000);
+    expect(result.current.rateLimited).toBe(true);
+    expect(result.current.staleReason).toBe("rate_limited");
+    expect(result.current.isUnavailable).toBe(true);
   });
 });

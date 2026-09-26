@@ -18,7 +18,7 @@ jobs:
     steps:
       # Checkout the base branch (main) so the labeler reads the trusted
       # `.github/labeler.yml` rather than one from an untrusted PR head.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/labeler@v5
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}

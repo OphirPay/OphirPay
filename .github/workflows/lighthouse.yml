@@ -24,7 +24,7 @@ jobs:
       AUTH_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       NEXT_PUBLIC_APP_URL: "http://localhost:3000"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - name: Create .env.local
         run: |

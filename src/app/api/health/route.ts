@@ -4,6 +4,7 @@ import { withMetrics } from "@/lib/metrics-middleware";
 import prisma from "@/lib/prisma";
 import { STELLAR_NETWORK, SOROBAN_RPC_URL, HORIZON_URL } from "@/lib/stellar";
 import { OPHIRPAY_CONTRACT_ID } from "@/lib/contracts";
+import { getRpcFailoverSnapshot } from "@/lib/rpc-failover";
 import { successResponse, serverError } from "@/lib/api-response";
 import { withRequestLogging } from "@/lib/request-logging";
 
@@ -120,6 +121,12 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
         ? "ok"
         : "error";
 
+    // RPC failover state: which endpoint is serving traffic, how many
+    // transitions have occurred, and why each endpoint last failed.
+    const failover = getRpcFailoverSnapshot(STELLAR_NETWORK);
+    const toIso = (epochMs: number | null): string | null =>
+      epochMs === null ? null : new Date(epochMs).toISOString();
+
     const optionalChecks = [rpcStatus, horizonStatus, contractStatus, redisStatus].filter(
       (s: string) => s !== "disabled" && s !== "unchecked"
     );
@@ -140,6 +147,20 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
             horizonUrl: HORIZON_URL,
             rpc: { status: rpcStatus, latencyMs: rpcLatency },
             horizon: { status: horizonStatus, latencyMs: horizonLatency },
+            failover: {
+              activeRpcUrl: failover.activeUrl,
+              primaryRpcUrl: failover.primaryUrl,
+              onPrimary: failover.onPrimary,
+              failoverCount: failover.failoverCount,
+              lastTransitionAt: toIso(failover.lastTransitionAt),
+              endpoints: failover.endpoints.map((endpoint) => ({
+                url: endpoint.url,
+                isPrimary: endpoint.isPrimary,
+                isActive: endpoint.isActive,
+                lastFailureReason: endpoint.lastFailureReason,
+                lastFailureAt: toIso(endpoint.lastFailureAt),
+              })),
+            },
           },
           contract: {
             id: OPHIRPAY_CONTRACT_ID || null,

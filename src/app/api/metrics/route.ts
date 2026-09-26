@@ -7,6 +7,7 @@ import {
   getEndpointMetrics,
   LATENCY_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
+import { getAllRpcFailoverSnapshots } from "@/lib/rpc-failover";
 import { timingSafeEqual } from "@/lib/crypto";
 import { authenticateRequest } from "@/lib/api-auth";
 import { hasScope, ADMIN_SCOPE } from "@/lib/api-scopes";
@@ -132,6 +133,76 @@ function buildMetrics(): string {
     `ophirpay_db_query_duration_seconds_count ${c.db_query_duration_seconds_count}`,
     "",
   ];
+
+  // ── RPC failover state ──────────────────────────────────────
+  // Which Soroban RPC endpoint is serving traffic, how many transitions
+  // have occurred, and why each endpoint last failed. This is the first
+  // place an operator looks during an upstream RPC incident, and the
+  // `ophirpay_rpc_on_primary_endpoint` gauge backs the fallback alert.
+  const rpcSnapshots = getAllRpcFailoverSnapshots();
+
+  lines.push(
+    "# HELP ophirpay_rpc_failovers_total Total RPC endpoint transitions away from the previously active endpoint",
+    "# TYPE ophirpay_rpc_failovers_total counter",
+    ...rpcSnapshots.map(
+      (s) => `ophirpay_rpc_failovers_total{network="${s.network}"} ${s.failoverCount}`
+    ),
+    "",
+    "# HELP ophirpay_rpc_on_primary_endpoint Whether the active Soroban RPC endpoint is the configured primary (1) or a fallback (0)",
+    "# TYPE ophirpay_rpc_on_primary_endpoint gauge",
+    ...rpcSnapshots.map(
+      (s) =>
+        `ophirpay_rpc_on_primary_endpoint{network="${s.network}"} ${s.onPrimary ? 1 : 0}`
+    ),
+    "",
+    "# HELP ophirpay_rpc_endpoint_active Whether a Soroban RPC endpoint is currently serving traffic",
+    "# TYPE ophirpay_rpc_endpoint_active gauge"
+  );
+  for (const s of rpcSnapshots) {
+    for (const e of s.endpoints) {
+      lines.push(
+        `ophirpay_rpc_endpoint_active{network="${s.network}",endpoint="${escapeLabelValue(
+          e.url
+        )}",is_primary="${e.isPrimary}"} ${e.isActive ? 1 : 0}`
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "# HELP ophirpay_rpc_endpoint_last_failure_timestamp_seconds Unix timestamp of the most recent health-check failure per RPC endpoint",
+    "# TYPE ophirpay_rpc_endpoint_last_failure_timestamp_seconds gauge"
+  );
+  for (const s of rpcSnapshots) {
+    for (const e of s.endpoints) {
+      if (e.lastFailureAt !== null) {
+        lines.push(
+          `ophirpay_rpc_endpoint_last_failure_timestamp_seconds{network="${
+            s.network
+          }",endpoint="${escapeLabelValue(e.url)}"} ${e.lastFailureAt / 1000}`
+        );
+      }
+    }
+  }
+
+  lines.push(
+    "",
+    "# HELP ophirpay_rpc_endpoint_last_failure_info Most recent failure reason per RPC endpoint (value is always 1)",
+    "# TYPE ophirpay_rpc_endpoint_last_failure_info gauge"
+  );
+  for (const s of rpcSnapshots) {
+    for (const e of s.endpoints) {
+      if (e.lastFailureReason !== null) {
+        lines.push(
+          `ophirpay_rpc_endpoint_last_failure_info{network="${
+            s.network
+          }",endpoint="${escapeLabelValue(e.url)}",reason="${escapeLabelValue(
+            e.lastFailureReason
+          )}"} 1`
+        );
+      }
+    }
+  }
 
   // ── Per-endpoint latency histograms + error counts ──────────
   lines.push(

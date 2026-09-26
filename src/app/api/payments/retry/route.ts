@@ -5,15 +5,11 @@ import prisma from "@/lib/prisma";
 import { retryPaymentSchema } from "@/lib/validation-schemas";
 import {
   successResponse,
-  validationError,
   notFoundError,
   conflictError,
-  unauthorizedError,
-  handleApiError,
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
-import { getAuthContext } from "@/lib/auth-session";
-import { verifyCsrf } from "@/lib/csrf";
+import { withMutatingRoute } from "@/lib/api-wrapper";
 
 /**
  * POST /api/payments/retry
@@ -25,23 +21,13 @@ import { verifyCsrf } from "@/lib/csrf";
  * path (PENDING → SIGNED → SUBMITTED → … → COMPLETED) via the existing PATCH
  * transitions, which fire their usual webhooks.
  */
-export async function POST(request: Request) {
-  try {
-    const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
-
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
-    }
-
-    const body = await request.json().catch(() => null);
-    const parsed = retryPaymentSchema.safeParse(body ?? {});
-    if (!parsed.success) return validationError(parsed.error);
-
-    const { id } = parsed.data;
+export const POST = withMutatingRoute(
+  {
+    route: "POST /api/payments/retry",
+    bodySchema: retryPaymentSchema,
+  },
+  async ({ body, auth }) => {
+    const { id } = body;
 
     // Owner-scoped lookup — no IDOR across users; soft-deleted payments are
     // not retryable (they behave like they don't exist, consistent with #50).
@@ -81,7 +67,5 @@ export async function POST(request: Request) {
     });
 
     return successResponse(retried);
-  } catch (err) {
-    return handleApiError(err, "POST /api/payments/retry");
   }
-}
+);

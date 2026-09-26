@@ -155,6 +155,36 @@ export function auditRouteProtection(
 }
 
 /**
+ * Registry of routes that have explicit, reviewable CSRF opt-outs (e.g. cron triggers,
+ * external webhooks, or public integrations that authenticate through headers/signatures).
+ */
+export const CSRF_OPT_OUT_REGISTRY: Record<string, Partial<Record<string, string>>> = {
+  "/api/cron": { POST: "Authenticated via machine-to-machine x-cron-secret header" },
+  "/api/jobs/process-due-recurring": { POST: "Internal job runner authenticated via x-cron-secret header" },
+};
+
+/**
+ * Register an explicit CSRF opt-out for a mutating endpoint with an audited reason.
+ */
+export function registerCsrfOptOut(path: string, method: string, reason: string): void {
+  const trimmed = reason?.trim();
+  if (!trimmed) {
+    throw new Error(`CSRF opt-out for ${method.toUpperCase()} ${path} requires a non-empty reviewable reason`);
+  }
+  if (!CSRF_OPT_OUT_REGISTRY[path]) {
+    CSRF_OPT_OUT_REGISTRY[path] = {};
+  }
+  CSRF_OPT_OUT_REGISTRY[path][method.toUpperCase()] = trimmed;
+}
+
+/**
+ * Check if a route method is explicitly registered with an approved opt-out reason.
+ */
+export function isCsrfOptedOut(path: string, method: string): boolean {
+  return Boolean(CSRF_OPT_OUT_REGISTRY[path]?.[method.toUpperCase()]);
+}
+
+/**
  * List of all API routes and their CSRF protection status.
  * This is used by tests to verify no mutating route is unprotected.
  * Add routes here as they are audited.
@@ -173,7 +203,7 @@ export const CSRF_ROUTE_AUDIT = {
 } as const;
 
 /**
- * Find any mutating routes that lack CSRF protection.
+ * Find any mutating routes that lack CSRF protection and lack an explicit, approved opt-out.
  * Returns an array of "METHOD /path" strings for unprotected routes.
  */
 export function findUnprotectedRoutes(): string[] {
@@ -183,7 +213,10 @@ export function findUnprotectedRoutes(): string[] {
     for (const [method, isProtected] of Object.entries(methods)) {
       const audit = auditRouteProtection(method, isProtected);
       if (audit.isMutating && !audit.isProtected) {
-        unprotected.push(`${audit.method} ${path}`);
+        const optOutReason = CSRF_OPT_OUT_REGISTRY[path]?.[audit.method];
+        if (!optOutReason || optOutReason.trim().length === 0) {
+          unprotected.push(`${audit.method} ${path}`);
+        }
       }
     }
   }

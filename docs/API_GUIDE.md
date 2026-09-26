@@ -62,9 +62,27 @@ route (see the [checklist](#checklist)).
 
 ---
 
-## 2. Route handler skeleton
+## 2. Standardized Route Pipeline Wrappers (`src/lib/api-wrapper.ts`)
 
-Every handler follows the same shape:
+Instead of writing manual, repetitive preambles across endpoints, OphirPay standardizes all API route handlers on composable pipeline wrappers defined in [`src/lib/api-wrapper.ts`](../src/lib/api-wrapper.ts):
+
+- **`withMutatingRoute`**: For state-mutating requests (`POST`, `PATCH`, `DELETE`, `PUT`).
+- **`withQueryRoute`**: For read-only requests (`GET`, `HEAD`).
+- **`withAuth` & `withValidation`**: Composable primitives for custom route workflows.
+
+### Pipeline Guarantees
+
+Every wrapped endpoint automatically executes in this strict, security-hardened sequence:
+
+1. **Metrics Measurement:** Automatically wrapped in `withMetrics("METHOD /path")` for Prometheus latency and status metrics.
+2. **Request-ID Logging:** `withRequestLogging` generates or propagates `X-Request-Id` and logs execution duration.
+3. **Centralized Error Translation:** Entire execution wrapped in `try/catch` with `handleApiError`, returning sanitized JSON responses.
+4. **CSRF Protection:** Mutating routes automatically execute `verifyCsrf(request)` before handling any request data. Cannot be omitted without an explicit, reviewable `optOutCsrf` reason.
+5. **Authentication Verification:** Handlers resolve `getAuthContext(request)` and assert wallet session / API key validity. Cannot be omitted without an explicit, reviewable `optOutAuth` reason.
+6. **Zod Schema Validation:** Automatically parses `bodySchema` and/or `querySchema`, returning HTTP 400 `validationError` on mismatch and passing typed data into the handler.
+7. **Async Next.js 15 Route Params:** Resolves dynamic `params` (e.g. `[id]`) whether sync or async.
+
+### Mutating Route Skeleton (`POST` / `PATCH` / `DELETE` / `PUT`)
 
 ```ts
 // src/app/api/<resource>/route.ts
@@ -72,37 +90,75 @@ Every handler follows the same shape:
 
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { getAuthContext } from "@/lib/auth-session";
-import {
-  successResponse,
-  validationError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+import { successResponse, notFoundError } from "@/lib/api-response";
+import { withMutatingRoute } from "@/lib/api-wrapper";
 
-export async function GET(request: Request) {
-  try {
-    // 1. Authenticate
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
-    }
+const createResourceSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  amount: z.number().positive("Amount must be positive"),
+});
 
-    // 2. Validate input (see §3)
-    // 3. Query, scoped to the authenticated user
-    // 4. Respond with the standard envelope (see §6)
-  } catch (err) {
-    // 5. Central error mapping (see §4)
-    return handleApiError(err, "GET /api/<resource>");
+export const POST = withMutatingRoute(
+  {
+    route: "POST /api/<resource>",
+    bodySchema: createResourceSchema,
+  },
+  async ({ body, auth }) => {
+    // 1. Auth is guaranteed valid; always scope to auth.userId
+    const item = await prisma.resource.create({
+      data: {
+        name: body.name,
+        amount: body.amount,
+        userId: auth.userId,
+      },
+    });
+
+    // 2. Respond with standard envelope
+    return successResponse(item, undefined, 201);
   }
-}
+);
 ```
 
-The try/catch around the whole body is **mandatory** — `handleApiError` is what
-turns unexpected failures into consistent, masked error responses instead of
-unhandled 500s.
+### Read Route Skeleton (`GET`)
+
+```ts
+import { paginationSchema } from "@/lib/validation-schemas";
+import { successResponse } from "@/lib/api-response";
+import { withQueryRoute } from "@/lib/api-wrapper";
+
+export const GET = withQueryRoute(
+  {
+    route: "GET /api/<resource>",
+    querySchema: paginationSchema,
+  },
+  async ({ query, auth }) => {
+    const items = await prisma.resource.findMany({
+      where: { userId: auth.userId },
+      take: query.limit,
+    });
+    return successResponse(items);
+  }
+);
+```
+
+### Explicit Security Opt-Outs
+
+Any route that legitimately differs from the standard authenticated session pipeline must declare an explicit, reviewable reason. Empty or missing reasons are rejected at compile-time and runtime:
+
+```ts
+// Webhook receiver (no user session cookie, no CSRF from external senders)
+export const POST = withMutatingRoute(
+  {
+    route: "POST /api/webhooks/incoming",
+    bodySchema: webhookPayloadSchema,
+    optOutCsrf: "External webhook sender verified via cryptographic HMAC signature in headers",
+    optOutAuth: "Signature verification in handler replaces user session authentication",
+  },
+  async ({ body, request }) => {
+    // Signature verified inside handler
+  }
+);
+```
 
 ---
 
@@ -349,61 +405,45 @@ export const counterpartyQuerySchema = z.object({
 // SPDX-License-Identifier: MIT
 
 import prisma from "@/lib/prisma";
-import { getAuthContext } from "@/lib/auth-session";
-import {
-  successResponse,
-  validationError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+import { successResponse, errorResponse } from "@/lib/api-response";
 import { getRateLimitStore } from "@/lib/rate-limit";
 import {
   createCounterpartySchema,
   counterpartyQuerySchema,
 } from "@/lib/validation-schemas";
+import { withQueryRoute, withMutatingRoute } from "@/lib/api-wrapper";
 
-export async function GET(request: Request) {
-  try {
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
-    }
+export const GET = withQueryRoute(
+  {
+    route: "GET /api/counterparties",
+    querySchema: counterpartyQuerySchema,
+  },
+  async ({ query, auth }) => {
+    const where: {
+      userId: string;
+      name?: { contains: string; mode: "insensitive" };
+    } = { userId: auth.userId };
 
-    const { searchParams } = new URL(request.url);
-    const parsed = counterpartyQuerySchema.safeParse({
-      limit: searchParams.get("limit"),
-      search: searchParams.get("search"),
-    });
-    if (!parsed.success) return validationError(parsed.error);
-
-    const where = { userId: auth.userId };
-    if (parsed.data.search) {
-      where.name = { contains: parsed.data.search, mode: "insensitive" };
+    if (query.search) {
+      where.name = { contains: query.search, mode: "insensitive" };
     }
 
     const items = await prisma.counterparty.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: parsed.data.limit,
+      take: query.limit,
     });
 
-    return successResponse(items, { limit: parsed.data.limit });
-  } catch (err) {
-    return handleApiError(err, "GET /api/counterparties");
+    return successResponse(items, { limit: query.limit });
   }
-}
+);
 
-export async function POST(request: Request) {
-  try {
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
-    }
-
+export const POST = withMutatingRoute(
+  {
+    route: "POST /api/counterparties",
+    bodySchema: createCounterpartySchema,
+  },
+  async ({ body, auth }) => {
     // Stricter per-user limit than the global per-IP one (example of §7)
     const rate = await getRateLimitStore().increment(
       `user:${auth.userId}:counterparties`,
@@ -414,23 +454,17 @@ export async function POST(request: Request) {
       return errorResponse("RATE_LIMITED", "Too many requests", 429);
     }
 
-    const body = await request.json();
-    const parsed = createCounterpartySchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error);
-
     const item = await prisma.counterparty.create({
       data: {
-        ...parsed.data,
+        ...body,
         // Always derive ownership from auth — never trust a client-supplied userId
         userId: auth.userId,
       },
     });
 
     return successResponse(item, undefined, 201);
-  } catch (err) {
-    return handleApiError(err, "POST /api/counterparties");
   }
-}
+);
 ```
 
 > Note the `where` filter is always scoped to `auth.userId` — the single most
@@ -516,25 +550,27 @@ npm test            # vitest run
 Use this checklist before opening (or requesting review of) a PR that adds or
 changes an API endpoint:
 
-**Structure**
+**Structure & Pipeline**
 - [ ] Route file is `src/app/api/<resource>/route.ts` (plus `[id]/route.ts` only if needed)
 - [ ] File starts with `// SPDX-License-Identifier: MIT`
 - [ ] Handlers are named exports (`GET`/`POST`/`PATCH`/`DELETE`)
+- [ ] Uses `withMutatingRoute` for mutations (`POST`, `PATCH`, `DELETE`, `PUT`) or `withQueryRoute` for reads (`GET`)
 - [ ] Business logic lives in `src/lib/`, not in the route file
 
-**Validation**
-- [ ] All inputs validated with Zod (`safeParse`, never raw trust)
+**Validation & Schema**
+- [ ] All inputs validated with Zod via `bodySchema` and/or `querySchema`
 - [ ] Reusable schemas added to `src/lib/validation-schemas.ts`
 - [ ] Query params coerced with `z.coerce` and constrained (e.g. `limit` 1–100)
-- [ ] Invalid input returns `validationError(parsed.error)` (400, `VALIDATION_ERROR`)
+- [ ] Invalid input fails fast with HTTP 400 (`VALIDATION_ERROR`)
 
-**Auth & security**
-- [ ] `getAuthContext(request)` called; `null` → `unauthorizedError` (401)
-- [ ] Every query scoped to `auth.userId` (or `keyId`) — no cross-user reads
-- [ ] Client-supplied `userId`/ownership fields are ignored in favor of auth context
+**Auth & Security**
+- [ ] Authentication is strictly enforced by default; every query/mutation is scoped to `auth.userId`
+- [ ] If bypassing authentication (public reads, webhooks), an explicit `optOutAuth` with a reviewable reason is declared
+- [ ] CSRF protection is strictly enforced by default for mutating routes; if bypassing, an explicit `optOutCsrf` with a reviewable reason is declared
+- [ ] Client-supplied `userId`/ownership fields are ignored in favor of `auth.userId`
 
-**Errors**
-- [ ] Whole handler wrapped in try/catch → `handleApiError(err, "METHOD /path")`
+**Errors & Observability**
+- [ ] Handlers wrapped in pipeline wrappers (`withMutatingRoute` / `withQueryRoute`) ensuring metrics, logging, and `handleApiError` error translation
 - [ ] No hand-rolled error bodies; helpers from `src/lib/api-response.ts` used
 - [ ] Error codes reused from `src/lib/error-codes.ts` where applicable
 

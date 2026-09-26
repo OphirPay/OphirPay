@@ -7,6 +7,65 @@ import {
   getEndpointMetrics,
   LATENCY_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
+import { timingSafeEqual } from "@/lib/crypto";
+import { authenticateRequest } from "@/lib/api-auth";
+import { hasScope, ADMIN_SCOPE } from "@/lib/api-scopes";
+
+/**
+ * /api/metrics — Prometheus exposition endpoint.
+ *
+ * The body is a map of the running process: resident/heap memory, per-endpoint
+ * latency histograms and error counts labelled with method/endpoint/status,
+ * webhook delivery-attempt and final-outcome counters, and the live count of
+ * open SSE connections. On a public deployment that is a free inventory of the
+ * API surface with live error rates plus a cheap target for resource-exhaustion
+ * probing, so the endpoint requires a credential (issue #699):
+ *
+ *   • `Authorization: Bearer <METRICS_TOKEN>` — the static scrape credential
+ *     the in-cluster Prometheus service monitor is configured to send, or
+ *   • an API key (`Authorization: Bearer` / `X-API-Key`) carrying the `admin`
+ *     scope, for operators who already manage keys in the dashboard.
+ *
+ * Denying by default: when `METRICS_TOKEN` is unset and the request carries no
+ * usable key, the endpoint returns 401 and no metric body rather than failing
+ * open. The Prometheus exposition format is unchanged, so a scraper only needs
+ * to add the header.
+ */
+export const METRICS_TOKEN_ENV = "METRICS_TOKEN";
+
+/** Extract a bearer token from the Authorization header (case-insensitive). */
+export function extractBearerToken(request: Request | undefined): string | null {
+  const header = request?.headers.get("authorization");
+  if (!header) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match ? match[1]!.trim() : null;
+}
+
+/**
+ * Whether the request may read `/api/metrics`.
+ *
+ * The static token is compared in constant time. The API-key fallback is only
+ * attempted when the request actually carries a key, so an unauthenticated
+ * scrape never touches the database.
+ */
+export async function isAuthorizedMetricsRequest(
+  request: Request | undefined
+): Promise<boolean> {
+  const expected = process.env[METRICS_TOKEN_ENV];
+  const provided = extractBearerToken(request);
+  if (expected && provided && timingSafeEqual(provided, expected)) return true;
+
+  if (!request) return false;
+
+  const hasKeyHeader =
+    request.headers.get("x-api-key") !== null ||
+    request.headers.get("authorization") !== null;
+  if (!hasKeyHeader) return false;
+
+  const auth = await authenticateRequest(request);
+  // `admin` implicitly grants every scope, so an admin key can read metrics.
+  return auth !== null && hasScope(auth.scopes, [ADMIN_SCOPE]);
+}
 
 function escapeLabelValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -150,7 +209,35 @@ function buildMetrics(): string {
   return lines.join("\n") + "\n";
 }
 
-export const GET = withMetrics("GET /api/metrics", async function GET() {
+function unauthorizedMetricsResponse() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: {
+        code: "UNAUTHORIZED",
+        message:
+          `A valid metrics credential is required. Send "Authorization: Bearer <${METRICS_TOKEN_ENV}>" ` +
+          "or an API key carrying the admin scope.",
+      },
+      timestamp: new Date().toISOString(),
+    },
+    {
+      status: 401,
+      headers: {
+        "WWW-Authenticate": 'Bearer realm="ophirpay-metrics"',
+        "Cache-Control": "no-store",
+      },
+    }
+  );
+}
+
+export const GET = withMetrics("GET /api/metrics", async function GET(request: Request) {
+  // No credential → no body. Return before building the exposition so a
+  // configuration mistake cannot leak the process/endpoint internals.
+  if (!(await isAuthorizedMetricsRequest(request))) {
+    return unauthorizedMetricsResponse();
+  }
+
   return new NextResponse(buildMetrics(), {
     status: 200,
     headers: {

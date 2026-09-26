@@ -23,6 +23,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
@@ -34,6 +35,11 @@ jobs:
 
           if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${INTEGRATION_BRANCH}" >/dev/null 2>&1; then
             echo "Batch mode over: '${INTEGRATION_BRANCH}' does not exist. Passing."
+            exit 0
+          fi
+
+          if [ "${HEAD_REF}" = "${INTEGRATION_BRANCH}" ]; then
+            echo "PR #${PR_NUMBER} is the integration branch itself merging. Passing."
             exit 0
           fi
 

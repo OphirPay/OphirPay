@@ -13,9 +13,7 @@ import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, createHookSchema } from "@/lib/validation-schemas";
 import { isSafeWebhookUrl } from "@/lib/webhook-url-guard";
 import { withRequestLogging } from "@/lib/request-logging";
-
-/** Page size for the hook list. Mirrors the on-chain subscriber-hook reader. */
-export const HOOK_PAGE_LIMIT = 50;
+import { HOOK_PAGE_LIMIT } from "@/lib/hooks-pagination";
 
 export const GET = withMetrics("GET /api/hooks", withRequestLogging(async function GET(request: Request) {
   try {

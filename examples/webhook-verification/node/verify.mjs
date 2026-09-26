@@ -2,23 +2,28 @@
 /**
  * OphirPay webhook signature verification — reference implementation (Node.js)
  *
- * Canonicalization (must match `buildSignedPayload` in
+ * Signed material (must match `buildSignedPayload` in
  * `src/lib/webhook-deliver.ts`):
  *
- *   1. Parse the received JSON body.
- *   2. Set the `signature` field to "" — keep the key, empty the value.
+ *   `<timestamp>.<canonicalBody>`
+ *
+ *   1. Take the timestamp: the `X-OphirPay-Timestamp` header value, falling
+ *      back to the (also-signed) `timestamp` field of the body when absent.
+ *   2. Parse the received JSON body.
+ *   3. Set the `signature` field to "" — keep the key, empty the value.
  *      (Do NOT delete the key; the canonical string contains `"signature":""`.)
- *   3. Re-serialize with stable key order (JSON.stringify preserves the
+ *   4. Re-serialize with stable key order (JSON.stringify preserves the
  *      insertion order of the parsed body, which matches the sender's order).
- *   4. Compute HMAC-SHA256 (hex) over that canonical string using your
+ *   5. Compute HMAC-SHA256 (hex) over `<timestamp>.<canonicalBody>` using your
  *      webhook secret.
- *   5. Compare against the `X-OphirPay-Signature` header with a
+ *   6. Compare against the `X-OphirPay-Signature` header with a
  *      constant-time comparison.
+ *   7. Reject a timestamp outside the freshness window (replay protection).
  *
  * CLI:
  *
  *   node verify.mjs --secret <secret> --signature <hex> \
- *     [--body-file <path>] [--max-age <seconds>] [--now <iso>]
+ *     [--timestamp <iso>] [--body-file <path>] [--max-age <seconds>] [--now <iso>]
  *
  * Reads the body from `--body-file`, or stdin when omitted. Prints "VALID"
  * and exits 0 on success, or "INVALID: <reason>" and exits 1 otherwise.
@@ -50,6 +55,7 @@ export function canonicalize(body) {
  * @param {string} opts.body      raw request body (string)
  * @param {string} opts.signature value of the X-OphirPay-Signature header
  * @param {string} opts.secret    your webhook signing secret
+ * @param {string} [opts.timestamp] value of the X-OphirPay-Timestamp header
  * @param {number} [opts.maxAgeSeconds=300] replay window; 0 disables the check
  * @param {Date}   [opts.now]     reference time (defaults to the current time)
  * @returns {{ valid: boolean, reason: string }}
@@ -58,17 +64,25 @@ export function verifyWebhookSignature({
   body,
   signature,
   secret,
+  timestamp,
   maxAgeSeconds = DEFAULT_MAX_AGE_SECONDS,
   now = new Date(),
 }) {
+  let parsed;
   let canonical;
   try {
+    parsed = JSON.parse(body);
     canonical = canonicalize(body);
   } catch (err) {
     return { valid: false, reason: `invalid body: ${err.message}` };
   }
 
-  const expected = createHmac("sha256", secret).update(canonical).digest("hex");
+  // The timestamp is authenticated: it is prepended to the canonical body.
+  // Prefer the header; fall back to the body field (which is signed too).
+  const signedTimestamp = String(timestamp ?? parsed.timestamp ?? "");
+  const expected = createHmac("sha256", secret)
+    .update(`${signedTimestamp}.${canonical}`)
+    .digest("hex");
   const provided = String(signature ?? "");
   const providedBuf = Buffer.from(provided);
   const expectedBuf = Buffer.from(expected);
@@ -79,8 +93,7 @@ export function verifyWebhookSignature({
   }
 
   if (maxAgeSeconds > 0) {
-    const parsed = JSON.parse(body);
-    const ts = Date.parse(parsed.timestamp);
+    const ts = Date.parse(signedTimestamp);
     if (Number.isNaN(ts)) {
       return { valid: false, reason: "missing or invalid timestamp" };
     }
@@ -103,7 +116,14 @@ export function verifyWebhookSignature({
 }
 
 function parseArgs(argv) {
-  const args = { secret: null, signature: null, bodyFile: null, maxAge: null, now: null };
+  const args = {
+    secret: null,
+    signature: null,
+    timestamp: null,
+    bodyFile: null,
+    maxAge: null,
+    now: null,
+  };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
       case "--secret":
@@ -111,6 +131,9 @@ function parseArgs(argv) {
         break;
       case "--signature":
         args.signature = argv[++i];
+        break;
+      case "--timestamp":
+        args.timestamp = argv[++i];
         break;
       case "--body-file":
         args.bodyFile = argv[++i];
@@ -135,13 +158,13 @@ function main() {
   } catch (err) {
     console.error(`error: ${err.message}`);
     console.error(
-      "usage: node verify.mjs --secret <secret> --signature <hex> [--body-file <path>] [--max-age <seconds>] [--now <iso>]"
+      "usage: node verify.mjs --secret <secret> --signature <hex> [--timestamp <iso>] [--body-file <path>] [--max-age <seconds>] [--now <iso>]"
     );
     process.exit(2);
   }
   if (!args.secret || !args.signature) {
     console.error(
-      "usage: node verify.mjs --secret <secret> --signature <hex> [--body-file <path>] [--max-age <seconds>] [--now <iso>]"
+      "usage: node verify.mjs --secret <secret> --signature <hex> [--timestamp <iso>] [--body-file <path>] [--max-age <seconds>] [--now <iso>]"
     );
     process.exit(2);
   }
@@ -151,6 +174,7 @@ function main() {
     body,
     signature: args.signature,
     secret: args.secret,
+    timestamp: args.timestamp ?? undefined,
     maxAgeSeconds: args.maxAge ?? DEFAULT_MAX_AGE_SECONDS,
     now,
   });

@@ -20,6 +20,8 @@ const counters = {
   db_query_duration_seconds_count: 0,
   /** Gauge: currently open SSE event-stream connections (inc on connect, dec on disconnect). */
   sse_open_connections: 0,
+  /** Total number of Soroban RPC failovers */
+  rpc_failovers_total: 0,
 };
 
 export type MetricName = keyof typeof counters;

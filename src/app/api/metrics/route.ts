@@ -105,6 +105,10 @@ function buildMetrics(): string {
     "# TYPE ophirpay_webhooks_failed_total counter",
     `ophirpay_webhooks_failed_total ${c.webhooks_failed_total}`,
     "",
+    "# HELP ophirpay_rpc_failovers_total Total number of Soroban RPC failovers",
+    "# TYPE ophirpay_rpc_failovers_total counter",
+    `ophirpay_rpc_failovers_total ${c.rpc_failovers_total}`,
+    "",
     "# HELP ophirpay_delivery_attempts_total Total delivery attempts by delivery type and attempt number",
     "# TYPE ophirpay_delivery_attempts_total counter",
     ...c.delivery_attempts.map(

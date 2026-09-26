@@ -50,6 +50,9 @@ describe("GET /api/health", () => {
     expect(body.data.status).toBe("ok");
     expect(body.data.services.database.status).toBe("ok");
     expect(body.data.services.stellar.rpc.status).toBe("ok");
+    expect(body.data.services.stellar.rpc.failover).toBeDefined();
+    expect(body.data.services.stellar.rpc.failover.failoverCount).toBe(0);
+    expect(body.data.services.stellar.rpc.failover.onFallback).toBe(false);
     expect(body.data.services.stellar.horizon.status).toBe("ok");
     expect(body.data.services.contract.status).toBe("ok");
   });

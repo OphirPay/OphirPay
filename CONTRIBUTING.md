@@ -263,7 +263,37 @@ Contract WASM size is enforced in CI (hard limit: 128 KB per contract, the
 Soroban protocol limit) by the `contract-regression` job in
 `.github/workflows/contract-regression.yml`.
 
+### Contract Modular Architecture & Line Budgets
+
+The OphirPay contract (`contracts/ophirpay/src/`) is split into domain-focused modules to prevent merge conflicts, improve code review navigability, and maintain byte-identical public ABI parity:
+
+| Module | Responsibility | Line Budget | Actual Lines |
+|---|---|---|---|
+| `lib.rs` | Root crate wiring, module declarations, re-exports, and `OphirPayContract` struct declaration | ≤ 100 lines | ~52 |
+| `storage_keys.rs` | Symbol constants, persistent record key namespaces, TTLs, and reader caps | ≤ 200 lines | ~119 |
+| `types.rs` | Domain data structures, records, and enums | ≤ 500 lines | ~390 |
+| `errors.rs` | Complete `PaymentError` taxonomy | ≤ 800 lines | ~655 |
+| `events.rs` | Native Soroban event publishers (`payment`, `escrow`, `stream`) | ≤ 100 lines | ~35 |
+| `helpers.rs` | Counter mutators, fee math, reentrancy lock guard, and linear vesting calculation | ≤ 400 lines | ~270 |
+| `payments.rs` | Direct payment recording, lookups, and range queries | ≤ 300 lines | ~141 |
+| `escrows.rs` | Escrow creation, release, arbiter resolution, and claim | ≤ 400 lines | ~271 |
+| `streams.rs` | Stream lifecycle and linear token vesting | ≤ 400 lines | ~229 |
+| `recurring.rs` | Scheduled and periodic recurring payment schedules | ≤ 400 lines | ~238 |
+| `refunds.rs` | Refund requests, approval, processing, and reason code analytics | ≤ 400 lines | ~274 |
+| `governance.rs` | DAO proposals, voting, execution, and timelocked actions | ≤ 600 lines | ~445 |
+| `multisig.rs` | M-of-N multisig config and approval flow | ≤ 500 lines | ~301 |
+| `hooks.rs` | Webhook notification hook registration and queries | ≤ 300 lines | ~189 |
+| `batches.rs` | Atomic batch payments and partial failure handling | ≤ 300 lines | ~192 |
+| `admin.rs` | Contract initialization, ownership, pause, fees, spending limits, roles, and upgrades | ≤ 1,500 lines | ~1,224 |
+| `tests.rs` | Unit and property test harness | ≤ 3,000 lines | ~2,554 |
+
+**Line budget rules:**
+- No single production domain module may exceed 1,500 lines.
+- `lib.rs` must remain a thin wiring file under 100 lines.
+- Public function signatures and WASM export entrypoints must maintain byte-for-byte ABI parity with the published contract specification.
+
 ## Pull Request Process
+
 
 1. Create a branch from the branch the issue targets (`main`, or
    `integration/staging` while batch mode is active): `feat/my-feature` or
@@ -380,7 +410,7 @@ and the required CI checks listed above.
   contract
 - [ ] Contract WASM stays under the 128 KB Soroban protocol limit (CI
   enforces it)
-- [ ] Rust tests added/updated in the contract's `src/lib.rs` and passing
+- [ ] Rust tests added/updated in the contract's domain module or `src/tests.rs` and passing
 - [ ] If the contract ABI changed: TypeScript types updated in
   `src/types/contract-abi.ts`
 

@@ -16,6 +16,7 @@ const counters = {
   batches_processed_total: 0,
   webhooks_delivered_total: 0,
   webhooks_failed_total: 0,
+  csp_reports_total: 0,
   db_query_duration_seconds_sum: 0,
   db_query_duration_seconds_count: 0,
   /** Gauge: currently open SSE event-stream connections (inc on connect, dec on disconnect). */
@@ -60,6 +61,11 @@ function finalOutcomeKey(
 /** Increment a named counter. */
 export function incMetric(name: MetricName, delta = 1): void {
   counters[name] += delta;
+}
+
+/** Increment the CSP violation reports counter. */
+export function incCspReports(delta = 1): void {
+  counters.csp_reports_total += delta;
 }
 
 /** Count one delivery attempt for a webhook or batch delivery path. */

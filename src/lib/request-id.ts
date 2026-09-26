@@ -4,6 +4,8 @@ import { randomUUID } from "crypto";
 import { headers } from "next/headers";
 
 const REQUEST_ID_HEADER = "X-Request-Id";
+const TRACEPARENT_HEADER = "traceparent";
+const TRACE_ID_HEADER = "X-Trace-Id";
 
 /**
  * Get or create a request ID for the current request.
@@ -21,11 +23,29 @@ export async function getRequestId(): Promise<string> {
 }
 
 /**
- * Add request ID header to API responses for tracing.
+ * Add request ID header to API responses for tracing and correlation.
  */
 export function withRequestId(response: Response, requestId: string): Response {
   response.headers.set(REQUEST_ID_HEADER, requestId);
   return response;
 }
 
-export { REQUEST_ID_HEADER };
+/**
+ * Add distributed trace correlation headers to API responses when tracing is active.
+ */
+export function withTraceHeaders(
+  response: Response,
+  requestId?: string,
+  traceId?: string
+): Response {
+  if (requestId) {
+    response.headers.set(REQUEST_ID_HEADER, requestId);
+  }
+  if (traceId) {
+    response.headers.set(TRACE_ID_HEADER, traceId);
+  }
+  return response;
+}
+
+export { REQUEST_ID_HEADER, TRACEPARENT_HEADER, TRACE_ID_HEADER };
+

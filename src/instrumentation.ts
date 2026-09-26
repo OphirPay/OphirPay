@@ -13,6 +13,17 @@ export async function register() {
     process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.NEXT_PHASE !== "phase-production-build"
   ) {
+    // Initialize OpenTelemetry Tracing (opt-in; disabled by default)
+    try {
+      const { initTracing } = await import("@/lib/tracing");
+      await initTracing();
+    } catch (error) {
+      console.warn(
+        "[OphirPay] OpenTelemetry tracing initialization failed:",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+
     const { bootstrap } = await import("@/lib/startup");
     await bootstrap();
 

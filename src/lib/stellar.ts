@@ -11,6 +11,12 @@ import {
   Keypair,
 } from "@stellar/stellar-sdk";
 import { getStellarErrorMessage } from "./stellar-error";
+import {
+  withSpan,
+  SpanKind,
+  getCurrentRequestId,
+  redactTraceAttributes,
+} from "@/lib/tracing";
 
 // ── Batch Recipient ───────────────────────────────────────────
 
@@ -557,12 +563,33 @@ export async function buildBatchPaymentTx(params: {
 export async function submitSignedTx(
   signedXdr: string
 ): Promise<SubmitResult> {
-  const server = getHorizonServer();
-  const transaction = TransactionBuilder.fromXDR(
-    signedXdr,
-    NETWORK_PASSPHRASE
+  return withSpan(
+    "horizon.submit_transaction",
+    async (span) => {
+      const server = getHorizonServer();
+      const transaction = TransactionBuilder.fromXDR(
+        signedXdr,
+        NETWORK_PASSPHRASE
+      );
+      const txHash = transaction.hash().toString("hex");
+
+      span.setAttributes(
+        redactTraceAttributes({
+          "stellar.tx_hash": txHash,
+          "horizon.operation": "submit_transaction",
+          "request.id": getCurrentRequestId(),
+        })
+      );
+
+      const result = await server.submitTransaction(transaction);
+      span.setAttribute(
+        "horizon.successful",
+        (result as { successful?: boolean }).successful ?? true
+      );
+      return result;
+    },
+    { kind: SpanKind.CLIENT }
   );
-  return server.submitTransaction(transaction);
 }
 
 /** Derive the public key of the account behind a Stellar secret key. */
@@ -587,17 +614,33 @@ export async function submitPaymentFromSecret(params: {
   assetCode?: string;
   assetIssuer?: string;
 }): Promise<SubmitResult> {
-  const { sourceSecret, ...payment } = params;
-  const keypair = Keypair.fromSecret(sourceSecret);
+  return withSpan(
+    "stellar.submit_payment",
+    async (span) => {
+      span.setAttributes(
+        redactTraceAttributes({
+          "stellar.destination": params.destination,
+          "payment.amount": params.amount,
+          "payment.asset": params.assetCode || "XLM",
+          "memo": params.memo, // redacted per PII policy
+          "request.id": getCurrentRequestId(),
+        })
+      );
 
-  const { xdr } = await buildPaymentTx({
-    sourcePublicKey: keypair.publicKey(),
-    ...payment,
-  });
+      const { sourceSecret, ...payment } = params;
+      const keypair = Keypair.fromSecret(sourceSecret);
 
-  const tx = TransactionBuilder.fromXDR(xdr, NETWORK_PASSPHRASE);
-  tx.sign(keypair);
-  return submitSignedTx(tx.toXDR());
+      const { xdr } = await buildPaymentTx({
+        sourcePublicKey: keypair.publicKey(),
+        ...payment,
+      });
+
+      const tx = TransactionBuilder.fromXDR(xdr, NETWORK_PASSPHRASE);
+      tx.sign(keypair);
+      return submitSignedTx(tx.toXDR());
+    },
+    { kind: SpanKind.CLIENT }
+  );
 }
 
 /**

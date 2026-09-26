@@ -32,6 +32,12 @@ import { getHorizonServer } from "@/lib/stellar";
 import { logger } from "@/lib/logger";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
+import {
+  withSpan,
+  SpanKind,
+  getCurrentRequestId,
+  redactTraceAttributes,
+} from "@/lib/tracing";
 
 export type SyncTrigger = "cron" | "admin";
 
@@ -86,20 +92,41 @@ function isHorizonNotFound(err: unknown): boolean {
  * reconciliation loop keeps going and the run still completes.
  */
 async function lookupOnChainOutcome(txHash: string): Promise<OnChainOutcome> {
-  try {
-    const htx = await getHorizonServer()
-      .transactions()
-      .transaction(txHash)
-      .call();
-    return htx.successful ? "success" : "failed";
-  } catch (err) {
-    if (isHorizonNotFound(err)) return "not_found";
-    logger.warn("payment-sync: Horizon lookup failed", {
-      txHash,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return "error";
-  }
+  return withSpan(
+    "horizon.get_transaction",
+    async (span) => {
+      span.setAttributes(
+        redactTraceAttributes({
+          "stellar.tx_hash": txHash,
+          "horizon.operation": "get_transaction",
+          "request.id": getCurrentRequestId(),
+        })
+      );
+
+      try {
+        const htx = await getHorizonServer()
+          .transactions()
+          .transaction(txHash)
+          .call();
+        const outcome = htx.successful ? "success" : "failed";
+        span.setAttribute("horizon.outcome", outcome);
+        return outcome;
+      } catch (err) {
+        if (isHorizonNotFound(err)) {
+          span.setAttribute("horizon.outcome", "not_found");
+          return "not_found";
+        }
+        span.recordException(err);
+        span.setAttribute("horizon.outcome", "error");
+        logger.warn("payment-sync: Horizon lookup failed", {
+          txHash,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return "error";
+      }
+    },
+    { kind: SpanKind.CLIENT }
+  );
 }
 
 /**

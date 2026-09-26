@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import { getCurrentTraceId, getCurrentSpanId } from "@/lib/tracing";
+
 /**
  * Structured logger for API requests and application events.
  * In production, replace console.log with a proper logger (e.g., pino, winston).
@@ -59,11 +61,20 @@ function formatEntry(entry: LogEntry): string {
 }
 
 function log(level: LogLevel, message: string, context?: Record<string, unknown>) {
+  const traceId = (context?.traceId as string) || getCurrentTraceId();
+  const spanId = (context?.spanId as string) || getCurrentSpanId();
+
+  const enrichedContext: Record<string, unknown> = {
+    ...(context ?? {}),
+    ...(traceId ? { traceId } : {}),
+    ...(spanId ? { spanId } : {}),
+  };
+
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
     level,
     message,
-    context,
+    context: Object.keys(enrichedContext).length > 0 ? enrichedContext : undefined,
   };
 
   const line = formatEntry(entry);

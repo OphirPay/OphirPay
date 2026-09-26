@@ -52,6 +52,17 @@ export const CHAIN_READ_SOURCE =
 // Legacy alias
 export const DEFAULT_CONTRACT_ID = OPHIRPAY_CONTRACT_ID;
 
+/**
+ * Maximum entries an enumerating contract reader returns in a single call.
+ *
+ * Mirrors `MAX_READER_ENTRIES` in `contracts/ophirpay/src/lib.rs` (issue #742,
+ * SPEC.md INV-11): `get_payments_by_batch` and `get_subscriber_hooks` return
+ * `{ items, total, truncated }` capped at this many entries. API routes that
+ * expose the same data apply the identical ceiling and surface the same
+ * truncation flag, so a client never mistakes a capped list for a complete one.
+ */
+export const CONTRACT_READER_ENTRY_CAP = 100;
+
 // ── 3 Error Types ──────────────────────────────────────────────
 
 export enum ContractErrorType {

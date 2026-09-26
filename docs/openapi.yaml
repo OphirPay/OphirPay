@@ -1003,6 +1003,30 @@ paths:
           $ref: "#/components/responses/NotFound"
 
   /api/webhooks/{id}/test:
+    get:
+      tags: [Webhooks]
+      summary: Preview a signed webhook test request
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: event
+          in: query
+          schema: { type: string }
+        - name: timestamp
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Exact canonical body, wire body, headers, and validated target URL
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     post:
       tags: [Webhooks]
       summary: Send a test webhook delivery
@@ -1081,6 +1105,28 @@ paths:
           description: Delivery history (original + replay attempts)
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /api/webhooks/{id}/deliveries/{deliveryId}:
+    get:
+      tags: [Webhooks]
+      summary: Get a webhook delivery record
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: deliveryId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Full webhook delivery record, including request preview and response body
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/webhooks/{id}/deliveries/{deliveryId}/redeliver:
     post:
@@ -1864,11 +1910,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
 
+  /api/health/live:
+    get:
+      tags: [Health]
+      summary: Liveness probe (process only)
+      description: >-
+        Lightweight liveness signal (issue #738): proves the Node process is up
+        and serving HTTP, with no database, Soroban RPC, Horizon or Redis I/O.
+        Orchestrators should wire this to `livenessProbe` / container
+        healthchecks so a transient dependency outage cannot restart-loop a
+        healthy container. The dependency-aware readiness check remains
+        `GET /api/health` (503 while the database is unreachable). Both paths
+        are exempt from the global rate limiter.
+      responses:
+        "200":
+          description: Process is alive and serving
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: object
+                    required: [status, probe, version]
+                    properties:
+                      status: { type: string, enum: [ok] }
+                      probe: { type: string, enum: [liveness] }
+                      version: { type: string }
+                      uptime:
+                        type: number
+                        description: Seconds since the process started
+                  meta:
+                    type: object
+                    properties:
+                      timestamp: { type: string, format: date-time }
+
   # ── Metrics ───────────────────────────────────────────────
   /api/metrics:
     get:
       tags: [Metrics]
       summary: Prometheus metrics endpoint
+      description: |
+        Prometheus text exposition. Now authenticated: send
+        `Authorization: Bearer $METRICS_TOKEN`, or an API key carrying the
+        `admin` scope via `Authorization: Bearer` / `X-API-Key`. Unauthenticated
+        requests receive `401` with no metric body. See
+        `docs/metrics-endpoints.md` for the scrape configuration.
+      security: [{ BearerAuth: [] }, { ApiKeyAuth: [] }]
       responses:
         "200":
           description: Prometheus text format metrics
@@ -1876,6 +1966,8 @@ paths:
             text/plain:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ── Jobs & Cron ──────────────────────────────────────────
   /api/cron:
@@ -1938,11 +2030,14 @@ paths:
       summary: Contract pause state
       description: |
         Reads the on-chain `is_paused` flag from the payment contract via a
-        simulated contract call.
+        simulated contract call. `scopes` lists the ids returned by
+        `get_paused_scopes` for the per-feature pause flags (0 Payments,
+        1 Escrows, 2 Streams, 3 Recurring, 4 Refunds, 5 Governance, 6 Hooks,
+        7 Batches).
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       responses:
         "200":
-          description: Pause state ({ paused, available })
+          description: Pause state ({ paused, available, scopes })
         "401":
           $ref: "#/components/responses/Unauthorized"
 

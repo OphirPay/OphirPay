@@ -344,8 +344,10 @@ proptest! {
         prop_assert_eq!(batch.timestamp, timestamp);
 
         let payments = h.client.get_payments_by_batch(&summary.batch_id);
-        prop_assert_eq!(payments.len(), 2);
-        for p in payments.iter() {
+        prop_assert_eq!(payments.total, 2);
+        prop_assert!(!payments.truncated);
+        prop_assert_eq!(payments.items.len(), 2);
+        for p in payments.items.iter() {
             prop_assert_eq!(p.timestamp, timestamp);
         }
         prop_assert_eq!(h.client.get_locked_balance(), 0);

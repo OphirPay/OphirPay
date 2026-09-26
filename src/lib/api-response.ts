@@ -21,6 +21,13 @@ interface ApiSuccess<T> {
     nextCursor?: string | null;
     /** Whether more rows exist after this page. */
     hasMore?: boolean;
+    /**
+     * True when a reader had to cap its result set (#742). Mirrors the
+     * `truncated` flag on the on-chain `PaymentList` / `HookList` readers and
+     * the governance proposal list: callers must treat the payload as partial
+     * instead of assuming it is complete.
+     */
+    truncated?: boolean;
     /** True when a request was replayed with an already-seen idempotency key. */
     deduplicated?: boolean;
     /** True when a replayed batch resumed its missing child payments. */
@@ -82,7 +89,9 @@ export function successResponse<T>(
   data: T,
   meta?: ApiSuccess<T>["meta"],
   status = 200,
-  cacheHeader?: string
+  // A bare string sets `Cache-Control`; a record sets arbitrary response
+  // headers (e.g. `readCacheHeaders()` → Cache-Control + X-Cache-Status, #741).
+  cacheHeader?: string | Record<string, string>
 ) {
   const response = NextResponse.json(
     {
@@ -92,8 +101,12 @@ export function successResponse<T>(
     } satisfies ApiSuccess<T>,
     { status }
   );
-  if (cacheHeader) {
+  if (typeof cacheHeader === "string") {
     response.headers.set("Cache-Control", cacheHeader);
+  } else if (cacheHeader) {
+    for (const [key, value] of Object.entries(cacheHeader)) {
+      response.headers.set(key, value);
+    }
   }
   return response;
 }

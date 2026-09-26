@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
-import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import {
   successResponse,
@@ -13,10 +12,9 @@ import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import {
   deriveKeyPrefix,
-  API_SCOPES,
   generateApiKey,
-  validateApiKeyFormat,
-  hashApiKey,
+  hashApiKeyV1,
+  API_SCOPES,
 } from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
 import { verifyCsrf } from "@/lib/csrf";
@@ -74,10 +72,8 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
 
 /**
  * POST /api/keys — generate a new API key for the authenticated user.
- * The raw key is returned only once; only the peppered HMAC-SHA256 hash is stored.
- * Enforces minimum 32 bytes (256 bits) of CSPRNG random material.
- * Accepts an optional `scopes` array to restrict what the key can do,
- * and an optional custom `key` string which is validated against the format requirement.
+ * The raw key is returned only once; only the hash is stored.
+ * Accepts an optional `scopes` array to restrict what the key can do.
  */
 export const POST = withMetrics("POST /api/keys", withRequestLogging(async function POST(request: Request) {
   try {
@@ -90,7 +86,6 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
     const body = (await request.json().catch(() => ({}))) as {
       name?: string;
       scopes?: unknown;
-      key?: string;
     };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
@@ -102,24 +97,10 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
       return badRequestError(parsed.error ?? "Invalid scopes");
     }
 
-    let rawKey: string;
-    if (typeof body.key === "string" && body.key.trim().length > 0) {
-      const customKey = body.key.trim();
-      const validation = validateApiKeyFormat(customKey);
-      if (!validation.valid) {
-        return badRequestError(validation.reason ?? "Invalid API key format");
-      }
-      rawKey = customKey;
-    } else {
-      rawKey = generateApiKey(32);
-    }
-
-    const validation = validateApiKeyFormat(rawKey);
-    if (!validation.valid) {
-      return badRequestError(validation.reason ?? "Invalid API key format");
-    }
-
-    const keyHash = hashApiKey(rawKey);
+    // `generateApiKey` mints 32 CSPRNG bytes (issue #701) and fails closed if
+    // the result ever drifts from the documented `oph_` + 64-hex format.
+    const rawKey = generateApiKey();
+    const keyHash = hashApiKeyV1(rawKey);
     const prefix = deriveKeyPrefix(rawKey);
 
     const apiKey = await prisma.apiKey.create({

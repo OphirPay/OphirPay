@@ -36,118 +36,115 @@ export {
  * unlike the previous pattern that fetched every key and compared in-app.
  */
 
-// ── Hashing & Key Format ───────────────────────────────────────
+// ── Key format ─────────────────────────────────────────────────
 
 /**
  * Length of the API key prefix used for indexed lookups + display.
  * MUST be identical in key creation (src/app/api/keys/route.ts) and
  * lookup here — a mismatch silently breaks every authenticated request.
  */
-export const API_KEY_PREFIX = "oph_";
 export const API_KEY_PREFIX_LENGTH = 8;
-export const MIN_API_KEY_ENTROPY_BYTES = 32; // Minimum 32 bytes (256 bits) of CSPRNG entropy
-export const MIN_API_KEY_HEX_LENGTH = MIN_API_KEY_ENTROPY_BYTES * 2; // 64 hex characters
-export const MIN_API_KEY_LENGTH = API_KEY_PREFIX.length + MIN_API_KEY_HEX_LENGTH; // 68 characters
 
-export interface ApiKeyValidationResult {
-  valid: boolean;
-  reason?: string;
-}
+/** Prefix every OphirPay API key starts with. */
+export const API_KEY_PREFIX = "oph_";
 
 /**
- * Validate that an API key conforms to the minimum entropy and prefix requirements:
- * Must start with `oph_` and contain at least 32 bytes (64 hex characters) of random material.
+ * Number of CSPRNG bytes in the random portion of a key (issue #701).
+ * 32 bytes = 256 bits of entropy, which keeps the stored digest out of reach
+ * of an offline brute-force even if the database leaks.
  */
-export function validateApiKeyFormat(rawKey: string): ApiKeyValidationResult {
-  if (typeof rawKey !== "string") {
-    return { valid: false, reason: "API key must be a string" };
-  }
-  if (!rawKey.startsWith(API_KEY_PREFIX)) {
-    return {
-      valid: false,
-      reason: `API key must start with prefix '${API_KEY_PREFIX}'`,
-    };
-  }
-  const randomPart = rawKey.slice(API_KEY_PREFIX.length);
-  if (randomPart.length < MIN_API_KEY_HEX_LENGTH) {
-    return {
-      valid: false,
-      reason: `API key random material must be at least ${MIN_API_KEY_ENTROPY_BYTES} bytes (${MIN_API_KEY_HEX_LENGTH} hex characters); got ${randomPart.length} chars`,
-    };
-  }
-  if (!/^[0-9a-fA-F]+$/.test(randomPart)) {
-    return {
-      valid: false,
-      reason: "API key random material must contain only valid hexadecimal characters",
-    };
-  }
-  return { valid: true };
-}
+export const API_KEY_RANDOM_BYTES = 32;
+
+/** Lowercase hex characters produced by `API_KEY_RANDOM_BYTES`. */
+export const API_KEY_RANDOM_HEX_LENGTH = API_KEY_RANDOM_BYTES * 2;
 
 /**
- * Generate a cryptographically secure random API key with minimum 32 bytes of CSPRNG entropy.
+ * Hex length of keys minted before issue #701 (24 CSPRNG bytes / 192 bits).
+ * Recognized at auth time so those keys keep working after the upgrade.
  */
-export function generateApiKey(entropyBytes: number = MIN_API_KEY_ENTROPY_BYTES): string {
-  const bytes = Math.max(entropyBytes, MIN_API_KEY_ENTROPY_BYTES);
-  return `${API_KEY_PREFIX}${crypto.randomBytes(bytes).toString("hex")}`;
-}
+export const API_KEY_LEGACY_HEX_LENGTH = 48;
+
+/**
+ * The documented key format: `oph_` + 64 lowercase hex characters
+ * (32 CSPRNG bytes). Matched by the creation path.
+ */
+export const API_KEY_PATTERN = new RegExp(
+  `^${API_KEY_PREFIX}[0-9a-f]{${API_KEY_RANDOM_HEX_LENGTH}}$`
+);
+
+/**
+ * Shapes accepted at *auth* time: the current 32-byte format plus the legacy
+ * 24-byte format. Anything else is rejected before touching the database.
+ */
+export const API_KEY_LOOKUP_PATTERN = new RegExp(
+  `^${API_KEY_PREFIX}(?:[0-9a-f]{${API_KEY_LEGACY_HEX_LENGTH}}|[0-9a-f]{${API_KEY_RANDOM_HEX_LENGTH}})$`
+);
+
+/** Digests are stored version-tagged so a future KDF migration can be staged. */
+export const API_KEY_DIGEST_VERSION = "v1";
 
 /** Derive the stable lookup prefix for a raw API key. */
 export function deriveKeyPrefix(rawKey: string): string {
   return rawKey.slice(0, API_KEY_PREFIX_LENGTH);
 }
 
-/**
- * Server-side pepper for API key hashing.
- * Reads API_KEY_PEPPER or AUTH_SECRET, falling back to a deterministic dev secret.
- */
-export function getApiKeyPepper(): string {
-  return (
-    process.env.API_KEY_PEPPER ||
-    process.env.AUTH_SECRET ||
-    "ophirpay-default-api-key-pepper-0000000000000000"
-  );
+/** True when `rawKey` matches the documented creation format. */
+export function isValidApiKeyFormat(
+  rawKey: string | null | undefined
+): boolean {
+  return typeof rawKey === "string" && API_KEY_PATTERN.test(rawKey);
 }
 
-/** Legacy unpeppered SHA-256 hash (backward compatibility with existing keys). */
-export function hashLegacyApiKey(rawKey: string): string {
+/** Throw unless `rawKey` matches the documented creation format. */
+export function assertValidApiKeyFormat(rawKey: string): void {
+  if (!isValidApiKeyFormat(rawKey)) {
+    throw new Error(
+      `Invalid API key format: expected "${API_KEY_PREFIX}" followed by ` +
+        `${API_KEY_RANDOM_HEX_LENGTH} hex characters ` +
+        `(${API_KEY_RANDOM_BYTES} CSPRNG bytes).`
+    );
+  }
+}
+
+/**
+ * Generate a new API key: `oph_` + 32 CSPRNG bytes as lowercase hex.
+ * Fails closed if the generated value ever drifts from the documented format
+ * (e.g. a stubbed `crypto.randomBytes` in a test or a future refactor).
+ */
+export function generateApiKey(): string {
+  const rawKey = `${API_KEY_PREFIX}${crypto
+    .randomBytes(API_KEY_RANDOM_BYTES)
+    .toString("hex")}`;
+  assertValidApiKeyFormat(rawKey);
+  return rawKey;
+}
+
+// ── Hashing ────────────────────────────────────────────────────
+
+/**
+ * Legacy digest: unsalted SHA-256 hex. Retained so keys created before the
+ * `v1:` tag (and before the 32-byte format) continue to authenticate.
+ */
+export function hashApiKey(rawKey: string): string {
   return crypto.createHash("sha256").update(rawKey).digest("hex");
 }
 
 /**
- * Hash a raw API key using HMAC-SHA256 with a server-side pepper and a version tag.
- * Stored digest format: `v1$<hex>`
+ * Current digest: `v1:<sha256 hex>`. The version tag is stored in the same
+ * `keyHash` column, so a future pepper/KDF migration has somewhere to live
+ * without a schema change — older digests keep authenticating meanwhile.
  */
-export function hashApiKey(rawKey: string, pepper = getApiKeyPepper()): string {
-  const digest = crypto.createHmac("sha256", pepper).update(rawKey).digest("hex");
-  return `v1$${digest}`;
+export function hashApiKeyV1(rawKey: string): string {
+  return `${API_KEY_DIGEST_VERSION}:${hashApiKey(rawKey)}`;
 }
 
 /**
- * Constant-time comparison between raw key and a stored hash (supporting v1$ and legacy SHA-256).
+ * Every stored digest a raw key may match, newest format first. The auth
+ * lookup queries `keyHash: { in: … }` with these so pre-#701 keys (bare
+ * SHA-256) and post-#701 keys (`v1:` prefixed) both resolve.
  */
-export function verifyApiKeyHash(
-  rawKey: string,
-  storedHash: string,
-  pepper = getApiKeyPepper(),
-): boolean {
-  if (storedHash.startsWith("v1$")) {
-    const expected = hashApiKey(rawKey, pepper);
-    const expectedBuf = Buffer.from(expected);
-    const storedBuf = Buffer.from(storedHash);
-    return (
-      expectedBuf.length === storedBuf.length &&
-      crypto.timingSafeEqual(expectedBuf, storedBuf)
-    );
-  }
-  // Legacy plain SHA-256 hash
-  const legacyExpected = hashLegacyApiKey(rawKey);
-  const expectedBuf = Buffer.from(legacyExpected);
-  const storedBuf = Buffer.from(storedHash);
-  return (
-    expectedBuf.length === storedBuf.length &&
-    crypto.timingSafeEqual(expectedBuf, storedBuf)
-  );
+export function apiKeyLookupHashes(rawKey: string): string[] {
+  return [hashApiKeyV1(rawKey), hashApiKey(rawKey)];
 }
 
 // ── Header Extraction ──────────────────────────────────────────
@@ -178,31 +175,29 @@ export interface AuthResult {
 /**
  * Authenticate a request against stored API keys.
  *
- * Uses an indexed lookup on (prefix, keyHash) supporting both v1 peppered
- * HMAC-SHA256 digests and legacy plain SHA-256 digests so existing API keys
- * keep authenticating without disruption.
+ * Uses an indexed lookup on (keyHash, prefix) so the query hits an index
+ * rather than scanning every row — safe at any key volume.
  */
 export async function authenticateRequest(
   request: Request
 ): Promise<AuthResult | null> {
   const rawKey = extractApiKey(request);
   if (!rawKey) return null;
+  // Reject obviously malformed material before hitting the database. Accepts
+  // both the current 32-byte format and the legacy 24-byte format so keys
+  // issued before #701 still authenticate.
+  if (!API_KEY_LOOKUP_PATTERN.test(rawKey)) return null;
 
   const prefix = deriveKeyPrefix(rawKey);
-  const v1Hash = hashApiKey(rawKey);
-  const legacyHash = hashLegacyApiKey(rawKey);
+  const keyHashes = apiKeyLookupHashes(rawKey);
 
   try {
     const apiKey = await prisma.apiKey.findFirst({
-      where: {
-        prefix,
-        keyHash: { in: [v1Hash, legacyHash] },
-      },
+      where: { keyHash: { in: keyHashes }, prefix },
       select: {
         id: true,
         userId: true,
         name: true,
-        keyHash: true,
         expiresAt: true,
         scopes: true,
       },
@@ -213,20 +208,10 @@ export async function authenticateRequest(
     // Check expiration
     if (apiKey.expiresAt && apiKey.expiresAt < new Date()) return null;
 
-    // If key authenticated with legacy SHA-256 hash, transparently migrate to v1 peppered hash
-    if (apiKey.keyHash === legacyHash) {
-      prisma.apiKey
-        .update({
-          where: { id: apiKey.id },
-          data: { keyHash: v1Hash, lastUsed: new Date() },
-        })
-        .catch(() => {});
-    } else {
-      prisma.apiKey
-        .update({ where: { id: apiKey.id }, data: { lastUsed: new Date() } })
-        .catch(() => {});
-    }
-
+    // Update lastUsed — fire-and-forget so auth latency is not gated on this write
+    prisma.apiKey
+      .update({ where: { id: apiKey.id }, data: { lastUsed: new Date() } })
+      .catch(() => {});
     prisma.apiKeyRequestLog
       .create({ data: { keyId: apiKey.id } })
       .catch(() => {});

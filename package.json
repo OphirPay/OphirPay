@@ -2,6 +2,10 @@
   "name": "ophirpay",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": "20.x"
+  },
   "description": "Open-source payment orchestration layer for Stellar — smart contracts, webhooks, batch payments, refunds, multisig, governance, and real-time event streaming",
   "homepage": "https://ophirpay.vercel.app",
   "repository": {
@@ -33,6 +37,7 @@
     "defi"
   ],
   "scripts": {
+    "preinstall": "node scripts/check-node.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -43,6 +48,8 @@
     "db:migrate:status": "prisma migrate status",
     "db:studio": "prisma studio",
     "coverage": "vitest run --coverage",
+    "analyze": "node scripts/analyze-build.mjs",
+    "bundle:check": "node scripts/check-bundle-budget.mjs",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:push": "prisma db push",
     "db:validate": "prisma validate && prisma generate",
@@ -55,7 +62,10 @@
     "audit:deps": "node scripts/audit-dependencies.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:a11y": "playwright test e2e/accessibility.spec.ts"
+    "test:visual": "playwright test -c playwright.visual.config.ts",
+    "test:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots",
+    "test:a11y": "playwright test e2e/accessibility.spec.ts",
+    "generate-errors": "tsx scripts/regenerate-errors.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -74,6 +84,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@next/bundle-analyzer": "^16.3.6",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.1.6",
     "@testing-library/dom": "^10.4.1",
@@ -93,6 +104,7 @@
     "fast-check": "^3.23.2",
     "js-yaml": "^4.3.2",
     "jsdom": "^29.1.1",
+    "magicast": "^0.3.5",
     "prisma": "^6.5.0",
     "puppeteer": "^25.4.0",
     "tailwindcss": "^4.1.6",

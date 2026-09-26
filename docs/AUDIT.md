@@ -281,7 +281,13 @@ and re-run the IP/hostname check against the final resolved address after follow
 
 1. **`compute_vested` returns `0` on multiplication overflow** (`lib.rs` L884): a silent
    under-vest instead of capping at `total_amount`. `claim_stream` also uses non-saturating
-   `vested - claimed_amount`.
+   `vested - claimed_amount`. — ✅ **FIXED (2026-09-24).** The multiply is now evaluated at
+   256-bit precision (checked `i128` fast path plus a quotient/remainder fallback), so an
+   overflowing product yields the exact vested value instead of `0`. Capping at
+   `total_amount` was rejected: with `total_amount = i128::MAX` and a 4-second schedule it
+   would vest the entire stream 2 seconds in, letting the recipient drain the contract.
+   `claim_stream` uses `checked_sub` and returns `StreamInvariantViolated` (307) if the
+   INV-5 ceiling is ever breached (#691).
 2. **`approve_refund` / `reject_refund` / `process_refund` lack `require_not_paused`** — refunds
    can settle during an emergency pause.
 3. **`request_refund` does not tie `asset`/`amount` to the payment** (see HIGH-1).
@@ -302,10 +308,14 @@ and re-run the IP/hostname check against the final resolved address after follow
    canonicalizes the HMAC over `JSON.stringify({...payload, signature: ""})` and transmits the
    body with the real signature populated; a receiver empties the `signature` field and
    re-serializes to recompute an identical HMAC. Covered by `src/__tests__/webhook-deliver.test.ts`.
-10. **API keys hashed with plain SHA-256** — ✅ **FIXED.** Enforced minimum 32-byte CSPRNG
-    random entropy (`oph_[0-9a-f]{64,}`) at creation (`POST /api/keys`). Stored digests use
-    versioned, server-side peppered HMAC-SHA256 (`v1$<digest>`), while backward-compatibility ensures
-    existing legacy SHA-256 keys still authenticate seamlessly and are upgraded on use.
+   **Replay hardening (2026-09-25, issue #702):** the signed input is now
+   `<X-OphirPay-Timestamp>.<canonical body>`, so the timestamp header is authenticated and a
+   captured delivery cannot be re-dated; the reference verifiers and docs enforce a 300s
+   freshness window on the signed timestamp.
+10. **API keys hashed with plain SHA-256** — ✅ **FIXED (issue #701).** Enforced minimum 32-byte CSPRNG
+    random entropy (`oph_[0-9a-f]{64}`) at creation (`POST /api/keys`). Stored digests use
+    versioned format (`v1:<digest>`), while backward-compatibility ensures
+    existing legacy SHA-256 keys still authenticate seamlessly.
 11. **Test-count drift (resolved)**: the README previously advertised "13 suites / 187 app tests /
     251 total"; it now correctly reports 806 app tests across 33 suites, 67 contract tests, and 97
     Playwright e2e cases.
@@ -359,7 +369,7 @@ and re-run the IP/hostname check against the final resolved address after follow
 | P0 | HIGH-1 refund path bypasses LOCKED_BALANCE | ✅ Fixed | Medium |
 | P0 | HIGH-2 correct or remove "formally verified" claims | ✅ Fixed (README honesty note + badge removed; VERIFICATION.md retitled to "Modeled Invariants" with an explicit caveat) | Low |
 | P1 | MEDIUM-1 `check_spending` unauthenticated mutation | ✅ Fixed | Low |
-| P1 | MEDIUM-2 bound all enumeration | ✅ Fixed (`get_payments_range` + `get_reason_code_analytics` capped at 100, most-recent-first) | Low |
+| P1 | MEDIUM-2 bound all enumeration | ✅ Fixed (`get_payments_range` + `get_reason_code_analytics` capped at 100, most-recent-first; #742 added the same cap + truncation flag to `get_payments_by_batch` / `get_subscriber_hooks`) | Low |
 | P1 | MEDIUM-3 emitter allow-list | ✅ Fixed (deploy + `set_allowed_source` pending) | Low |
 | P1 | MEDIUM-6 webhook SSRF redirect bypass | ✅ Fixed | Low |
 | P2 | MEDIUM-4 reentrancy on token-moving fns | ✅ Fixed (`REENTRANCY_LOCK` now wraps all token-transfer paths: escrow release/claim, stream claim/cancel, proposal deposit/refund, refund processing, emergency ops) | Medium |
@@ -368,8 +378,15 @@ and re-run the IP/hostname check against the final resolved address after follow
 
 > **MEDIUM-2 note:** `get_payments_range` now iterates the most-recent tail first and stops at
 > 100 entries (matching `get_audit_log_range`), and `get_reason_code_analytics` scans only the
-> most recent 100 refunds. `get_payments_by_batch` and `get_subscriber_hooks` iterate their
-> inherently-bounded inputs (batch payment IDs / subscriber hook IDs) and need no cap.
+> most recent 100 refunds.
+>
+> **Update (issue #742):** `get_payments_by_batch` and `get_subscriber_hooks` are now capped and
+> report truncation too. The earlier rationale — "their inputs are inherently bounded" — only
+> holds if the upstream lists are bounded, and they are not: a subscriber can register an
+> unlimited number of hooks, and a batch written before the `BatchTooLarge` guard existed can
+> hold more payment ids than `create_batch` accepts today. Both readers return at most
+> `MAX_READER_ENTRIES` (100) entries, newest first, plus a `truncated` flag (`PaymentList` /
+> `HookList`). See SPEC.md INV-11.
 
 ---
 

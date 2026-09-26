@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHash } from "node:crypto";
 
 // Mock dependencies
 vi.mock("@/lib/prisma", () => ({
@@ -260,7 +261,7 @@ describe("API Routes: Auth, CSRF & Keys", () => {
       expect(res.status).toBe(400);
     });
 
-    it("POST creates and returns new API key with at least 32 bytes entropy", async () => {
+    it("POST creates and returns new API key", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce({ userId: "u123" });
       vi.mocked(prisma.apiKey.create).mockResolvedValueOnce({
         id: "key_created_1",
@@ -277,65 +278,19 @@ describe("API Routes: Auth, CSRF & Keys", () => {
       expect(res.status).toBe(201);
       const data = await res.json();
       expect(data.data.id).toBe("key_created_1");
-      expect(data.data.key).toMatch(/^oph_[a-f0-9]{64,}$/);
-    });
+      // Issue #701: 32 CSPRNG bytes (64 hex) behind the oph_ prefix.
+      expect(data.data.key).toMatch(/^oph_[a-f0-9]{64}$/);
 
-    it("POST rejects custom key shorter than 32 bytes (64 hex chars)", async () => {
-      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce({ userId: "u123" });
-      const res = await postKeys(
-        new Request("http://localhost/api/keys", {
-          method: "POST",
-          body: JSON.stringify({ name: "Short Key", key: "oph_shortkey123" }),
-        })
+      const createArgs = vi.mocked(prisma.apiKey.create).mock.calls[0]![0] as {
+        data: { keyHash: string; prefix: string };
+      };
+      // Stored digest is version-tagged; the lookup prefix is the raw key's
+      // first 8 characters (a mismatch here breaks every authenticated call).
+      expect(createArgs.data.keyHash).toMatch(/^v1:[a-f0-9]{64}$/);
+      expect(createArgs.data.prefix).toBe(data.data.key.slice(0, 8));
+      expect(createArgs.data.keyHash).toBe(
+        `v1:${createHash("sha256").update(data.data.key).digest("hex")}`
       );
-      expect(res.status).toBe(400);
-      const data = await res.json();
-      expect(data.error.message).toContain("at least 32 bytes");
-    });
-
-    it("POST rejects custom key without oph_ prefix or with non-hex characters", async () => {
-      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce({ userId: "u123" });
-      const res1 = await postKeys(
-        new Request("http://localhost/api/keys", {
-          method: "POST",
-          body: JSON.stringify({ name: "No Prefix", key: "a".repeat(68) }),
-        })
-      );
-      expect(res1.status).toBe(400);
-      const data1 = await res1.json();
-      expect(data1.error.message).toContain("must start with prefix 'oph_'");
-
-      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce({ userId: "u123" });
-      const res2 = await postKeys(
-        new Request("http://localhost/api/keys", {
-          method: "POST",
-          body: JSON.stringify({ name: "Bad Hex", key: "oph_" + "z".repeat(64) }),
-        })
-      );
-      expect(res2.status).toBe(400);
-      const data2 = await res2.json();
-      expect(data2.error.message).toContain("hexadecimal");
-    });
-
-    it("POST accepts valid custom key with >= 32 bytes entropy", async () => {
-      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce({ userId: "u123" });
-      const customKey = "oph_" + "f".repeat(64);
-      vi.mocked(prisma.apiKey.create).mockResolvedValueOnce({
-        id: "key_custom_1",
-        name: "Custom Key",
-        prefix: "oph_ffff",
-      } as never);
-
-      const res = await postKeys(
-        new Request("http://localhost/api/keys", {
-          method: "POST",
-          body: JSON.stringify({ name: "Custom Key", key: customKey }),
-        })
-      );
-      expect(res.status).toBe(201);
-      const data = await res.json();
-      expect(data.data.id).toBe("key_custom_1");
-      expect(data.data.key).toBe(customKey);
     });
 
     it("DELETE returns 401 when unauthenticated", async () => {

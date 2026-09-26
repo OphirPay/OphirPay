@@ -62,7 +62,8 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
       const start = Date.now();
       await prisma.$queryRaw`SELECT 1`;
       dbLatency = Date.now() - start;
-    } catch {
+    } catch (err) {
+      console.error("[HealthCheck] Database connection failed:", err);
       dbStatus = "error";
     }
 

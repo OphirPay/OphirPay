@@ -101,6 +101,7 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/events` | GET |
 | `/api/events/history` | GET |
 | `/api/health` | GET |
+| `/api/health/live` | GET |
 | `/api/metrics` | GET |
 | `/api/cron` | GET, POST |
 | `/api/jobs/process-due-recurring` | POST |
@@ -609,7 +610,7 @@ data: {"id":"pay_98234ab1c09d","amount":"250.00","asset":"USDC","status":"COMPLE
 
 ## 12. System Health & Metrics
 
-### Check System Health
+### Check System Health (readiness)
 ```bash
 curl -X GET "https://api.ophirpay.com/api/health"
 ```
@@ -622,6 +623,33 @@ curl -X GET "https://api.ophirpay.com/api/health"
   "sorobanRpc": "connected",
   "database": "connected",
   "timestamp": "2026-08-26T19:10:00.000Z"
+}
+```
+This is the **readiness** signal: it pings the database (critical), Soroban RPC,
+Horizon and Redis, and returns `503` while the database is unreachable. Wire it
+to a Kubernetes `readinessProbe` so traffic drains without a restart.
+
+### Check Liveness (`/api/health/live`)
+
+The **liveness** signal performs no dependency I/O — it only proves the process
+is up and serving HTTP. Use it for container healthchecks and
+`livenessProbe`, so a transient Postgres/RPC/Redis outage cannot restart-loop a
+healthy container. It is exempt from the global rate limiter.
+
+```bash
+curl -X GET "https://api.ophirpay.com/api/health/live"
+```
+**Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "ok",
+    "probe": "liveness",
+    "version": "0.1.0",
+    "uptime": 4123.5
+  },
+  "meta": { "timestamp": "2026-09-25T03:00:00.000Z" }
 }
 ```
 

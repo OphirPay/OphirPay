@@ -813,3 +813,125 @@ fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
     assert_eq!(fix.token_client.balance(&recipient), total);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SCOPED PAUSE TESTS (issue #826)
+//
+// Scopes are exposed as numeric ids so the contract can reject an unknown id
+// with a clear error: Payments = 0, Escrows = 1, Streams = 2, Recurring = 3,
+// Refunds = 4, Governance = 5, Hooks = 6, Batches = 7.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Pausing one scope blocks only that scope's mutating entrypoints; every
+/// other scope and all getters keep working, and resuming restores writes.
+#[test]
+fn test_scoped_pause_blocks_only_that_scope() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    fix.mint(&payer, 1_000_000);
+
+    // Pause only the Payments scope (id 0).
+    fix.client.set_scope_paused(&fix.owner, &0u32, &true);
+    assert_eq!(fix.client.is_paused(), false);
+    assert_eq!(fix.client.is_scope_paused(&0u32), true);
+
+    let paused = fix.client.get_paused_scopes();
+    assert_eq!(paused.len(), 1);
+    assert_eq!(paused.get(0), Some(0u32));
+
+    // A payments write is rejected...
+    let tx = String::from_str(&fix.env, "0xscoped_pause");
+    let meta = String::from_str(&fix.env, "scope test");
+    let blocked =
+        fix.client
+            .try_record_payment(&payer, &payee, &1_000i128, &fix.token_id, &tx, &meta);
+    assert_eq!(blocked, Err(Ok(PaymentError::ContractPaused)));
+
+    // ...but escrows (a different scope) still move funds.
+    let escrow_id = fix.client.create_escrow(
+        &payer,
+        &payee,
+        &Option::<Address>::None,
+        &500i128,
+        &fix.token_id,
+        &(fix.env.ledger().timestamp() + 86_400),
+        &String::from_str(&fix.env, "still open"),
+    );
+    assert_eq!(escrow_id, 1);
+
+    // Getters keep answering while a scope is paused.
+    assert_eq!(fix.client.get_payment_count(), 0);
+    assert_eq!(fix.client.get_escrow_count(), 1);
+
+    // Resuming the scope restores payments.
+    fix.client.set_scope_paused(&fix.owner, &0u32, &false);
+    assert_eq!(fix.client.is_scope_paused(&0u32), false);
+    assert_eq!(fix.client.get_paused_scopes().len(), 0);
+    let payment_id =
+        fix.client
+            .record_payment(&payer, &payee, &1_000i128, &fix.token_id, &tx, &meta);
+    assert_eq!(payment_id, 1);
+}
+
+/// The global emergency pause overrides the scope flags: with no scope paused,
+/// it blocks every mutating path while getters keep answering.
+#[test]
+fn test_global_pause_overrides_scopes() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    fix.mint(&payer, 1_000_000);
+
+    // No scope is individually paused before the emergency pause.
+    assert_eq!(fix.client.get_paused_scopes().len(), 0);
+
+    fix.client.emergency_pause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), true);
+
+    let tx = String::from_str(&fix.env, "0xglobal_override");
+    let meta = String::from_str(&fix.env, "global");
+    let payments =
+        fix.client
+            .try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert_eq!(payments, Err(Ok(PaymentError::ContractPaused)));
+
+    let escrow = fix.client.try_create_escrow(
+        &payer,
+        &payee,
+        &Option::<Address>::None,
+        &100i128,
+        &fix.token_id,
+        &(fix.env.ledger().timestamp() + 86_400),
+        &String::from_str(&fix.env, "global"),
+    );
+    assert_eq!(escrow, Err(Ok(PaymentError::ContractPaused)));
+
+    // Read-only getters still answer during a global pause.
+    assert_eq!(fix.client.get_payment_count(), 0);
+
+    // Emergency unpause restores writes; scope flags were never touched.
+    fix.client.emergency_unpause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), false);
+    assert_eq!(fix.client.get_paused_scopes().len(), 0);
+    let payment_id =
+        fix.client
+            .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert_eq!(payment_id, 1);
+}
+
+/// Unknown scope ids are rejected by both the setter and the reader, and no
+/// state is written for them.
+#[test]
+fn test_unknown_pause_scope_is_rejected() {
+    let fix = TestFixture::new();
+
+    // 8 is the first id past the eight defined scopes.
+    let set = fix.client.try_set_scope_paused(&fix.owner, &8u32, &true);
+    assert_eq!(set, Err(Ok(PaymentError::InvalidPauseScope)));
+
+    let read = fix.client.try_is_scope_paused(&8u32);
+    assert_eq!(read, Err(Ok(PaymentError::InvalidPauseScope)));
+
+    // Nothing was written for the unknown id.
+    assert_eq!(fix.client.get_paused_scopes().len(), 0);
+}

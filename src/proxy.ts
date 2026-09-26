@@ -37,8 +37,13 @@ export async function proxy(request: NextRequest) {
   // ── API routes: rate limiting + API headers ─────────────────
   if (pathname.startsWith("/api/")) {
     // Skip rate limiting for health checks and metrics (monitoring endpoints
-    // are hit frequently by orchestrators and should never be throttled)
-    const skipRateLimit = (SKIP_RATE_LIMIT_PATHS as readonly string[]).includes(pathname);
+    // are hit frequently by orchestrators and should never be throttled).
+    // The whole `/api/health` subtree is exempt: the readiness probe lives at
+    // `/api/health` and the liveness probe at `/api/health/live` (#738), and
+    // both must keep answering even when the app is under attack or overloaded.
+    const skipRateLimit =
+      (SKIP_RATE_LIMIT_PATHS as readonly string[]).includes(pathname) ||
+      pathname.startsWith("/api/health/");
 
     let remaining = rateLimitMax;
     let resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;

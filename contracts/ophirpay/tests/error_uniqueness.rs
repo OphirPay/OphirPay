@@ -323,6 +323,7 @@ fn all_variants() -> Vec<(&'static str, u32)> {
         ("NoPendingOwner", PaymentError::NoPendingOwner as u32),
         ("MathOverflow", PaymentError::MathOverflow as u32),
         ("StreamInvariantViolated", PaymentError::StreamInvariantViolated as u32),
+        ("InvalidPauseScope", PaymentError::InvalidPauseScope as u32),
     ]
 }
 
@@ -374,7 +375,7 @@ fn variant_count_matches_catalog() {
     // This is verified by the TS-side test; here we just record the count.
     assert_eq!(
         variants.len(),
-        307,
-        "Expected 307 PaymentError variants (codes 1..=307)"
+        308,
+        "Expected 308 PaymentError variants (codes 1..=308)"
     );
 }

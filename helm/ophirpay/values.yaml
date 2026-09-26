@@ -125,9 +125,19 @@ secrets:
   NEXT_PUBLIC_EMITTER_CONTRACT_ID: ""
   AUTH_SECRET: ""
 
+# ── Probes (issue #738) ────────────────────────────────────────
+# Liveness and readiness answer different questions, so they hit different
+# endpoints:
+#   • liveness  → /api/health/live  — process-only, no DB/RPC/Redis I/O, so a
+#                                    transient dependency outage never restarts
+#                                    an otherwise healthy pod.
+#   • readiness → /api/health       — dependency-aware; 503 while the database
+#                                    is unreachable, which drains traffic from
+#                                    the pod without killing it.
+# Both paths are exempt from the global rate limiter (src/proxy.ts).
 livenessProbe:
   httpGet:
-    path: /api/health
+    path: /api/health/live
     port: 3000
   initialDelaySeconds: 30
   periodSeconds: 15

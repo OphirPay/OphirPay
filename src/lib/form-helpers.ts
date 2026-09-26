@@ -38,8 +38,7 @@ export function useFormReset(formRef: React.RefObject<HTMLFormElement | null>) {
     // Also clear any controlled inputs by dispatching an input event
     formRef.current?.querySelectorAll("input, textarea, select").forEach((el) => {
       const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (el as any).constructor.prototype,
+        Object.getPrototypeOf(el),
         "value"
       )?.set;
       nativeInputValueSetter?.call(el, "");

@@ -306,8 +306,16 @@ export async function initRateLimitStore(): Promise<void> {
   if (redisUrl && TCP_REDIS_URL.test(redisUrl)) {
     try {
       // Dynamic import — ioredis is an optional dependency, absent on the edge.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const RedisModule: any = await import("ioredis");
+      interface RedisClientInstance {
+        incr(key: string): Promise<number>;
+        expire(key: string, seconds: number): Promise<unknown>;
+        del(key: string): Promise<unknown>;
+        connect(): Promise<void>;
+      }
+      interface RedisModuleType {
+        Redis: new (url: string, options?: Record<string, unknown>) => RedisClientInstance;
+      }
+      const RedisModule = (await import("ioredis")) as unknown as RedisModuleType;
       const redis = new RedisModule.Redis(redisUrl, {
         maxRetriesPerRequest: 3,
         lazyConnect: true,

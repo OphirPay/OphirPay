@@ -29,8 +29,10 @@ export function trackEvent(name: EventName, properties?: EventProperties): void 
 
   // Production: send to analytics platform
   if (typeof window !== "undefined" && "gtag" in window) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).gtag?.("event", name, properties);
+    const win = window as unknown as {
+      gtag?: (command: string, name: string, properties?: EventProperties) => void;
+    };
+    win.gtag?.("event", name, properties);
   }
 }
 
@@ -41,8 +43,14 @@ export function trackPageView(path: string): void {
   trackEvent("page_view", { path });
 
   if (typeof window !== "undefined" && "gtag" in window) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).gtag?.("config", process.env.NEXT_PUBLIC_GA_ID, {
+    const win = window as unknown as {
+      gtag?: (
+        command: string,
+        id: string | undefined,
+        config?: Record<string, unknown>
+      ) => void;
+    };
+    win.gtag?.("config", process.env.NEXT_PUBLIC_GA_ID, {
       page_path: path,
     });
   }

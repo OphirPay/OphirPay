@@ -27,8 +27,18 @@ interface Operation {
   operation: Record<string, unknown>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let spec: any;
+interface OpenApiDocument {
+  openapi?: string;
+  info?: { title?: string; version?: string };
+  paths?: Record<string, Record<string, unknown>>;
+  components?: {
+    schemas?: Record<string, unknown>;
+    securitySchemes?: Record<string, unknown>;
+  };
+  security?: Array<Record<string, unknown>>;
+}
+
+let spec: OpenApiDocument;
 let operations: Operation[];
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -71,14 +81,13 @@ function listRouteFiles(dir = API_DIR): string[] {
 }
 
 /** Collect every `$ref` value in a spec subtree. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function collectRefs(node: any, out: string[] = []): string[] {
+function collectRefs(node: unknown, out: string[] = []): string[] {
   if (Array.isArray(node)) {
     for (const n of node) collectRefs(n, out);
     return out;
   }
   if (node && typeof node === "object") {
-    for (const [k, v] of Object.entries(node)) {
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
       if (k === "$ref") out.push(v as string);
       else collectRefs(v, out);
     }
@@ -92,25 +101,26 @@ function resolveRef(ref: string): unknown {
     .replace(/^#\//, "")
     .split("/")
     .reduce<unknown>((cur, part) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (cur as any)?.[part];
-    }, spec);
+      return (cur as Record<string, unknown>)?.[part];
+    }, spec as unknown as Record<string, unknown>);
 }
 
 /** Path parameters declared (path-level + operation-level) for an operation. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function declaredPathParams(op: any, pathItem: any): string[] {
+function declaredPathParams(
+  op: Record<string, unknown>,
+  pathItem: Record<string, unknown>
+): string[] {
   const all = [
-    ...(pathItem.parameters ?? []),
-    ...(op.parameters ?? []),
-  ] as Array<{ name?: string; in?: string; required?: boolean }>;
+    ...((pathItem.parameters as Array<{ name?: string; in?: string; required?: boolean }> | undefined) ?? []),
+    ...((op.parameters as Array<{ name?: string; in?: string; required?: boolean }> | undefined) ?? []),
+  ];
   return all
     .filter((p) => p.in === "path" && p.required === true)
     .map((p) => String(p.name));
 }
 
 beforeAll(() => {
-  spec = load(readFileSync(SPEC_PATH, "utf8"));
+  spec = (load(readFileSync(SPEC_PATH, "utf8")) ?? {}) as OpenApiDocument;
   operations = [];
   for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
     const item = (pathItem ?? {}) as Record<string, unknown>;
@@ -194,7 +204,7 @@ describe("OpenAPI schema-conformance", () => {
 
       const declared = declaredPathParams(
         operation,
-        (spec.paths as Record<string, unknown>)[path]
+        (spec.paths ?? {})[path] ?? {}
       );
       for (const param of templated) {
         if (!declared.includes(param)) {

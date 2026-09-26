@@ -19,3 +19,5 @@ export { Kbd } from "./Kbd";
 export { Amount } from "./Amount";
 export { CurrencyToggle } from "./CurrencyToggle";
 export type { CurrencyToggleProps } from "./CurrencyToggle";
+export { CurrencyAmount } from "./CurrencyAmount";
+export type { CurrencyAmountProps } from "./CurrencyAmount";

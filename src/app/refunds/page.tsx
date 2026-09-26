@@ -22,6 +22,10 @@ import {
   processRefund,
   rejectRefund,
 } from "@/lib/contract-advanced";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { CurrencyAmount } from "@/components/ui/CurrencyAmount";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 
 const REASON_CODES = [
   { value: 0, label: "Product Defect" },
@@ -74,6 +78,9 @@ export default function RefundsPage() {
   const [formAsset, setFormAsset] = useState("");
   const [formReason, setFormReason] = useState("");
   const [formReasonCode, setFormReasonCode] = useState(0);
+
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
 
   const {
     data: rawRefunds,
@@ -248,7 +255,14 @@ export default function RefundsPage() {
             Structured refund lifecycle — Request → Approve → Process
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            showPrice={currency === "USD"}
+            price={xlmPrice}
+            isUnavailable={isPriceUnavailable}
+          />
           <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden" role="tablist" aria-label="Refund views">
             <button
               onClick={() => setActiveTab("list")}
@@ -341,7 +355,18 @@ export default function RefundsPage() {
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{r.reason}</p>
                   <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                    <span>Amount: {r.amount} {r.asset || "native"}</span>
+                    <span className="flex items-center gap-1">
+                      Amount:{" "}
+                      <CurrencyAmount
+                        amount={parseFloat(r.amount) || 0}
+                        assetCode={r.asset || "native"}
+                        currency={currency}
+                        price={xlmPrice}
+                        isUnavailable={isPriceUnavailable}
+                        showOriginal={false}
+                        amountClassName="font-medium text-gray-700 dark:text-gray-300"
+                      />
+                    </span>
                     <span>Requested: {new Date(r.requestedAt).toLocaleDateString()}</span>
                     {isOnChainId(r.onChainId) && (
                       <span>On-chain refund #{r.onChainId}</span>

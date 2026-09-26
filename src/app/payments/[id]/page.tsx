@@ -21,6 +21,10 @@ import { PaymentTimeline } from "@/components/payments/PaymentTimeline";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { CurrencyAmount } from "@/components/ui/CurrencyAmount";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 
 interface DbPayment {
   id: string;
@@ -93,6 +97,9 @@ export default function PaymentDetailPage() {
   // conversion loses precision and could look up the wrong record. Reject
   // unsafe values as not-found rather than silently mis-resolving the id.
   const isNumeric = Number.isFinite(numericId) && Number.isSafeInteger(numericId);
+
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
 
   // Primary source: the on-chain Soroban payment record (public read).
   const onChainQuery = useApiQuery<OnChainPayment | null>(
@@ -226,7 +233,14 @@ export default function PaymentDetailPage() {
                   : "Payment record"}
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <CurrencyToggle
+                value={currency}
+                onChange={setCurrency}
+                showPrice={currency === "USD"}
+                price={xlmPrice}
+                isUnavailable={isPriceUnavailable}
+              />
               {status && <StatusBadge status={status} />}
               <Link
                 href="/payments"
@@ -244,8 +258,19 @@ export default function PaymentDetailPage() {
                 Payment details
               </h2>
               <dl className="divide-y divide-gray-100 dark:divide-gray-800">
-                <DetailRow label="Amount" mono>
-                  {amount ?? "—"}
+                <DetailRow label="Amount">
+                  {onChain !== null || db ? (
+                    <CurrencyAmount
+                      amount={onChain !== null ? onChain.amountStroops / XLM_STROOPS : Number(db?.amount ?? 0)}
+                      assetCode={onChain !== null ? "XLM" : db?.assetCode ?? "XLM"}
+                      currency={currency}
+                      price={xlmPrice}
+                      isUnavailable={isPriceUnavailable}
+                      amountClassName="text-sm font-semibold"
+                    />
+                  ) : (
+                    "—"
+                  )}
                 </DetailRow>
 
                 {onChain && (

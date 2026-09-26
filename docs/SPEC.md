@@ -103,12 +103,27 @@ claimable = min(total_amount, (now - start) / (end - start) * total_amount) - cl
 
 After the stream end time, the full remaining amount is claimable.
 
-**Code evidence:** `compute_vested()` uses checked multiplication with overflow
-protection. `claim_stream()` computes `claimable = vested - stream.claimed_amount`
-and returns `StreamFullyClaimed` if `claimable == 0`.
+**Code evidence:** `compute_vested()` evaluates `total_amount * elapsed` at
+256-bit precision: `i128::checked_mul` on the fast path, and the quotient/
+remainder decomposition `(a / d) * b + ((a % d) * b) / d` when the 128-bit
+product would overflow. The result is therefore always the exact linear vesting
+value and is bounded by `total_amount`.
 
-**Test:** `test_stream_vesting_math` — verifies partial claims at 25%, 50%, 75%
-and that full amount is claimable after end time.
+Overflow MUST NOT collapse the vested amount to `0` (which silently under-vests
+a large stream) and MUST NOT cap it at `total_amount` (which would over-vest a
+stream that is only partially elapsed).
+
+`claim_stream()` computes `claimable = vested.checked_sub(stream.claimed_amount)`,
+returning `StreamInvariantViolated` (307) if the subtraction would be negative
+and `StreamFullyClaimed` if `claimable == 0`.
+
+**Test:** `test_create_and_claim_stream` — verifies partial claims at 50% and
+that the full amount is claimable after end time. Overflow behaviour is covered
+by `test_compute_vested_overflow_is_exact_and_not_zero`,
+`test_compute_vested_overflow_is_bounded_and_monotonic`,
+`test_compute_vested_overflow_fully_vests_at_end`,
+`test_claim_stream_with_overflowing_vesting_pays_correct_balance` and the
+end-to-end `test_stream_vesting_overflow_pays_correct_balance_end_to_end`.
 
 ---
 
@@ -131,18 +146,46 @@ Duplicate approvals from the same signer MUST be rejected.
 
 ---
 
-### INV-7: Pause Blocks All Mutations
+### INV-7: Pause Blocks Mutations (Global Override + Scopes)
 
-**Statement:** When the contract is paused (`PAUSED = true`), all
-state-mutating functions MUST return `ContractPaused`. Read-only functions
-(getters) SHALL continue to work.
+**Statement:** When the contract is globally paused (`PAUSED = true`), all
+state-mutating functions MUST return `ContractPaused`; read-only functions
+(getters) SHALL continue to work. Independently, a single feature scope can be
+paused so only that subsystem's mutating entrypoints return `ContractPaused`.
+The global pause always overrides the scope flags, so a scope can never
+re-enable a write while the contract is globally paused.
 
-**Code evidence:** `require_not_paused()` is called at the beginning of every
-write function. It reads the `PAUSED` instance key and returns
-`ContractPaused` if true.
+**Scopes:** `PauseScope` enumerates eight feature domains exposed by numeric id:
+`Payments = 0`, `Escrows = 1`, `Streams = 2`, `Recurring = 3`, `Refunds = 4`,
+`Governance = 5`, `Hooks = 6`, `Batches = 7`.
 
-**Test:** `test_pause_blocks_writes` — verifies all mutating functions reject
-when paused, and all getters still return data.
+**Code evidence:**
+- `require_not_paused(env, scope)` starts every write function. It returns
+  `ContractPaused` when the global `PAUSED` flag is set **or** when that
+  operation's scope is paused; the global check runs first, so it overrides.
+- `set_scope_paused(caller, scope, paused)` is owner-only, stores one instance
+  flag per scope and records a `scope_paused` / `scope_resumed` audit entry.
+  Unknown scope ids are rejected with `InvalidPauseScope`.
+- `is_scope_paused(scope)` and `get_paused_scopes()` expose the scope flags to
+  the read API without a signature.
+- `emergency_pause_all` / `emergency_unpause_all` keep their atomic
+  cross-contract propagation to the Emitter and only toggle the global flag, so
+  scope flags are preserved across an emergency unpause.
+
+**Test:**
+- `test_pause_blocks_record_payment`, `test_pause_blocks_create_escrow` and
+  `test_pause_blocks_create_stream` — a global pause rejects writes while
+  getters keep returning data.
+- `test_paused_contract_blocks_payments` (integration) — a globally paused
+  contract rejects `record_payment` and accepts it again after unpause.
+- `test_scoped_pause_blocks_only_that_scope` (integration) — pausing `Payments`
+  blocks `record_payment` while escrows and getters keep working, and resuming
+  the scope restores payments.
+- `test_global_pause_overrides_scopes` (integration) — with no scope flag set,
+  `emergency_pause_all` blocks both payments and escrows while getters still
+  answer.
+- `test_unknown_pause_scope_is_rejected` (integration) — `set_scope_paused(8, …)`
+  and `is_scope_paused(8)` return `InvalidPauseScope`.
 
 ---
 
@@ -192,6 +235,46 @@ changes, only the latest 100 are returned.
 
 ---
 
+### INV-11: Enumeration is Bounded and Reports Truncation
+
+**Statement:** Every read-only function that enumerates a stored collection
+SHALL return at most `MAX_READER_ENTRIES` (100) entries and SHALL expose
+whether the result was truncated. A reader MUST NOT walk an arbitrarily long
+stored vector inside a single invocation.
+
+The bounded readers are:
+
+| Reader | Result type | Cap | Order | Truncation field |
+|---|---|---|---|---|
+| `get_audit_log_range(start_id, end_id)` | `Vec<AuditEntry>` | 100 | most recent first | *(inherent in the requested range)* |
+| `get_payments_range(start_id, end_id)` | `Vec<Payment>` | 100 | most recent first | *(inherent in the requested range)* |
+| `get_reason_code_analytics()` | `Vec<(u32, u64)>` | 100 most recent refunds | n/a | *(aggregate)* |
+| `get_fee_config_history()` / `get_multisig_config_history()` | `Vec<…Version>` | 100 | most recent first | *(inherent in the requested range)* |
+| `get_payments_by_batch(batch_id)` | `PaymentList` | 100 | most recent first | `truncated` |
+| `get_subscriber_hooks(subscriber)` | `HookList` | 100 | most recent first | `truncated` |
+
+`PaymentList` and `HookList` carry `items`, `total` (how many entries the
+underlying collection actually holds) and `truncated` (true only when the
+reader stopped before exhausting the collection). Callers MUST treat
+`truncated == true` as partial data: page, or ask for a narrower query.
+
+The upstream collections are **not** self-bounding. `register_hook` places no
+limit on how many hooks a subscriber accumulates, and a batch record written
+before the `BatchTooLarge` guard existed can hold more payment ids than
+`create_batch` accepts today. The cap therefore lives in the reader, not in the
+writer's current validation.
+
+**Rationale:** docs/AUDIT.md MEDIUM-2 — unbounded enumeration makes an
+endpoint unreliable (instruction-budget exhaustion) rather than returning a
+clean error.
+
+**Tests:** `test_get_subscriber_hooks_caps_and_flags_truncation`,
+`test_get_subscriber_hooks_at_cap_is_not_truncated`,
+`test_get_payments_by_batch_caps_and_flags_truncation`,
+`test_get_payments_by_batch_within_cap_is_not_truncated`
+
+---
+
 ## State Transition Diagram
 
 ```
@@ -236,5 +319,8 @@ cd contracts/emitter && cargo test                              # emitter unit t
 
 - [x] Property testing with `proptest` for token-moving paths & reentrancy sequences (`LOCKED_BALANCE` conservation)
 - [ ] Bounded model checking with `kani` for the 5 highest-risk invariants
-- [ ] Formal verification of the `compute_vested()` function (overflow safety)
+- [ ] Formal verification of the `compute_vested()` function (overflow safety).
+      The boundary branches are modelled in `contracts/ophirpay/spec/src/invariants.rs`,
+      but the widened multiply path is not yet machine-checked — see the Kani
+      findings in [AUDIT.md](./AUDIT.md).
 - [ ] Third-party security audit before mainnet deployment

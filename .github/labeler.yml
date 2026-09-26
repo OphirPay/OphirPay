@@ -16,7 +16,7 @@
   - changed-files:
       - any-glob-to-any-file:
           - "src/app/api/**"
-          - "src/middleware.ts"
+          - "src/proxy.ts"
 
 "📚 lib":
   - changed-files:
@@ -69,9 +69,11 @@
       - any-glob-to-any-file:
           - "src/lib/api-auth.ts"
           - "src/lib/auth-rate-limit.ts"
+          - "src/lib/auth-session.ts"
+          - "src/lib/csrf.ts"
           - "src/lib/crypto.ts"
           - "src/lib/rate-limit.ts"
-          - "src/middleware.ts"
+          - "src/proxy.ts"
           - "SECURITY.md"
 
 "📦 dependencies":

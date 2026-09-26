@@ -30,6 +30,11 @@ const envSchema = z.object({
   METRICS_TOKEN: z.string().min(16).optional(), // required to scrape /api/metrics (see app/api/metrics/route.ts)
   WEBHOOK_ALLOWED_PORTS: z.string().optional(), // comma-separated webhook target ports (default 80,443)
   SCHEDULED_PAYMENTS_SOURCE_SECRET: z.string().optional(), // Stellar secret that signs scheduled payments
+  // Transactional email (issue #800). Optional here so a deployment that does
+  // not send mail still boots; sendEmail() refuses to run without a key and
+  // throws EmailConfigurationError instead of silently dropping the message.
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),
   NEXT_PUBLIC_DEMO_MODE: z.string().optional(),
   NEXT_PUBLIC_FEATURE_MULTI_ASSET: z.string().optional(),
   NEXT_PUBLIC_FEATURE_WEBHOOKS: z.string().optional(),

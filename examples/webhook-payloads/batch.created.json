@@ -1,0 +1,13 @@
+{
+  "event": "batch.created",
+  "timestamp": "2026-01-15T13:00:00.000Z",
+  "data": {
+    "batchId": "cm5kb3c4d00022356ffg2h3i4",
+    "totalPayments": 25,
+    "totalAmount": "1250.00",
+    "assetCode": "USDC",
+    "status": "CREATED",
+    "createdAt": "2026-01-15T13:00:00.000Z"
+  },
+  "signature": "2da15c660c2a10b8a6780990e0b9187b428fc8db9b6f2abcd43980069678bd87"
+}

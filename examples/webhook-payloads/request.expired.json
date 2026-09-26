@@ -1,0 +1,9 @@
+{
+  "event": "request.expired",
+  "timestamp": "2026-01-22T09:30:00.000Z",
+  "data": {
+    "requestId": "cm5ka1b2c00011356ddee1f2g",
+    "expiredAt": "2026-01-22T09:30:00.000Z"
+  },
+  "signature": "40963844f1c5cb8d8d5501c0e779cce10df86def9fa139a79ec57fa3023d3c30"
+}

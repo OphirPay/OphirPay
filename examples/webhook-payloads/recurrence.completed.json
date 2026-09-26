@@ -1,0 +1,10 @@
+{
+  "event": "recurrence.completed",
+  "timestamp": "2026-12-15T14:00:00.000Z",
+  "data": {
+    "scheduleId": "cm5kc5d6e00033356ggh4i5j6",
+    "totalOccurrences": 12,
+    "completedAt": "2026-12-15T14:00:00.000Z"
+  },
+  "signature": "350bab805607569813e09b80b35f18ae294f8a8702da291a8d27f80907b373de"
+}

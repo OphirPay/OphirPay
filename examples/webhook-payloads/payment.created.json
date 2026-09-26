@@ -1,0 +1,12 @@
+{
+  "event": "payment.created",
+  "timestamp": "2026-01-15T12:00:00.000Z",
+  "data": {
+    "paymentId": "cm5k9x2m00000356g4h7j8k2q",
+    "amount": "125.50",
+    "assetCode": "USDC",
+    "status": "CREATED",
+    "createdAt": "2026-01-15T12:00:00.000Z"
+  },
+  "signature": "68bb22d237ab5121e9510a0c977d27c6adafb6b4ddbbdb2ea5c7e765a0e39034"
+}

@@ -1,0 +1,12 @@
+{
+  "event": "request.paid",
+  "timestamp": "2026-01-16T10:15:00.000Z",
+  "data": {
+    "requestId": "cm5ka1b2c00011356ddee1f2g",
+    "paymentId": "cm5k9x2m00000356g4h7j8k2q",
+    "amount": "40.00",
+    "assetCode": "USDC",
+    "paidAt": "2026-01-16T10:15:00.000Z"
+  },
+  "signature": "1f65c661338133645219c7e94026b4002a9eade50a48476f300ced6b44e46b0e"
+}

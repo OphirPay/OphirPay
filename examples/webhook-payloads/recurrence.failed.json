@@ -1,0 +1,10 @@
+{
+  "event": "recurrence.failed",
+  "timestamp": "2026-02-15T14:00:00.000Z",
+  "data": {
+    "scheduleId": "cm5kc5d6e00033356ggh4i5j6",
+    "errorMessage": "Scheduled payment failed: insufficient balance.",
+    "failedAt": "2026-02-15T14:00:00.000Z"
+  },
+  "signature": "e59a03c3c677353651a6d2c6c2719f9e82f018d8b22aba45b987a99dff537714"
+}

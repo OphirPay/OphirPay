@@ -2,6 +2,8 @@
 
 import type { PaymentStatus, Prisma } from "@prisma/client";
 
+import { buildFallbackWhere } from "@/lib/full-text-search";
+
 /**
  * Filters shared by the payment list route (GET /api/payments) and the
  * server-side CSV export (GET /api/payments/export). Keeping them in one
@@ -26,18 +28,19 @@ export function buildPaymentWhere(
     where.status = filters.status as PaymentStatus;
   }
   if (filters.search) {
-    // Issue #157 — server-side reconciliation search:
+    // Issue #157 — server-side reconciliation search. The predicates live in
+    // `buildFallbackWhere` (src/lib/full-text-search.ts, issue #823) so the
+    // Postgres full-text path and this Prisma/SQLite fallback cannot drift:
     //  - `memo` and `description` are substring matches, case-insensitive for
     //    `memo` (the Postgres ILIKE equivalent via Prisma `mode`), because memo
     //    text users type rarely matches on-chain casing;
     //  - `transactionHash` is an EXACT match — hashes are emitted by the network
     //    in a canonical case, and a partial match would produce false positives
     //    across near-identical hashes.
-    where.OR = [
-      { description: { contains: filters.search } },
-      { memo: { contains: filters.search, mode: "insensitive" } },
-      { transactionHash: { equals: filters.search } },
-    ];
+    // On Postgres the generated `searchVector` GIN index (issue #823) serves the
+    // ranked query; this `where` is the documented SQLite / local fallback.
+    const or = buildFallbackWhere("Payment", filters.search);
+    if (or.length > 0) where.OR = or;
   }
   return where;
 }

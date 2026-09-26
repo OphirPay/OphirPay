@@ -137,7 +137,106 @@ npx prisma migrate reset --force
 
 ---
 
-## 5. Summary Checklist for Pull Requests
+## 5. PostgreSQL Full-Text Search (tsvector + GIN) and the SQLite Fallback
+
+### Why
+
+Search used to be application-level `ILIKE` / substring matching (`src/lib/search-index.ts`,
+`buildPaymentWhere`) which cannot use an index or rank results. PostgreSQL already ships
+`tsvector` columns, GIN indexes and `ts_rank`, so payment and audit-log search now go
+through an indexed, ranked match.
+
+### Migration
+
+`prisma/migrations/20260925120000_add_full_text_search/migration.sql` adds a stored
+generated `searchVector` column plus a GIN index to both searchable tables:
+
+```sql
+-- Payment: transaction hash [A], memo [B], description [C]
+ALTER TABLE "Payment" ADD COLUMN IF NOT EXISTS "searchVector" tsvector
+  GENERATED ALWAYS AS (
+    setweight(to_tsvector('simple',  coalesce("transactionHash", '')), 'A') ||
+    setweight(to_tsvector('english', coalesce("memo", '')), 'B') ||
+    setweight(to_tsvector('english', coalesce("description", '')), 'C')
+  ) STORED;
+CREATE INDEX IF NOT EXISTS "Payment_searchVector_idx"
+  ON "Payment" USING GIN ("searchVector");
+```
+
+`AuditLog` receives the same treatment over `actor` [A], `action` [B] and `details` [C]
+(`details` is JSONB, so the expression casts it with `::text`).
+
+The `setweight` letters drive `ts_rank`: identity fields (hash, actor) outweigh human
+text (memo, action), which outweighs long free text (description, details).
+
+### Why the columns are not declared in `schema.prisma`
+
+Prisma has no native `tsvector` type. Declaring these columns as
+`Unsupported("tsvector")` would make `prisma migrate diff` compare a plain nullable
+column against a database column that is `GENERATED ALWAYS ... STORED`, and report
+schema drift on every CI run. Prisma Client never selects these columns, so they live
+only in the migration and are read through `$queryRaw` —
+`src/lib/full-text-search.ts` builds the fragments.
+
+### The ranked query
+
+The helpers build bound `$n` fragments — user input is never interpolated into SQL.
+`buildPostgresMatch` produces a predicate that OR-s the indexed tsvector match with an
+ILIKE fallback (so mid-word fragments still resolve) and, when the term is a transaction
+hash, an exact-equality predicate:
+
+```sql
+-- $1 = tsquery, $2 = '%term%', $3 = hash (bound only for a hash-shaped query)
+("searchVector" @@ to_tsquery('simple', $1)
+ OR "transactionHash" ILIKE $2 ESCAPE '\'
+ OR "memo"            ILIKE $2 ESCAPE '\'
+ OR "description"     ILIKE $2 ESCAPE '\'
+ OR "transactionHash" = $3)
+```
+
+`buildPostgresRank` produces the relevance expression:
+
+```sql
+ts_rank("searchVector", to_tsquery('simple', $n))
+```
+
+Ordering puts an exact hash match first, then tsvector relevance, then recency:
+
+```sql
+ORDER BY
+  (CASE WHEN "transactionHash" = $h THEN 1 ELSE 0 END) DESC,  -- exact hash wins
+  ts_rank("searchVector", to_tsquery('simple', $q)) DESC,     -- then relevance
+  "createdAt" DESC, "id" DESC;                                -- then recency
+```
+
+### Confirming the GIN index
+
+Run this against a database with the migration applied:
+
+```sql
+EXPLAIN ANALYZE
+SELECT id, memo
+FROM "Payment"
+WHERE "searchVector" @@ to_tsquery('simple', 'invoice:*')
+ORDER BY ts_rank("searchVector", to_tsquery('simple', 'invoice:*')) DESC;
+```
+
+On PostgreSQL 12+ the plan reports a `Bitmap Index Scan on "Payment_searchVector_idx"`
+under a `Bitmap Heap Scan`; a `Seq Scan` there means the planner chose not to use the
+index (usually because the table is tiny).
+
+### SQLite development fallback
+
+SQLite has no `tsvector` and no GIN index, so the local `prisma db push` path keeps the
+issue #157 substring semantics through `buildFallbackWhere`, which `buildPaymentWhere`
+now delegates to: case-insensitive `contains` on `memo`, plain `contains` on
+`description`, and exact `equals` on `transactionHash`. The difference: Postgres ranks
+and prefix-matches whole lexemes, while SQLite performs a plain `LIKE` scan — but both
+return the same rows for the same terms, and the API contract is unchanged.
+
+---
+
+## 6. Summary Checklist for Pull Requests
 
 Before submitting a PR with database changes:
 - [ ] `prisma/schema.prisma` contains clear doc comments (`///`) on all new models/fields.

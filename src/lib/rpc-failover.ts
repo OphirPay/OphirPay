@@ -2,6 +2,7 @@
 
 import { rpc } from "@stellar/stellar-sdk";
 import { logger } from "@/lib/logger";
+import { RPC_PROBE_TIMEOUT_MS, fetchWithTimeout, isTimeoutError } from "@/lib/timeout";
 
 /**
  * Soroban RPC failover with caching and circuit breaking.
@@ -14,8 +15,6 @@ import { logger } from "@/lib/logger";
  *   and returns the first healthy one.
  */
 
-// ── Configuration ──────────────────────────────────────────────
-
 const FALLBACK_RPC_URLS: Record<string, string[]> = {
   TESTNET: [
     "https://soroban-testnet.stellar.org:443",
@@ -26,16 +25,9 @@ const FALLBACK_RPC_URLS: Record<string, string[]> = {
   ],
 };
 
-/** How long a cached healthy URL is trusted before re-probing. */
 const CACHE_TTL_MS = 60_000;
-
-/** How long a failed endpoint is excluded from probing. */
 const CIRCUIT_COOLDOWN_MS = 30_000;
-
-/** Timeout for individual health-check probes. */
-const PROBE_TIMEOUT_MS = 3_000;
-
-// ── State ──────────────────────────────────────────────────────
+export const PROBE_TIMEOUT_MS = RPC_PROBE_TIMEOUT_MS;
 
 interface CircuitState {
   failedAt: number;
@@ -47,28 +39,25 @@ const circuitBreakers = new Map<string, CircuitState>();
 let cachedUrl: string | null = null;
 let cachedAt = 0;
 
-// ── Probe ──────────────────────────────────────────────────────
-
-async function probeHealth(url: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-
+async function probeHealth(url: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<boolean> {
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
-      signal: controller.signal,
-    });
+    const res = await fetchWithTimeout(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
+      },
+      timeoutMs
+    );
     return res.ok;
-  } catch {
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      logger.warn("RPC probe timed out", { url, timeoutMs });
+    }
     return false;
-  } finally {
-    clearTimeout(timeout);
   }
 }
-
-// ── Public API ─────────────────────────────────────────────────
 
 /**
  * Get a working Soroban RPC server.
@@ -83,12 +72,10 @@ export async function getWorkingRpcServer(
   const now = Date.now();
   const urls = FALLBACK_RPC_URLS[network] ?? FALLBACK_RPC_URLS.TESTNET;
 
-  // ── Fast path: cached URL is still fresh ─────────────────
   if (cachedUrl && now - cachedAt < CACHE_TTL_MS) {
     return new rpc.Server(cachedUrl, { allowHttp: false });
   }
 
-  // ── Probe URLs, skipping those in circuit-breaker cooldown ─
   for (const url of urls) {
     const breaker = circuitBreakers.get(url);
     if (breaker && now - breaker.failedAt < CIRCUIT_COOLDOWN_MS) {
@@ -103,12 +90,10 @@ export async function getWorkingRpcServer(
       return new rpc.Server(url, { allowHttp: false });
     }
 
-    // Mark as failed — enter cooldown
     circuitBreakers.set(url, { failedAt: now, url });
     logger.warn("RPC endpoint unhealthy — circuit opened", { url, cooldownMs: CIRCUIT_COOLDOWN_MS });
   }
 
-  // ── All endpoints failed or in cooldown ─────────────────
   logger.error("All RPC endpoints unavailable — falling back to primary");
   return new rpc.Server(urls[0], { allowHttp: false });
 }

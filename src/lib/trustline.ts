@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { getHorizonServer } from "@/lib/stellar";
+import { withTimeout, STELLAR_TIMEOUT_MS } from "@/lib/timeout";
 
 /**
  * Trustline utilities for Stellar assets other than XLM.
@@ -26,7 +27,11 @@ export async function checkTrustline(
 ): Promise<TrustlineInfo> {
   try {
     const server = getHorizonServer();
-    const account = await server.loadAccount(publicKey);
+    const account = await withTimeout(
+      server.loadAccount(publicKey),
+      STELLAR_TIMEOUT_MS,
+      "Stellar Horizon loadAccount timed out"
+    );
 
     const trustline = account.balances.find(
       (b): b is Extract<typeof b, { asset_code: string; asset_issuer: string }> =>

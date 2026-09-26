@@ -11,6 +11,9 @@ import {
   Keypair,
 } from "@stellar/stellar-sdk";
 import { getStellarErrorMessage } from "./stellar-error";
+import { withTimeout, STELLAR_TIMEOUT_MS, isTimeoutError } from "./timeout";
+
+export { STELLAR_TIMEOUT_MS };
 
 // ── Batch Recipient ───────────────────────────────────────────
 
@@ -75,9 +78,16 @@ export function getSorobanServer(): rpc.Server {
 
 // ── Balance Fetching ───────────────────────────────────────────
 
-export async function fetchXlmBalance(publicKey: string): Promise<string> {
+export async function fetchXlmBalance(
+  publicKey: string,
+  timeoutMs = STELLAR_TIMEOUT_MS
+): Promise<string> {
   const server = getHorizonServer();
-  const account = await server.loadAccount(publicKey);
+  const account = await withTimeout(
+    server.loadAccount(publicKey),
+    timeoutMs,
+    "Stellar Horizon loadAccount timed out"
+  );
   const xlmBalance = account.balances.find(
     (b) => b.asset_type === "native"
   );
@@ -90,9 +100,16 @@ export async function fetchXlmBalance(publicKey: string): Promise<string> {
  * and `true` once the account record is retrieved. Any other error is
  * re-thrown so callers can surface unexpected failures.
  */
-export async function accountExists(publicKey: string): Promise<boolean> {
+export async function accountExists(
+  publicKey: string,
+  timeoutMs = STELLAR_TIMEOUT_MS
+): Promise<boolean> {
   try {
-    await getHorizonServer().loadAccount(publicKey);
+    await withTimeout(
+      getHorizonServer().loadAccount(publicKey),
+      timeoutMs,
+      "Stellar Horizon loadAccount timed out"
+    );
     return true;
   } catch (err) {
     if (isAccountNotFound(err)) {
@@ -132,9 +149,16 @@ export interface AssetBalance {
  * Fetch all balances for an account (native + issued assets).
  * Returns an array of { assetCode, balance, type } objects.
  */
-export async function fetchAllBalances(publicKey: string): Promise<AssetBalance[]> {
+export async function fetchAllBalances(
+  publicKey: string,
+  timeoutMs = STELLAR_TIMEOUT_MS
+): Promise<AssetBalance[]> {
   const server = getHorizonServer();
-  const account = await server.loadAccount(publicKey);
+  const account = await withTimeout(
+    server.loadAccount(publicKey),
+    timeoutMs,
+    "Stellar Horizon loadAccount timed out"
+  );
 
   return account.balances.map((b) => {
     if (b.asset_type === "native") {
@@ -264,9 +288,13 @@ export async function findStrictSendPath(params: {
         ? destinationAddress
         : [destAsset];
 
-    const response = await server
-      .strictSendPaths(sourceAsset, sendAmount, destinationTarget)
-      .call();
+    const response = await withTimeout(
+      server
+        .strictSendPaths(sourceAsset, sendAmount, destinationTarget)
+        .call(),
+      STELLAR_TIMEOUT_MS,
+      "Stellar Horizon strictSendPaths timed out"
+    );
 
     if (!response || !response.records || response.records.length === 0) {
       return null;
@@ -407,23 +435,29 @@ export async function buildPaymentTx(params: {
   }
 
   const server = getHorizonServer();
-  const sourceAccount = await server.loadAccount(sourcePublicKey);
+  const sourceAccount = await withTimeout(
+    server.loadAccount(sourcePublicKey),
+    STELLAR_TIMEOUT_MS,
+    "Stellar Horizon loadAccount timed out"
+  );
   const now = Math.floor(Date.now() / 1000);
 
   const paymentAsset = createAsset(assetCode, assetIssuer);
+  const baseFee = await withTimeout(
+    server.fetchBaseFee(),
+    STELLAR_TIMEOUT_MS,
+    "Stellar Horizon fetchBaseFee timed out"
+  );
 
   let builder = new TransactionBuilder(sourceAccount, {
-    fee: (await server.fetchBaseFee()).toString(),
+    fee: baseFee.toString(),
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,
-      maxTime: now + 300, // 5 minutes from now
+      maxTime: now + 300,
     },
   });
 
-  // A sponsored (unfunded) recipient must be created before it can receive a
-  // payment. The Create Account operation must come first so the destination
-  // exists when the payment operation executes.
   if (sponsorCreate) {
     builder = builder.addOperation(
       Operation.createAccount({
@@ -480,18 +514,27 @@ export async function buildPathPaymentStrictSendTx(params: {
   } = params;
 
   const server = getHorizonServer();
-  const sourceAccount = await server.loadAccount(sourcePublicKey);
+  const sourceAccount = await withTimeout(
+    server.loadAccount(sourcePublicKey),
+    STELLAR_TIMEOUT_MS,
+    "Stellar Horizon loadAccount timed out"
+  );
   const now = Math.floor(Date.now() / 1000);
 
   const sendAsset = createAsset(sourceAssetCode, sourceAssetIssuer);
   const destAsset = createAsset(destAssetCode, destAssetIssuer);
+  const baseFee = await withTimeout(
+    server.fetchBaseFee(),
+    STELLAR_TIMEOUT_MS,
+    "Stellar Horizon fetchBaseFee timed out"
+  );
 
   let builder = new TransactionBuilder(sourceAccount, {
-    fee: (await server.fetchBaseFee()).toString(),
+    fee: baseFee.toString(),
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,
-      maxTime: now + 300, // 5 minutes from now
+      maxTime: now + 300,
     },
   }).addOperation(
     Operation.pathPaymentStrictSend({
@@ -523,17 +566,25 @@ export async function buildBatchPaymentTx(params: {
   const { sourcePublicKey, recipients } = params;
   const server = getHorizonServer();
 
-  const sourceAccount = await server.loadAccount(sourcePublicKey);
+  const sourceAccount = await withTimeout(
+    server.loadAccount(sourcePublicKey),
+    STELLAR_TIMEOUT_MS,
+    "Stellar Horizon loadAccount timed out"
+  );
 
   const now = Math.floor(Date.now() / 1000);
-  const baseFee = (await server.fetchBaseFee()).toString();
+  const baseFee = (await withTimeout(
+    server.fetchBaseFee(),
+    STELLAR_TIMEOUT_MS,
+    "Stellar Horizon fetchBaseFee timed out"
+  )).toString();
 
   let builder = new TransactionBuilder(sourceAccount, {
     fee: baseFee,
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,
-      maxTime: now + 300, // 5 minutes
+      maxTime: now + 300,
     },
   });
 
@@ -555,14 +606,19 @@ export async function buildBatchPaymentTx(params: {
  * Submit a signed XDR transaction to Horizon.
  */
 export async function submitSignedTx(
-  signedXdr: string
+  signedXdr: string,
+  timeoutMs = STELLAR_TIMEOUT_MS
 ): Promise<SubmitResult> {
   const server = getHorizonServer();
   const transaction = TransactionBuilder.fromXDR(
     signedXdr,
     NETWORK_PASSPHRASE
   );
-  return server.submitTransaction(transaction);
+  return withTimeout(
+    server.submitTransaction(transaction),
+    timeoutMs,
+    "Stellar Horizon submitTransaction timed out"
+  );
 }
 
 /** Derive the public key of the account behind a Stellar secret key. */
@@ -607,6 +663,16 @@ export async function submitPaymentFromSecret(params: {
  * falls back to scanning the raw error message.
  */
 export function parseSubmissionError(err: unknown): string {
+  if (
+    isTimeoutError(err) ||
+    (typeof err === "object" &&
+      err !== null &&
+      "name" in err &&
+      (err as { name: string }).name === "TimeoutError")
+  ) {
+    return "Stellar request timed out. Please check your network connection and try again.";
+  }
+
   interface HorizonResultCodes {
     transaction?: string;
     operations?: string[];
@@ -631,15 +697,12 @@ export function parseSubmissionError(err: unknown): string {
     }
     for (const code of codes) {
       const message = getStellarErrorMessage(code);
-      // getStellarErrorMessage returns a generic fallback for unknown codes;
-      // prefer a specific (non-generic) mapping when available.
       if (message && !message.startsWith("Transaction failed")) {
         return message;
       }
     }
   }
 
-  // Fallback: scan the raw message for a known result code fragment.
   const raw = e?.message ?? String(err);
   const known = [
     "op_underfunded",
@@ -649,11 +712,16 @@ export function parseSubmissionError(err: unknown): string {
     "tx_insufficient_balance",
     "tx_bad_seq",
     "tx_too_late",
+    "tx_timeout",
   ];
   for (const code of known) {
     if (raw.includes(code)) {
       return getStellarErrorMessage(code);
     }
+  }
+
+  if (raw.toLowerCase().includes("timeout") || raw.toLowerCase().includes("timed out")) {
+    return "Stellar request timed out. Please check your network connection and try again.";
   }
 
   return raw || "Transaction failed. Please try again.";

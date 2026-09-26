@@ -21,6 +21,7 @@ const HORIZON_ERROR_MESSAGES: Record<string, string> = {
   tx_insufficient_fee: "Transaction fee is too low. The network requires a higher fee.",
   tx_insufficient_balance: "Insufficient balance to cover the transaction fee.",
   tx_memo_required: "This account requires a memo to receive payments. Please add a memo.",
+  tx_timeout: "Stellar request timed out. Please check your network connection and try again.",
 };
 
 /**
@@ -28,7 +29,6 @@ const HORIZON_ERROR_MESSAGES: Record<string, string> = {
  * Falls back to the original code if no mapping exists.
  */
 export function getStellarErrorMessage(resultCode: string): string {
-  // Extract the operation-level code from full result codes like "op_underfunded"
   for (const [code, message] of Object.entries(HORIZON_ERROR_MESSAGES)) {
     if (resultCode.includes(code)) return message;
   }
@@ -45,6 +45,8 @@ export function isRecoverableStellarError(message: string): boolean {
     "sequence",
     "expired",
     "insufficient",
+    "timeout",
+    "timed out",
   ];
   return recoverable.some((r) => message.toLowerCase().includes(r));
 }

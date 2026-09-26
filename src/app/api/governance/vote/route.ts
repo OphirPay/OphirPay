@@ -8,6 +8,7 @@ import { voteOnProposal } from "@/lib/contract-advanced";
 import { validateBody, voteOnProposalSchema } from "@/lib/validation-schemas";
 import { cacheDelete } from "@/lib/api-cache";
 import { withRequestLogging } from "@/lib/request-logging";
+import prisma from "@/lib/prisma";
 
 /** Invalidate the cached proposal reads so a refetch shows the fresh vote. */
 function invalidateProposalCache(proposalId: number) {
@@ -43,6 +44,19 @@ export const POST = withMetrics("POST /api/governance/vote", withRequestLogging(
         { status: 400 }
       );
     }
+
+    // The contract emits a vote event but does not expose an enumerable vote
+    // history read. Persist this app-submitted vote in the existing audit log
+    // so proposal detail pages can show voter/support history. The on-chain
+    // transaction remains authoritative if this best-effort mirror fails.
+    await prisma.auditLog.create({
+      data: {
+        action: "governance:vote",
+        actor: auth.userId,
+        target: String(proposalId),
+        details: { voter, support, txHash: result.txHash ?? null },
+      },
+    }).catch(() => undefined);
 
     invalidateProposalCache(proposalId);
     return successResponse({ voted: true, proposalId, txHash: result.txHash });

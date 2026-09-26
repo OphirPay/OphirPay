@@ -681,21 +681,36 @@ DATABASE_PROVIDER=sqlite npx prisma db push
 
 ## Post-Deployment Verification
 
+### Stellar wallet discovery (SEP-1)
+
+The application serves a SEP-1 discovery document at
+`https://<your-domain>/.well-known/stellar.toml`. It is generated at request
+time from the deployment's Stellar network, network passphrase, RPC/Horizon
+URLs, and configured OphirPay/emitter contract IDs, so each environment reports
+its own deployment metadata. The document also publishes the network-specific
+USDC issuer and links to the deployment and security documentation. Verify the
+endpoint after deployment and confirm its `NETWORK_PASSPHRASE`,
+`OPHIRPAY_CONTRACT_ID`, and `EMITTER_CONTRACT_ID` values match the variables
+configured for that deployment.
+
 Run these checks after deploying:
 
 ```bash
-# 1. Health check
+# 1. SEP-1 discovery document
+curl -fsS https://your-domain.com/.well-known/stellar.toml
+
+# 2. Health check
 curl -s https://your-domain.com/api/health | jq .
 
-# 2. Check the dashboard loads
+# 3. Check the dashboard loads
 curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/
 # Expected: 200
 
-# 3. Check API routes
+# 4. Check API routes
 curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/api/health
 # Expected: 200
 
-# 4. Verify database connectivity
+# 5. Verify database connectivity
 curl -s https://your-domain.com/api/health | jq .database
 # Expected: "connected"
 ```

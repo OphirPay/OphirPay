@@ -27,13 +27,19 @@ export const GET = withMetrics("GET /api/refunds", withRequestLogging(async func
     const analytics = searchParams.get("analytics") === "true";
 
     if (analytics) {
+      const requestedDays = Number(searchParams.get("days") ?? 30);
+      const days = [7, 30, 90, 365].includes(requestedDays) ? requestedDays : 30;
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
       const refunds = await prisma.refund.findMany({
         where: { userId: auth.userId },
-        select: { reasonCode: true },
+        orderBy: { requestedAt: "desc" },
+        take: 100,
+        select: { reasonCode: true, requestedAt: true },
       });
+      const inRange = refunds.filter((refund) => refund.requestedAt >= since);
       const buckets = [0, 1, 2, 3, 4, 5].map((code) => ({
         code,
-        count: refunds.filter((r) => r.reasonCode === code).length,
+        count: inRange.filter((refund) => refund.reasonCode === code).length,
       }));
       return successResponse(buckets);
     }

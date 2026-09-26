@@ -112,6 +112,15 @@ describe("Vercel rewrites (vercel.json) — #682", () => {
     expect(exists(".well-known/security.txt")).toBe(true);
     expect(read(".well-known/security.txt")).toMatch(/^Contact:/m);
   });
+
+  it("serves stellar.toml from environment-backed network and contract configuration", () => {
+    const route = read("src/app/.well-known/stellar.toml/route.ts");
+    expect(route).toContain("NETWORK_PASSPHRASE");
+    expect(route).toContain("DEFAULT_CONTRACT_ID");
+    expect(route).toContain("EMITTER_CONTRACT_ID");
+    expect(route).toContain("[[CURRENCIES]]");
+    expect(read("docs/DEPLOYMENT.md")).toContain("/.well-known/stellar.toml");
+  });
 });
 
 describe("CSP documentation (next.config.ts) — #679", () => {

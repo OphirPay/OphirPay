@@ -158,6 +158,35 @@ export default function ReceivePage() {
               Scan with any SEP-7-compatible Stellar wallet to send a payment
               to this address.
             </p>
+
+            <div className="mt-4 w-full max-w-xs">
+              <a
+                href={buildReceivePayload(address)}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-ophir-600 hover:bg-ophir-700 text-white text-sm font-medium transition-colors shadow-sm"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
+                  />
+                </svg>
+                Open in Mobile Wallet
+              </a>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 w-full text-center">
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">
+                Supported Wallets: Lobstr · Solar · Beans · Decaf · Vibrant
+              </p>
+            </div>
           </Card>
 
           {/* Address */}

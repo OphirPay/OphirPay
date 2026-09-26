@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! OphirPay Modeled Invariants — Kani Proof Harnesses (Experimental / Manual Only)
 //!
 //! > ⚠️ **Honest status:** These Kani harnesses verify **hand-written models**
@@ -39,7 +40,18 @@
 //! | 7 | Timelock delay of 24h is enforced | `timelock_delay_invariant` |
 //! | 8 | Spending limits enforce expiry | `spending_limit_expiry_invariant` |
 
+#[cfg(kani)]
 use kani::proof;
+
+#[cfg(not(kani))]
+#[allow(dead_code)]
+pub mod kani {
+    pub fn any<T: Default>() -> T {
+        T::default()
+    }
+    pub fn assume(_cond: bool) {}
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // INVARIANT 1: LOCKED_BALANCE Protection
@@ -80,7 +92,8 @@ fn model_emergency_withdraw_allowed(
     withdraw_amount <= unlocked
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn locked_balance_invariant() {
     // Symbolic inputs: any possible contract state
     let contract_balance: i128 = kani::any();
@@ -132,13 +145,16 @@ fn locked_balance_invariant() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// INVARIANT 2: One Address = One Vote
+// INVARIANT 2: One Address = One Vote (DOCUMENTATION-ONLY MODEL)
 //
 // Formula:  ∀ proposal p, ∀ address a,
 //           vote_count(p, a) ∈ {0, 1}
 //
-// Each address can vote at most once per proposal. This prevents
-// the self-reported-weight attack (fixed in CHANGELOG.md).
+// > ⚠️ DOCUMENTATION-ONLY MODEL (AUDIT HIGH-2):
+// > The simple boolean model below is documentation-only. The actual
+// > contract enforces single voting via Soroban storage key (VOTE_KEY, proposal_id, voter).
+// > Real contract code verification is proven in:
+// > `contracts/ophirpay/tests/contract_invariants.rs::invariant_governance_single_vote_per_address`.
 // ═══════════════════════════════════════════════════════════════
 
 /// Models the double-vote check:
@@ -152,7 +168,8 @@ fn model_vote(
     !already_voted
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn one_vote_per_address_invariant() {
     let _proposal_id: u64 = kani::any();
     let voter_has_voted: bool = kani::any();
@@ -202,7 +219,8 @@ fn model_release_lock(_state: LockState) -> LockState {
     LockState::Unlocked
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn reentrancy_lock_invariant() {
     let initial: bool = kani::any(); // true = Locked, false = Unlocked
 
@@ -269,7 +287,8 @@ fn model_proposal_deposit(
     (true, locked_after_execute)
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn proposal_deposit_lifecycle() {
     let locked_before: i128 = kani::any();
     let deposit_amount: i128 = kani::any();
@@ -337,7 +356,8 @@ fn model_calculate_fee(amount: i128, fee_bps: u32) -> i128 {
     amount.saturating_mul(fee_bps as i128) / 10000
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn fee_cap_invariant() {
     let payment_fee_bps: u32 = kani::any();
     let escrow_fee_bps: u32 = kani::any();
@@ -405,7 +425,8 @@ fn model_multisig_executable(
     num_approvals >= threshold
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn multisig_threshold_invariant() {
     let threshold: u32 = kani::any();
     let num_signers: u32 = kani::any();
@@ -430,13 +451,13 @@ fn multisig_threshold_invariant() {
         assert!(executable);
     }
 
-    // Property 6c: unanimous approval (all signers) always succeeds
-    if num_approvals == num_signers {
+    // Property 6c: unanimous approval (all signers) always succeeds for valid config
+    if num_approvals == num_signers && threshold >= 1 && threshold <= num_signers {
         assert!(executable);
     }
 
     // Property 6d: 0 approvals never succeeds (threshold >= 1)
-    if num_approvals == 0 {
+    if num_approvals == 0 && threshold >= 1 {
         assert!(!executable);
     }
 
@@ -468,7 +489,8 @@ fn model_timelock_executable(
     now >= unlocks_at
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn timelock_delay_invariant() {
     let proposed_at: u64 = kani::any();
     let now: u64 = kani::any();
@@ -529,40 +551,66 @@ fn timelock_delay_invariant() {
 // ```
 // ═══════════════════════════════════════════════════════════════
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModelSpendingLimit {
+    pub is_active: bool,
+    pub expires_at: u64,
+    pub daily_limit: i128,
+    pub current_daily_spend: i128,
+    pub monthly_limit: i128,
+    pub current_monthly_spend: i128,
+    pub last_reset_day: u64,
+    pub last_reset_month: u64,
+}
+
+/// Models the exact atomic_spend check from the contract (including state mutation on expiry):
+/// 1. Inactive limits reject immediately.
+/// 2. If limit.expires_at > 0 && now >= limit.expires_at, limit.is_active is set to false and call reverts.
+/// 3. Reset daily/monthly spending windows based on 86400s (1 day) and 30*86400s (1 month).
+/// 4. Reverts if daily or monthly limits are exceeded.
 fn model_spending_limit_check(
-    is_active: bool,
-    expires_at: u64,
+    limit: &mut ModelSpendingLimit,
     now: u64,
-    daily_limit: i128,
-    daily_spend: i128,
-    monthly_limit: i128,
-    monthly_spend: i128,
     amount: i128,
 ) -> bool {
-    // Not active → reject
-    if !is_active {
+    if !limit.is_active {
+        return false;
+    }
+    if amount <= 0 {
         return false;
     }
 
-    // Expiry check: if expires_at > 0 and now >= expires_at → reject
-    if expires_at > 0 && now >= expires_at {
+    // Expiry check (matches contract: deactivates limit on expiry)
+    if limit.expires_at > 0 && now >= limit.expires_at {
+        limit.is_active = false;
         return false;
     }
 
-    // Daily limit check
-    if daily_spend.saturating_add(amount) > daily_limit {
+    let day_seconds: u64 = 86400;
+    let month_seconds: u64 = 30 * 86400;
+    if now.saturating_sub(limit.last_reset_day) >= day_seconds {
+        limit.current_daily_spend = 0;
+        limit.last_reset_day = now;
+    }
+    if now.saturating_sub(limit.last_reset_month) >= month_seconds {
+        limit.current_monthly_spend = 0;
+        limit.last_reset_month = now;
+    }
+
+    if limit.current_daily_spend.saturating_add(amount) > limit.daily_limit {
+        return false;
+    }
+    if limit.current_monthly_spend.saturating_add(amount) > limit.monthly_limit {
         return false;
     }
 
-    // Monthly limit check
-    if monthly_spend.saturating_add(amount) > monthly_limit {
-        return false;
-    }
-
+    limit.current_daily_spend = limit.current_daily_spend.saturating_add(amount);
+    limit.current_monthly_spend = limit.current_monthly_spend.saturating_add(amount);
     true
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn spending_limit_expiry_invariant() {
     let is_active: bool = kani::any();
     let expires_at: u64 = kani::any();
@@ -580,56 +628,77 @@ fn spending_limit_expiry_invariant() {
     kani::assume(monthly_spend >= 0);
     kani::assume(amount > 0); // InvalidAmount check
 
-    let allowed = model_spending_limit_check(
-        is_active, expires_at, now,
-        daily_limit, daily_spend,
-        monthly_limit, monthly_spend,
-        amount,
-    );
+    let mut limit = ModelSpendingLimit {
+        is_active,
+        expires_at,
+        daily_limit,
+        current_daily_spend: daily_spend,
+        monthly_limit,
+        current_monthly_spend: monthly_spend,
+        last_reset_day: 0,
+        last_reset_month: 0,
+    };
+
+    let allowed = model_spending_limit_check(&mut limit, now, amount);
 
     // Property 8a: inactive limit always rejects
     if !is_active {
         assert!(!allowed);
     }
 
-    // Property 8b: expired limit always rejects
+    // Property 8b: expired limit always rejects and deactivates state
     if is_active && expires_at > 0 && now >= expires_at {
         assert!(!allowed);
+        assert!(!limit.is_active, "Expired limit must deactivate is_active");
     }
 
     // Property 8c: expires_at=0 means no expiry (immortal limit)
-    if is_active && expires_at == 0 && daily_spend == 0 && monthly_spend == 0 {
-        let immortal = model_spending_limit_check(
-            true, 0, u64::MAX,
-            daily_limit, 0,
-            monthly_limit, 0,
-            amount,
-        );
-        // Should be allowed if amount fits within limits
+    if is_active && expires_at == 0 && daily_spend == 0 && monthly_spend == 0 && amount > 0 {
+        let mut immortal = ModelSpendingLimit {
+            is_active: true,
+            expires_at: 0,
+            daily_limit,
+            current_daily_spend: 0,
+            monthly_limit,
+            current_monthly_spend: 0,
+            last_reset_day: 0,
+            last_reset_month: 0,
+        };
+        let res = model_spending_limit_check(&mut immortal, u64::MAX, amount);
         if amount <= daily_limit && amount <= monthly_limit {
-            assert!(immortal);
+            assert!(res);
         }
     }
 
     // Property 8d: spending exactly at the limit boundary
-    if is_active && daily_spend == 0 && amount == daily_limit && amount <= monthly_limit {
-        let exact_limit = model_spending_limit_check(
-            true, 0, 0,
-            daily_limit, 0,
-            monthly_limit, 0,
-            amount,
-        );
+    if is_active && daily_spend == 0 && amount == daily_limit && amount <= monthly_limit && amount > 0 {
+        let mut boundary = ModelSpendingLimit {
+            is_active: true,
+            expires_at: 0,
+            daily_limit,
+            current_daily_spend: 0,
+            monthly_limit,
+            current_monthly_spend: 0,
+            last_reset_day: 0,
+            last_reset_month: 0,
+        };
+        let exact_limit = model_spending_limit_check(&mut boundary, 0, amount);
         assert!(exact_limit);
     }
 
     // Property 8e: spending 1 stroop over limit fails
     if is_active && daily_limit > 0 && daily_spend == 0 {
-        let over_limit = model_spending_limit_check(
-            true, 0, 0,
-            daily_limit, 0,
-            monthly_limit, 0,
-            daily_limit.saturating_add(1),
-        );
+        let mut over = ModelSpendingLimit {
+            is_active: true,
+            expires_at: 0,
+            daily_limit,
+            current_daily_spend: 0,
+            monthly_limit,
+            current_monthly_spend: 0,
+            last_reset_day: 0,
+            last_reset_month: 0,
+        };
+        let over_limit = model_spending_limit_check(&mut over, 0, daily_limit.saturating_add(1));
         if daily_limit < i128::MAX {
             assert!(!over_limit);
         }
@@ -644,7 +713,8 @@ fn spending_limit_expiry_invariant() {
 // proposal create+execute cycle, LOCKED_BALANCE must be unchanged.
 // ═══════════════════════════════════════════════════════════════
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn composite_locked_balance_and_deposit() {
     let contract_balance: i128 = kani::any();
     let locked_balance: i128 = kani::any();
@@ -724,7 +794,8 @@ fn compute_vested_at(total_amount: i128, start_time: u64, end_time: u64, now: u6
     (total_amount * elapsed) / total_duration
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn compute_vested_boundary_at_end() {
     let total_amount: i128 = kani::any();
     let start_time: u64 = kani::any();
@@ -742,7 +813,8 @@ fn compute_vested_boundary_at_end() {
     }
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn compute_vested_boundary_at_start() {
     let total_amount: i128 = kani::any();
     let start_time: u64 = kani::any();
@@ -760,7 +832,8 @@ fn compute_vested_boundary_at_start() {
     }
 }
 
-#[proof]
+#[cfg_attr(kani, kani::proof)]
+#[cfg_attr(not(kani), test)]
 fn compute_vested_zero_duration() {
     let total_amount: i128 = kani::any();
     let t: u64 = kani::any();

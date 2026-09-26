@@ -22,6 +22,15 @@ import {
   processRefund,
   rejectRefund,
 } from "@/lib/contract-advanced";
+import {
+  REFUND_REASON_CATALOG,
+  getRefundReasonLabel,
+  REFUND_WINDOW_LIMITATION_NOTICE,
+  toRefundReasonChartData,
+  type RefundReasonChartItem,
+  type RefundTrendPoint,
+} from "@/lib/chart-data";
+import type { DateRangePreset } from "@/lib/date-range";
 
 const REASON_CODES = [
   { value: 0, label: "Product Defect" },
@@ -55,9 +64,13 @@ interface Refund {
   onChainId: number | null;
 }
 
-interface RefundAnalytics {
-  code: number;
-  count: number;
+interface DetailedAnalyticsResponse {
+  buckets: RefundReasonChartItem[];
+  trends: RefundTrendPoint[];
+  total: number;
+  range: string;
+  maxWindow: number;
+  windowNotice: string;
 }
 
 export default function RefundsPage() {
@@ -68,6 +81,7 @@ export default function RefundsPage() {
   const [showRequest, setShowRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"list" | "analytics">("list");
+  const [analyticsRange, setAnalyticsRange] = useState<DateRangePreset | "all">("30d");
 
   const [formPaymentId, setFormPaymentId] = useState("");
   const [formAmount, setFormAmount] = useState("");
@@ -83,8 +97,27 @@ export default function RefundsPage() {
 
   const {
     data: rawAnalytics,
-  } = useApiQuery<RefundAnalytics[]>(["refunds", "analytics"], "/api/refunds?analytics=true");
-  const analytics = Array.isArray(rawAnalytics) ? rawAnalytics : [];
+    isLoading: analyticsLoading,
+    isError: analyticsError,
+    refetch: refetchAnalytics,
+  } = useApiQuery<DetailedAnalyticsResponse | { code: number; count: number }[]>(
+    ["refunds", "analytics", analyticsRange],
+    `/api/refunds?analytics=true&detailed=true&range=${analyticsRange}`
+  );
+
+  const analyticsItems: RefundReasonChartItem[] = Array.isArray(rawAnalytics)
+    ? toRefundReasonChartData(rawAnalytics)
+    : rawAnalytics?.buckets ?? toRefundReasonChartData([]);
+  const trendPoints: RefundTrendPoint[] =
+    !Array.isArray(rawAnalytics) && rawAnalytics?.trends ? rawAnalytics.trends : [];
+  const windowNotice: string =
+    !Array.isArray(rawAnalytics) && rawAnalytics?.windowNotice
+      ? rawAnalytics.windowNotice
+      : REFUND_WINDOW_LIMITATION_NOTICE;
+  const totalRefundsCount = Array.isArray(rawAnalytics)
+    ? rawAnalytics.reduce((sum, item) => sum + item.count, 0)
+    : rawAnalytics?.total ?? 0;
+
 
   const handleRequest = async () => {
     if (!wallet.publicKey) { toast.error("Connect your wallet first"); return; }
@@ -225,7 +258,7 @@ export default function RefundsPage() {
   }
 
   const reasonLabel = (code: number) => REASON_CODES.find((r) => r.value === code)?.label ?? "Unknown";
-  const maxAnalytics = Math.max(...analytics.map((a) => a.count), 1);
+  const maxAnalytics = Math.max(...analyticsItems.map((a) => a.count), 1);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -280,33 +313,175 @@ export default function RefundsPage() {
       </div>
 
       {activeTab === "analytics" && (
-        <Card className="p-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Reason Code Analytics
-          </h2>
-          {analytics.length === 0 ? (
-            <p className="text-sm text-gray-500">No refund data yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {analytics.map((entry) => (
-                <div key={entry.code} className="flex items-center gap-3">
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400 w-32">
-                    {reasonLabel(entry.code)}
-                  </span>
-                  <div className="flex-1 h-5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-purple-500 transition-all rounded-full"
-                      style={{ width: `${(entry.count / maxAnalytics) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-semibold text-gray-900 dark:text-white w-8 text-right">
-                    {entry.count}
-                  </span>
-                </div>
-              ))}
+        <div className="space-y-6">
+          <Card className="p-6">
+            {/* Header with Date-Range Selector */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Refund Reason Analytics
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Breakdown and trend analysis by structured reason code
+                </p>
+              </div>
+
+              {/* Date-Range Selector */}
+              <div
+                className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg text-xs font-medium"
+                role="group"
+                aria-label="Date range selector"
+              >
+                {(
+                  [
+                    { value: "7d", label: "7 Days" },
+                    { value: "30d", label: "30 Days" },
+                    { value: "90d", label: "90 Days" },
+                    { value: "all", label: "All Recent" },
+                  ] as const
+                ).map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => setAnalyticsRange(preset.value)}
+                    className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                      analyticsRange === preset.value
+                        ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm font-semibold"
+                        : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
-        </Card>
+
+            {/* Bounded window limitation notice */}
+            <div
+              role="note"
+              data-testid="refund-window-notice"
+              className="mt-4 p-3.5 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 text-xs flex items-start gap-2.5"
+            >
+              <span className="text-blue-600 dark:text-blue-400 text-sm shrink-0">ℹ️</span>
+              <div className="space-y-0.5">
+                <p className="font-semibold text-blue-800 dark:text-blue-300">
+                  Window Limitation Notice
+                </p>
+                <p className="text-blue-700 dark:text-blue-300/90 leading-relaxed">
+                  {windowNotice}
+                </p>
+              </div>
+            </div>
+
+            {analyticsLoading ? (
+              <div className="py-8">
+                <LoadingSkeleton lines={4} variant="card" />
+              </div>
+            ) : analyticsError ? (
+              <div className="py-8 text-center">
+                <p className="text-sm text-rose-600 dark:text-rose-400 mb-2">
+                  Failed to load refund analytics.
+                </p>
+                <Button size="sm" variant="secondary" onClick={() => refetchAnalytics()}>
+                  Retry
+                </Button>
+              </div>
+            ) : totalRefundsCount === 0 ? (
+              <div className="py-12 text-center text-gray-400 text-sm">
+                <span className="text-2xl block mb-2">📊</span>
+                <p className="font-medium text-gray-600 dark:text-gray-300">No refunds recorded</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  There are no refund records matching the selected date range.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-6 space-y-6">
+                {/* Reason code breakdown list */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                    Distribution by Reason Code
+                  </h3>
+                  <div className="grid grid-cols-1 gap-3">
+                    {analyticsItems.map((item) => (
+                      <div
+                        key={item.code}
+                        className="p-3.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40 space-y-2"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-3 h-3 rounded-full shrink-0"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <span className="font-semibold text-gray-900 dark:text-white">
+                              {item.label}
+                            </span>
+                            <span className="text-[11px] text-gray-400">
+                              (Code #{item.code})
+                            </span>
+                          </div>
+                          <span className="font-semibold text-gray-900 dark:text-white">
+                            {item.count} ({item.percentage}%)
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                          {item.description}
+                        </p>
+                        <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${item.percentage}%`,
+                              backgroundColor: item.color,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Trend Analysis */}
+                {trendPoints.length > 0 && (
+                  <div className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                      Trend Across Selected Date Range
+                    </h3>
+                    <div className="space-y-2">
+                      {trendPoints.map((tp) => (
+                        <div key={tp.date} className="flex items-center gap-3 text-xs">
+                          <span className="font-mono text-gray-500 w-24 shrink-0">
+                            {tp.date}
+                          </span>
+                          <div className="flex-1 h-4 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex">
+                            {[0, 1, 2, 3, 4, 5].map((code) => {
+                              const count = tp.byReason[code] || 0;
+                              if (count === 0) return null;
+                              const pct = Math.round((count / tp.total) * 100);
+                              return (
+                                <div
+                                  key={code}
+                                  style={{
+                                    width: `${pct}%`,
+                                    backgroundColor: REFUND_REASON_CATALOG[code].color,
+                                  }}
+                                  title={`${REFUND_REASON_CATALOG[code].label}: ${count}`}
+                                />
+                              );
+                            })}
+                          </div>
+                          <span className="font-semibold text-gray-700 dark:text-gray-300 w-16 text-right">
+                            {tp.total} {tp.total === 1 ? "refund" : "refunds"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        </div>
       )}
 
       {activeTab === "list" && refunds.length === 0 ? (

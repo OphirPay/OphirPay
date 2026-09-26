@@ -14,6 +14,14 @@ import { validateBody, createRefundRecordSchema } from "@/lib/validation-schemas
 import { withRequestLogging } from "@/lib/request-logging";
 import { invalidateCache } from "@/lib/api-cache";
 
+import { getDateRange, type DateRangePreset } from "@/lib/date-range";
+import {
+  toRefundReasonChartData,
+  toRefundTrendChartData,
+  MAX_REFUND_ANALYTICS_WINDOW,
+  REFUND_WINDOW_LIMITATION_NOTICE,
+} from "@/lib/chart-data";
+
 export const GET = withMetrics("GET /api/refunds", withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
@@ -27,16 +35,45 @@ export const GET = withMetrics("GET /api/refunds", withRequestLogging(async func
     const analytics = searchParams.get("analytics") === "true";
 
     if (analytics) {
+      const detailed = searchParams.get("detailed") === "true" || searchParams.has("range");
+      const range = (searchParams.get("range") as DateRangePreset) || "30d";
+
+      let dateFilter = {};
+      if (range && range !== ("all" as DateRangePreset)) {
+        try {
+          const dateRange = getDateRange(range);
+          dateFilter = { requestedAt: { gte: dateRange.from, lte: dateRange.to } };
+        } catch {
+          // fallback to all
+        }
+      }
+
       const refunds = await prisma.refund.findMany({
-        where: { userId: auth.userId },
-        select: { reasonCode: true },
+        where: { userId: auth.userId, ...dateFilter },
+        orderBy: { requestedAt: "desc" },
+        take: MAX_REFUND_ANALYTICS_WINDOW,
+        select: { reasonCode: true, requestedAt: true },
       });
-      const buckets = [0, 1, 2, 3, 4, 5].map((code) => ({
+
+      const rawBuckets = [0, 1, 2, 3, 4, 5].map((code) => ({
         code,
         count: refunds.filter((r) => r.reasonCode === code).length,
       }));
-      return successResponse(buckets);
+
+      if (detailed) {
+        return successResponse({
+          buckets: toRefundReasonChartData(rawBuckets),
+          trends: toRefundTrendChartData(refunds),
+          total: refunds.length,
+          range,
+          maxWindow: MAX_REFUND_ANALYTICS_WINDOW,
+          windowNotice: REFUND_WINDOW_LIMITATION_NOTICE,
+        });
+      }
+
+      return successResponse(rawBuckets);
     }
+
 
     const refunds = await prisma.refund.findMany({
       where: { userId: auth.userId },

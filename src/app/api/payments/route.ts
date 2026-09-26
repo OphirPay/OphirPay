@@ -19,6 +19,7 @@ import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { incMetric } from "@/lib/metrics-counters";
 import { buildPaymentWhere } from "@/lib/payment-filters";
+import { invalidateCaches } from "@/lib/api-cache";
 import {
   buildCursorWhere,
   computeNextCursor,
@@ -167,6 +168,16 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
     );
 
     incMetric("payments_created_total");
+
+    // Explicit cache invalidation (#741): a new payment changes the aggregate
+    // stats, this user's analytics, and the audit ledger (recording a payment
+    // appends an on-chain audit entry). Analytics is invalidated per-user so
+    // one tenant's write never flushes everyone else's cached aggregates.
+    await invalidateCaches([
+      { scope: "stats" },
+      { scope: "analytics", subject: auth.userId },
+      { scope: "audit-log" },
+    ]);
 
     return successResponse(payment, undefined, 201);
   } catch (err) {

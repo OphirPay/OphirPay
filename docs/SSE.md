@@ -267,10 +267,14 @@ curl -N https://ophirpay.com/api/events | \
   `/api/metrics` during the run, and the harness's own heap, must stay under
   generous limits.
 
+The load test samples `/api/metrics` for the leak and memory gauges, so pass
+`METRICS_TOKEN` for the target deployment (otherwise those assertions are
+skipped because the endpoint returns `401`):
+
 ```bash
 # Requires a running OphirPay server (dev or production build)
 npm run start            # in one terminal (or: npm run dev)
-npm run test:sse:load    # in another
+METRICS_TOKEN=$METRICS_TOKEN npm run test:sse:load    # in another
 
 # Customise the run
 BASE_URL=https://staging.example.com CONCURRENCY=250 DURATION_MS=20000 \

@@ -2,8 +2,21 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getRateLimitStore } from "@/lib/rate-limit";
+import {
+  buildRateLimitKey,
+  formatRateLimitHeaders,
+  getClientIp,
+  getRateLimitStore,
+  RATE_LIMIT_MESSAGE,
+} from "@/lib/rate-limit";
+import { ERROR_CODES, errorEnvelope } from "@/lib/error-codes";
 import { logger } from "@/lib/logger";
+
+// The global per-IP bucket uses the same store/interface and header writer as
+// the Node route handlers (issue #759). `RATE_LIMIT_MAX` is kept as a module
+// constant so the limit is fixed for the life of an edge instance, matching
+// the previous behaviour.
+const GLOBAL_RATE_LIMIT_SCOPE = "global";
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 // Configurable via RATE_LIMIT_RPM env (defaults to 120 requests/min/IP)
@@ -23,14 +36,6 @@ const RATE_LIMIT_MAX = Math.max(
 const rateLimitStore = getRateLimitStore();
 
 const isProd = process.env.NODE_ENV === "production";
-
-function getClientIp(request: NextRequest): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown"
-  );
-}
 
 function generateRequestId(): string {
   return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -90,7 +95,7 @@ export async function proxy(request: NextRequest) {
     if (!skipRateLimit) {
       const ip = getClientIp(request);
       const result = await rateLimitStore.increment(
-        ip,
+        buildRateLimitKey(GLOBAL_RATE_LIMIT_SCOPE, ip),
         RATE_LIMIT_WINDOW_MS,
         RATE_LIMIT_MAX
       );
@@ -99,22 +104,16 @@ export async function proxy(request: NextRequest) {
 
       // Rate limit exceeded
       if (!result.allowed) {
-        const retryAfter = Math.ceil((resetAt - Date.now()) / 1000);
         // Rejected before any route handler runs, so log here (with the same
-        // request id returned in the response header below).
+        // request id returned in the response header below). Headers come from
+        // the shared writer so the edge and Node limiters agree byte-for-byte.
         logger.request(request.method, pathname, 429, performance.now() - startedAt, requestId);
         return NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: "RATE_LIMITED",
-              message: "Too many requests. Please try again later.",
-            },
-          },
+          errorEnvelope(ERROR_CODES.RATE_LIMITED, RATE_LIMIT_MESSAGE),
           {
             status: 429,
             headers: {
-              "Retry-After": String(retryAfter),
+              ...formatRateLimitHeaders({ limit: RATE_LIMIT_MAX, remaining: 0, resetAt }),
               "X-Request-Id": requestId,
             },
           }
@@ -138,9 +137,15 @@ export async function proxy(request: NextRequest) {
     response.headers.set("X-Content-Type-Options", "nosniff");
     response.headers.set("X-Frame-Options", "DENY");
     response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    response.headers.set("X-RateLimit-Limit", String(RATE_LIMIT_MAX));
-    response.headers.set("X-RateLimit-Remaining", String(remaining));
-    response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetAt / 1000)));
+    // Same header writer as the 429 path: identical formatting everywhere.
+    const rateLimitHeaders = formatRateLimitHeaders({
+      limit: RATE_LIMIT_MAX,
+      remaining,
+      resetAt,
+    });
+    response.headers.set("X-RateLimit-Limit", rateLimitHeaders["X-RateLimit-Limit"]!);
+    response.headers.set("X-RateLimit-Remaining", rateLimitHeaders["X-RateLimit-Remaining"]!);
+    response.headers.set("X-RateLimit-Reset", rateLimitHeaders["X-RateLimit-Reset"]!);
 
     // Production CORS — restrict origins in production
     const origin = request.headers.get("origin") || "";

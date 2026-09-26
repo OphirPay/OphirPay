@@ -165,11 +165,11 @@ export default function GovernancePage() {
   const truncated = proposals?.truncated ?? false;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in max-w-full">
       {showConnectBanner && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center gap-3">
-          <span className="text-amber-500 text-lg">⚠️</span>
-          <div>
+          <span className="text-amber-500 text-lg shrink-0">⚠️</span>
+          <div className="min-w-0">
             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
               Wallet not connected
             </p>
@@ -182,11 +182,13 @@ export default function GovernancePage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">🏛 Governance</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">
             DAO-ready proposal → vote → execute workflow
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>+ New Proposal</Button>
+        <Button onClick={() => setShowCreate(true)} className="w-full sm:w-auto min-h-[44px] md:min-h-0 justify-center">
+          + New Proposal
+        </Button>
       </div>
 
       {isLoading ? (
@@ -217,53 +219,72 @@ export default function GovernancePage() {
               onAction={() => setShowCreate(true)}
             />
           ) : (
-            <div className="space-y-3">
-              {list.map((p) => {
-                const progress = voteProgress(p);
-                return (
-                  <Card key={p.id} className="p-4">
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">
-                              {p.title}
-                            </h3>
-                            <Badge
-                              variant={
-                                p.executed
-                                  ? p.yes_votes > p.no_votes
-                                    ? "success"
-                                    : "danger"
-                                  : isVotingOpen(p)
-                                    ? "info"
-                                    : "warning"
-                              }
-                            >
-                              {p.executed
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+              {/* Desktop Table Header */}
+              <div className="hidden md:grid md:grid-cols-12 gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <div className="col-span-5">Proposal</div>
+                <div className="col-span-2">Action & Proposer</div>
+                <div className="col-span-3">Voting Progress</div>
+                <div className="col-span-2 text-right">Actions</div>
+              </div>
+
+              {/* Proposals List / Rows */}
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {list.map((p) => {
+                  const progress = voteProgress(p);
+                  return (
+                    <div
+                      key={p.id}
+                      className="p-4 md:px-4 md:py-3.5 flex flex-col md:grid md:grid-cols-12 md:gap-4 md:items-center hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors"
+                    >
+                      {/* Proposal Title, Badge & Description */}
+                      <div className="md:col-span-5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-gray-900 dark:text-white break-words">
+                            {p.title}
+                          </h3>
+                          <Badge
+                            variant={
+                              p.executed
                                 ? p.yes_votes > p.no_votes
-                                  ? "Passed"
-                                  : "Defeated"
+                                  ? "success"
+                                  : "danger"
                                 : isVotingOpen(p)
-                                  ? "Voting"
-                                  : "Closed"}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            {p.description}
-                          </p>
-                          <span className="text-xs text-gray-400 mt-1 block">
-                            Action: {p.action_type} · By: {p.proposer?.slice?.(0, 8)}...
-                          </span>
+                                  ? "info"
+                                  : "warning"
+                            }
+                          >
+                            {p.executed
+                              ? p.yes_votes > p.no_votes
+                                ? "Passed"
+                                : "Defeated"
+                              : isVotingOpen(p)
+                                ? "Voting"
+                                : "Closed"}
+                          </Badge>
                         </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 md:line-clamp-1 break-words">
+                          {p.description}
+                        </p>
                       </div>
 
-                      <div>
+                      {/* Action Type & Proposer */}
+                      <div className="mt-2 md:mt-0 md:col-span-2 min-w-0">
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300 block truncate">
+                          Action: {p.action_type}
+                        </span>
+                        <span className="text-xs text-gray-400 font-mono block truncate">
+                          By: {p.proposer?.slice?.(0, 8)}...{p.proposer?.slice?.(-4)}
+                        </span>
+                      </div>
+
+                      {/* Voting Progress */}
+                      <div className="mt-3 md:mt-0 md:col-span-3">
                         <div className="flex justify-between text-xs text-gray-500 mb-1">
                           <span>Yes: {p.yes_votes}</span>
                           <span>No: {p.no_votes}</span>
                         </div>
-                        <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
+                        <div className="h-2.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
                           <div
                             className="h-full bg-green-500 transition-all"
                             style={{ width: `${progress.yes}%` }}
@@ -275,12 +296,14 @@ export default function GovernancePage() {
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
+                      {/* Action buttons */}
+                      <div className="mt-3 md:mt-0 md:col-span-2 flex justify-stretch md:justify-end pt-3 md:pt-0 border-t md:border-t-0 border-gray-100 dark:border-gray-800">
                         {isVotingOpen(p) && !p.executed && (
-                          <>
+                          <div className="grid grid-cols-2 gap-2 w-full md:flex md:w-auto">
                             <Button
                               size="sm"
                               variant="primary"
+                              className="w-full md:w-auto min-h-[44px] md:min-h-0 justify-center"
                               onClick={() => handleVote(p.id, true)}
                               loading={voteMutation.isPending}
                             >
@@ -289,16 +312,18 @@ export default function GovernancePage() {
                             <Button
                               size="sm"
                               variant="secondary"
+                              className="w-full md:w-auto min-h-[44px] md:min-h-0 justify-center"
                               onClick={() => handleVote(p.id, false)}
                               loading={voteMutation.isPending}
                             >
                               👎 No
                             </Button>
-                          </>
+                          </div>
                         )}
                         {!isVotingOpen(p) && !p.executed && (
                           <Button
                             size="sm"
+                            className="w-full md:w-auto min-h-[44px] md:min-h-0 justify-center"
                             onClick={() => handleExecute(p.id)}
                             loading={executeMutation.isPending}
                           >
@@ -307,9 +332,9 @@ export default function GovernancePage() {
                         )}
                       </div>
                     </div>
-                  </Card>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
         </>

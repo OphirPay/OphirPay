@@ -200,11 +200,11 @@ export default function MultisigPage() {
   const signerCount = config?.signers?.length ?? 0;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in max-w-full">
       {showConnectBanner && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center gap-3 animate-fade-in">
-          <span className="text-amber-500 text-lg">⚠️</span>
-          <div>
+          <span className="text-amber-500 text-lg shrink-0">⚠️</span>
+          <div className="min-w-0">
             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Wallet not connected</p>
             <p className="text-xs text-amber-600 dark:text-amber-400">
               Connect your wallet to sign multisig transactions on-chain.
@@ -217,15 +217,15 @@ export default function MultisigPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Multisig Approvals
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">
             N-of-M signer approval workflow for high-value payments
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setShowConfig(true)} variant="secondary">
+        <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
+          <Button onClick={() => setShowConfig(true)} variant="secondary" className="w-full sm:w-auto min-h-[44px] md:min-h-0 justify-center">
             ⚙ Configure
           </Button>
-          <Button onClick={() => setShowPropose(true)} disabled={!config?.enabled}>
+          <Button onClick={() => setShowPropose(true)} disabled={!config?.enabled} className="w-full sm:w-auto min-h-[44px] md:min-h-0 justify-center">
             + Propose Payment
           </Button>
         </div>
@@ -246,9 +246,9 @@ export default function MultisigPage() {
           </Badge>
         </div>
         {config?.enabled && config.signers.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="mt-2 flex flex-wrap gap-1.5">
             {config.signers.map((s, i) => (
-              <code key={i} className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded font-mono truncate max-w-[200px]">
+              <code key={i} className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded font-mono truncate max-w-[140px] sm:max-w-[200px]" title={s}>
                 {s.slice(0, 8)}...{s.slice(-4)}
               </code>
             ))}
@@ -274,54 +274,94 @@ export default function MultisigPage() {
           onAction={() => (config?.enabled ? setShowPropose(true) : setShowConfig(true))}
         />
       ) : (
-        <div className="space-y-3">
-          {requests.map((req) => (
-            <Card key={req.id} className="p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={req.executed ? "success" : "info"}>
-                      {req.executed ? "Executed" : "Pending"}
-                    </Badge>
-                    <span className="text-sm font-mono text-gray-600 dark:text-gray-400">
-                      ID: {req.id}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    To: <code className="text-xs">{req.payee?.slice(0, 12)}...</code>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+          {/* Desktop Table Header */}
+          <div className="hidden md:grid md:grid-cols-12 gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <div className="col-span-2">ID & Status</div>
+            <div className="col-span-3">Recipient</div>
+            <div className="col-span-2">Amount</div>
+            <div className="col-span-3">Approval Progress</div>
+            <div className="col-span-2 text-right">Actions</div>
+          </div>
+
+          {/* List / Rows */}
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {requests.map((req) => (
+              <div
+                key={req.id}
+                className="p-4 md:px-4 md:py-3.5 flex flex-col md:grid md:grid-cols-12 md:gap-4 md:items-center hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors"
+              >
+                {/* ID and Status Badge */}
+                <div className="flex items-center justify-between md:justify-start md:col-span-2 gap-2">
+                  <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
+                    ID: {req.id}
+                  </span>
+                  <Badge variant={req.executed ? "success" : "info"}>
+                    {req.executed ? "Executed" : "Pending"}
+                  </Badge>
+                </div>
+
+                {/* Recipient */}
+                <div className="mt-2 md:mt-0 md:col-span-3 min-w-0">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    To: <code className="text-xs font-mono truncate max-w-[200px] md:max-w-full inline-block align-bottom">{req.payee ? (req.payee.length > 16 ? `${req.payee.slice(0, 12)}...` : req.payee) : "—"}</code>
                   </p>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {req.proposer && (
+                    <p className="text-xs text-gray-400 font-mono mt-0.5 hidden md:block">
+                      by {req.proposer.slice(0, 6)}...{req.proposer.slice(-4)}
+                    </p>
+                  )}
+                </div>
+
+                {/* Amount */}
+                <div className="mt-1 md:mt-0 md:col-span-2">
+                  <p className="text-lg md:text-sm font-semibold text-gray-900 dark:text-white">
                     {req.amount} XLM
                   </p>
+                </div>
+
+                {/* Progress */}
+                <div className="mt-2 md:mt-0 md:col-span-3">
                   <div className="flex items-center gap-2">
-                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full flex-1 max-w-[200px]">
+                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full flex-1 max-w-full md:max-w-[140px] overflow-hidden">
                       <div
                         className="h-2 bg-green-500 rounded-full transition-all"
                         style={{
-                          width: `${((req.approvals_count ?? 0) / Math.max(threshold, 1)) * 100}%`,
+                          width: `${Math.min(100, ((req.approvals_count ?? 0) / Math.max(threshold, 1)) * 100)}%`,
                         }}
                       />
                     </div>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-gray-500 font-mono shrink-0">
                       {req.approvals_count ?? 0}/{threshold}
                     </span>
                   </div>
                 </div>
-                <div className="flex gap-2">
+
+                {/* Action buttons */}
+                <div className="mt-3 md:mt-0 md:col-span-2 flex justify-stretch md:justify-end pt-3 md:pt-0 border-t md:border-t-0 border-gray-100 dark:border-gray-800">
                   {!req.executed && !req.threshold_met && (
-                    <Button size="sm" onClick={() => handleApprove(req.id)}>
+                    <Button
+                      size="sm"
+                      className="w-full md:w-auto min-h-[44px] md:min-h-0 justify-center"
+                      onClick={() => handleApprove(req.id)}
+                    >
                       ✓ Approve
                     </Button>
                   )}
                   {!req.executed && req.threshold_met && (
-                    <Button size="sm" variant="primary" onClick={() => handleExecute(req.id)}>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      className="w-full md:w-auto min-h-[44px] md:min-h-0 justify-center"
+                      onClick={() => handleExecute(req.id)}
+                    >
                       Execute
                     </Button>
                   )}
                 </div>
               </div>
-            </Card>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 

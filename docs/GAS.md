@@ -319,7 +319,7 @@ summary and as a sticky PR comment:
 
 | Contract | Baseline (bytes) | New (bytes) | Δ bytes | Δ % | Absolute guardrail |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `ophirpay` | 170007 | … | +N | +x.xx% | new / 524288 |
+| `ophirpay` | 172364 | … | +N | +x.xx% | new / 524288 |
 | `emitter` | 25182 | … | +N | +x.xx% | new / 262144 |
 
 alongside a fee table diffing `calculate_fee()` outputs against

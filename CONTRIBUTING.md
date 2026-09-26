@@ -4,7 +4,10 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 
 ## Getting Started
 
-1. Ensure you have Node.js 20 installed (see `.nvmrc`)
+1. Ensure you have **Node.js 20** installed (see `.nvmrc`) — `npm install`
+   runs a preflight (`scripts/check-node.mjs`) and aborts with an actionable
+   message on any other major, so there is no ambiguity about the supported
+   runtime
 2. Fork the repository
 3. Clone your fork: `git clone https://github.com/YOUR_USERNAME/OphirPay.git`
 4. Install dependencies: `npm install`
@@ -21,6 +24,34 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 > throughout the codebase (XLM, testnet, friendbot, Horizon, Soroban, SAC,
 > WASM, Freighter, memo, trustline, path payments, sponsored reserves, and
 > more).
+
+### Supported toolchain
+
+| Tool | Supported | Declared in |
+|---|---|---|
+| Node.js | **20.x** | `.nvmrc` (`20`), `package.json` → `engines.node` (`20.x`), and `node-version-file: .nvmrc` in every workflow |
+| npm | **10.x** | `package.json` → `packageManager` (`npm@10.8.2`) |
+
+`.nvmrc` is the single source of truth. `npm install` / `npm ci` run the
+`preinstall` hook first, so an unsupported Node major stops immediately with:
+
+```
+[ERROR] Unsupported Node.js version.
+  required : Node 20.x (.nvmrc → "20", package.json engines.node → "20.x", packageManager → "npm@10.8.2")
+  running  : Node 24.14.0
+
+Switch to the supported version and re-run the install:
+  nvm install && nvm use        # reads .nvmrc
+```
+
+A running npm major that differs from `packageManager` is reported as a
+warning rather than an error (a newer npm on Node 20 still installs the same
+lockfile), but please install with the pinned manager to avoid lockfile churn.
+
+**Bumping the version** — change `.nvmrc` and `engines.node` together, then run
+`npm test -- node-preflight`. `src/__tests__/node-preflight.test.ts` fails if
+`.nvmrc`, `engines.node`, `packageManager` or any workflow's
+`node-version-file` disagree, so a half-finished bump cannot merge.
 
 ## Development Workflow
 
@@ -41,6 +72,29 @@ ecosystems once a week.
   Cargo bumps) and run it locally for security-sensitive packages. If a bump has
   breaking changes or fails CI, coordinate with the team before merging instead
   of force-landing it.
+
+### Issue triage & stale policy
+
+The [stale workflow](.github/workflows/stale.yml) runs every Monday and closes
+issues that have been inactive for **60 days + a 14-day grace period**. Bounty
+work is exempt, so the wave backlog does not get closed out from under a
+contributor:
+
+| Signal on the issue | Result |
+|---|---|
+| Label `bounty` or `Stellar Wave` | **Never** marked stale — a wave round may outlive the inactivity window |
+| Any assignee (claimed work) | **Never** marked stale — the claim is the activity signal |
+| Label `pinned`, `security`, `blocked`, `good first issue`, `help wanted` | **Never** marked stale |
+| Any milestone | Exempt (`exempt-all-issue-milestones`) |
+| Anything else, unassigned | Marked `stale` after 60 days, closed 14 days later — commenting or pushing clears it |
+
+Pull requests follow a shorter clock (30 days stale, 7 days to close); `pinned`,
+`blocked` and `security` PRs plus drafts are exempt.
+
+When adding a new long-running programme (a wave, a funded milestone, a
+migration epic), add its label to `exempt-issue-labels` in
+`.github/workflows/stale.yml` **and** to the table above so maintainers can see
+the policy in one place.
 
 ### Adding or changing an API endpoint
 

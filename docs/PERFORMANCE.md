@@ -17,6 +17,14 @@ reach production.
 - **[autocannon](https://github.com/mcollina/autocannon)** (devDependency) —
   HTTP/1.1 benchmarking. Fast, dependency-free, and scriptable from Node.
 - The repeatable driver is [`scripts/load-test.js`](../scripts/load-test.js).
+- The SSE / connection-leak harness is
+  [`scripts/sse-load-test.mjs`](../scripts/sse-load-test.mjs).
+- The threshold gate used by CI is
+  [`scripts/check-load-baselines.mjs`](../scripts/check-load-baselines.mjs); the
+  thresholds it enforces live in
+  [`tests/load/baselines.json`](../tests/load/baselines.json).
+- [`scripts/create-load-test-key.mjs`](../scripts/create-load-test-key.mjs) mints
+  the API key the authenticated endpoint needs (and can seed rows).
 
 ## What is load-tested
 
@@ -42,6 +50,18 @@ npm run dev
 ### 2. Generate an API key (for `/api/payments`)
 
 ```bash
+# Preferred: creates a dedicated load-test user + key (and revokes any previous
+# load-test key), then prints LOAD_TEST_API_KEY=oph_…
+LOAD_TEST_SEED_PAYMENTS=2000 node scripts/create-load-test-key.mjs
+```
+
+The script mirrors the key format in `src/lib/api-auth.ts` exactly —
+`src/__tests__/load-test-key.test.ts` fails if the two drift apart.
+
+<details>
+<summary>Mint a key by hand instead</summary>
+
+```bash
 # Sign in via the UI, or mint a key directly (hash + prefix, see src/lib/api-auth.ts):
 node -e '
 const crypto = require("crypto");
@@ -58,12 +78,19 @@ const prisma = new PrismaClient();
 '
 ```
 
+</details>
+
 ### 3. Run the load test
 
 ```bash
 LOAD_TEST_API_KEY=oph_... node scripts/load-test.js            # run only
 LOAD_TEST_API_KEY=oph_... node scripts/load-test.js --write-docs   # run + regenerate baselines below
+LOAD_TEST_API_KEY=oph_... node scripts/load-test.js --json=tests/load/results/latest.json   # machine-readable results
 ```
+
+`--json` writes the raw results **without** touching this document — it is what
+the scheduled CI gate consumes. Add `--json=<path>` to pick the file, or use
+bare `--json` to drop a timestamped file in `LOAD_TEST_OUTPUT_DIR`.
 
 Config (all optional):
 
@@ -86,6 +113,59 @@ them on shared CI runners produces noise, not signal. Treat them as a
 developer-run gate: run before merging any change to a hot API path
 (`src/app/api/**`, `src/lib/prisma.ts`, `src/proxy.ts`), and update the
 baselines below when behavior intentionally changes.
+
+### Scheduled CI gate (weekly + manual dispatch)
+
+The load tests *do* run on a schedule —
+[`.github/workflows/load-test.yml`](../.github/workflows/load-test.yml) fires
+**every Monday at 03:00 UTC** and on `workflow_dispatch` (with `duration`,
+`connections`, `margin`, `sse_concurrency` and `seed_payments` inputs). It:
+
+1. builds the app and starts the standalone server against a throwaway
+   PostgreSQL + Redis,
+2. mints a load-test API key and seeds rows (default 2,000 payments),
+3. runs `scripts/load-test.js` and `scripts/sse-load-test.mjs` **unmodified**,
+4. publishes their output plus the measured-vs-allowed table in the job summary
+   and uploads `tests/load/results/` as an artifact, and
+5. **fails the run** when a measured value exceeds its threshold, printing the
+   measured value and the allowed ceiling.
+
+This is a regression *tripwire*, not a PR gate: no PR is blocked on it.
+
+### Thresholds are deliberate, not recorded
+
+`tests/load/baselines.json` is a hand-maintained policy file — it holds the
+worst documented row per endpoint (from the table below), and
+`scripts/check-load-baselines.mjs` applies:
+
+| Threshold | Compared as |
+|---|---|
+| `p95Ms`, `p99Ms` | measured ≤ threshold × `LOAD_TEST_MARGIN` (default **3**) — latency scales with runner hardware |
+| `errorPct` | measured ≤ threshold (absolute) — transport errors per connection |
+| `non2xxPct` | measured ≤ threshold (absolute) — 4xx/5xx per request (`null` for SSE) |
+
+A new endpoint in `scripts/load-test.js` with no entry in the file **fails the
+gate** rather than passing unmeasured.
+
+### Updating the baselines deliberately
+
+Baselines are only allowed to move as an explicit, reviewed decision:
+
+1. Run the load test locally (or dispatch the workflow) and look at the numbers.
+2. If the change is intentional (a real feature, a deliberate trade-off, a
+   slower-but-correct query), update **`tests/load/baselines.json`** — change
+   the value and extend its `note` with *why*.
+3. If the reference hardware changed, use `node scripts/load-test.js --write-docs`
+   to regenerate the informational table below, and adjust the JSON thresholds
+   to match.
+4. Say so in the PR body: which number moved, from what to what, and why.
+
+Never raise a threshold to silence a genuine regression — the failure message
+(`::error title=Load-test baseline exceeded::`) prints the measured value, the
+allowed value and the endpoint, which is the whole point of the gate.
+
+To try a stricter or looser run without editing the file, dispatch the workflow
+with a different `margin` input (the value is echoed in the job summary).
 
 ## What the numbers mean
 

@@ -4,6 +4,9 @@ All notable changes to OphirPay will be documented in this file.
 
 ## [Unreleased] — 2026-09-25
 
+### Added
+- **Scoped pause controls (#826)**: the circuit breaker is no longer all-or-nothing. `PauseScope` exposes eight feature domains (payments, escrows, streams, recurring, refunds, governance, hooks, batches) through `set_scope_paused` / `is_scope_paused` / `get_paused_scopes`; the global `emergency_pause_all` still overrides every scope, unknown scope ids return `InvalidPauseScope` (308), and `/api/pause-state` plus the pause-controls page surface the per-scope state with an explicit confirmation step.
+
 ### Security
 - **Distributed rate limiting became real (#703)**: `REDIS_URL` previously had no effect on the global limiter because `src/proxy.ts` constructed its own in-memory store on the Edge runtime. The rate-limit store now selects its transport from the URL scheme — `https://` (Upstash-compatible REST) is shared by every replica on both runtimes, while `redis://` uses ioredis on Node — and the README, `.env.example` and `docker-compose.yml` describe the enforcement point and its per-instance limitation. Two replicas now share one bucket when a REST Redis endpoint is configured.
 - **CSRF registry drift guard (#704)**: `src/__tests__/csrf-coverage.test.ts` now globs every `src/app/api/**/route.ts`, extracts each exported mutating handler by method, and fails with the exact registry entry to add when one is neither registered nor allowlisted. The scheduler endpoints are allowlisted with reasons, and `docs/CSRF-AUDIT.md` was regenerated to match the registry (37 protected + 3 allowlisted).

@@ -537,6 +537,29 @@ Returns whether the contract is paused.
 
 - **Access:** public read.
 
+### `set_scope_paused(caller: Address, scope: u32, paused: bool) -> Result<(), PaymentError>`
+
+Pauses or resumes a single feature scope without touching the global pause.
+Scope ids: `0` Payments, `1` Escrows, `2` Streams, `3` Recurring, `4` Refunds,
+`5` Governance, `6` Hooks, `7` Batches.
+
+- **Access:** owner-only (`caller.require_auth()` + `require_owner`).
+- **Errors:** `NotInitialized` (1), `Unauthorized` (4), `InvalidPauseScope` (308).
+
+### `is_scope_paused(scope: u32) -> Result<bool, PaymentError>`
+
+Returns whether a single feature scope is paused. Unknown scope ids return
+`InvalidPauseScope` (308).
+
+- **Access:** public read.
+
+### `get_paused_scopes() -> Vec<u32>`
+
+Returns the numeric ids of every scope that is currently paused, ascending.
+An empty vector means no scope is paused.
+
+- **Access:** public read.
+
 ### `get_locked_balance() -> i128`
 
 Returns the total locked balance.
@@ -770,6 +793,9 @@ Returns the number of recurring schedules.
 ---
 
 ## Refunds
+
+See the [Refunds guide](REFUNDS.md) for the complete reason-code catalog,
+lifecycle authorization rules, and the bounded analytics behavior.
 
 ### `request_refund(requester: Address, payment_id: u64, amount: i128, asset: Address, reason: String, reason_code: RefundReasonCode) -> Result<u64, PaymentError>`
 

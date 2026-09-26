@@ -1,0 +1,10 @@
+# Fixture for scripts/validate-monitoring.mjs — the "# external:" declaration
+# is outside any alert block, where it cannot be attached to an alert.
+# external: ophirpay_contract_balance
+groups:
+  - name: fixture
+    rules:
+      - alert: FixtureNoDeclaration
+        expr: ophirpay_contract_balance < 0
+        labels:
+          severity: critical

@@ -1,0 +1,13 @@
+# Fixture for scripts/validate-monitoring.mjs — an alert expression that
+# references a typo'd metric name (the classic "alert that never fires").
+groups:
+  - name: fixture
+    rules:
+      - alert: RenamedMetricAlert
+        expr: |
+          rate(ophirpay_http_requestz_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fixture — typo'd metric name"

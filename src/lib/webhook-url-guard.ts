@@ -228,19 +228,45 @@ export function isSafeWebhookUrl(url: string): boolean {
  * Returns true only when the currently-resolved address is public and the
  * port/scheme checks pass.
  */
-export async function isSafeWebhookUrlAtDelivery(url: string): Promise<boolean> {
-  if (!isSafeWebhookUrl(url)) return false;
+export type WebhookUrlValidation =
+  | { valid: true; url: string }
+  | { valid: false; url: string; reason: string };
+
+export async function validateWebhookUrlAtDelivery(url: string): Promise<WebhookUrlValidation> {
+  if (!isSafeWebhookUrl(url)) {
+    return {
+      valid: false,
+      url,
+      reason: "Webhook target must be a public http(s) URL and cannot point to a private, local, or reserved address.",
+    };
+  }
+
   try {
     const { lookup } = await import("node:dns/promises");
     const addresses = await lookup(new URL(url).hostname, { all: true });
-    return addresses.every((a) => {
-      const v = isIP(a.address);
-      if (v === 4) return !isPrivateIpv4(a.address);
-      if (v === 6) return !isPrivateIpv6(a.address);
+    const isPublic = addresses.length > 0 && addresses.every((a) => {
+      const version = isIP(a.address);
+      if (version === 4) return !isPrivateIpv4(a.address);
+      if (version === 6) return !isPrivateIpv6(a.address);
       return false;
     });
+    if (!isPublic) {
+      return {
+        valid: false,
+        url,
+        reason: "Webhook target resolved to a private, local, or reserved address and was rejected by the URL guard.",
+      };
+    }
+    return { valid: true, url };
   } catch {
-    // DNS failure — refuse delivery rather than hitting an unknown host
-    return false;
+    return {
+      valid: false,
+      url,
+      reason: "Webhook target could not be resolved publicly, so the URL guard rejected it before delivery.",
+    };
   }
+}
+
+export async function isSafeWebhookUrlAtDelivery(url: string): Promise<boolean> {
+  return (await validateWebhookUrlAtDelivery(url)).valid;
 }

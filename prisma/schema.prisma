@@ -539,6 +539,15 @@ model WebhookDelivery {
   errorMessage  String?
   isReplay      Boolean        @default(false)
   replayBatchId String?
+  test          Boolean        @default(false)
+  targetUrl     String?
+  canonicalBody String?
+  requestBody   String?
+  signature     String?
+  requestHeaders String?
+  responseBody  String?
+  durationMs    Int?
+  error         String?
   deliveredAt   DateTime       @default(now())
   createdAt     DateTime       @default(now())
 
@@ -554,7 +563,6 @@ enum DeliveryStatus {
   FAILED
 }
 
-// ── Refunds ───────────────────────────────────────────────────
 
 /// Ledger row mirroring an on-chain refund request (request_refund). Kept in
 /// sync with the Soroban contract via onChainId so the UI can map the DB row
@@ -772,3 +780,4 @@ model PaymentSyncRun {
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
 }
+

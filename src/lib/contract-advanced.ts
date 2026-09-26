@@ -551,3 +551,71 @@ export async function emergencyUnpauseAll(
   ];
   return signAndSubmit(caller, CONTRACT_ID, "emergency_unpause_all", args);
 }
+
+// ── Scoped Pause Functions ─────────────────────────────────────
+
+/**
+ * Feature scopes that can be paused independently of the global emergency
+ * pause. Values mirror the `PauseScope` enum in the Soroban contract, so they
+ * stay stable across the WASM/TS boundary.
+ */
+export const PauseScope = {
+  Payments: 0,
+  Escrows: 1,
+  Streams: 2,
+  Recurring: 3,
+  Refunds: 4,
+  Governance: 5,
+  Hooks: 6,
+  Batches: 7,
+} as const;
+
+export type PauseScopeValue = (typeof PauseScope)[keyof typeof PauseScope];
+
+/** Human-readable labels for the ids returned by `get_paused_scopes`. */
+export const PAUSE_SCOPE_LABELS: Record<number, string> = {
+  [PauseScope.Payments]: "Payments",
+  [PauseScope.Escrows]: "Escrows",
+  [PauseScope.Streams]: "Streams",
+  [PauseScope.Recurring]: "Recurring",
+  [PauseScope.Refunds]: "Refunds",
+  [PauseScope.Governance]: "Governance",
+  [PauseScope.Hooks]: "Hooks",
+  [PauseScope.Batches]: "Batches",
+};
+
+/**
+ * Read the ids of the feature scopes that are currently paused.
+ * Read-only simulation (no wallet signature required); returns `[]` when the
+ * contract is unreachable so callers degrade gracefully.
+ */
+export async function getPausedScopes(sourcePublicKey: string): Promise<number[]> {
+  const result = await simulateContractCall(
+    CONTRACT_ID,
+    "get_paused_scopes",
+    sourcePublicKey,
+  );
+  if (result.status === "SIMULATION_FAILED" || !Array.isArray(result.returnValue)) {
+    return [];
+  }
+  return result.returnValue
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value >= 0);
+}
+
+/**
+ * Owner-only: pause or resume a single feature scope on-chain.
+ * The global emergency pause still overrides every scope.
+ */
+export async function setScopePaused(
+  caller: string,
+  scope: PauseScopeValue,
+  paused: boolean,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(scope, { type: "u32" }),
+    nativeToScVal(paused, { type: "bool" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "set_scope_paused", args);
+}

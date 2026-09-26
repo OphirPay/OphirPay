@@ -63,3 +63,41 @@ export function formatAssetAmount(stroops: number, asset: AssetInfo): string {
 export function isValidAssetIssuer(address: string): boolean {
   return /^G[A-Z0-9]{55}$/.test(address);
 }
+
+// ── Display labels (SEP-1 metadata aware) ─────────────────────
+
+export interface AssetDisplayParts {
+  /** Primary label — resolved metadata name when available, else the code. */
+  title: string;
+  /** Secondary label — the code when a name resolved, else the short issuer. */
+  subtitle: string;
+}
+
+/**
+ * Compact issuer label for display: "GABCD…WXYZ". Returns "" for empty input.
+ */
+export function shortenAssetIssuer(issuer: string, chars = 5): string {
+  if (!issuer) return "";
+  if (issuer.length <= chars * 2 + 3) return issuer;
+  return `${issuer.slice(0, chars)}…${issuer.slice(-chars)}`;
+}
+
+/**
+ * Build display labels for an asset whose SEP-1 metadata may or may not have
+ * resolved (see src/lib/asset-metadata.ts). When a name resolved, show it
+ * alongside the code; otherwise degrade to the raw code plus a shortened
+ * issuer so a custom asset never renders as a bare opaque address.
+ */
+export function getAssetDisplayParts(
+  code: string,
+  issuer?: string | null,
+  metadataName?: string | null,
+): AssetDisplayParts {
+  if (metadataName) {
+    return { title: metadataName, subtitle: code };
+  }
+  if (issuer) {
+    return { title: code, subtitle: shortenAssetIssuer(issuer) };
+  }
+  return { title: code, subtitle: "" };
+}

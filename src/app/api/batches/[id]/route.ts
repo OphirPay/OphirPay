@@ -41,6 +41,7 @@ export const GET = withMetrics("GET /api/batches/[id]", withRequestLogging(async
       id: p.id,
       amount: Number(p.amount),
       assetCode: p.assetCode,
+      assetIssuer: p.assetIssuer || undefined,
       status: toBatchItemStatus(p.status),
       memo: p.memo || undefined,
       errorMessage: p.errorMessage || undefined,

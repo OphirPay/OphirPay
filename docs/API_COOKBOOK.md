@@ -49,6 +49,7 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/auth/challenge` | GET |
 | `/api/auth/session` | POST, DELETE |
 | `/api/csrf` | GET |
+| `/api/asset-metadata` | GET |
 | `/api/payments` | GET, POST |
 | `/api/payments/{id}` | GET, PATCH, DELETE |
 | `/api/payments/retry` | POST |
@@ -252,6 +253,30 @@ curl -X GET "https://api.ophirpay.com/api/payments/pay_98234ab1c09d" \
   "ledgerNumber": 51204881,
   "createdAt": "2026-08-26T18:20:00.000Z",
   "completedAt": "2026-08-26T18:20:04.000Z"
+}
+```
+
+### Resolve Custom Asset Metadata (SEP-1)
+Resolves a custom asset's display name from the issuer's home-domain
+`stellar.toml` (`CURRENCIES` section), cached per issuer domain. Always
+returns `200 OK` for valid input — when no metadata exists, `resolved` is
+`false` and clients fall back to the raw code plus issuer.
+```bash
+curl -X GET "https://api.ophirpay.com/api/asset-metadata?code=yUSDC&issuer=GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+```
+**Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "code": "yUSDC",
+    "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "resolved": true,
+    "name": "Example USD Coin",
+    "domain": "assets.example.com",
+    "displayDecimals": 2
+  }
 }
 ```
 

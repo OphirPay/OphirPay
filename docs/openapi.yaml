@@ -81,8 +81,48 @@ tags:
     description: Aggregate on-chain contract statistics
   - name: Session
     description: Wallet session issuance and revocation
+  - name: Assets
+    description: Custom asset metadata resolution (SEP-1)
 
 paths:
+  # ── Assets ────────────────────────────────────────────────
+  /api/asset-metadata:
+    get:
+      tags: [Assets]
+      summary: Resolve SEP-1 display metadata for a custom asset
+      description: |
+        Resolves an asset's display name from its issuer's home-domain
+        stellar.toml (SEP-1 `CURRENCIES` section), cached per issuer domain
+        with a TTL. Always returns 200 for valid input: when no metadata
+        exists (unknown issuer, unreachable domain, malformed TOML, timeout)
+        the response is `{ resolved: false, name: null }` and clients fall
+        back to the raw code plus issuer.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9]{1,12}$"
+          description: Asset code (e.g. `USDC`)
+        - name: issuer
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^G[A-Z0-9]{55}$"
+          description: Stellar issuer account address
+      responses:
+        "200":
+          description: Resolved metadata, or a degradation-safe fallback
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   # ── Payments ──────────────────────────────────────────────
   /api/payments:
     get:

@@ -97,6 +97,7 @@ export interface BatchItem {
   amount: number;
   assetCode: string;
   status: BatchItemStatus;
+  assetIssuer?: string;
   memo?: string;
   errorMessage?: string;
 }

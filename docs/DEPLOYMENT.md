@@ -12,6 +12,7 @@
 - [Option 2: Docker](#-option-2-docker)
 - [Option 3: Standalone Node.js](#-option-3-standalone-nodejs)
 - [Option 4: Kubernetes (Helm)](#-option-4-kubernetes-helm)
+- [Cache Headers for Static Assets and APIs](#-cache-headers-for-static-assets-and-apis)
 - [Soroban Contract Deployment](#-soroban-contract-deployment)
 - [Database Setup](#-database-setup)
 - [Post-Deployment Verification](#-post-deployment-verification)
@@ -68,7 +69,7 @@ cp .env.example .env.local
 | `RATE_LIMIT_RPM` | `120` | Requests per minute per IP (global proxy limit) |
 | `AUTH_RATE_LIMIT_IP_RPM` | `30` | Wallet-auth per-IP requests per minute (`/api/auth/challenge`, `/api/auth/session`) |
 | `AUTH_RATE_LIMIT_WALLET_RPM` | `10` | Wallet-auth per-account requests per minute (keyed by Stellar public key) |
-| `REDIS_URL` | — | Redis URL for distributed rate limiting |
+| `REDIS_URL` | — | Distributed rate limiting. `redis://` = ioredis (Node only); `https://` = Upstash-compatible REST and the only form that shares the *global edge* limit across replicas |
 | `NEXT_PUBLIC_SENTRY_DSN` | — | Sentry error tracking DSN |
 | `NEXT_PUBLIC_DEMO_MODE` | `false` | Enable demo mode |
 | `NEXT_PUBLIC_FEATURE_MULTI_ASSET` | `false` | Enable multi-asset support |
@@ -117,6 +118,10 @@ Push to main → Vercel builds → Preview/Production URL
 - **Preview**: Deploys from feature branches (PR comments include the preview URL)
 
 ### Vercel-Specific Notes
+
+> `vercel.json` deliberately declares **no** headers. The app layer
+> (`next.config.ts`) owns them all, so Vercel and self-hosted deployments
+> cannot drift apart — see [Cache Headers for Static Assets and APIs](#-cache-headers-for-static-assets-and-apis).
 
 - `output: "standalone"` is **disabled** on Vercel (detected via `process.env.VERCEL`) — Vercel uses its own runtime
 - `npx prisma generate` runs automatically during build (configured in `vercel.json` → `buildCommand`)
@@ -215,15 +220,68 @@ The `Dockerfile` uses a 3-stage build:
 
 | Stage | Base Image | Purpose |
 |---|---|---|
-| `deps` | `node:24-slim` | Install npm dependencies (with OpenSSL for Prisma) |
-| `builder` | `node:24-slim` | Generate Prisma client, run `next build` |
-| `runner` | `gcr.io/distroless/nodejs20-debian12:nonroot` | Minimal production image (non-root user) |
+| `deps` | `node:20-slim` | Install npm dependencies (with OpenSSL for Prisma) |
+| `builder` | `node:20-slim` | Generate Prisma client, run `next build` |
+| `runner` | `node:20-slim` | Minimal production image, runs as the non-root `node` user |
 
 **Key details:**
 - Uses **Debian (glibc)**, not Alpine (musl) — Tailwind v4's native binaries require glibc
 - Puppeteer download is skipped (`PUPPETEER_SKIP_DOWNLOAD=true`) — not needed for production
 - Final image runs as **non-root** user for security
 - Standalone output is used (configured in `next.config.ts`)
+- The runner stage declares a `HEALTHCHECK` (issue #738) — see below
+
+### Liveness vs readiness
+
+OphirPay exposes two probes with deliberately different meanings. They are
+**not** interchangeable: wiring the dependency-aware check to a liveness probe
+lets a transient Postgres/Soroban/Redis outage restart-loop a perfectly healthy
+container.
+
+| Probe | Endpoint | Checks | Failure meaning |
+|---|---|---|---|
+| **Liveness** | `GET /api/health/live` | Process is up and serving HTTP. No database, RPC, Horizon or Redis I/O | The process is wedged — restarting it is the right response |
+| **Readiness** | `GET /api/health` | Database (`SELECT 1`, critical, 503 when down), Soroban RPC + Horizon reachability, Redis ping when `REDIS_URL` is set, and the configured contract ID | A dependency is unavailable — stop routing traffic, do **not** restart |
+
+Both paths are exempt from the global rate limiter (`src/proxy.ts`) so
+orchestrators can poll them even while the app is under load.
+
+**Docker / Docker Compose.** The image ships a `HEALTHCHECK` that probes the
+liveness endpoint with the bundled `node` (the runner image has neither a shell
+nor `curl`/`wget`, so a `node -e 'fetch(...)'` exec-form check is the only
+portable client):
+
+```bash
+docker compose up -d
+docker inspect --format '{{.State.Health.Status}}' ophirpay-app-1   # healthy
+docker inspect --format '{{json .State.Health}}' ophirpay-app-1 | jq .
+```
+
+The healthcheck uses `--interval=30s --timeout=5s --start-period=20s
+--retries=3`, and `docker-compose.yml` restates the same timings next to the
+`db`/`redis` healthchecks so they are easy to tune together.
+
+**Kubernetes / Helm.** The same split is wired in `k8s/deployment.yaml` and
+`helm/ophirpay/values.yaml`:
+
+```yaml
+livenessProbe:                     # process only — never restarts on a DB blip
+  httpGet:
+    path: /api/health/live
+    port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:                    # dependency-aware — drains traffic on 503
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 2
+```
 
 ---
 
@@ -326,7 +384,10 @@ server {
 
 ## Option 4: Kubernetes (Helm)
 
-A Helm chart is included in `helm/ophirpay/`.
+A Helm chart is included in `helm/ophirpay/`. See the detailed
+[Kubernetes guide](KUBERNETES.md) for prerequisites, secret provisioning,
+build-time `NEXT_PUBLIC_*` behavior, migrations, probes, ingress/TLS, and the
+pre-flight validation checklist.
 
 ### Deploy with Helm
 
@@ -348,12 +409,27 @@ helm upgrade --install ophirpay ./helm/ophirpay \
   --set image.tag=latest \
   --set ingress.hosts[0].host=ophirpay.com \
   --set config.NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
-  --set config.NEXT_PUBLIC_HORIZON_URL=https://horizon.stellar.org \
-  --set config.NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban.stellar.org \
+  --set config.NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \
+  --set config.NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org:443 \
   --set config.DATABASE_PROVIDER=postgresql \
   --set config.NODE_ENV=production \
   --wait
 ```
+
+> ⚠️ **`NEXT_PUBLIC_*` values are baked in at build time.** Next.js inlines them
+> into the JavaScript bundles during `next build`, so `config.NEXT_PUBLIC_*`
+> entries describe what the running image was built with — they cannot retarget
+> a prebuilt image. To switch networks, build your own image with those
+> variables supplied as build arguments and point the release at it via
+> `--set image.repository` / `--set image.tag`. `helm upgrade` prints the same
+> reminder through `helm/ophirpay/templates/NOTES.txt`.
+>
+> Non-`NEXT_PUBLIC_` variables (for example `STELLAR_NETWORK_PASSPHRASE`) *are*
+> read from the environment at runtime and may be set with
+> `--set config.STELLAR_NETWORK_PASSPHRASE=...`.
+>
+> Every key in `helm/ophirpay/values.yaml` must be a variable documented in
+> `.env.example`; `src/__tests__/helm-config.test.ts` fails the build otherwise.
 
 ### Verify
 
@@ -362,6 +438,50 @@ kubectl get pods -n ophirpay
 kubectl get ingress -n ophirpay
 curl https://ophirpay.com/api/health
 ```
+
+---
+
+## Cache Headers for Static Assets and APIs
+
+`next.config.ts` is the **single source of truth** for the static headers the
+app emits, including `Cache-Control`. Every target — Vercel, Docker, Helm and
+standalone Node — therefore serves identical headers. Do not re-declare these
+headers in `vercel.json`; `src/__tests__/security-headers.test.ts` fails the
+build if the two layers disagree (issues #681 and #740).
+
+| Path | `Cache-Control` | Why |
+|---|---|---|
+| `/_next/static/(.*)` | `public, max-age=31536000, immutable` | Build output is content-addressed: the filename changes when the bytes change, so a 1-year immutable TTL never serves stale code. |
+| `/_next/image` | `public, max-age=3600, stale-while-revalidate=86400` | The optimiser URL is stable but the underlying image can change, so it gets a short TTL plus a background revalidation window instead of a year. |
+| `/api/(.*)` | `no-cache, no-store, must-revalidate` | Never let a browser or intermediary replay financial data. |
+| everything else | *(none set)* | Next's defaults apply. |
+
+All of the above are in addition to the security header set declared on the
+`/(.*)` rule (`X-Content-Type-Options`, `X-Frame-Options`,
+`X-XSS-Protection: 0`, `Referrer-Policy`, `Permissions-Policy`,
+`Strict-Transport-Security`, `Cross-Origin-Opener-Policy`,
+`Cross-Origin-Resource-Policy`), which matches asset and API requests too.
+
+### Verify after deploying
+
+```bash
+# Hashed chunk → long-lived immutable
+curl -sI https://ophirpay.com/_next/static/chunks/main-app-abc123.js \
+  | grep -i cache-control
+# expect: cache-control: public, max-age=31536000, immutable
+
+# API → never cached
+curl -sI https://ophirpay.com/api/stats | grep -i cache-control
+# expect: cache-control: no-cache, no-store, must-revalidate
+
+# Security headers still present on an asset response
+curl -sI https://ophirpay.com/_next/static/chunks/main-app-abc123.js \
+  | grep -i 'x-content-type-options\|strict-transport-security'
+```
+
+> Self-hosted reverse proxies (nginx, Cloudflare, an ingress controller) must
+> not override these values. If you terminate TLS in front of the app, forward
+> the origin's `Cache-Control` untouched rather than setting your own.
 
 ---
 

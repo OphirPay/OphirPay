@@ -81,7 +81,7 @@ export default function RefundsPage() {
   const [showRequest, setShowRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"list" | "analytics">("list");
-  const [analyticsRange, setAnalyticsRange] = useState<DateRangePreset>("30d");
+  const [analyticsRange, setAnalyticsRange] = useState<DateRangePreset | "all">("30d");
 
   const [formPaymentId, setFormPaymentId] = useState("");
   const [formAmount, setFormAmount] = useState("");
@@ -258,7 +258,7 @@ export default function RefundsPage() {
   }
 
   const reasonLabel = (code: number) => REASON_CODES.find((r) => r.value === code)?.label ?? "Unknown";
-  const maxAnalytics = Math.max(...analytics.map((a) => a.count), 1);
+  const maxAnalytics = Math.max(...analyticsItems.map((a) => a.count), 1);
 
   return (
     <div className="space-y-6 animate-fade-in">

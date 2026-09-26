@@ -32,7 +32,8 @@ export function AnalyticsDashboard() {
   const { wallet } = useWallet();
   const [payments, setPayments] = useState<OnChainPayment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refundRange, setRefundRange] = useState<DateRangePreset>("30d");
+  const [error, setError] = useState<string | null>(null);
+  const [refundRange, setRefundRange] = useState<DateRangePreset | "all">("30d");
 
   const {
     data: refundAnalyticsResponse,
@@ -49,7 +50,10 @@ export function AnalyticsDashboard() {
       windowNotice: string;
       range: string;
     };
-  }>(`/api/refunds?analytics=true&detailed=true&range=${refundRange}`);
+  }>(
+    ["refunds", "analytics", refundRange],
+    `/api/refunds?analytics=true&detailed=true&range=${refundRange}`
+  );
 
   const refundBuckets = useMemo(
     () => refundAnalyticsResponse?.data?.buckets ?? [],

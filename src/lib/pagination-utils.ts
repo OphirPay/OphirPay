@@ -38,6 +38,22 @@ export function encodeCursor(payload: CursorPayload): string {
   return Buffer.from(JSON.stringify(payload)).toString("base64url");
 }
 
+function base64urlToUtf8(str: string): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(str, "base64url").toString("utf8");
+  }
+  let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (base64.length % 4) {
+    base64 += "=";
+  }
+  return decodeURIComponent(
+    atob(base64)
+      .split("")
+      .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+      .join("")
+  );
+}
+
 /**
  * Decode and validate an opaque cursor token.
  *
@@ -47,9 +63,7 @@ export function encodeCursor(payload: CursorPayload): string {
  */
 export function decodeCursor(raw: string): CursorPayload | null {
   try {
-    const parsed: unknown = JSON.parse(
-      Buffer.from(raw, "base64url").toString("utf8")
-    );
+    const parsed: unknown = JSON.parse(base64urlToUtf8(raw));
     const result = cursorPayloadSchema.safeParse(parsed);
     return result.success ? result.data : null;
   } catch {

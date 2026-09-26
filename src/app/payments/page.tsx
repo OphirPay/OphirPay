@@ -5,6 +5,7 @@ import {
   Suspense,
   startTransition,
   useCallback,
+  useEffect,
   useMemo,
   useState,
   useOptimistic,
@@ -32,7 +33,12 @@ import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
 import { useXlmPrice } from "@/hooks/usePrice";
 import { convertXlmToUsd, formatFiatAmount } from "@/lib/price";
 import {
-  parsePaymentSort,
+  ALLOWED_PAGE_SIZES,
+  DEFAULT_PAGE_SIZE,
+  parsePaymentQueryParams,
+  buildShareablePaymentQuery,
+} from "@/lib/payment-filters";
+import {
   applyPaymentSort,
   getSortParamUpdates,
   getNextSort,
@@ -108,9 +114,6 @@ interface OnChainData {
   total: number;
 }
 
-const ALLOWED_PAGE_SIZES = [10, 25, 50] as const;
-const DEFAULT_PAGE_SIZE = 25;
-
 // Fetch the complete on-chain dataset rather than a recent slice. Sorting and
 // pagination run client-side, so operating on a partial slice would silently
 // exclude older records — a sorted view could report the wrong minimum amount
@@ -142,11 +145,99 @@ function PaymentsClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const toast = useToast();
 
-  // Pre-populate the search box from `?q=` so filtered views are shareable
-  // (Issue #157: the search param lives in the URL).
-  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
-  const debouncedSearch = useDebounce(search, 300);
+  const parsedParams = useMemo(
+    () => parsePaymentQueryParams(searchParams),
+    [searchParams]
+  );
+
+  const {
+    search: urlSearch,
+    status: statusFilter,
+    asset: assetFilter,
+    dateFrom,
+    dateTo,
+    page,
+    pageSize,
+    sort,
+    invalidParams,
+  } = parsedParams;
+
+  const [searchDraft, setSearchDraft] = useState(urlSearch);
+  const debouncedSearch = useDebounce(searchDraft, 300);
+
+  // Synchronize input draft when the URL search param changes externally (e.g. back/forward navigation)
+  useEffect(() => {
+    setSearchDraft(urlSearch);
+  }, [urlSearch]);
+
+  const updateQuery = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null) params.delete(key);
+        else params.set(key, value);
+      }
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [searchParams, router, pathname]
+  );
+
+  // Sync debounced search to URL query string and reset pagination
+  useEffect(() => {
+    const currentUrlSearch = searchParams.get("search") ?? searchParams.get("q") ?? "";
+    if (debouncedSearch !== currentUrlSearch) {
+      updateQuery({
+        search: debouncedSearch || null,
+        q: null, // normalize legacy ?q= to ?search=
+        page: null,
+        cursor: null,
+      });
+    }
+  }, [debouncedSearch, searchParams, updateQuery]);
+
+  const updateFilter = useCallback(
+    (key: string, value: string) => {
+      updateQuery({ [key]: value || null, page: null, cursor: null });
+    },
+    [updateQuery]
+  );
+
+  const clearFilters = useCallback(() => {
+    setSearchDraft("");
+    updateQuery({
+      search: null,
+      q: null,
+      status: null,
+      asset: null,
+      dateFrom: null,
+      dateTo: null,
+      page: null,
+      cursor: null,
+    });
+  }, [updateQuery]);
+
+  const clearInvalidParams = useCallback(() => {
+    const updates: Record<string, null> = {};
+    for (const inv of invalidParams) {
+      updates[inv.param] = null;
+    }
+    updateQuery(updates);
+  }, [invalidParams, updateQuery]);
+
+  const handleShareView = useCallback(() => {
+    const shareableQuery = buildShareablePaymentQuery(parsedParams).toString();
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const fullUrl = `${origin}${pathname}${shareableQuery ? `?${shareableQuery}` : ""}`;
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(fullUrl).then(
+        () => toast.success("Link copied", "Shareable payment view copied to clipboard"),
+        () => toast.error("Failed to copy link")
+      );
+    }
+  }, [parsedParams, pathname, toast]);
 
   const {
     data,
@@ -168,7 +259,6 @@ function PaymentsClient() {
   const error = fetchError ? fetchError.message : null;
 
   // ── Optimistic status updates ─────────────────────────────────
-  const toast = useToast();
   const [optimisticStatuses, setOptimisticStatuses] = useOptimistic(
     {} as Record<number, "RECORDED" | "CANCELLED">,
     (current, update: { id: number; status: "RECORDED" | "CANCELLED" }) => ({
@@ -213,11 +303,6 @@ function PaymentsClient() {
     [setOptimisticStatuses, load, toast]
   );
 
-  const statusFilter = searchParams.get("status") ?? "";
-  const dateFrom = searchParams.get("dateFrom") ?? "";
-  const dateTo = searchParams.get("dateTo") ?? "";
-  const assetFilter = searchParams.get("asset") ?? "";
-
   // Client-side search/filter
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase();
@@ -231,19 +316,8 @@ function PaymentsClient() {
     );
   }, [payments, debouncedSearch, statusFilter, dateFrom, dateTo, assetFilter, getStatus]);
 
-  // Client-side pagination — page and page size are persisted in the URL
-  // search params so filtered/paginated views are shareable.
-  const pageParam = Number.parseInt(searchParams.get("page") ?? "", 10);
-  const page = Number.isFinite(pageParam) && pageParam >= 1 ? pageParam : 1;
-
-  const pageSizeParam = Number.parseInt(searchParams.get("pageSize") ?? "", 10);
-  const pageSize = (ALLOWED_PAGE_SIZES as readonly number[]).includes(pageSizeParam)
-    ? pageSizeParam
-    : DEFAULT_PAGE_SIZE;
-
   // Column sorting — state lives in the URL (`sort` + `dir`) so sorted views
   // are shareable and compose with the search filter and pagination.
-  const sort = parsePaymentSort(searchParams);
   const sorted = useMemo(() => applyPaymentSort(filtered, sort), [filtered, sort]);
 
   const toggleSort = (key: PaymentSortKey) =>
@@ -251,6 +325,7 @@ function PaymentsClient() {
       ...getSortParamUpdates(getNextSort(sort, key)),
       // Re-sorting changes the row order — jump back to the first page.
       page: null,
+      cursor: null,
     });
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
@@ -263,22 +338,17 @@ function PaymentsClient() {
   const { activeIndex, getRowProps, onRowsKeyDown, tbodyRef } =
     useTableKeyboardNavigation(paginated.length);
 
-  const updateQuery = (updates: Record<string, string | null>) => {
-    const params = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(updates)) {
-      if (value === null) params.delete(key);
-      else params.set(key, value);
-    }
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
-
-  const goToPage = (target: number) => updateQuery({ page: target <= 1 ? null : String(target) });
+  const goToPage = (target: number) =>
+    updateQuery({
+      page: target <= 1 ? null : String(target),
+      cursor: null,
+    });
 
   const changePageSize = (size: number) =>
     updateQuery({
       pageSize: size === DEFAULT_PAGE_SIZE ? null : String(size),
       page: null,
+      cursor: null,
     });
 
   const { currency, setCurrency } = useCurrencyDisplay();
@@ -313,13 +383,14 @@ function PaymentsClient() {
 
   const handleExport = async () => {
     // Prefer the server-side export (GET /api/payments/export): it applies the
-    // CURRENT search filter to the full DB-backed record set, so the CSV is
-    // not limited to the rows loaded into the page. It falls back to a
+    // CURRENT search and status filters to the full DB-backed record set, so
+    // the CSV is not limited to the rows loaded into the page. It falls back to a
     // client-side export of the loaded rows when there is no server session
     // (e.g. wallet connected but the session cookie expired) so the button
     // never dead-ends in a 401.
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
+    if (statusFilter) params.set("status", statusFilter);
 
     try {
       const res = await fetch(`/api/payments/export?${params.toString()}`, {
@@ -341,7 +412,7 @@ function PaymentsClient() {
       // Network failure or missing session — fall through to the client-side
       // export below.
     }
-    exportToCsv(filtered, [
+    exportToCsv(sorted, [
       { key: "id", header: "Payment ID" },
       { key: "payer", header: "Payer" },
       { key: "payee", header: "Payee" },
@@ -435,29 +506,169 @@ function PaymentsClient() {
         </div>
       </div>
 
-      {/* Search bar */}
-      <div className="relative max-w-sm">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+      {/* Invalid parameter notification banner */}
+      {invalidParams.length > 0 && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-sm"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-          />
-        </svg>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by address, hash, or ID..."
-          className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
-        />
+          <div className="flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="w-5 h-5 flex-shrink-0 text-amber-600 dark:text-amber-400"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>
+              <strong>Notice:</strong> Invalid filter parameter(s) ignored:{" "}
+              {invalidParams
+                .map((inv) => `${inv.param}="${inv.value}" (${inv.reason})`)
+                .join(", ")}
+              . Default values applied.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={clearInvalidParams}
+            className="self-start sm:self-auto text-xs font-medium px-2.5 py-1 rounded bg-amber-100 dark:bg-amber-900/50 hover:bg-amber-200 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-200 transition-colors"
+          >
+            Clear invalid parameters
+          </button>
+        </div>
+      )}
+
+      {/* Search and Filters Bar */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3 flex-1">
+          {/* Search bar */}
+          <div className="relative w-full sm:w-72">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+              />
+            </svg>
+            <input
+              type="text"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              placeholder="Search by address, hash, or ID..."
+              aria-label="Search payments"
+              className="w-full pl-10 pr-8 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+            />
+            {searchDraft && (
+              <button
+                type="button"
+                onClick={() => setSearchDraft("")}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Status filter */}
+          <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+            <span className="sr-only sm:not-sr-only">Status:</span>
+            <select
+              aria-label="Filter by status"
+              value={statusFilter}
+              onChange={(e) => updateFilter("status", e.target.value)}
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+            >
+              <option value="">All statuses</option>
+              <option value="RECORDED">Recorded</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
+          </label>
+
+          {/* Asset filter */}
+          <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+            <span className="sr-only sm:not-sr-only">Asset:</span>
+            <select
+              aria-label="Filter by asset"
+              value={assetFilter}
+              onChange={(e) => updateFilter("asset", e.target.value)}
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+            >
+              <option value="">All assets</option>
+              <option value="XLM">XLM</option>
+              <option value="USDC">USDC</option>
+            </select>
+          </label>
+
+          {/* Date range filters */}
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <input
+              type="date"
+              aria-label="Filter from date"
+              value={dateFrom}
+              onChange={(e) => updateFilter("dateFrom", e.target.value)}
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+              title="Filter from date"
+            />
+            <span className="text-gray-400">to</span>
+            <input
+              type="date"
+              aria-label="Filter to date"
+              value={dateTo}
+              onChange={(e) => updateFilter("dateTo", e.target.value)}
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+              title="Filter to date"
+            />
+          </div>
+
+          {/* Reset Filters button */}
+          {(searchDraft || statusFilter || assetFilter || dateFrom || dateTo) && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-ophir-600 dark:text-ophir-400 hover:underline"
+            >
+              Reset filters
+            </button>
+          )}
+        </div>
+
+        {/* Share Button */}
+        <button
+          type="button"
+          onClick={handleShareView}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors whitespace-nowrap self-start lg:self-auto"
+          title="Copy shareable link to this filtered view"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="w-4 h-4"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"
+            />
+          </svg>
+          Share
+        </button>
       </div>
 
       {/* Chain record count */}
@@ -490,7 +701,7 @@ function PaymentsClient() {
       )}
 
       {/* Empty state / Table */}
-      {!loading && !error && payments.length === 0 && !search ? (
+      {!loading && !error && payments.length === 0 && !searchDraft && !statusFilter && !assetFilter && !dateFrom && !dateTo ? (
         <EmptyState
           icon={
             <svg
@@ -557,8 +768,8 @@ function PaymentsClient() {
                 <tr>
                   <td colSpan={5} className="py-12 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {search
-                        ? "No payments match your search."
+                      {searchDraft || statusFilter || assetFilter || dateFrom || dateTo
+                        ? "No payments match your search or filter criteria."
                         : "No on-chain payments yet — send one from the Send page."}
                     </p>
                   </td>

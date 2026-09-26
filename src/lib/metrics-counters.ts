@@ -228,3 +228,11 @@ export function getEndpointMetrics(): EndpointMetricEntry[] {
 export function resetEndpointMetrics(): void {
   endpointMetrics.clear();
 }
+
+export {
+  getRpcFailoverState,
+  resetRpcState,
+  type RpcFailoverState,
+  type EndpointFailureInfo,
+} from "@/lib/rpc-failover";
+

@@ -7,6 +7,7 @@ import {
   getEndpointMetrics,
   LATENCY_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
+import { getRpcFailoverState } from "@/lib/rpc-failover";
 import { timingSafeEqual } from "@/lib/crypto";
 import { authenticateRequest } from "@/lib/api-auth";
 import { hasScope, ADMIN_SCOPE } from "@/lib/api-scopes";
@@ -73,7 +74,7 @@ function escapeLabelValue(value: string): string {
 
 function labels(labels: Record<string, string | number>): string {
   return Object.entries(labels)
-    .map(([key, value]) => `${key}="${String(value)}"`)
+    .map(([key, value]) => `${key}="${escapeLabelValue(String(value))}"`)
     .join(",");
 }
 
@@ -182,6 +183,40 @@ function buildMetrics(): string {
     "# TYPE ophirpay_info gauge",
     'ophirpay_info{version="1.0.0"} 1'
   );
+
+  // ── RPC Failover Metrics ─────────────────────────────────────
+  const rpcState = getRpcFailoverState();
+  lines.push(
+    "",
+    "# HELP ophirpay_rpc_failovers_total Total number of RPC endpoint failovers",
+    "# TYPE ophirpay_rpc_failovers_total counter",
+    `ophirpay_rpc_failovers_total ${rpcState.failoverCount}`,
+    "",
+    "# HELP ophirpay_rpc_non_primary_active 1 if currently serving on a non-primary fallback RPC endpoint, 0 if primary",
+    "# TYPE ophirpay_rpc_non_primary_active gauge",
+    `ophirpay_rpc_non_primary_active ${rpcState.isPrimary ? 0 : 1}`,
+    "",
+    "# HELP ophirpay_rpc_active_endpoint Information about the currently active RPC endpoint",
+    "# TYPE ophirpay_rpc_active_endpoint gauge",
+    `ophirpay_rpc_active_endpoint{${labels({
+      endpoint: rpcState.activeUrl || "unknown",
+      is_primary: String(rpcState.isPrimary),
+    })}} 1`
+  );
+
+  lines.push(
+    "",
+    "# HELP ophirpay_rpc_endpoint_failures_total Total failure count per RPC endpoint",
+    "# TYPE ophirpay_rpc_endpoint_failures_total counter"
+  );
+  for (const [endpoint, info] of Object.entries(rpcState.endpoints)) {
+    lines.push(
+      `ophirpay_rpc_endpoint_failures_total{${labels({
+        endpoint,
+        last_failure_reason: info.lastFailureReason || "none",
+      })}} ${info.failureCount}`
+    );
+  }
 
   // ── Live gauges: process memory + open SSE connections ──────
   // Sampled on scrape so load tests can assert memory stays bounded and

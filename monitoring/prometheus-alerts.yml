@@ -175,3 +175,19 @@ groups:
           description: |
             {{ $value | humanize }}/s rate limit hits. Possible abuse or
             misconfigured client. Check IP distribution.
+
+      # ── Soroban RPC Alerts ───────────────────────────────────
+
+      - alert: RpcNonPrimaryEndpointActive
+        expr: ophirpay_rpc_non_primary_active == 1
+        for: 5m
+        labels:
+          severity: warning
+          component: rpc
+        annotations:
+          summary: "Soroban RPC operating on non-primary endpoint"
+          description: |
+            OphirPay has been serving traffic using a non-primary fallback
+            Soroban RPC endpoint for more than 5 minutes.
+            Primary endpoint may be down or experiencing degraded performance.
+

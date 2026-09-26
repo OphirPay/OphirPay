@@ -100,4 +100,67 @@ describe("GET /api/health", () => {
     expect(body.data.services.contract.status).toBe("error");
     expect(body.data.services.database.status).toBe("ok");
   });
+
+  describe("Liveness vs Readiness Probes (#738)", () => {
+    it("returns liveness status 200 without querying database or external services", async () => {
+      // Even if database query would fail, liveness must succeed to avoid container restart loops
+      vi.mocked(prisma.$queryRaw).mockImplementation(() => {
+        throw new Error("DB Down");
+      });
+
+      const res = await GET(new Request("http://localhost/api/health?probe=liveness"));
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.status).toBe("ok");
+      expect(body.data.probe).toBe("liveness");
+      expect(typeof body.data.uptime).toBe("number");
+      // Assert DB was never queried
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it("accepts probe=readiness explicitly and reports full service statuses", async () => {
+      vi.mocked(prisma.$queryRaw).mockReset();
+      vi.mocked(prisma.$queryRaw).mockResolvedValue([{ 1: 1 }]);
+      vi.mocked(global.fetch).mockResolvedValue({ ok: true } as Response);
+
+      const res = await GET(new Request("http://localhost/api/health?probe=readiness"));
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.status).toBe("ok");
+      expect(body.data.probe).toBe("readiness");
+      expect(body.data.services.database.status).toBe("ok");
+      expect(prisma.$queryRaw).toHaveBeenCalled();
+    });
+
+    it("dedicated /api/health/liveness endpoint returns liveness status", async () => {
+      const { GET: livenessRouteGet } = await import("@/app/api/health/liveness/route");
+      const res = await livenessRouteGet();
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.status).toBe("ok");
+      expect(body.data.probe).toBe("liveness");
+      expect(typeof body.data.uptime).toBe("number");
+    });
+
+    it("dedicated /api/health/readiness endpoint delegates to full readiness check", async () => {
+      vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ 1: 1 }]);
+      vi.mocked(global.fetch).mockResolvedValue({ ok: true } as Response);
+
+      const { GET: readinessRouteGet } = await import("@/app/api/health/readiness/route");
+      const res = await readinessRouteGet(new Request("http://localhost/api/health/readiness"));
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.probe).toBe("readiness");
+      expect(body.data.services.database.status).toBe("ok");
+    });
+  });
 });

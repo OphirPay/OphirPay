@@ -278,6 +278,36 @@ readinessProbe:                    # dependency-aware — drains traffic on 503
   failureThreshold: 2
 ```
 
+### Container Healthcheck & Probes (Liveness vs. Readiness)
+
+The application separates process **liveness** from upstream dependency **readiness** to ensure container stability and avoid cascading restart loops during transient network or database outages:
+
+| Probe | Endpoint | Purpose | External Dependencies | Failure Behavior |
+|---|---|---|---|---|
+| **Liveness** | `/api/health?probe=liveness` (or `/api/health/liveness`) | Verifies the Node.js process is running and event loop is responsive | None (pure in-memory check) | Container restarts if hung |
+| **Readiness** | `/api/health?probe=readiness` (or `/api/health/readiness`, `/api/health`) | Verifies the application is ready to accept user traffic | Database, Redis, Stellar RPC, Horizon | Returns 503 if database down; removed from traffic routing |
+
+#### Dockerfile HEALTHCHECK
+The runner stage is built on a distroless base image (`gcr.io/distroless/nodejs20-debian12:nonroot`) which contains no shell (`/bin/sh`), `curl`, or `wget`. The Dockerfile uses the exec form with the bundled Node.js runtime:
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD ["node", "-e", "require('http').get('http://127.0.0.1:3000/api/health?probe=liveness', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"]
+```
+
+#### Docker Compose
+`docker-compose.yml` configures the `app` service healthcheck so `docker compose up` tracks when the application becomes healthy:
+```yaml
+healthcheck:
+  test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/health?probe=liveness', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 15s
+```
+
+#### Kubernetes & Helm
+In Kubernetes manifests (`k8s/deployment.yaml`) and Helm charts (`helm/ophirpay/values.yaml`), liveness targets `/api/health?probe=liveness` and readiness targets `/api/health?probe=readiness`. This ensures a transient PostgreSQL or Soroban RPC network interruption will not trigger Kubernetes pod restart loops.
+
 ---
 
 ## Option 3: Standalone Node.js

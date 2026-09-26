@@ -175,3 +175,17 @@ groups:
           description: |
             {{ $value | humanize }}/s rate limit hits. Possible abuse or
             misconfigured client. Check IP distribution.
+
+      # ── RPC Failover Alerts ──────────────────────────────────
+
+      - alert: RpcNonPrimaryEndpointActive
+        expr: ophirpay_rpc_failovers_total > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: rpc
+        annotations:
+          summary: "OphirPay running on fallback RPC endpoint"
+          description: |
+            The primary Soroban RPC endpoint is failing and OphirPay has triggered
+            {{ $value }} failovers. The service is operating on a degraded fallback.

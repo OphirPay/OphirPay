@@ -312,3 +312,32 @@ If p95 or error rate worsens by >20% with no intentional change, suspect:
    on large offsets, no unconditional `COUNT(*)`).
 4. **Rate limiting** — 429s masquerade as errors; confirm `RATE_LIMIT_RPM` is
    generous during baseline runs.
+
+## Dynamic Transaction Fee Recommendation & Horizon Fee Statistics
+
+### Why Dynamic Fees Matter
+Stellar base fees are not fixed constants. During surges in transaction volume, validator ledgers hit capacity limits and prioritize transactions with higher bids per operation. Transactions submitted with a static base fee of 100 stroops risk being delayed across multiple ledgers or dropped entirely from the mempool.
+
+To guarantee high payment reliability without overpaying during quiet periods, OphirPay implements an intelligent fee recommendation engine in [`src/lib/fee-estimator.ts`](../src/lib/fee-estimator.ts).
+
+### Horizon Statistics Ingestion
+The fee engine monitors Horizon's `/fee_stats` endpoint, evaluating:
+- **`last_ledger_base_fee`**: Current baseline fee mandated by the consensus protocol.
+- **`ledger_capacity_usage`**: Proportion of maximum ledger capacity utilized (0.00 to 1.00).
+- **`fee_charged` Percentiles**: Real fee distributions accepted into recent ledgers (`p50`, `p70`, `p90`, `p95`, `p99`).
+
+### Aggressiveness Policies
+Merchants and users can tailor fee urgency based on business requirements:
+- **`conservative`**: Targets `p50` (median charged fee). If capacity usage exceeds 85%, gently bumps to `p70`. Best for non-urgent scheduled batches.
+- **`standard` (Default)**: Targets `p70`. If capacity usage exceeds 75%, escalates to `p90`; if above 90%, escalates to `p95`. Recommended for standard payments and customer checkout flows.
+- **`aggressive`**: Targets `p95`. During severe network congestion (>80% capacity usage), escalates to `p99` priority bidding to guarantee inclusion in the very next ledger.
+
+### Caching & Fallback Resilience
+- **30-Second TTL Cache (`FEE_CACHE_TTL_MS = 30_000`)**: Caches parsed fee statistics across ~5 Stellar ledgers, eliminating redundant Horizon roundtrips and preventing RPC rate-limiting.
+- **Two-Tier Fallback Mechanism**:
+  1. If Horizon RPC times out or errors, the engine checks for previously cached fee statistics. If available, it continues serving recommendations flagged with `basis: "cached"`.
+  2. If Horizon is completely unreachable and no cache exists, the system automatically falls back to `DEFAULT_FALLBACK_BASE_FEE = 100` stroops, visibly flagging `isFallback: true` with a clear warning: *"Horizon unreachable — using fallback base fee"*.
+
+### Fee Fidelity (Preview Equals Submission)
+A core UX tenet of payment orchestration is that the fee shown to the user before signing must match the fee actually submitted. Both the single payment interface ([`src/app/send/page.tsx`](../src/app/send/page.tsx)) and the batch payment confirmation dialog ([`src/components/BatchConfirmDialog.tsx`](../src/components/BatchConfirmDialog.tsx)) inject the exact recommended base fee into `buildPaymentTx`, `buildPathPaymentStrictSendTx`, and `buildBatchPaymentTx`, ensuring complete fidelity between the review screen and the signed transaction envelope.
+

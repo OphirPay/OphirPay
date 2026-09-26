@@ -126,9 +126,9 @@ describe("Escrow State Machine & Role Authorization", () => {
 
   describe("Stroop Conversions", () => {
     it("converts decimal XLM to stroops and vice versa accurately", () => {
-      expect(decimalToStroops(250)).toBe(2_500_000_000n);
-      expect(stroopsToDecimal(2_500_000_000n)).toBe(250);
-      expect(formatStroopAmount(2_500_000_000n)).toBe("250.00");
+      expect(decimalToStroops(250)).toBe(BigInt(2_500_000_000));
+      expect(stroopsToDecimal(BigInt(2_500_000_000))).toBe(250);
+      expect(formatStroopAmount(BigInt(2_500_000_000))).toBe("250.00");
     });
   });
 });

@@ -23,7 +23,7 @@ export type EscrowStatus = "LOCKED" | "DUE_FOR_CLAIM" | "RELEASED" | "CLAIMED";
 
 export type EscrowRole = "depositor" | "beneficiary" | "arbiter" | "observer";
 
-export const STROOPS_PER_XLM = 10_000_000n;
+export const STROOPS_PER_XLM = BigInt(10_000_000);
 
 /**
  * Convert stroop integer (10^-7 XLM) to a human-readable decimal number.
@@ -42,7 +42,7 @@ export function stroopsToDecimal(stroops: bigint | string | number): number {
  */
 export function decimalToStroops(decimal: number | string): bigint {
   const num = typeof decimal === "string" ? parseFloat(decimal) : decimal;
-  if (isNaN(num) || num <= 0) return 0n;
+  if (isNaN(num) || num <= 0) return BigInt(0);
   return BigInt(Math.round(num * 10_000_000));
 }
 

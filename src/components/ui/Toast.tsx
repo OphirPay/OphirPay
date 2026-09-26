@@ -27,6 +27,7 @@ interface ToastItem {
 
 interface ToastContextValue {
   toast: (t: Omit<ToastItem, "id">) => void;
+  show: (title: string, variant?: ToastVariant, description?: string) => void;
   success: (title: string, description?: string) => void;
   error: (title: string, description?: string) => void;
   info: (title: string, description?: string) => void;
@@ -82,6 +83,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ToastContextValue>(
     () => ({
       toast,
+      show: (title, variant = "info", description) => toast({ title, description, variant }),
       dismiss,
       success: (title, description) => toast({ title, description, variant: "success" }),
       error: (title, description) => toast({ title, description, variant: "error" }),

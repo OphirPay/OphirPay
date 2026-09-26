@@ -123,10 +123,10 @@ export function CreateEscrowModal({ isOpen, onClose, onSuccess }: CreateEscrowMo
 
   return (
     <Modal
-      isOpen={isOpen}
+      open={isOpen}
       onClose={onClose}
       title="Create Secure Escrow"
-      className="max-w-lg"
+      size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {formError && (

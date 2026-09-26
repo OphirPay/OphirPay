@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,7 +10,7 @@ import {
   sanitizeMemoHtml,
   validateMemo,
   verifyMemo,
-} from "./memo";
+} from "@/lib/memo";
 
 describe("Memo Utilities, Validation & Sanitization", () => {
   describe("validateMemo", () => {
@@ -95,7 +97,6 @@ describe("Memo Utilities, Validation & Sanitization", () => {
 
       const asyncHash = await hashMemo(memo);
       expect(asyncHash).toHaveLength(28);
-
 
       expect(verifyMemo(memo, memo)).toBe(true);
       expect(verifyMemo(memo, "other-memo")).toBe(false);

@@ -372,7 +372,7 @@ export default function EscrowDetailPage({
             <div className="flex items-center gap-2 font-mono text-gray-900 dark:text-gray-100">
               <span>{escrow.depositor}</span>
               <CopyButton value={escrow.depositor} />
-              <ExplorerLink type="account" value={escrow.depositor} />
+              <ExplorerLink kind="account" value={escrow.depositor} />
             </div>
           </div>
 
@@ -381,7 +381,7 @@ export default function EscrowDetailPage({
             <div className="flex items-center gap-2 font-mono text-gray-900 dark:text-gray-100">
               <span>{escrow.beneficiary}</span>
               <CopyButton value={escrow.beneficiary} />
-              <ExplorerLink type="account" value={escrow.beneficiary} />
+              <ExplorerLink kind="account" value={escrow.beneficiary} />
             </div>
           </div>
 
@@ -390,7 +390,7 @@ export default function EscrowDetailPage({
             <div className="flex items-center gap-2 font-mono text-gray-900 dark:text-gray-100">
               <span>{escrow.arbiter ?? "None (No arbiter specified)"}</span>
               {escrow.arbiter && <CopyButton value={escrow.arbiter} />}
-              {escrow.arbiter && <ExplorerLink type="account" value={escrow.arbiter} />}
+              {escrow.arbiter && <ExplorerLink kind="account" value={escrow.arbiter} />}
             </div>
           </div>
 

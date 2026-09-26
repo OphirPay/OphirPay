@@ -2,6 +2,16 @@
 
 All notable changes to OphirPay will be documented in this file.
 
+## [Unreleased] — 2026-09-25
+
+### Security
+- **Distributed rate limiting became real (#703)**: `REDIS_URL` previously had no effect on the global limiter because `src/proxy.ts` constructed its own in-memory store on the Edge runtime. The rate-limit store now selects its transport from the URL scheme — `https://` (Upstash-compatible REST) is shared by every replica on both runtimes, while `redis://` uses ioredis on Node — and the README, `.env.example` and `docker-compose.yml` describe the enforcement point and its per-instance limitation. Two replicas now share one bucket when a REST Redis endpoint is configured.
+- **CSRF registry drift guard (#704)**: `src/__tests__/csrf-coverage.test.ts` now globs every `src/app/api/**/route.ts`, extracts each exported mutating handler by method, and fails with the exact registry entry to add when one is neither registered nor allowlisted. The scheduler endpoints are allowlisted with reasons, and `docs/CSRF-AUDIT.md` was regenerated to match the registry (37 protected + 3 allowlisted).
+
+### Changed
+- **Coverage now measures the security surface (#700)**: `src/lib/api-auth.ts`, `rate-limit.ts`, `webhook-dispatcher.ts` and `webhook-deliver.ts` are no longer excluded from the coverage report; new suites cover the API-key lookup, the Redis REST store and webhook dispatch. The README coverage figure was regenerated (68.9% overall).
+- **JavaScript bundle-size budget (#739)**: added `bundle-budget.json` with committed per-route first-load budgets, `npm run bundle:check` (runs in CI after every production build and appends a per-route table to the job summary) and an opt-in `npm run analyze` treemap. `HOOK_PAGE_LIMIT` moved to `src/lib/hooks-pagination.ts` so the hooks route module exports only HTTP handlers (required by the webpack build the analyzer uses).
+
 ## [Unreleased] — 2026-08-26
 
 ### Added

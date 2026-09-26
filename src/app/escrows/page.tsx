@@ -52,8 +52,8 @@ export default function EscrowsPage() {
   const stats = useMemo(() => {
     let totalCount = escrows.length;
     let activeCount = 0;
-    let totalLockedStroops = 0n;
-    let myClaimableStroops = 0n;
+    let totalLockedStroops = BigInt(0);
+    let myClaimableStroops = BigInt(0);
     const nowSeconds = Math.floor(Date.now() / 1000);
 
     for (const e of escrows) {

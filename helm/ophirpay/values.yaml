@@ -16,6 +16,22 @@ serviceAccount:
   annotations: {}
   name: ""
 
+# ── Metrics scraping ───────────────────────────────────────────
+# /api/metrics now requires a credential (see docs/metrics-endpoints.md):
+# `Authorization: Bearer <METRICS_TOKEN>`. The classic prometheus.io/* pod
+# annotations below cannot carry a header, so they only tell discovery where
+# the endpoint is — the scrape job itself MUST attach the bearer token from the
+# `ophirpay-secrets` Secret. Example Prometheus `additionalScrapeConfigs`:
+#
+#   - job_name: ophirpay
+#     metrics_path: /api/metrics
+#     authorization:
+#       type: Bearer
+#       credentials_file: /etc/prometheus/secrets/metrics-token
+#     static_configs:
+#       - targets: ["ophirpay.ophirpay.svc.cluster.local:80"]
+#
+# Or, with the Prometheus Operator, an Authorization/secret on the ServiceMonitor.
 podAnnotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "3000"
@@ -76,18 +92,38 @@ pdb:
 networkPolicy:
   enabled: true
 
+# ── Runtime configuration (rendered into a ConfigMap) ──────────
+# Every key here must be a real variable documented in `.env.example`;
+# `src/__tests__/helm-config.test.ts` fails the build when a key is not, so a
+# typo can no longer silently point the app at the wrong Stellar network.
+#
+# ⚠ NEXT_PUBLIC_* values are inlined by Next.js at **build** time, never read
+#   from the environment at runtime. The ConfigMap lists them so its keys match
+#   `.env.example`, but a prebuilt image (the default
+#   `ghcr.io/ophirpay/ophirpay` tag) ignores these entries — the bundle already
+#   carries whatever value was present during `next build`. To point a release
+#   at a different network you must build your own image with these values set
+#   (see docs/DEPLOYMENT.md → "Kubernetes (Helm)"). `helm install`/`helm
+#   upgrade` also print this warning through templates/NOTES.txt.
 config:
   NEXT_PUBLIC_STELLAR_NETWORK: "TESTNET"
-  NEXT_PUBLIC_HORIZON_URL: "https://horizon-testnet.stellar.org"
-  NEXT_PUBLIC_SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  NEXT_PUBLIC_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org"
   DATABASE_PROVIDER: "postgresql"
   NODE_ENV: "production"
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+  RATE_LIMIT_RPM: "120"
+  AUTH_RATE_LIMIT_IP_RPM: "30"
+  AUTH_RATE_LIMIT_WALLET_RPM: "10"
 
+# ── Secrets (rendered into a Kubernetes Secret) ────────────────
+# Names must also exist in `.env.example` (same test as `config` above).
 secrets:
   DATABASE_URL: ""
-  REDIS_URL: ""
   NEXT_PUBLIC_CONTRACT_ID: ""
   NEXT_PUBLIC_EMITTER_CONTRACT_ID: ""
+  AUTH_SECRET: ""
 
 livenessProbe:
   httpGet:

@@ -42,7 +42,9 @@ export default defineConfig({
       },
     },
   ],
-  // Note: playwright.config.ts intentionally has no webServer block.
-  // Therefore, `npm run test:e2e` requires a server already listening on E2E_BASE_URL.
-  // Set E2E_BASE_URL env var to override (default: localhost:3000 for local dev).
+  // Note: playwright.config.ts intentionally has no webServer block so tests
+  // can run against live staging or local servers. `npm run test:e2e` requires
+  // a running server listening on E2E_BASE_URL (default: http://localhost:3000).
+  // For automated startup and health-check orchestration, run `npm run test:e2e:local`.
+  // Complete local setup guide: docs/testing/e2e-local.md.
 });

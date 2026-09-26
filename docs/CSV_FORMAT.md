@@ -157,3 +157,37 @@ Invalid amount at row 3.
 - **Balance check:** the batch total is checked against the connected
   wallet's balance before signing, so a file that imports cleanly can still
   be rejected at submission time if the total is too large.
+
+---
+
+## Address Book CSV Format
+
+OphirPay also provides CSV import and export for the local address book ([`src/lib/address-book-csv.ts`](../src/lib/address-book-csv.ts)), accessible on the Address Book page.
+
+### Quick reference
+
+| | |
+| --- | --- |
+| Delimiter | Comma (`,`) |
+| Encoding | UTF-8 (BOM stripped automatically) |
+| Line endings | `LF` or `CRLF` |
+| Columns | `label,address,memo` |
+
+```csv
+label,address,memo
+Alice,GWT7SDH7366X75RZDMUOCSWWRJUF3IJKJI4FYHZAEQSPI626PO4LZZF4,Payroll
+Bob,G4XAJTP2AXLVEZ5NQQSULA5L5MVCDML2RWULI2BZC6FGBBWHR3SAXHF3,Vendor
+Charlie,GXMZE7ZAGXTLJ2VN3RFNNQLHZN2OR23KWWXF4DYLY2EBDR6F4RHYJOCJ,
+```
+
+### Column Aliases
+- **Label / Nickname:** `label`, `name`, `nickname`, `contact`, `recipient name`
+- **Address / Public Key:** `address`, `publicKey`, `public_key`, `recipient`, `account`, `key`
+- **Memo:** `memo`, `note`, `message`, `description`
+
+### Validation & Partial Import
+- **Keep valid rows:** Valid entries are parsed and saved to the local address book without discarding valid data when some rows have errors.
+- **Detailed error reporting:** Invalid rows report their exact 1-based row number and specific error reason (e.g. invalid Stellar address format, label length > 100 chars, memo > 28 chars).
+- **Graceful empty files:** Empty files or header-only files return an informative status message instead of throwing errors.
+- **Round-trip fidelity:** Exporting the address book via `exportAddressBookToCsv` and re-importing via `parseAddressBookCsv` produces an identical set of contacts, with formula injection protection (`=`, `+`, `-`, `@`).
+

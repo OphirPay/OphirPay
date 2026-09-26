@@ -1,14 +1,18 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   getAddressBook,
   saveAddress,
   removeAddress,
   searchAddressBook,
+  downloadAddressBookCsv,
+  parseAddressBookCsv,
+  importAddressBookEntries,
   type AddressEntry,
+  type AddressBookCsvRowError,
 } from "@/lib/address-book";
 import { isValidStellarAddress } from "@/lib/stellar";
 import { shortenAddress, timeAgo } from "@/lib/utils";
@@ -51,6 +55,57 @@ export default function AddressBookPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<AddressEntry | null>(null);
   const [editingOriginalKey, setEditingOriginalKey] = useState<string | null>(null);
+  const [csvErrors, setCsvErrors] = useState<AddressBookCsvRowError[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportCsv = () => {
+    if (contacts.length === 0) {
+      toast.error("Address book is empty", "Add contacts before exporting.");
+      return;
+    }
+    downloadAddressBookCsv(contacts);
+    toast.success("Address book exported", `${contacts.length} contacts exported to CSV.`);
+  };
+
+  const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const result = parseAddressBookCsv(text);
+
+      if (result.message && result.entries.length === 0 && result.errors.length === 0) {
+        toast.info("Import notice", result.message);
+        return;
+      }
+
+      if (result.entries.length > 0) {
+        importAddressBookEntries(result.entries);
+        refresh();
+        toast.success(
+          "Contacts imported",
+          `Successfully added ${result.entries.length} contact${result.entries.length > 1 ? "s" : ""}.`
+        );
+      }
+
+      if (result.errors.length > 0) {
+        setCsvErrors(result.errors);
+        toast.warning(
+          "Import issues detected",
+          `${result.errors.length} row${result.errors.length > 1 ? "s" : ""} had errors and were skipped.`
+        );
+      } else {
+        setCsvErrors(null);
+      }
+    } catch {
+      toast.error("Import failed", "Could not parse the CSV file.");
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   const filtered = useMemo(() => {
     return search.trim() ? searchAddressBook(search.trim()) : contacts;
@@ -130,10 +185,59 @@ export default function AddressBookPage() {
             Frequently used Stellar addresses — stored locally in your browser
           </p>
         </div>
-        <Button onClick={openAdd} leftIcon={<PlusIcon />}>
-          Add Contact
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            aria-label="Upload Address Book CSV"
+            onChange={handleImportCsv}
+          />
+          <Button
+            variant="secondary"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Import CSV
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={handleExportCsv}
+          >
+            Export CSV
+          </Button>
+          <Button onClick={openAdd} leftIcon={<PlusIcon />}>
+            Add Contact
+          </Button>
+        </div>
       </div>
+
+      {/* CSV Import Issues Banner */}
+      {csvErrors && csvErrors.length > 0 && (
+        <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              CSV Import Issues ({csvErrors.length} row{csvErrors.length > 1 ? "s" : ""} skipped)
+            </h3>
+            <button
+              onClick={() => setCsvErrors(null)}
+              className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Valid rows were imported into your address book. The following rows could not be imported:
+          </p>
+          <ul className="text-xs space-y-1 text-amber-900 dark:text-amber-200 max-h-40 overflow-y-auto font-mono">
+            {csvErrors.map((err, i) => (
+              <li key={i}>
+                <span className="font-bold">Row {err.row}:</span> {err.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative max-w-sm">

@@ -74,3 +74,12 @@ export function mergeAddressBookSelections(
   const existing = new Set(existingAddresses.map((a) => a.trim()));
   return entries.filter((e) => !existing.has(e.publicKey));
 }
+
+export {
+  exportAddressBookToCsv,
+  downloadAddressBookCsv,
+  parseAddressBookCsv,
+  importAddressBookEntries,
+  type AddressBookCsvRowError,
+  type AddressBookCsvParseResult,
+} from "./address-book-csv";

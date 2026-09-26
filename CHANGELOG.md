@@ -5,6 +5,7 @@ All notable changes to OphirPay will be documented in this file.
 ## [Unreleased] — 2026-09-25
 
 ### Added
+- **Address book CSV import and export (#811)**: added client-side CSV import and export for the local address book (`src/lib/address-book-csv.ts`). Supports canonical columns (`label,address,memo`) with flexible header aliases, detailed 1-based row validation preserving valid rows during partial failures, spreadsheet formula-injection protection, and identical round-trip export fidelity. The Address Book UI surfaces "Import CSV" and "Export CSV" buttons alongside an inline issue breakdown for skipped rows. Documented in `docs/CSV_FORMAT.md`.
 - **Scoped pause controls (#826)**: the circuit breaker is no longer all-or-nothing. `PauseScope` exposes eight feature domains (payments, escrows, streams, recurring, refunds, governance, hooks, batches) through `set_scope_paused` / `is_scope_paused` / `get_paused_scopes`; the global `emergency_pause_all` still overrides every scope, unknown scope ids return `InvalidPauseScope` (308), and `/api/pause-state` plus the pause-controls page surface the per-scope state with an explicit confirmation step.
 
 ### Security

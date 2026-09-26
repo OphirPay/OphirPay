@@ -16,8 +16,13 @@ export interface UseXlmPriceReturn {
   isLoading: boolean;
   isError: boolean;
   isUnavailable: boolean;
+  isStale: boolean;
+  staleAgeMs: number;
+  staleReason?: string;
+  rateLimited: boolean;
   error: string | null;
   lastUpdated: Date | null;
+  rawResult: PriceResult | null;
   refetch: (forceRefresh?: boolean) => Promise<PriceResult>;
 }
 
@@ -34,6 +39,11 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
   const [isLoading, setIsLoading] = useState<boolean>(enabled);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isStale, setIsStale] = useState<boolean>(false);
+  const [staleAgeMs, setStaleAgeMs] = useState<number>(0);
+  const [staleReason, setStaleReason] = useState<string | undefined>(undefined);
+  const [rateLimited, setRateLimited] = useState<boolean>(false);
+  const [rawResult, setRawResult] = useState<PriceResult | null>(null);
 
   const isMountedRef = useRef(true);
 
@@ -46,6 +56,11 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
           setPrice(result.price);
           setSource(result.source);
           setError(result.error ?? null);
+          setIsStale(result.isStale ?? false);
+          setStaleAgeMs(result.staleAgeMs ?? 0);
+          setStaleReason(result.staleReason);
+          setRateLimited(result.rateLimited ?? false);
+          setRawResult(result);
           if (result.price !== null) {
             setLastUpdated(result.timestamp ? new Date(result.timestamp) : new Date());
           }
@@ -56,6 +71,11 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
         const errMsg = err instanceof Error ? err.message : "Failed to fetch price";
         if (isMountedRef.current) {
           setError(errMsg);
+          setIsStale(false);
+          setStaleAgeMs(0);
+          setStaleReason(undefined);
+          setRateLimited(false);
+          setRawResult({ price: null, source: null, error: errMsg });
           setIsLoading(false);
         }
         return { price: null, source: null, error: errMsg };
@@ -88,8 +108,13 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
     isLoading,
     isError: error !== null && price === null,
     isUnavailable: price === null && !isLoading,
+    isStale,
+    staleAgeMs,
+    staleReason,
+    rateLimited,
     error,
     lastUpdated,
+    rawResult,
     refetch: loadPrice,
   };
 }

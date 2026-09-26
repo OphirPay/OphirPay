@@ -62,6 +62,19 @@ describe("CurrencyToggle Component", () => {
     render(<CurrencyToggle value="USD" onChange={vi.fn()} showPrice={true} isUnavailable={true} />);
     expect(screen.getByTitle("Price feed unavailable")).toBeInTheDocument();
   });
+
+  it("displays stale indicator when showPrice is true and price is stale", () => {
+    render(
+      <CurrencyToggle
+        value="USD"
+        onChange={vi.fn()}
+        showPrice={true}
+        price={0.125}
+        isStale={true}
+      />
+    );
+    expect(screen.getByTitle("Price feed is stale")).toBeInTheDocument();
+  });
 });
 
 describe("useCurrencyDisplay Hook", () => {
@@ -194,5 +207,27 @@ describe("useXlmPrice Hook", () => {
 
     unmount();
     vi.useRealTimers();
+  });
+
+  it("surfaces isStale and staleReason when price is marked stale", async () => {
+    vi.spyOn(priceModule, "fetchXlmPrice").mockResolvedValue({
+      price: 0.12,
+      source: "cached",
+      timestamp: Date.now() - 360000,
+      isStale: true,
+      staleAgeMs: 360000,
+      staleReason: "Price sources unreachable; cached price is 360s old",
+    });
+
+    const { result } = renderHook(() => useXlmPrice());
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(result.current.price).toBe(0.12);
+    expect(result.current.isStale).toBe(true);
+    expect(result.current.staleAgeMs).toBe(360000);
+    expect(result.current.staleReason).toContain("Price sources unreachable");
   });
 });

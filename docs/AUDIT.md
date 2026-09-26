@@ -312,9 +312,10 @@ and re-run the IP/hostname check against the final resolved address after follow
    `<X-OphirPay-Timestamp>.<canonical body>`, so the timestamp header is authenticated and a
    captured delivery cannot be re-dated; the reference verifiers and docs enforce a 300s
    freshness window on the signed timestamp.
-10. **API keys hashed with plain SHA-256** (`src/lib/api-auth.ts`): fine for high-entropy random
-    keys, but there is no enforcement that keys are long/random. Prefer a slow KDF (bcrypt/scrypt/
-    argon2) or enforce 32+ byte CSPRNG keys at creation.
+10. **API keys hashed with plain SHA-256** — ✅ **FIXED (issue #701).** Enforced minimum 32-byte CSPRNG
+    random entropy (`oph_[0-9a-f]{64}`) at creation (`POST /api/keys`). Stored digests use
+    versioned format (`v1:<digest>`), while backward-compatibility ensures
+    existing legacy SHA-256 keys still authenticate seamlessly.
 11. **Test-count drift (resolved)**: the README previously advertised "13 suites / 187 app tests /
     251 total"; it now correctly reports 806 app tests across 33 suites, 67 contract tests, and 97
     Playwright e2e cases.

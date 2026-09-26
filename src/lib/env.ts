@@ -26,6 +26,7 @@ const envSchema = z.object({
   // Strength is enforced by `assertAuthSecret` (production only) so a single
   // validator owns the "generate one with openssl rand -hex 32" message.
   AUTH_SECRET: z.string().optional(),
+  API_KEY_PEPPER: z.string().min(16).optional(), // optional pepper for API key digests (defaults to AUTH_SECRET)
   CRON_SECRET: z.string().min(16).optional(), // required for /api/cron (see app/api/cron/route.ts)
   METRICS_TOKEN: z.string().min(16).optional(), // required to scrape /api/metrics (see app/api/metrics/route.ts)
   WEBHOOK_ALLOWED_PORTS: z.string().optional(), // comma-separated webhook target ports (default 80,443)
@@ -141,6 +142,7 @@ export function validateEnv(): Env {
       AUTH_RATE_LIMIT_WALLET_RPM: process.env.AUTH_RATE_LIMIT_WALLET_RPM,
       REDIS_URL: process.env.REDIS_URL,
       AUTH_SECRET: process.env.AUTH_SECRET,
+      API_KEY_PEPPER: process.env.API_KEY_PEPPER,
       NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE,
       CRON_SECRET: process.env.CRON_SECRET,
       METRICS_TOKEN: process.env.METRICS_TOKEN,

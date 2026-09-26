@@ -125,4 +125,44 @@ describe("AddressBookPage", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
   });
+
+  it("renders Import CSV and Export CSV buttons", () => {
+    setup();
+    expect(screen.getByRole("button", { name: /import csv/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /export csv/i })).toBeInTheDocument();
+  });
+
+  it("imports contacts from a CSV file upload", async () => {
+    const user = userEvent.setup();
+    setup();
+
+    const csvContent = `label,address,memo\nAlice,${ADDR_A},TestMemo`;
+    const file = new File([csvContent], "contacts.csv", { type: "text/csv" });
+    const input = screen.getByLabelText(/upload address book csv/i);
+
+    await user.upload(input, file);
+
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(getAddressBook()).toHaveLength(1);
+    expect(getAddressBook()[0]).toMatchObject({
+      publicKey: ADDR_A,
+      label: "Alice",
+      memo: "TestMemo",
+    });
+  });
+
+  it("displays import warning banner when some rows are invalid", async () => {
+    const user = userEvent.setup();
+    setup();
+
+    const csvContent = `label,address,memo\nAlice,${ADDR_A},Good\n,${ADDR_B},MissingLabel`;
+    const file = new File([csvContent], "contacts_partial.csv", { type: "text/csv" });
+    const input = screen.getByLabelText(/upload address book csv/i);
+
+    await user.upload(input, file);
+
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.getByText(/CSV Import Issues/i)).toBeInTheDocument();
+    expect(screen.getByText(/Row 3:/i)).toBeInTheDocument();
+  });
 });

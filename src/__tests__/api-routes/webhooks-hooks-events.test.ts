@@ -41,7 +41,8 @@ import {
   POST as postWebhooks,
   DELETE as deleteWebhooks,
 } from "@/app/api/webhooks/route";
-import { GET as getHooks, POST as postHooks, HOOK_PAGE_LIMIT } from "@/app/api/hooks/route";
+import { GET as getHooks, POST as postHooks } from "@/app/api/hooks/route";
+import { HOOK_PAGE_LIMIT } from "@/lib/hooks-pagination";
 import { PATCH as patchHookById } from "@/app/api/hooks/[id]/route";
 import { GET as getEvents } from "@/app/api/events/route";
 import { GET as getEventsHistory } from "@/app/api/events/history/route";

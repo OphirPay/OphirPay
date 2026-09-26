@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   recordEndpointLatency,
   getEndpointMetrics,
@@ -11,9 +11,29 @@ import { withMetrics } from "@/lib/metrics-middleware";
 import { GET } from "@/app/api/metrics/route";
 import { resetMetricsForTest } from "@/lib/metrics-counters";
 
+// The metrics route falls back to API-key auth, which imports Prisma. These
+// tests only exercise the static METRICS_TOKEN path, so stub the module to
+// keep the suite free of a database client.
+vi.mock("@/lib/api-auth", () => ({
+  authenticateRequest: vi.fn(async () => null),
+}));
+
+const METRICS_TOKEN = "test-metrics-token-0123456789abcdef";
+
+function authenticatedRequest(token = METRICS_TOKEN): Request {
+  return new Request("http://localhost/api/metrics", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+}
+
 describe("per-endpoint metrics", () => {
   beforeEach(() => {
     resetEndpointMetrics();
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+  });
+
+  afterEach(() => {
+    delete process.env.METRICS_TOKEN;
   });
 
   it("produces a metric key for a successful (2xx) request", () => {
@@ -91,7 +111,7 @@ describe("per-endpoint metrics", () => {
     recordEndpointLatency("GET", "/api/payments", 200, 0.01);
     recordEndpointLatency("POST", "/api/payments", 500, 0.2);
 
-    const res = await GET();
+    const res = await GET(authenticatedRequest());
     const text = await res.text();
 
     expect(text).toContain(
@@ -112,7 +132,7 @@ describe("per-endpoint metrics", () => {
     recordEndpointLatency("GET", "/api/payments", 200, 0.3);
     recordEndpointLatency("POST", '/api/escape/"\\', 500, 1.2);
 
-    const res = await GET();
+    const res = await GET(authenticatedRequest());
     const text = await res.text();
     
     // Ignore dynamic parts like memory info
@@ -130,7 +150,7 @@ describe("per-endpoint metrics", () => {
     recordEndpointLatency("GET", "/api/payments", 200, 0.3);
     recordEndpointLatency("POST", '/api/escape/"\\', 500, 1.2);
 
-    const res = await GET();
+    const res = await GET(authenticatedRequest());
     const text = await res.text();
     const lines = text.split("\n");
 
@@ -173,5 +193,58 @@ describe("per-endpoint metrics", () => {
     for (const family of metricFamilies) {
       expect(typeLines.has(family)).toBe(true);
     }
+  });
+});
+
+describe("GET /api/metrics authentication (#699)", () => {
+  beforeEach(() => {
+    resetEndpointMetrics();
+  });
+
+  afterEach(() => {
+    delete process.env.METRICS_TOKEN;
+  });
+
+  it("returns 401 with no metric body when no credential is presented", async () => {
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+    const res = await GET(new Request("http://localhost/api/metrics"));
+    expect(res.status).toBe(401);
+    const text = await res.text();
+    expect(text).not.toContain("ophirpay_http_requests_total");
+    expect(text).not.toContain("ophirpay_process_resident_set_bytes");
+    expect(res.headers.get("WWW-Authenticate")).toContain("Bearer");
+  });
+
+  it("returns 401 when the bearer token is wrong", async () => {
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+    const res = await GET(authenticatedRequest("not-the-right-token"));
+    expect(res.status).toBe(401);
+    expect(await res.text()).not.toContain("ophirpay_info");
+  });
+
+  it("fails closed when METRICS_TOKEN is unset", async () => {
+    delete process.env.METRICS_TOKEN;
+    const res = await GET(authenticatedRequest());
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the unchanged exposition format for a valid bearer token", async () => {
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+    const res = await GET(authenticatedRequest());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/plain");
+    const text = await res.text();
+    expect(text).toContain("ophirpay_http_requests_total");
+    expect(text).toContain("ophirpay_info");
+  });
+
+  it("accepts a lowercase bearer scheme", async () => {
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+    const res = await GET(
+      new Request("http://localhost/api/metrics", {
+        headers: { authorization: `bearer ${METRICS_TOKEN}` },
+      })
+    );
+    expect(res.status).toBe(200);
   });
 });

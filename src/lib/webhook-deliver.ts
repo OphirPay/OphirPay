@@ -21,93 +21,147 @@ export interface WebhookDeliveryResult {
   errorMessage?: string;
 }
 
-/**
- * Generate HMAC-SHA256 signature for a webhook payload.
- * Receiving endpoints can verify authenticity by recomputing the signature.
- */
-export function signWebhookPayload(payload: WebhookPayload, secret: string): string {
-  const body = JSON.stringify(payload);
-  return crypto.createHmac("sha256", secret).update(body).digest("hex");
+export const WEBHOOK_TIMESTAMP_HEADER = "X-OphirPay-Timestamp";
+export const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
+
+export function webhookSignedInput(
+  timestamp: string,
+  canonicalBody: string
+): string {
+  return `${timestamp}.${canonicalBody}`;
 }
 
-/**
- * Build the exact HTTP body that will be transmitted and sign it, so a
- * receiver verifying the HMAC over the received body always matches.
- *
- * Canonicalization: the HMAC is computed over the body with the signature
- * field emptied — `JSON.stringify({...payload, signature: ""})`. A receiver
- * recomputes identically: parse the received body, empty the `signature`
- * field, re-serialize (stable key order), and compare against the
- * `X-OphirPay-Signature` header.
- */
+export function canonicalizeWebhookBody(payload: WebhookPayload): string {
+  return JSON.stringify({ ...payload, signature: "" });
+}
+
+export const BLOCKED_WEBHOOK_TARGET_ERROR =
+  "Webhook target rejected by the SSRF guard — URL resolves to a private/internal address or a disallowed port";
+
+export function signWebhookPayload(payload: WebhookPayload, secret: string): string {
+  const canonical = canonicalizeWebhookBody(payload);
+  return crypto
+    .createHmac("sha256", secret)
+    .update(webhookSignedInput(payload.timestamp, canonical))
+    .digest("hex");
+}
+
 export function buildSignedPayload(
   payload: WebhookPayload,
   secret: string
-): { body: string; signature: string } {
-  const canonical = JSON.stringify({ ...payload, signature: "" });
+): { body: string; signature: string; timestamp: string } {
+  const timestamp = payload.timestamp;
+  const canonical = canonicalizeWebhookBody(payload);
   const signature = crypto
     .createHmac("sha256", secret)
-    .update(canonical)
+    .update(webhookSignedInput(timestamp, canonical))
     .digest("hex");
-  return { body: JSON.stringify({ ...payload, signature }), signature };
+  return { body: JSON.stringify({ ...payload, signature }), signature, timestamp };
 }
 
-/**
- * Deliver a webhook event to a registered endpoint with retries and signing.
- * Returns delivery outcome including HTTP status when available.
- */
+export interface WebhookRequestPreview {
+  canonicalBody: string;
+  body: string;
+  signature: string;
+  headers: Record<string, string>;
+}
+
+export interface WebhookDeliveryDetails extends WebhookDeliveryResult {
+  delivered: boolean;
+  status: number | null;
+  responseBody: string;
+  durationMs: number;
+  blocked: boolean;
+  error: string | null;
+  request: WebhookRequestPreview;
+}
+
+export function buildWebhookRequestPreview(
+  payload: WebhookPayload,
+  secret: string
+): WebhookRequestPreview {
+  const { body, signature, timestamp } = buildSignedPayload(payload, secret);
+  return {
+    canonicalBody: canonicalizeWebhookBody(payload),
+    body,
+    signature,
+    headers: {
+      "Content-Type": "application/json",
+      "X-OphirPay-Signature": signature,
+      "X-OphirPay-Event": payload.event,
+      [WEBHOOK_TIMESTAMP_HEADER]: timestamp,
+    },
+  };
+}
+
 export async function deliverWebhook(
   url: string,
   secret: string,
   payload: WebhookPayload,
   maxRetries = 3
-): Promise<WebhookDeliveryResult> {
+): Promise<WebhookDeliveryDetails> {
   const startedAt = Date.now();
-  const { body, signature } = buildSignedPayload(payload, secret);
-
-  // Re-validate the destination at delivery time to mitigate DNS rebinding.
-  if (!(await isSafeWebhookUrlAtDelivery(url))) {
-    logger.error("Webhook delivery blocked — URL resolved to a private/internal address", { url });
-    incMetric("webhooks_failed_total");
-    return {
-      success: false,
-      attempts: 0,
-      latencyMs: Date.now() - startedAt,
-      errorMessage: "URL resolved to a private/internal address",
-    };
-  }
-
+  const request = buildWebhookRequestPreview(payload, secret);
   let lastStatusCode: number | undefined;
+  let lastResponseBody = "";
   let lastError: string | undefined;
+  let attempts = 0;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+    if (!(await isSafeWebhookUrlAtDelivery(url))) {
+      logger.error(
+        "Webhook delivery blocked — URL resolved to a private/internal address or a disallowed port",
+        { url, attempt }
+      );
+      incMetric("webhooks_failed_total");
+      const latencyMs = Date.now() - startedAt;
+      return {
+        success: false,
+        statusCode: lastStatusCode,
+        latencyMs,
+        attempts,
+        errorMessage: BLOCKED_WEBHOOK_TARGET_ERROR,
+        delivered: false,
+        status: lastStatusCode ?? null,
+        responseBody: lastResponseBody,
+        durationMs: latencyMs,
+        blocked: true,
+        error: BLOCKED_WEBHOOK_TARGET_ERROR,
+        request,
+      };
+    }
 
+    attempts = attempt;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-OphirPay-Signature": signature,
-          "X-OphirPay-Event": payload.event,
-        },
-        body,
+        headers: request.headers,
+        body: request.body,
         signal: controller.signal,
         redirect: "manual",
       });
-
-      clearTimeout(timeout);
+      const responseBody = typeof response.text === "function" ? await response.text() : "";
+      lastResponseBody = responseBody;
       lastStatusCode = response.status;
 
       if (response.ok) {
         logger.info("Webhook delivered", { url, event: payload.event, attempt });
         incMetric("webhooks_delivered_total");
+        const latencyMs = Date.now() - startedAt;
         return {
           success: true,
           statusCode: response.status,
-          latencyMs: Date.now() - startedAt,
+          latencyMs,
           attempts: attempt,
+          delivered: true,
+          status: response.status,
+          responseBody,
+          durationMs: latencyMs,
+          blocked: false,
+          error: null,
+          request,
         };
       }
 
@@ -116,6 +170,8 @@ export async function deliverWebhook(
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
       logger.warn("Webhook delivery error", { url, error: lastError, attempt });
+    } finally {
+      clearTimeout(timeout);
     }
 
     if (attempt < maxRetries) {
@@ -125,11 +181,28 @@ export async function deliverWebhook(
 
   logger.error("Webhook delivery exhausted retries", { url, event: payload.event });
   incMetric("webhooks_failed_total");
+  const latencyMs = Date.now() - startedAt;
   return {
     success: false,
     statusCode: lastStatusCode,
-    latencyMs: Date.now() - startedAt,
+    latencyMs,
     attempts: maxRetries,
     errorMessage: lastError ?? "Delivery exhausted retries",
+    delivered: false,
+    status: lastStatusCode ?? null,
+    responseBody: lastResponseBody,
+    durationMs: latencyMs,
+    blocked: false,
+    error: lastError ?? "Delivery exhausted retries",
+    request,
   };
+}
+
+export async function deliverWebhookWithDetails(
+  url: string,
+  secret: string,
+  payload: WebhookPayload,
+  maxRetries = 3
+): Promise<WebhookDeliveryDetails> {
+  return deliverWebhook(url, secret, payload, maxRetries);
 }

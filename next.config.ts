@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import bundleAnalyzer from "@next/bundle-analyzer";
 
 // NOTE: the Content-Security-Policy is set per-request in src/proxy.ts
 // Note that 'unsafe-inline' is retained because the per-request nonce never
@@ -33,6 +34,11 @@ const IMMUTABLE_STATIC_CACHE = "public, max-age=31536000, immutable";
 // refreshes in the background.
 const OPTIMIZED_IMAGE_CACHE = "public, max-age=3600, stale-while-revalidate=86400";
 
+// NOTE: the JavaScript bundle budget (issue #739) is enforced separately by
+// `scripts/check-bundle-budget.mjs` against `bundle-budget.json`. The
+// interactive treemap below is opt-in via ANALYZE=true (`npm run analyze`) so
+// it never affects a normal or CI build, and it is the *webpack* analyzer —
+// `npm run analyze` builds with `--webpack` for that reason.
 const nextConfig: NextConfig = {
   // Standalone output — required by the Docker image (copies .next/standalone).
   // Disabled on Vercel: Next 16.3's adapter-based Vercel builds crash with
@@ -93,4 +99,11 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+  // Don't try to open a browser in CI; write the report to .next/analyze.
+  openAnalyzer: process.env.CI !== "true",
+  analyzerMode: "static",
+});
+
+export default withBundleAnalyzer(nextConfig);

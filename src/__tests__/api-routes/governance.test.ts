@@ -14,6 +14,9 @@ vi.mock("@/lib/csrf", () => ({
 vi.mock("@/lib/api-cache", () => ({
   cachedFetch: vi.fn((key: string, fetcher: () => Promise<unknown>) => fetcher()),
   cacheDelete: vi.fn(),
+  // Executing a proposal invalidates the cached read-only views (#741).
+  invalidateCaches: vi.fn().mockResolvedValue(undefined),
+  invalidateCache: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/contracts", () => ({

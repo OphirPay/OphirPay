@@ -10,7 +10,6 @@ import {
   type RateLimitInfo,
 } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
-
 const isProd = process.env.NODE_ENV === "production";
 
 function getClientIp(request: NextRequest): string {

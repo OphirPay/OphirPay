@@ -1,4 +1,15 @@
 {
-  "ophirpay": { "maxBytes": 524288 },
-  "emitter": { "maxBytes": 262144 }
+  "sizeThresholdPercent": 3,
+  "contracts": {
+    "ophirpay": {
+      "artifact": "contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm",
+      "baselineBytes": 170007,
+      "maxBytes": 524288
+    },
+    "emitter": {
+      "artifact": "contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm",
+      "baselineBytes": 25182,
+      "maxBytes": 262144
+    }
+  }
 }

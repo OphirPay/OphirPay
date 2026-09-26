@@ -38,16 +38,46 @@ function toFiniteNumber(amount: number | string): number | null {
   return Number.isFinite(amount) ? amount : null;
 }
 
+export type CurrencyRoundingMode =
+  | "halfExpand"
+  | "halfEven"
+  | "floor"
+  | "ceil"
+  | "trunc";
+
+export interface CurrencyFormatOptions {
+  roundingMode?: CurrencyRoundingMode;
+}
+
+interface ExtendedNumberFormatOptions extends Intl.NumberFormatOptions {
+  roundingMode?: string;
+}
+
+function sanitizeNegativeZero(formatted: string): string {
+  return formatted
+    .replace(/^-\$(0(?:\.0+)?)$/, "$$$1")
+    .replace(/^-(0(?:\.0+)?(\s.*)?)$/, "$1");
+}
+
 /**
  * Format a raw stroop amount as a human-readable XLM string.
  */
-export function formatXlm(stroops: string | number, decimals = 2): string {
+export function formatXlm(
+  stroops: string | number,
+  decimals = 2,
+  options?: CurrencyFormatOptions
+): string {
   const parsed = toFiniteNumber(stroops);
   if (parsed === null) return NON_FINITE_AMOUNT;
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const intlOptions: ExtendedNumberFormatOptions = {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(parsed / 1e7);
+  };
+  if (options?.roundingMode) {
+    intlOptions.roundingMode = options.roundingMode;
+  }
+  const formatted = new Intl.NumberFormat(DEFAULT_LOCALE, intlOptions as Intl.NumberFormatOptions).format(parsed / 1e7);
+  return sanitizeNegativeZero(formatted);
 }
 
 /**
@@ -56,16 +86,22 @@ export function formatXlm(stroops: string | number, decimals = 2): string {
 export function formatFiat(
   amount: number | string,
   currency = "USD",
-  decimals = 2
+  decimals = 2,
+  options?: CurrencyFormatOptions
 ): string {
   const num = toFiniteNumber(amount);
   if (num === null) return NON_FINITE_AMOUNT;
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const intlOptions: ExtendedNumberFormatOptions = {
     style: "currency",
     currency,
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(num);
+  };
+  if (options?.roundingMode) {
+    intlOptions.roundingMode = options.roundingMode;
+  }
+  const formatted = new Intl.NumberFormat(DEFAULT_LOCALE, intlOptions as Intl.NumberFormatOptions).format(num);
+  return sanitizeNegativeZero(formatted);
 }
 
 /**
@@ -74,25 +110,39 @@ export function formatFiat(
 export function formatTokenAmount(
   amount: number | string,
   symbol: string,
-  decimals = 2
+  decimals = 2,
+  options?: CurrencyFormatOptions
 ): string {
   const num = toFiniteNumber(amount);
   if (num === null) return NON_FINITE_AMOUNT;
-  const formatted = new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const intlOptions: ExtendedNumberFormatOptions = {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(num);
-  return `${formatted} ${symbol}`;
+  };
+  if (options?.roundingMode) {
+    intlOptions.roundingMode = options.roundingMode;
+  }
+  const formatted = new Intl.NumberFormat(DEFAULT_LOCALE, intlOptions as Intl.NumberFormatOptions).format(num);
+  return sanitizeNegativeZero(`${formatted} ${symbol}`);
 }
 
 /**
  * Compact number formatting (e.g. 1.2K, 3.4M).
  */
-export function formatCompact(amount: number | string): string {
+export function formatCompact(
+  amount: number | string,
+  options?: CurrencyFormatOptions
+): string {
   const num = toFiniteNumber(amount);
   if (num === null) return NON_FINITE_AMOUNT;
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const intlOptions: ExtendedNumberFormatOptions = {
     notation: "compact",
     compactDisplay: "short",
-  }).format(num);
+  };
+  if (options?.roundingMode) {
+    intlOptions.roundingMode = options.roundingMode;
+  }
+  const formatted = new Intl.NumberFormat(DEFAULT_LOCALE, intlOptions as Intl.NumberFormatOptions).format(num);
+  return sanitizeNegativeZero(formatted);
 }
+

@@ -177,3 +177,30 @@ test("the accessibility matrix runs on every configured browser project", () => 
     expect.arrayContaining(["chromium", "firefox", "mobile-chrome"])
   );
 });
+
+test.describe("Skip link and landmarks (issue #789)", () => {
+  test("first Tab reveals skip link that moves focus to main content", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForSelector("#main-content");
+
+    // First Tab lands on the visually hidden skip link
+    await page.keyboard.press("Tab");
+    const skipLink = page.getByRole("link", { name: /skip to main content/i });
+    await expect(skipLink).toBeFocused();
+
+    // Activating it moves keyboard focus directly to the main content container
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#main-content")).toBeFocused();
+  });
+
+  for (const [path, name] of ROUTES) {
+    test(`${name} exposes a single main landmark and a single h1`, async ({ page }) => {
+      await page.goto(path);
+      await page.waitForSelector("h1", { timeout: 15_000 });
+
+      await expect(page.locator("main#main-content")).toHaveCount(1);
+      await expect(page.locator('main, [role="main"]')).toHaveCount(1);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    });
+  }
+});

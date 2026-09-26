@@ -1,0 +1,16 @@
+name: 'Setup Node and Prisma'
+description: 'Sets up Node.js with cache, installs dependencies, and generates Prisma client'
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: '.nvmrc'
+        cache: 'npm'
+    - name: Install dependencies
+      run: npm ci
+      shell: bash
+    - name: Prisma Generate
+      run: npx prisma generate
+      shell: bash

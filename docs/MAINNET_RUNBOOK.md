@@ -476,3 +476,7 @@
 - [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md) — symptom → cause → fix for common errors
 - [docs/metrics-endpoints.md](./metrics-endpoints.md) — monitoring endpoints
 - [docs/SSE.md](./SSE.md) — real-time event stream contract
+
+
+## Post-Deployment Verification
+Run `scripts/verify-deployment.sh` after deployment to ensure `ALLOWED_SOURCE` matches the deployed orchestrator and ownership is aligned. If left unset, emergency pause will fail.

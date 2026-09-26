@@ -316,6 +316,7 @@ export const CONTRACT_ERROR_MAP: Record<string, string> = {
   "305": "No pending ownership transfer",
   "306": "Math overflow",
   "307": "Stream accounting invariant violated: refused to pay an inconsistent amount",
+  "308": "Pause scope not recognized: unknown scope identifier",
 };
 
 /**

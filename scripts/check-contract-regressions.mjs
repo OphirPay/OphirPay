@@ -62,7 +62,8 @@ if (Object.keys(contracts).length === 0) {
  * Set `WASM_SIZE_THRESHOLD_PERCENT` (or the `WASM_SIZE_THRESHOLD_PERCENT`
  * repository variable) to relax/tighten the gate for a single PR.
  */
-const envThreshold = process.env.WASM_SIZE_THRESHOLD_PERCENT;
+const rawEnv = process.env.WASM_SIZE_THRESHOLD_PERCENT;
+const envThreshold = rawEnv !== undefined && rawEnv.trim() !== '' ? rawEnv.trim() : null;
 const thresholdPercent = Number(envThreshold ?? baseline.sizeThresholdPercent ?? 3);
 
 if (!Number.isFinite(thresholdPercent) || thresholdPercent < 0) {

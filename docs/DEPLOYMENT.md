@@ -379,7 +379,10 @@ server {
 
 ## Option 4: Kubernetes (Helm)
 
-A Helm chart is included in `helm/ophirpay/`.
+A Helm chart is included in `helm/ophirpay/`. See the detailed
+[Kubernetes guide](KUBERNETES.md) for prerequisites, secret provisioning,
+build-time `NEXT_PUBLIC_*` behavior, migrations, probes, ingress/TLS, and the
+pre-flight validation checklist.
 
 ### Deploy with Helm
 

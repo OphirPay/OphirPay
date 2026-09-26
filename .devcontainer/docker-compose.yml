@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspaces/OphirPay:cached
+    command: /bin/sh -c "socat TCP-LISTEN:5432,fork,reuseaddr TCP:db:5432 & socat TCP-LISTEN:6379,fork,reuseaddr TCP:redis:6379 & while sleep 1000; do :; done"
+    user: node

@@ -33,7 +33,33 @@ cp .env.example .env.local
 
 ---
 
-## 2. Option A — SQLite (fastest, zero external services)
+## 2. Fastest Path — Dev Container / GitHub Codespaces
+
+The repository includes a complete `.devcontainer` configuration that provisions the entire OphirPay stack with zero manual installation:
+
+- **Node.js 20** (matching `.nvmrc`)
+- **Rust 1.91.0** (pinned by `contracts/rust-toolchain.toml`, preconfigured with `wasm32v1-none` and `wasm32-unknown-unknown` targets)
+- **PostgreSQL 16** and **Redis 7** started via `docker-compose.yml` with port forwarding on `5432` and `6379`
+- Pre-configured VS Code extensions (ESLint, Prettier, Prisma, rust-analyzer, Tailwind CSS)
+
+### Quickstart
+
+1. **GitHub Codespaces**: Open the repository on GitHub, click **Code** → **Codespaces** → **Create codespace on integration/staging**.
+2. **Local VS Code**: Open the folder in VS Code, click the Remote Indicator at the bottom-left, and select **Reopen in Container**.
+3. Once the container is ready:
+   ```bash
+   cp .env.example .env.local
+   npm run dev
+   ```
+4. To test smart contracts:
+   ```bash
+   cd contracts/ophirpay && cargo test
+   cd ../emitter && cargo test
+   ```
+
+---
+
+## 3. Option A — SQLite (fastest, zero external services)
 
 SQLite is perfect for local experiments, UI work, and running the unit-test
 suite against a real database. The production schema is PostgreSQL, so two
@@ -41,7 +67,7 @@ suite against a real database. The production schema is PostgreSQL, so two
 migrations must always validate the single canonical PostgreSQL schema; the
 procedure is also documented at the top of `prisma/schema.prisma`).
 
-### 2.1 Point Prisma at SQLite
+### 3.1 Point Prisma at SQLite
 
 Edit `prisma/schema.prisma`:
 
@@ -65,7 +91,7 @@ Edit `prisma/schema.prisma`:
    arbitrary-precision text representation. (Search the file for
    `@db.Decimal` and delete the annotation on each occurrence.)
 
-### 2.2 Configure and initialize
+### 3.2 Configure and initialize
 
 ```bash
 # .env.local — database section
@@ -79,7 +105,7 @@ DATABASE_PROVIDER="sqlite"
 npx prisma db push
 npx prisma generate
 
-# Seed demo data (user, payments, batch, refunds, hooks) — see §3
+# Seed demo data (user, payments, batch, refunds, hooks) — see §5
 npm run db:seed
 
 # Launch the app
@@ -91,13 +117,13 @@ Testnet.
 
 ---
 
-## 3. Option B — Neon (hosted PostgreSQL, production parity)
+## 4. Option B — Neon (hosted PostgreSQL, production parity)
 
 Neon is the recommended path when you want to exercise exactly what runs in
 production (native PostgreSQL enums, `@db.Decimal`, connection pooling,
 migrations). It has a generous free tier.
 
-### 3.1 Create the project
+### 4.1 Create the project
 
 1. Sign up / sign in at [neon.tech](https://neon.tech).
 2. **Create a project** (region of your choice, default settings are fine).
@@ -112,7 +138,7 @@ migrations). It has a generous free tier.
 > PgBouncer doesn't support the session features migrations need. Always set
 > `DIRECT_DATABASE_URL` to the direct URL.
 
-### 3.2 Configure and initialize
+### 4.2 Configure and initialize
 
 ```bash
 # .env.local — database section
@@ -130,7 +156,7 @@ DATABASE_PROVIDER="postgresql"
 npx prisma migrate deploy
 npx prisma generate
 
-# Seed demo data — see §3
+# Seed demo data — see §5
 npm run db:seed
 
 # Launch the app
@@ -139,7 +165,7 @@ npm run dev
 
 ---
 
-## 4. What the seed script does
+## 5. What the seed script does
 
 `npm run db:seed` runs `prisma/seed.ts` via `tsx`. It creates:
 
@@ -169,13 +195,13 @@ npm run db:seed
 
 ---
 
-## 5. Testnet funding (free XLM)
+## 6. Testnet funding (free XLM)
 
 OphirPay runs against **Stellar Testnet** by default (`.env.example` defaults:
 `NEXT_PUBLIC_STELLAR_NETWORK=TESTNET`). Testnet XLM has no value — you get it
 for free from the **Friendbot** faucet.
 
-### 5.1 Friendbot (one-liner)
+### 6.1 Friendbot (one-liner)
 
 ```bash
 curl "https://friendbot.stellar.org?addr=GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
@@ -185,12 +211,12 @@ Replace the address with your own `G…` public key (from Freighter). Success
 returns a JSON `to`/`hash` envelope; the account is created + funded with
 10,000 testnet XLM.
 
-### 5.2 In-app flow
+### 6.2 In-app flow
 
 If you're signed in with a Freighter account that isn't funded yet, the app
 surfaces a "fund via Friendbot" action that does the same call for you.
 
-### 5.3 Alternatives & limits
+### 6.3 Alternatives & limits
 
 - **Stellar Laboratory** — https://laboratory.stellar.org → *Create account* →
   Testnet — same faucet, graphical.
@@ -200,7 +226,7 @@ surfaces a "fund via Friendbot" action that does the same call for you.
 - Funding is **Testnet only**. Switching to Mainnet (`NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC`)
   requires real XLM — see `docs/deployment-mainnet.md` before ever doing that.
 
-### 5.4 Verify your account
+### 6.4 Verify your account
 
 ```bash
 curl -s "https://horizon-testnet.stellar.org/accounts/GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" | head -c 300
@@ -210,7 +236,7 @@ A `200` with a `balances` array means you're funded.
 
 ---
 
-## 6. Common gotchas
+## 7. Common gotchas
 
 1. **Pooled vs direct URL (Neon)** — app runtime uses the pooled URL;
    `prisma migrate deploy` / `db push` must use `DIRECT_DATABASE_URL`.
@@ -250,7 +276,7 @@ A `200` with a `balances` array means you're funded.
 
 ---
 
-## 7. Verify everything works
+## 8. Verify everything works
 
 ```bash
 # Boot the server
@@ -273,7 +299,7 @@ Optional extras:
   Postgres; see the `e2e-tests` job in `.github/workflows/ci.yml` for the exact
   recipe).
 - **Testnet integration** — `npm run test:testnet` runs live RPC checks against
-  Soroban Testnet (uses the Friendbot, see §5).
+  Soroban Testnet (uses the Friendbot, see §6).
 - **Redis-backed rate limiting** — set `REDIS_URL=redis://localhost:6379` and
   the route-level buckets switch from in-memory to shared
   (`docker-compose.yml` has a Redis service). The global edge limit in

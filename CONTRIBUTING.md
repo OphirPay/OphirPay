@@ -4,6 +4,17 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 
 ## Getting Started
 
+### Fastest Path: Dev Container / GitHub Codespaces
+
+The quickest way to start developing is with GitHub Codespaces or the VS Code Dev Containers extension (`.devcontainer`):
+
+1. Open the repository in GitHub Codespaces or in VS Code with the Dev Containers extension (**Remote-Containers: Reopen in Container**).
+2. The container automatically provisions Node 20, Rust 1.91.0 (`wasm32v1-none` and `wasm32-unknown-unknown`), PostgreSQL 16, and Redis 7.
+3. Once loaded, copy `.env.example` to `.env.local` if needed, and run `npm run dev`.
+4. Contract tests are immediately executable with `cargo test` in `contracts/ophirpay` and `contracts/emitter`.
+
+### Manual Local Setup
+
 1. Ensure you have **Node.js 20** installed (see `.nvmrc`) — `npm install`
    runs a preflight (`scripts/check-node.mjs`) and aborts with an actionable
    message on any other major, so there is no ambiguity about the supported

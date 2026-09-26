@@ -1,52 +1,19 @@
-// SPDX-License-Identifier: MIT
+I'll start by exploring the codebase to understand the existing fee handling, Horizon client, and the screens involved.
 
-import { getHorizonServer } from "@/lib/stellar";
-
-interface FeeEstimate {
-  baseFee: string;
-  estimatedFee: string;
-  operations: number;
-  networkCongestion: "low" | "medium" | "high";
-}
-
-/**
- * Estimate the fee for a Stellar transaction based on the current base fee
- * and the number of operations.
- */
-export async function estimateTransactionFee(
-  numOperations = 1
-): Promise<FeeEstimate> {
-  try {
-    const server = getHorizonServer();
-    const baseFeeResponse = await server.fetchBaseFee();
-    const baseFee = parseFloat(baseFeeResponse.toString());
-    const estimated = baseFee * numOperations;
-
-    let congestion: FeeEstimate["networkCongestion"] = "low";
-    if (baseFee > 200) congestion = "high";
-    else if (baseFee > 100) congestion = "medium";
-
-    return {
-      baseFee: baseFee.toString(),
-      estimatedFee: estimated.toString(),
-      operations: numOperations,
-      networkCongestion: congestion,
-    };
-  } catch {
-    // Fallback to standard base fee of 100 stroops
-    return {
-      baseFee: "100",
-      estimatedFee: (100 * numOperations).toString(),
-      operations: numOperations,
-      networkCongestion: "low",
-    };
-  }
-}
-
-/**
- * Calculate the estimated total fee for a batch payment with N recipients.
- * Each recipient = 1 payment operation.
- */
-export function estimateBatchFee(recipientCount: number, baseFee = 100): string {
-  return (baseFee * recipientCount).toString();
-}
+<tool_call>
+<function=Bash>
+<parameter=command>
+ls -la && echo "---GIT---" && git branch -a 2>/dev/null | head -50 && echo "---STATUS---" && git status 2>/dev/null | head -20
+</parameter>
+<parameter=description>
+List repo root and git branches
+</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=Read>
+<parameter=file_path>
+/testbed/src/lib/fee-estimator.ts
+</parameter>
+</function>
+</tool_call>

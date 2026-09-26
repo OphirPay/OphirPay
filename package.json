@@ -65,7 +65,8 @@
     "test:visual": "playwright test -c playwright.visual.config.ts",
     "test:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots",
     "test:a11y": "playwright test e2e/accessibility.spec.ts",
-    "generate-errors": "tsx scripts/regenerate-errors.ts"
+    "generate-errors": "tsx scripts/regenerate-errors.ts",
+    "generate-error-docs": "tsx scripts/generate-error-docs.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -108,6 +109,7 @@
     "prisma": "^6.5.0",
     "puppeteer": "^25.4.0",
     "tailwindcss": "^4.1.6",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.0",
     "vitest": "^4.1.10"
   }

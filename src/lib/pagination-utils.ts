@@ -47,9 +47,19 @@ export function encodeCursor(payload: CursorPayload): string {
  */
 export function decodeCursor(raw: string): CursorPayload | null {
   try {
-    const parsed: unknown = JSON.parse(
-      Buffer.from(raw, "base64url").toString("utf8")
-    );
+    let jsonStr: string;
+    if (typeof Buffer !== "undefined") {
+      jsonStr = Buffer.from(raw, "base64url").toString("utf8");
+    } else {
+      const base64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+      const pad = base64.length % 4 === 0 ? "" : "=".repeat(4 - (base64.length % 4));
+      jsonStr = decodeURIComponent(
+        Array.prototype.map
+          .call(atob(base64 + pad), (c: string) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join("")
+      );
+    }
+    const parsed: unknown = JSON.parse(jsonStr);
     const result = cursorPayloadSchema.safeParse(parsed);
     return result.success ? result.data : null;
   } catch {

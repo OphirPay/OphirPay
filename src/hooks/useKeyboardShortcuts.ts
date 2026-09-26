@@ -50,11 +50,22 @@ export function useKeyboardShortcuts(shortcuts: Shortcut[], enabled = true) {
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
       for (const s of shortcuts) {
-        const ctrlMatch = s.ctrlKey ? (e.ctrlKey || e.metaKey) : !e.ctrlKey && !e.metaKey;
-        const metaMatch = s.metaKey ? e.metaKey : true;
+        // A shortcut is a "modifier chord" when it asks for ctrl and/or meta.
+        // Ctrl and Cmd are treated interchangeably (⌘ on macOS, Ctrl
+        // elsewhere), so a `{ metaKey: true }` shortcut fires on both. A
+        // shortcut that asks for neither must not fire when a modifier is
+        // held — otherwise plain keys would hijack browser shortcuts.
+        const wantsModifier = Boolean(s.ctrlKey || s.metaKey);
+        const modifierMatch = wantsModifier
+          ? e.ctrlKey || e.metaKey
+          : !e.ctrlKey && !e.metaKey;
         const shiftMatch = s.shiftKey ? e.shiftKey : !e.shiftKey;
 
-        if (e.key.toLowerCase() === s.key.toLowerCase() && ctrlMatch && metaMatch && shiftMatch) {
+        if (
+          e.key.toLowerCase() === s.key.toLowerCase() &&
+          modifierMatch &&
+          shiftMatch
+        ) {
           e.preventDefault();
           s.handler(e);
           return;

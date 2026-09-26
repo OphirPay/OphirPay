@@ -26,6 +26,9 @@
 const BASE_URL = (process.env.BASE_URL || process.env.E2E_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
 const ENDPOINT = `${BASE_URL}/api/events`;
 const METRICS_URL = `${BASE_URL}/api/metrics`;
+// /api/metrics requires a credential (issue #699). Set METRICS_TOKEN for the
+// target deployment; without it the memory/leak gauges are simply skipped.
+const METRICS_TOKEN = process.env.METRICS_TOKEN || "";
 const CONCURRENCY = Number(process.env.CONCURRENCY || 100);
 const DURATION_MS = Number(process.env.DURATION_MS || 40_000);
 const HEARTBEAT_INTERVAL_MS = 15_000; // server interval (src/app/api/events/route.ts)
@@ -141,7 +144,10 @@ async function fetchServerMetrics() {
     uptimeSeconds: null,
   };
   try {
-    const res = await fetch(METRICS_URL, { signal: AbortSignal.timeout(5_000) });
+    const res = await fetch(METRICS_URL, {
+      signal: AbortSignal.timeout(5_000),
+      headers: METRICS_TOKEN ? { Authorization: `Bearer ${METRICS_TOKEN}` } : undefined,
+    });
     if (!res.ok) return sample;
     const text = await res.text();
     const gauge = (name) => {

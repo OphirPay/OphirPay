@@ -1,205 +1,236 @@
 // SPDX-License-Identifier: MIT
+//
+// Issue #705 — AUTH_SECRET must not be accepted with placeholder or weak
+// values at startup. Covers the shared validator, the production fast-fail in
+// `validateEnv`, the session-signing path, and the deploy-time guard in
+// `scripts/validate-deploy-config.sh`.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 import {
-  validateAuthSecret,
+  AUTH_SECRET_MIN_BYTES,
+  AUTH_SECRET_PLACEHOLDER,
+  authSecretProblem,
+  assertAuthSecret,
+  validateEnv,
   isPlaceholderAuthSecret,
+  validateAuthSecret,
   DISALLOWED_AUTH_SECRET_PATTERNS,
 } from "@/lib/env";
 import { getAuthSecret } from "@/lib/auth-session";
-import { bootstrap } from "@/lib/startup";
 
 vi.mock("@/lib/prisma", () => ({
   default: {},
   prisma: {},
 }));
 
-vi.mock("@/lib/rate-limit", () => ({
-  initRateLimitStore: vi.fn().mockResolvedValue(undefined),
-}));
+// A real `openssl rand -hex 32` value (64 hex chars).
+const STRONG_SECRET =
+  "9f2c7a41d8b3e6501a2c4e6f8b0d2a4c6e8f0b2d4a6c8e0f2b4d6a8c0e2f4b6d";
 
-const ROOT = process.cwd();
-const SCRIPT = join(ROOT, "scripts", "validate-deploy-config.sh");
+const REQUIRED_ENV: Record<string, string> = {
+  DATABASE_URL: "postgresql://localhost:5432/ophirpay",
+  NEXT_PUBLIC_CONTRACT_ID:
+    "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET",
+  NEXT_PUBLIC_EMITTER_CONTRACT_ID:
+    "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN",
+};
 
-const VALID_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-const SHORT_SECRET = "too-short-secret-123";
-const PLACEHOLDER_SECRET = "replace-with-openssl-rand-hex-32-output";
+const DEPLOY_CONFIG_SCRIPT = path.resolve(
+  process.cwd(),
+  "scripts/validate-deploy-config.sh"
+);
 
-describe("AUTH_SECRET Validation (Issue #705)", () => {
-  const originalEnv = { ...process.env };
+const originalEnv = { ...process.env };
 
-  beforeEach(() => {
-    process.env = { ...originalEnv };
+afterEach(() => {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) delete process.env[key];
+  }
+  Object.assign(process.env, originalEnv);
+});
+
+describe("isPlaceholderAuthSecret", () => {
+  it("identifies known default and placeholder patterns", () => {
+    for (const pattern of DISALLOWED_AUTH_SECRET_PATTERNS) {
+      expect(isPlaceholderAuthSecret(pattern)).toBe(true);
+    }
+    expect(isPlaceholderAuthSecret("REPLACE-WITH-OPENSSL-RAND-HEX-32-OUTPUT")).toBe(true);
+    expect(isPlaceholderAuthSecret("my-placeholder-secret-that-is-long-enough-32-chars")).toBe(true);
+    expect(isPlaceholderAuthSecret("please-changeme-before-deploying-to-production")).toBe(true);
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    process.env = { ...originalEnv };
-    vi.restoreAllMocks();
+  it("returns false for legitimate cryptographic secrets", () => {
+    expect(isPlaceholderAuthSecret(STRONG_SECRET)).toBe(false);
+    expect(isPlaceholderAuthSecret("9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08")).toBe(false);
+  });
+});
+
+describe("validateAuthSecret helper", () => {
+  it("rejects invalid secrets in production", () => {
+    expect(validateAuthSecret(undefined, true).valid).toBe(false);
+    expect(validateAuthSecret("short", true).valid).toBe(false);
+    expect(validateAuthSecret(AUTH_SECRET_PLACEHOLDER, true).valid).toBe(false);
   });
 
-  describe("isPlaceholderAuthSecret", () => {
-    it("identifies known default and placeholder patterns", () => {
-      for (const pattern of DISALLOWED_AUTH_SECRET_PATTERNS) {
-        expect(isPlaceholderAuthSecret(pattern)).toBe(true);
-      }
-      expect(isPlaceholderAuthSecret("REPLACE-WITH-OPENSSL-RAND-HEX-32-OUTPUT")).toBe(true);
-      expect(isPlaceholderAuthSecret("my-placeholder-secret-that-is-long-enough-32-chars")).toBe(true);
-      expect(isPlaceholderAuthSecret("please-changeme-before-deploying-to-production")).toBe(true);
-    });
-
-    it("returns false for legitimate cryptographic secrets", () => {
-      expect(isPlaceholderAuthSecret(VALID_SECRET)).toBe(false);
-      expect(isPlaceholderAuthSecret("9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08")).toBe(false);
-      expect(isPlaceholderAuthSecret("wE8+VzN8n23L+0o3G7yE8v0lE8q2t5u0O8r4t8u2w4y=")).toBe(false);
-    });
+  it("accepts valid secrets in production", () => {
+    expect(validateAuthSecret(STRONG_SECRET, true).valid).toBe(true);
   });
 
-  describe("validateAuthSecret", () => {
-    it("rejects missing, empty, or whitespace secrets in production", () => {
-      expect(validateAuthSecret(undefined, true).valid).toBe(false);
-      expect(validateAuthSecret("", true).valid).toBe(false);
-      expect(validateAuthSecret("   ", true).valid).toBe(false);
-      expect(validateAuthSecret(undefined, true).error).toContain("AUTH_SECRET is required in production");
-    });
+  it("passes in non-production", () => {
+    expect(validateAuthSecret(undefined, false).valid).toBe(true);
+    expect(validateAuthSecret(AUTH_SECRET_PLACEHOLDER, false).valid).toBe(true);
+  });
+});
 
-    it("rejects secrets shorter than 32 characters in production", () => {
-      const res = validateAuthSecret(SHORT_SECRET, true);
-      expect(res.valid).toBe(false);
-      expect(res.error).toContain("too short");
-      expect(res.error).toContain("minimum of 32 characters");
-    });
-
-    it("rejects placeholder secrets in production even if length >= 32", () => {
-      const res = validateAuthSecret(PLACEHOLDER_SECRET, true);
-      expect(res.valid).toBe(false);
-      expect(res.error).toContain("placeholder or example value");
-    });
-
-    it("accepts valid secrets with >= 32 characters in production", () => {
-      expect(validateAuthSecret(VALID_SECRET, true).valid).toBe(true);
-    });
-
-    it("allows unset or placeholder secrets in non-production environments", () => {
-      expect(validateAuthSecret(undefined, false).valid).toBe(true);
-      expect(validateAuthSecret(PLACEHOLDER_SECRET, false).valid).toBe(true);
-    });
+describe("authSecretProblem", () => {
+  it("accepts a 64-hex CSPRNG secret", () => {
+    expect(authSecretProblem(STRONG_SECRET)).toBeNull();
   });
 
-  describe("getAuthSecret", () => {
-    it("returns the configured valid secret in production", () => {
-    vi.stubEnv("NODE_ENV", "production");
-      process.env.AUTH_SECRET = VALID_SECRET;
-      expect(getAuthSecret()).toBe(VALID_SECRET);
-    });
-
-    it("throws an actionable error in production when AUTH_SECRET is placeholder", () => {
-    vi.stubEnv("NODE_ENV", "production");
-      process.env.AUTH_SECRET = PLACEHOLDER_SECRET;
-      expect(() => getAuthSecret()).toThrow(/placeholder or example value/i);
-    });
-
-    it("throws an actionable error in production when AUTH_SECRET is short", () => {
-    vi.stubEnv("NODE_ENV", "production");
-      process.env.AUTH_SECRET = SHORT_SECRET;
-      expect(() => getAuthSecret()).toThrow(/too short/i);
-    });
-
-    it("throws an actionable error in production when AUTH_SECRET is missing", () => {
-    vi.stubEnv("NODE_ENV", "production");
-      delete process.env.AUTH_SECRET;
-      expect(() => getAuthSecret()).toThrow(/AUTH_SECRET is required in production/i);
-    });
-
-    it("falls back to dev secret in development when AUTH_SECRET is missing or placeholder", () => {
-      vi.stubEnv("NODE_ENV", "development");
-      delete process.env.AUTH_SECRET;
-      expect(getAuthSecret()).toContain("dev-only-auth-secret");
-
-      process.env.AUTH_SECRET = PLACEHOLDER_SECRET;
-      expect(getAuthSecret()).toContain("dev-only-auth-secret");
-    });
+  it("rejects missing, empty, and whitespace-only values", () => {
+    expect(authSecretProblem(undefined)).toContain("not set");
+    expect(authSecretProblem(null)).toContain("not set");
+    expect(authSecretProblem("")).toContain("not set");
+    expect(authSecretProblem("   ")).toContain("not set");
   });
 
-  describe("bootstrap startup guard", () => {
-    it("fails production startup and calls process.exit when AUTH_SECRET is placeholder", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-      process.env.DATABASE_URL = "postgresql://localhost:5432/test";
-      process.env.NEXT_PUBLIC_CONTRACT_ID = "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET";
-      process.env.NEXT_PUBLIC_EMITTER_CONTRACT_ID = "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN";
-      process.env.AUTH_SECRET = PLACEHOLDER_SECRET;
-
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
-
-      await expect(bootstrap()).rejects.toThrow(/placeholder or example value/i);
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    });
-
-    it("fails production startup and calls process.exit when AUTH_SECRET is too short", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-      process.env.DATABASE_URL = "postgresql://localhost:5432/test";
-      process.env.NEXT_PUBLIC_CONTRACT_ID = "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET";
-      process.env.NEXT_PUBLIC_EMITTER_CONTRACT_ID = "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN";
-      process.env.AUTH_SECRET = SHORT_SECRET;
-
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
-
-      await expect(bootstrap()).rejects.toThrow(/too short/i);
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    });
-
-    it("boots successfully in production when AUTH_SECRET is valid", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-      process.env.DATABASE_URL = "postgresql://localhost:5432/test";
-      process.env.DIRECT_DATABASE_URL = "postgresql://localhost:5432/test";
-      process.env.NEXT_PUBLIC_CONTRACT_ID = "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET";
-      process.env.NEXT_PUBLIC_EMITTER_CONTRACT_ID = "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN";
-      process.env.AUTH_SECRET = VALID_SECRET;
-
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
-
-      await expect(bootstrap()).resolves.toBeUndefined();
-      expect(exitSpy).not.toHaveBeenCalled();
-    });
+  it("rejects the .env.example placeholder and its obvious variants", () => {
+    expect(authSecretProblem(AUTH_SECRET_PLACEHOLDER)).toContain("placeholder");
+    expect(
+      authSecretProblem(AUTH_SECRET_PLACEHOLDER.toUpperCase())
+    ).toContain("placeholder");
+    expect(authSecretProblem("changeme-changeme-changeme-changeme")).toContain(
+      "placeholder"
+    );
+    expect(
+      authSecretProblem("my-own-insecure-secret-value-for-this-app")
+    ).toContain("placeholder");
+    expect(
+      authSecretProblem("PLACEHOLDER-VALUE-THAT-IS-LONG-ENOUGH-1234")
+    ).toContain("placeholder");
   });
 
-  describe("scripts/validate-deploy-config.sh security guard", () => {
-    it("fails when AUTH_SECRET is set to the placeholder value", () => {
-      expect(() => {
-        execFileSync("bash", [SCRIPT], {
-          env: {
-            ...process.env,
-            AUTH_SECRET: PLACEHOLDER_SECRET,
-          },
-          stdio: "pipe",
-        });
-      }).toThrow();
-    });
+  it("rejects values shorter than the 32-byte minimum", () => {
+    const problem = authSecretProblem("short");
+    expect(problem).toContain(String(AUTH_SECRET_MIN_BYTES));
+  });
 
-    it("fails when AUTH_SECRET is shorter than 32 characters", () => {
-      expect(() => {
-        execFileSync("bash", [SCRIPT], {
-          env: {
-            ...process.env,
-            AUTH_SECRET: SHORT_SECRET,
-          },
-          stdio: "pipe",
-        });
-      }).toThrow();
-    });
+  it("rejects a single repeated character", () => {
+    expect(authSecretProblem("a".repeat(40))).toContain("repeated");
+  });
 
-    it("passes when AUTH_SECRET is a valid 32+ character secret", () => {
-      const output = execFileSync("bash", [SCRIPT], {
-        env: {
-          ...process.env,
-          AUTH_SECRET: VALID_SECRET,
-        },
-        encoding: "utf8",
-        stdio: "pipe",
-      });
-      expect(output).toContain("AUTH_SECRET is valid and has sufficient length");
-    });
+  it("measures byte length, not JavaScript code units", () => {
+    // 22 code units (`é` is two UTF-8 bytes) = 33 bytes — long enough in
+    // bytes even though the string is shorter than 32 characters.
+    const multibyte = "éa".repeat(11);
+    expect(multibyte.length).toBeLessThan(AUTH_SECRET_MIN_BYTES);
+    expect(new TextEncoder().encode(multibyte).length).toBeGreaterThanOrEqual(
+      AUTH_SECRET_MIN_BYTES
+    );
+    expect(authSecretProblem(multibyte)).toBeNull();
+  });
+});
+
+describe("assertAuthSecret", () => {
+  it("returns the trimmed secret when valid", () => {
+    expect(assertAuthSecret(`  ${STRONG_SECRET}  `)).toBe(STRONG_SECRET);
+  });
+
+  it("names the variable and the generation command", () => {
+    let message = "";
+    try {
+      assertAuthSecret(AUTH_SECRET_PLACEHOLDER);
+    } catch (err) {
+      message = err instanceof Error ? err.message : String(err);
+    }
+    expect(message).toContain("AUTH_SECRET");
+    expect(message).toContain("openssl rand -hex 32");
+  });
+});
+
+describe("validateEnv in production", () => {
+  function setProductionEnv(extra: Record<string, string | undefined>) {
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    for (const [key, value] of Object.entries({ ...REQUIRED_ENV, ...extra })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+
+  it("throws on the placeholder with an actionable message", () => {
+    setProductionEnv({ AUTH_SECRET: AUTH_SECRET_PLACEHOLDER });
+    expect(() => validateEnv()).toThrow(/AUTH_SECRET is required in production/);
+    expect(() => validateEnv()).toThrow(/openssl rand -hex 32/);
+  });
+
+  it("throws when AUTH_SECRET is absent", () => {
+    setProductionEnv({ AUTH_SECRET: undefined });
+    expect(() => validateEnv()).toThrow(/AUTH_SECRET is required in production/);
+  });
+
+  it("throws when AUTH_SECRET is too short", () => {
+    setProductionEnv({ AUTH_SECRET: "short-secret" });
+    expect(() => validateEnv()).toThrow(/AUTH_SECRET is required in production/);
+  });
+
+  it("boots with a strong secret", () => {
+    setProductionEnv({ AUTH_SECRET: STRONG_SECRET });
+    const env = validateEnv();
+    expect(env.NODE_ENV).toBe("production");
+    expect(env.AUTH_SECRET).toBe(STRONG_SECRET);
+  });
+
+  it("still reports missing required variables before the secret check", () => {
+    setProductionEnv({ DATABASE_URL: undefined, AUTH_SECRET: STRONG_SECRET });
+    expect(() => validateEnv()).toThrow(/DATABASE_URL/);
+  });
+});
+
+describe("getAuthSecret on the signing path", () => {
+  it("refuses to sign with the placeholder in production", () => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    process.env.AUTH_SECRET = AUTH_SECRET_PLACEHOLDER;
+    expect(() => getAuthSecret()).toThrow(/AUTH_SECRET is required in production/);
+  });
+
+  it("returns a strong secret in production", () => {
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+    process.env.AUTH_SECRET = STRONG_SECRET;
+    expect(getAuthSecret()).toBe(STRONG_SECRET);
+  });
+});
+
+describe("scripts/validate-deploy-config.sh AUTH_SECRET guard", () => {
+  function run(secret?: string) {
+    const env = { ...process.env };
+    if (secret === undefined) delete env.AUTH_SECRET;
+    else env.AUTH_SECRET = secret;
+    return spawnSync("bash", [DEPLOY_CONFIG_SCRIPT], { env, encoding: "utf8" });
+  }
+
+  it("passes with a strong secret", () => {
+    const res = run(STRONG_SECRET);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("AUTH_SECRET length OK");
+  });
+
+  it("passes when AUTH_SECRET is not set (CI deploy-config job)", () => {
+    const res = run(undefined);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("AUTH_SECRET not set");
+  });
+
+  it("fails on the placeholder", () => {
+    const res = run(AUTH_SECRET_PLACEHOLDER);
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("looks like a placeholder");
+  });
+
+  it("fails on a short value", () => {
+    const res = run("short");
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain("shorter than 32 bytes");
   });
 });

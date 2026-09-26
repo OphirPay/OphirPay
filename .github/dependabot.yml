@@ -1,0 +1,81 @@
+version: 2
+
+# Issue #732 — keep dependency updates flowing without drowning reviewers.
+#
+# Every ecosystem the repo actually pins is covered: the root npm lockfile,
+# both Cargo.lock files (contracts/ophirpay, contracts/emitter) and the pinned
+# GitHub Actions. Each is checked once a week and minor/patch bumps are grouped
+# into a single PR per ecosystem; a major bump still arrives on its own so it
+# gets the attention it needs. `open-pull-requests-limit` caps the backlog a
+# busy week can create.
+#
+# See CONTRIBUTING.md → "Dependency Updates" for the review flow.
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "cargo"
+    directory: "/contracts/ophirpay"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo-ophirpay-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "cargo"
+    directory: "/contracts/emitter"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo-emitter-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

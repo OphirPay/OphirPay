@@ -61,7 +61,7 @@ describe("Webhook Dead-Letter Queue & Delivery Timeout", () => {
   };
 
   beforeEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     resetMetricsForTest();
   });
 

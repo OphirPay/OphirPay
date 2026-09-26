@@ -91,7 +91,7 @@ export async function GET(
         replayBatchId: d.replayBatchId,
         deliveredAt: d.deliveredAt.toISOString(),
       })),
-      { limit, total: deliveries.length, status: status ?? "ALL" },
+      { limit, total: deliveries.length },
     );
   } catch (err) {
     return handleApiError(err, "GET /api/webhooks/[id]/deliveries");

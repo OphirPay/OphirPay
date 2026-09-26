@@ -44,6 +44,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 // ── SQLite (development) ──────────────────────────────────
@@ -538,6 +539,15 @@ model WebhookDelivery {
   errorMessage  String?
   isReplay      Boolean        @default(false)
   replayBatchId String?
+  test          Boolean        @default(false)
+  targetUrl     String?
+  canonicalBody String?
+  requestBody   String?
+  signature     String?
+  requestHeaders String?
+  responseBody  String?
+  durationMs    Int?
+  error         String?
   deliveredAt   DateTime       @default(now())
   createdAt     DateTime       @default(now())
 
@@ -554,7 +564,6 @@ enum DeliveryStatus {
   DEAD_LETTER
 }
 
-// ── Refunds ───────────────────────────────────────────────────
 
 /// Ledger row mirroring an on-chain refund request (request_refund). Kept in
 /// sync with the Soroban contract via onChainId so the UI can map the DB row
@@ -694,7 +703,9 @@ model ApiKey {
   userId    String
   /// Human-readable label (e.g. "CI bot").
   name      String
-  /// SHA-256 (or similar) hash of the raw key. Unique — one row per key.
+  /// Version-tagged SHA-256 digest of the raw key ("v1:<hex>"). Keys minted
+  /// before issue #701 store the bare 64-char SHA-256 hex instead; auth
+  /// accepts both. Unique — one row per key.
   keyHash   String   @unique
   /// First 8 characters of the raw key, for display / identification only.
   prefix    String   // First 8 chars for display
@@ -770,3 +781,4 @@ model PaymentSyncRun {
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
 }
+

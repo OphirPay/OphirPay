@@ -12,6 +12,7 @@ import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, createRefundRecordSchema } from "@/lib/validation-schemas";
 import { withRequestLogging } from "@/lib/request-logging";
+import { invalidateCache } from "@/lib/api-cache";
 
 export const GET = withMetrics("GET /api/refunds", withRequestLogging(async function GET(request: Request) {
   try {
@@ -121,6 +122,10 @@ export const POST = withMetrics("POST /api/refunds", withRequestLogging(async fu
           },
         },
       });
+
+      // Audit writes land in the persisted trail that /api/audit-log serves
+      // (#741) — drop the cached audit pages/entries so the next read is fresh.
+      await invalidateCache("audit-log");
 
       return successResponse(refund, undefined, 201);
     } catch (err) {

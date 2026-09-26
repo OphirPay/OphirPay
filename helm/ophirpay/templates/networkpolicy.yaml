@@ -1,0 +1,46 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ophirpay.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ophirpay.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ophirpay.selectorLabels" . | nindent 6 }}
+  # Default-deny: both directions are restricted and only the rules below are
+  # allowed. Traffic that is not matched by an ingress/egress rule is dropped.
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only the cluster's ingress controller may reach the app.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+  egress:
+    # Cluster DNS — without this every in-cluster name fails to resolve.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Stellar Horizon / Soroban RPC over HTTPS.
+    - ports:
+        - protocol: TCP
+          port: 443
+    # PostgreSQL.
+    - ports:
+        - protocol: TCP
+          port: 5432
+{{- end }}

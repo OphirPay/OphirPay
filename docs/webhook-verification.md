@@ -7,19 +7,23 @@ came from OphirPay and was not tampered with in transit.
 ```
 POST /hooks HTTP/1.1
 Content-Type: application/json
-X-OphirPay-Signature: 647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64
+X-OphirPay-Signature: 83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258
+X-OphirPay-Timestamp: 2026-08-14T00:00:00Z
 X-OphirPay-Event: payment.created
 
 {
   "event": "payment.created",
   "timestamp": "2026-08-14T00:00:00Z",
   "data": { "id": "p_123", "amount": 100 },
-  "signature": "647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64"
+  "signature": "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258"
 }
 ```
 
-- **`X-OphirPay-Signature`** — HMAC-SHA256 (hex) over the canonical body, the
-  value you must verify.
+- **`X-OphirPay-Signature`** — HMAC-SHA256 (hex) over
+  `<timestamp>.<canonical body>`, the value you must verify.
+- **`X-OphirPay-Timestamp`** — the delivery timestamp, ISO 8601 UTC. It is
+  **part of the signed material**, so it is authentic: use it for the replay
+  freshness window. It mirrors the body's `timestamp` field.
 - **`X-OphirPay-Event`** — the event type, mirrored in the body's `event`
   field. Informational; don't trust it for verification.
 - **`signature`** (in the body) — the same value as the header, mirrored for
@@ -33,19 +37,29 @@ OphirPay signs the payload with `buildSignedPayload` (see
 `src/lib/webhook-deliver.ts`), and the receiver must reproduce the **exact
 same byte string** before recomputing the HMAC:
 
-1. **Parse** the received body as JSON.
-2. **Empty the `signature` field** — set it to `""`. Keep the key; do *not*
+1. **Take the timestamp** — the `X-OphirPay-Timestamp` header value. (When the
+   header is absent you may fall back to the body's `timestamp` field, which is
+   signed too; the reference verifiers do this.)
+2. **Parse** the received body as JSON.
+3. **Empty the `signature` field** — set it to `""`. Keep the key; do *not*
    delete it. The canonical string contains `"signature":""` as the last key.
-3. **Re-serialize with stable key order** — the order of the keys as received
+4. **Re-serialize with stable key order** — the order of the keys as received
    (parse-then-stringify preserves insertion order; do not sort or reorder).
-4. **HMAC-SHA256** the canonical string with your webhook secret, hex-encoded.
-5. **Compare** against `X-OphirPay-Signature` using a constant-time comparison.
+5. **Prepend the timestamp and a dot** — the signed input is
+   `<timestamp>.<canonical body>`.
+6. **HMAC-SHA256** that input with your webhook secret, hex-encoded.
+7. **Compare** against `X-OphirPay-Signature` using a constant-time comparison.
 
 Concretely, the signature is computed over this exact string:
 
 ```
-{"event":"payment.created","timestamp":"2026-08-14T00:00:00Z","data":{"id":"p_123","amount":100},"signature":""}
+2026-08-14T00:00:00Z.{"event":"payment.created","timestamp":"2026-08-14T00:00:00Z","data":{"id":"p_123","amount":100},"signature":""}
 ```
+
+> ℹ️ Because the timestamp appears **both** as the prefix and inside the
+> canonical body, the `X-OphirPay-Timestamp` header cannot be edited without
+> invalidating the signature. That is what makes the header safe to trust for
+> replay protection.
 
 > ⚠️ **The most common bug:** stripping the `signature` field out of the
 > object (`const { signature, ...rest } = body`). That removes the key
@@ -67,8 +81,11 @@ capture a valid request and re-send it later. Combine two defenses:
 
 ### 1. Timestamp freshness window
 
-Every payload carries a `timestamp` (ISO 8601 UTC). Reject deliveries whose
-timestamp is too old or too far in the future:
+Every delivery carries an `X-OphirPay-Timestamp` header (ISO 8601 UTC),
+mirrored by the body's `timestamp` field. Because the timestamp is part of the
+signed material (see above), an attacker cannot refresh a captured delivery by
+editing it. Reject deliveries whose timestamp is too old or too far in the
+future:
 
 - **Too old** (e.g. older than 5 minutes) — likely a replay of a captured
   request.
@@ -87,9 +104,9 @@ once**. Keep a short-lived store of recently processed events keyed by
 `event + timestamp` (or a hash of the canonical body) and skip duplicates.
 This makes replays harmless even if they arrive inside the freshness window.
 
-> Note: the current payload has no monotonic delivery ID. If you need a
-> stronger idempotency key, hash the canonical body — it is stable across
-> retries and unique per logical event.
+> Note: the payload carries no monotonic delivery ID today. Use the `data.id`
+> of the underlying record when it is stable, or hash the canonical body — it
+> is stable across retries and unique per logical event.
 
 ---
 
@@ -114,15 +131,17 @@ implement the canonical form above plus a configurable freshness window
   "event": "payment.created",
   "timestamp": "2026-08-14T00:00:00Z",
   "data": { "id": "p_123", "amount": 100 },
-  "signature": "647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64"
+  "signature": "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258"
 }
 ```
 
 - **Secret:** `test-secret-0123456789`
-- **Canonical string:** `{"event":"payment.created","timestamp":"2026-08-14T00:00:00Z","data":{"id":"p_123","amount":100},"signature":""}`
+- **Timestamp header:** `2026-08-14T00:00:00Z`
+- **Canonical body:** `{"event":"payment.created","timestamp":"2026-08-14T00:00:00Z","data":{"id":"p_123","amount":100},"signature":""}`
+- **Signed input:** `2026-08-14T00:00:00Z.{"event":"payment.created","timestamp":"2026-08-14T00:00:00Z","data":{"id":"p_123","amount":100},"signature":""}`
 
-Verify your own implementation reproduces `647945219590e65b3f903bdd28baeabdc5ce3915cc9a8a497bfcba9ed2802b64`
-over that canonical string. The sample's timestamp is fixed, so pass `--now`
+Verify your own implementation reproduces `83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258`
+over that signed input. The sample's timestamp is fixed, so pass `--now`
 when testing (see the examples README).
 
 ---
@@ -137,9 +156,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * @param {string} body      - raw request body (string)
  * @param {string} signature - X-OphirPay-Signature header value
  * @param {string} secret    - your webhook signing secret
+ * @param {string} [timestamp] - X-OphirPay-Timestamp header value
  * @param {number} maxAgeSeconds - replay window (0 disables); default 300
  */
-export function verifyWebhookSignature({ body, signature, secret, maxAgeSeconds = 300 }) {
+export function verifyWebhookSignature({ body, signature, secret, timestamp, maxAgeSeconds = 300 }) {
   // 1–3. Parse, empty the signature field, re-serialize in key order.
   const parsed = JSON.parse(body);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -147,8 +167,11 @@ export function verifyWebhookSignature({ body, signature, secret, maxAgeSeconds 
   }
   const canonical = JSON.stringify({ ...parsed, signature: "" });
 
-  // 4. Recompute the expected HMAC-SHA256 hex.
-  const expected = createHmac("sha256", secret).update(canonical).digest("hex");
+  // 4. Recompute the expected HMAC-SHA256 hex over `<timestamp>.<canonical>`.
+  const signedTimestamp = String(timestamp ?? parsed.timestamp ?? "");
+  const expected = createHmac("sha256", secret)
+    .update(`${signedTimestamp}.${canonical}`)
+    .digest("hex");
 
   // 5. Constant-time comparison against the header value.
   const provided = Buffer.from(String(signature ?? ""));
@@ -159,7 +182,7 @@ export function verifyWebhookSignature({ body, signature, secret, maxAgeSeconds 
 
   // Replay protection: timestamp freshness window.
   if (maxAgeSeconds > 0) {
-    const ts = Date.parse(parsed.timestamp);
+    const ts = Date.parse(signedTimestamp);
     if (Number.isNaN(ts)) return false;
     const ageSeconds = (Date.now() - ts) / 1000;
     if (ageSeconds > maxAgeSeconds || ageSeconds < -maxAgeSeconds) return false;
@@ -174,9 +197,11 @@ Example usage in a route handler:
 // Express-style example
 app.post("/webhooks/ophirpay", (req, res) => {
   const signature = req.headers["x-ophirpay-signature"];
+  const timestamp = req.headers["x-ophirpay-timestamp"];
   const valid = verifyWebhookSignature({
     body: JSON.stringify(req.body),
     signature,
+    timestamp,
     secret: process.env.WEBHOOK_SECRET,
   });
   if (!valid) return res.status(401).end();
@@ -197,7 +222,7 @@ from datetime import datetime, timezone
 DEFAULT_MAX_AGE_SECONDS = 300
 
 
-def verify_webhook_signature(body, signature, secret, max_age_seconds=DEFAULT_MAX_AGE_SECONDS, now=None):
+def verify_webhook_signature(body, signature, secret, timestamp=None, max_age_seconds=DEFAULT_MAX_AGE_SECONDS, now=None):
     # 1–3. Parse, empty the signature field, re-serialize in key order.
     parsed = json.loads(body)
     if not isinstance(parsed, dict):
@@ -206,8 +231,11 @@ def verify_webhook_signature(body, signature, secret, max_age_seconds=DEFAULT_MA
     # Compact separators + raw UTF-8 match Node's JSON.stringify byte-for-byte.
     canonical = json.dumps(parsed, separators=(",", ":"), ensure_ascii=False)
 
-    # 4. Recompute the expected HMAC-SHA256 hex.
-    expected = hmac.new(secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+    # 4. Recompute the expected HMAC-SHA256 hex over
+    #    `<timestamp>.<canonical body>`.
+    signed_timestamp = str(timestamp if timestamp is not None else parsed.get("timestamp", ""))
+    signed_input = "%s.%s" % (signed_timestamp, canonical)
+    expected = hmac.new(secret.encode("utf-8"), signed_input.encode("utf-8"), hashlib.sha256).hexdigest()
 
     # 5. Constant-time comparison against the header value.
     provided = (signature or "").encode("utf-8")
@@ -218,7 +246,7 @@ def verify_webhook_signature(body, signature, secret, max_age_seconds=DEFAULT_MA
     # Replay protection: timestamp freshness window.
     if max_age_seconds > 0:
         try:
-            ts = datetime.fromisoformat(parsed.get("timestamp", "").replace("Z", "+00:00"))
+            ts = datetime.fromisoformat(signed_timestamp.replace("Z", "+00:00"))
         except ValueError:
             return False
         if ts.tzinfo is None:
@@ -243,6 +271,7 @@ def webhook():
         request.get_data(as_text=True),
         request.headers.get("X-OphirPay-Signature", ""),
         os.environ["WEBHOOK_SECRET"],
+        timestamp=request.headers.get("X-OphirPay-Timestamp", ""),
     )
     if not valid:
         return "unauthorized", 401
@@ -254,15 +283,53 @@ def webhook():
 ## Verification checklist
 
 - [ ] Compare against the `X-OphirPay-Signature` **header**, not the body field.
+- [ ] Sign/verify `<X-OphirPay-Timestamp>.<canonical body>` — the timestamp
+      is part of the signed input.
 - [ ] Empty the `signature` field — **don't delete the key**.
 - [ ] Re-serialize with the received key order — no sorting, no pretty-print.
 - [ ] Use a **constant-time** comparison (`timingSafeEqual` /
       `hmac.compare_digest`).
-- [ ] Enforce a timestamp freshness window (default 300s).
+- [ ] Enforce a timestamp freshness window on the signed timestamp (default
+      300s).
 - [ ] Process events **idempotently** (dedupe by `event + timestamp`).
 - [ ] Return a `2xx` quickly after verification; do heavy work async.
 - [ ] Rotate the secret and re-verify on `401` — a mismatch means the
       delivery is not from OphirPay or was modified in transit.
+
+---
+
+## Delivery target policy (SSRF guard)
+
+OphirPay makes outbound `POST` requests to the URL you register, so the server
+refuses any target that could be used to reach its own network. A rejected
+target fails the delivery with a clear error —
+`"Webhook target rejected by the SSRF guard — URL resolves to a private/internal
+address or a disallowed port"` — rather than silently retrying.
+
+**Allowed:** `http` and `https` URLs on **port 80 or 443** (the scheme default
+when no port is given). Operators can extend the set with the comma-separated
+`WEBHOOK_ALLOWED_PORTS` environment variable (e.g. `WEBHOOK_ALLOWED_PORTS=80,443,8443`);
+anything not listed is rejected.
+
+**Blocked regardless of port:**
+
+| Category | Examples |
+|---|---|
+| Loopback | `127.0.0.0/8`, `::1` |
+| Private IPv4 | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` |
+| Link-local (cloud metadata) | `169.254.0.0/16`, `fe80::/10` |
+| Carrier-grade NAT | `100.64.0.0/10` |
+| Documentation / benchmarking / multicast / reserved | `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `198.18.0.0/15`, `224.0.0.0/4`, `240.0.0.0/4` |
+| IPv6 ULA / multicast | `fc00::/7`, `ff00::/8` |
+| IPv4-mapped/compatible IPv6 whose embedded IPv4 is private | `::ffff:127.0.0.1`, `::ffff:10.0.0.1` |
+| Internal hostnames | `localhost`, `*.localhost`, `*.local`, `*.internal`, `*.lan`, `*.home.arpa`, `metadata.google.internal` |
+| Embedded credentials | `https://user:pass@host/hook` |
+
+**DNS rebinding:** the host is re-resolved and re-validated immediately before
+**every** delivery attempt, not once at registration. If a hostname resolves
+publicly when you register it but privately later, that attempt is refused.
+
+---
 
 ## Related docs
 

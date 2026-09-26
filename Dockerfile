@@ -10,7 +10,8 @@ RUN apt-get update -qq \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* .nvmrc ./
+COPY scripts/check-node.mjs ./scripts/
 # Puppeteer (dev-only demo/screenshot scripts) downloads Chrome in its
 # postinstall; skip it — it isn't needed to build or run the server and the
 # download is a flaky network dependency in Docker.
@@ -29,28 +30,40 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx prisma generate
 RUN npm run build
 
-# Stage 3: Runner (distroless for minimal attack surface)
-FROM gcr.io/distroless/nodejs20-debian12:nonroot AS runner
+# Stage 3: Runner
+FROM node:20-slim AS runner
+RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+USER node
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-COPY --from=builder /app/public ./public
+COPY --chown=node:node --from=builder /app/public ./public
 # Next.js standalone output contains pruned production dependencies.
 # Only copy the generated Prisma client & query engine which standalone does not bundle.
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --chown=node:node --from=builder /app/.next/standalone ./
+COPY --chown=node:node --from=builder /app/.next/static ./.next/static
+COPY --chown=node:node --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 3000
 
 ENV PORT=3000
 
-# Healthcheck probing process liveness without external dependencies.
-# The distroless base image has no shell (no sh, curl, or wget), so we execute
-# a lightweight Node.js one-liner directly with the bundled node runtime.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD ["node", "-e", "require('http').get('http://127.0.0.1:3000/api/health?probe=liveness', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"]
+# ── Container health (issue #738) ────────────────────────────────
+# Probes the *liveness* endpoint: it only proves the Node process is up and
+# answering HTTP, so a transient database / Soroban RPC / Redis outage never
+# marks a healthy container unhealthy (and never restart-loops it). The
+# dependency-aware readiness check stays at GET /api/health and is what
+# Kubernetes wires to `readinessProbe` — see docs/DEPLOYMENT.md →
+# "Liveness vs readiness".
+#
+# Exec form on purpose: the runner stage (plus any distroless variant) has no
+# shell, and neither curl nor wget is installed — the bundled `node` and its
+# global `fetch` are the only probe client guaranteed to exist in the image.
+# `--start-period` covers the standalone server boot + Prisma client init;
+# 3 failures of a 5s-timeout probe are required before the container is
+# reported `unhealthy`.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health/live').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
 CMD ["server.js"]

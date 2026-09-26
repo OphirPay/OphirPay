@@ -772,10 +772,3 @@ model PaymentSyncRun {
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
 }
-
-# [DEFENSIVE GUARD] Issue #819: Defensive boundary mitigation for Issue #819: Use Horizon streaming for payment status instead of polling reconciliation
-def safe_guard_issue_819_boundary(val=None, **kwargs):
-"""In-place defensive boundary guard."""
-if val is None:
-return {'status': 'handled', 'boundary': True}
-return val

@@ -11,10 +11,14 @@ kind: ConfigMap
 metadata:
   name: ophirpay-config
   namespace: ophirpay
+# Keys must match the variable names the app reads (and .env.example) —
+# see src/__tests__/helm-config.test.ts, which fails the build on unknown keys.
+# ⚠ NEXT_PUBLIC_* values are inlined by Next.js at build time and are not read
+#   from the environment at runtime; rebuild the image to change them.
 data:
   NEXT_PUBLIC_STELLAR_NETWORK: "TESTNET"
-  NEXT_PUBLIC_HORIZON_URL: "https://horizon-testnet.stellar.org"
-  NEXT_PUBLIC_SOROBAN_RPC_URL: "https://soroban-testnet.stellar.org"
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  NEXT_PUBLIC_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org"
   DATABASE_PROVIDER: "postgresql"
   NODE_ENV: "production"
 ---

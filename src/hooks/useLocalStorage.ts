@@ -42,7 +42,14 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
       setStoredValue((prev) => {
         const next = value instanceof Function ? value(prev) : value;
         if (typeof window !== "undefined") {
-          window.localStorage.setItem(key, JSON.stringify(next));
+          try {
+            window.localStorage.setItem(key, JSON.stringify(next));
+          } catch {
+            // Persisting failed — quota exceeded, storage disabled (private
+            // mode / blocked cookies) or the value is not serializable. Keep
+            // the in-memory value so the UI stays consistent instead of
+            // tearing down the component tree.
+          }
         }
         return next;
       });

@@ -9,6 +9,9 @@ import {
   USDC_TESTNET,
   USDC_MAINNET,
   type AssetInfo,
+  resolveAssetMetadata,
+  isValidAssetIssuer,
+  truncateIssuer,
 } from "@/lib/assets";
 import { fetchAllBalances, type AssetBalance } from "@/lib/stellar";
 import { checkTrustline } from "@/lib/trustline";
@@ -59,6 +62,12 @@ export function AssetSelector({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
 
+  const [customAssets, setCustomAssets] = useState<AssetInfo[]>([]);
+  const [customCode, setCustomCode] = useState("");
+  const [customIssuer, setCustomIssuer] = useState("");
+  const [isResolving, setIsResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
   const fetchBalances = useCallback(async () => {
     if (!publicKey) return;
     setLoading(true);
@@ -97,6 +106,49 @@ export function AssetSelector({
     setOpen(false);
   };
 
+  const handleAddCustomAsset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResolveError(null);
+
+    const code = customCode.trim().toUpperCase();
+    const issuer = customIssuer.trim();
+
+    if (!code || !/^[A-Z0-9]{1,12}$/.test(code)) {
+      setResolveError("Asset code must be 1-12 alphanumeric characters.");
+      return;
+    }
+    if (!isValidAssetIssuer(issuer)) {
+      setResolveError("Invalid Stellar issuer address (must start with G).");
+      return;
+    }
+
+    setIsResolving(true);
+    try {
+      const resolved = await resolveAssetMetadata(code, issuer);
+      setCustomAssets((prev) => {
+        const filtered = prev.filter((a) => !(a.code === code && a.issuer === issuer));
+        return [...filtered, resolved];
+      });
+      setCustomCode("");
+      setCustomIssuer("");
+      await handleSelect(resolved);
+    } catch {
+      // Degrade to raw code + issuer without failing
+      const fallback: AssetInfo = {
+        code,
+        issuer,
+        type: code.length <= 4 ? "credit_alphanum4" : "credit_alphanum12",
+        displayName: `${code} (${truncateIssuer(issuer)})`,
+        decimals: 7,
+      };
+      setCustomAssets((prev) => [...prev, fallback]);
+      await handleSelect(fallback);
+    } finally {
+      setIsResolving(false);
+    }
+  };
+
+  const allAssets = [...KNOWN_ASSETS, ...customAssets];
   const balance = findAssetBalance(balances, selectedAsset);
 
   return (
@@ -119,6 +171,14 @@ export function AssetSelector({
           <span className="text-gray-900 dark:text-white font-medium">
             {selectedAsset.code}
           </span>
+          {selectedAsset.issuer && (
+            <span
+              className="text-xs text-gray-400 font-mono hidden sm:inline"
+              title={selectedAsset.issuer}
+            >
+              ({truncateIssuer(selectedAsset.issuer)})
+            </span>
+          )}
         </span>
 
         <span className="flex items-center gap-2">
@@ -148,10 +208,10 @@ export function AssetSelector({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in">
-            {KNOWN_ASSETS.map((asset) => {
+          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in max-h-96 overflow-y-auto">
+            {allAssets.map((asset) => {
               const bal = findAssetBalance(balances, asset);
-              const key = `${asset.code}:${asset.issuer}`;
+              const key = `${asset.code}:${asset.issuer || "native"}`;
               const tl = trustlineStatus[key];
 
               return (
@@ -171,12 +231,27 @@ export function AssetSelector({
                       {asset.code.slice(0, 2)}
                     </span>
                     <div className="text-left">
-                      <span className="text-gray-900 dark:text-white font-medium">
-                        {asset.code}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-gray-900 dark:text-white font-medium">
+                          {asset.code}
+                        </span>
+                        {asset.domain && (
+                          <span className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded font-normal">
+                            {asset.domain}
+                          </span>
+                        )}
+                      </div>
                       <span className="block text-xs text-gray-400">
                         {asset.displayName}
                       </span>
+                      {asset.issuer && (
+                        <span
+                          className="block text-[10px] text-gray-400 font-mono"
+                          title={asset.issuer}
+                        >
+                          Issuer: {truncateIssuer(asset.issuer)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right">
@@ -206,11 +281,40 @@ export function AssetSelector({
               );
             })}
 
-            {/* Custom token input */}
-            <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-1 px-3 pb-2">
-              <p className="text-xs text-gray-400 px-1 mb-1">
-                Custom token coming soon
+            {/* Custom token input & resolution */}
+            <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-2 px-3 pb-2 text-xs">
+              <p className="font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Add Custom Stellar Asset
               </p>
+              <form onSubmit={handleAddCustomAsset} className="space-y-1.5">
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="Code (e.g. AQUA)"
+                    value={customCode}
+                    onChange={(e) => setCustomCode(e.target.value.toUpperCase())}
+                    className="w-1/3 px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white uppercase"
+                    maxLength={12}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Issuer Address (G...)"
+                    value={customIssuer}
+                    onChange={(e) => setCustomIssuer(e.target.value.trim())}
+                    className="w-2/3 px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white font-mono"
+                  />
+                </div>
+                {resolveError && (
+                  <p className="text-[11px] text-red-500">{resolveError}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={isResolving || !customCode || !customIssuer}
+                  className="w-full py-1 text-xs font-medium rounded bg-ophir-600 hover:bg-ophir-700 text-white disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                >
+                  {isResolving ? "Looking up metadata..." : "Resolve & Select Asset"}
+                </button>
+              </form>
             </div>
           </div>
         </>

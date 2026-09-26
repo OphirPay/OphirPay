@@ -233,8 +233,14 @@ The file is accessible at:
 // Method 1: Manual enforcement
 import { verifyCsrf } from "@/lib/csrf";
 
-OphirPay implements the following security headers
-([`next.config.ts`](next.config.ts) is the single source of truth; `vercel.json`
+// Method 2: Higher-order function wrapper
+import { withCsrf } from "@/lib/csrf";
+```
+
+## Security Headers
+
+OphirPay implements the following security headers via `src/proxy.ts` and `next.config.ts`
+([`next.config.ts`](next.config.ts) is the single source of truth for static headers; `vercel.json`
 does not duplicate them):
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
@@ -242,9 +248,43 @@ does not duplicate them):
 - `X-XSS-Protection: 0` (the legacy `1; mode=block` filter is deprecated and
   must not be re-enabled)
 - `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+- `Cross-Origin-Opener-Policy: same-origin`
+- `Cross-Origin-Resource-Policy: same-origin`
 
-// Method 2: Higher-order function wrapper
-import { withCsrf } from "@/lib/csrf";
+## Content Security Policy (CSP) & Inline Scripts
+
+OphirPay enforces a Content Security Policy via `src/proxy.ts` on all rendered HTML pages:
+
+| Directive | Policy | Purpose |
+|---|---|---|
+| `default-src` | `'self'` | Default fallback for unlisted resource types |
+| `script-src` | `'self' 'unsafe-inline' 'wasm-unsafe-eval'` (prod)<br>`'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'` (dev) | Executable scripts; WASM for Soroban cryptography; eval in dev for HMR |
+| `style-src` | `'self' 'unsafe-inline'` | Tailwind CSS and styled UI styling |
+| `connect-src` | `'self' https://horizon-testnet.stellar.org https://horizon.stellar.org https://soroban-testnet.stellar.org https://soroban.stellar.org https://rpc-futurenet.stellar.org https://mainnet.soroban.rpc.pulse.so` | Whitelisted Horizon and Soroban RPC endpoints |
+| `img-src` | `'self' data: https://stellar.expert https://raw.githubusercontent.com` | Verified token icons and Stellar asset visuals |
+| `font-src` | `'self'` | Local Geist and Geist Mono font bundles |
+| `frame-src` | `'self' https://*.freighter.app chrome-extension: moz-extension:` | Web3 wallet extension iframes and Freighter authorization popups |
+| `object-src` | `'none'` | Disables browser plugins (Flash, Java, Silverlight) |
+| `base-uri` | `'self'` | Prevents unauthorized `<base>` tag injection |
+| `form-action` | `'self'` | Restricts `<form>` submission destinations |
+
+### Known Limitation: 'unsafe-inline' in script-src
+
+> [!WARNING]
+> In production, `script-src` includes `'unsafe-inline'`. Consequently, the Content Security Policy does **not** protect against inline Cross-Site Scripting (XSS) injection attacks.
+
+**Architectural Cause:**
+Next.js 16 (App Router) generates and streams dynamic inline hydration scripts (e.g. `self.__next_f.push(...)`) alongside initial HTML chunks. In standalone and statically optimized deployments, Next.js does not reliably propagate per-request cryptographic nonces to these streaming chunks without triggering complete client-side hydration failures.
+
+**Defense-in-Depth & Mitigations:**
+Because the CSP header cannot act as the primary defense against inline script injection, OphirPay relies on the following primary controls to prevent XSS:
+1. **React Automatic JSX Escaping:** All dynamic content rendered in React components is contextually HTML-escaped by default.
+2. **Input Validation:** All client inputs and API request payloads are strictly validated against strongly typed Zod schemas (`src/lib/validation-schemas.ts`).
+3. **No Dynamic HTML Injection:** The application prohibits user-controlled data in `dangerouslySetInnerHTML`.
+4. **Origin Isolation:** `connect-src`, `frame-src`, and `object-src` remain strictly locked down, preventing an attacker from exfiltrating secrets to unapproved hosts or embedding rogue frames.
+
+## Contract Security
 
 - All contract functions use proper access control
 - Cross-contract calls are validated and propagate failures atomically (see

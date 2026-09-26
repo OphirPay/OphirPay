@@ -41,15 +41,24 @@ function generateRequestId(): string {
  *
  * Next.js (App Router) injects inline streaming/hydration scripts, and this
  * Next 16 build does not propagate a per-request nonce (via x-nonce or a
- * request-header CSP) to the app renderer, so a script-src without
- * 'unsafe-inline' blocks them and the app never hydrates. We therefore keep
- * 'unsafe-inline' in script-src while every other directive stays strict
- * (default-src 'self', connect-src whitelisted to Stellar endpoints only,
- * frame-src limited to wallet extensions, object-src 'none', ...).
- * Development additionally needs 'unsafe-eval' for HMR / Fast Refresh.
+ * request-header CSP) to the app renderer without breaking static prerendering
+ * and hydration. We therefore explicitly retain 'unsafe-inline' in script-src
+ * while keeping every other directive strictly constrained (default-src 'self',
+ * connect-src whitelisted to Stellar endpoints only, frame-src limited to wallet
+ * extensions, object-src 'none', ...).
+ *
+ * NOTE: Because 'unsafe-inline' is present, CSP does NOT mitigate inline script
+ * injection (XSS). Application XSS defense relies on React JSX automatic escaping,
+ * strict input validation with Zod, and no unescaped user HTML rendering.
+ * See SECURITY.md ("Content Security Policy") and docs/AUDIT.md for full analysis.
+ * Development additionally enables 'unsafe-eval' for HMR / Fast Refresh.
  */
-function buildCsp(): string {
-  const scriptSrc = isProd
+export function buildCsp(production?: boolean): string {
+  const isProduction =
+    production !== undefined
+      ? production
+      : process.env.NODE_ENV === "production";
+  const scriptSrc = isProduction
     ? "'self' 'unsafe-inline' 'wasm-unsafe-eval'"
     : "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'";
   return [

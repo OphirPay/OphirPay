@@ -1,10 +1,14 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
 
-// NOTE: the Content-Security-Policy is set per-request in src/proxy.ts
-// Note that 'unsafe-inline' is retained because the per-request nonce never
-// reaches the App Router renderer. A static CSP cannot express that nonce,
-// so it must NOT live here.
+// NOTE: The Content-Security-Policy is set per-request in src/proxy.ts
+// (Next 16 custom proxy/middleware) rather than statically here.
+// Note that 'unsafe-inline' is retained because in Next.js 16 App Router,
+// dynamic inline streaming hydration scripts require 'unsafe-inline' in
+// script-src because per-request nonces cannot be reliably propagated across
+// static prerendering and standalone builds without breaking hydration.
+// A static CSP cannot express nonces or dynamic per-request policies, so it
+// must NOT live here. See SECURITY.md and docs/AUDIT.md for full details.
 //
 // NOTE: this file is the single source of truth for static security headers
 // (issue #681). vercel.json used to repeat the same headers over the

@@ -340,6 +340,21 @@ and re-run the IP/hostname check against the final resolved address after follow
   Ed25519-signature flow. Stale comment only — the protection is present.
 - `get_payments_range`/`get_payments_by_batch` return `Vec` without truncation flags.
 
+### LOW-13 — Content Security Policy retains 'unsafe-inline' in script-src due to Next.js 16 App Router hydration
+
+> ⚠️ **Status: DOCUMENTED / ARCHITECTURAL LIMITATION (2026-09-25).**
+> `src/proxy.ts` enforces `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'` in production. Next.js 16 (App Router) generates dynamic inline hydration scripts (`self.__next_f.push`) during streaming. Because per-request cryptographic nonces cannot be propagated to streaming hydration scripts across static prerendering and standalone container builds without causing complete hydration failure, `'unsafe-inline'` remains active. Consequently, CSP does not protect against inline script injection (XSS). The false claim in `next.config.ts` regarding an active per-request nonce has been corrected, and primary XSS controls (React JSX auto-escaping, strict Zod input validation, and locked-down origin policies) are documented in `SECURITY.md`.
+
+**Files:** `src/proxy.ts`, `next.config.ts`, `SECURITY.md`
+
+**Risk:** Operators and auditors reading the Content Security Policy header or stale comments in `next.config.ts` might assume CSP provides protection against inline XSS attacks. Because `'unsafe-inline'` is present, any injected `<script>` tag will execute.
+
+**Mitigation & Verification:**
+- Removed stale comments claiming per-request nonce enforcement in `next.config.ts`.
+- Recorded the architectural limitation in `SECURITY.md` with explicit notice that CSP does not mitigate inline XSS.
+- Documented primary defenses: React context-aware automatic HTML escaping in JSX, strict schema parsing via Zod on all API endpoints, prohibition of user input in `dangerouslySetInnerHTML`, and strict constraints on external origins (`connect-src` limited to Stellar nodes, `object-src 'none'`).
+- Automated tests in `src/__tests__/csp-directives.test.ts` verify the final directive set across production and development modes.
+
 ---
 
 ## 4. What *is* in place (positive findings)
@@ -374,6 +389,7 @@ and re-run the IP/hostname check against the final resolved address after follow
 | P2 | MEDIUM-4 reentrancy on token-moving fns | ✅ Fixed (`REENTRANCY_LOCK` now wraps all token-transfer paths: escrow release/claim, stream claim/cancel, proposal deposit/refund, refund processing, emergency ops) | Medium |
 | P2 | MEDIUM-5 cross-contract pause result | ✅ Fixed | Low |
 | P2 | LOW validation/hygiene items | Partially fixed (LOW-9 HMAC, LOW-11 counts) | Low |
+| P2 | LOW-13 CSP 'unsafe-inline' documented & verified | ✅ Documented | Low |
 
 > **MEDIUM-2 note:** `get_payments_range` now iterates the most-recent tail first and stops at
 > 100 entries (matching `get_audit_log_range`), and `get_reason_code_analytics` scans only the

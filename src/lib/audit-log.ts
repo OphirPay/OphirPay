@@ -23,6 +23,7 @@ import {
   DEFAULT_CONTRACT_ID,
   CHAIN_READ_SOURCE,
 } from "@/lib/contracts";
+import { cachedRead, readCacheKey, READ_TTL_MS } from "@/lib/api-cache";
 
 export interface AuditLogEntry {
   /** Sequentially-numbered on-chain entry id. */
@@ -163,9 +164,29 @@ export function matchesAuditFilters(
 }
 
 // ── On-chain reading ───────────────────────────────────────────
+//
+// Both readers are cached (#741). `/api/audit-log` walks a window of ids and
+// calls the contract once per entry, and the SSE + CSV-export paths iterate the
+// whole ledger — the most expensive reads in the app. The TTL is short
+// (`READ_TTL_MS["audit-log"]`) and every server-side audit write invalidates the
+// scope explicitly, so a cached page can never outlive the write that changed
+// it by more than the TTL.
 
-/** Read the current audit-log size from the contract; 0 on any failure. */
+/**
+ * Read the current audit-log size from the contract; 0 on any failure.
+ * Served from the read cache for a few seconds.
+ */
 export async function readAuditLogTotalCount(): Promise<number> {
+  const { value } = await cachedRead(
+    readCacheKey("audit-log", `count:${DEFAULT_CONTRACT_ID || "default"}`),
+    () => readAuditLogTotalCountUncached(),
+    READ_TTL_MS["audit-log"]
+  );
+  return value;
+}
+
+/** The always-live read behind {@link readAuditLogTotalCount}. */
+async function readAuditLogTotalCountUncached(): Promise<number> {
   let countResult;
   try {
     countResult = await simulateContractCall(
@@ -187,8 +208,24 @@ export async function readAuditLogTotalCount(): Promise<number> {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/** Read a single audit entry by id, or null if it can't be read. */
+/**
+ * Read a single audit entry by id, or null if it can't be read.
+ * Cached per id — ids are immutable once written, so the only reason an entry
+ * changes is a truncation/expiry on chain, which the short TTL covers.
+ */
 export async function readAuditEntryById(
+  id: number
+): Promise<AuditLogEntry | null> {
+  const { value } = await cachedRead(
+    readCacheKey("audit-log", `entry:${DEFAULT_CONTRACT_ID || "default"}:${id}`),
+    () => readAuditEntryByIdUncached(id),
+    READ_TTL_MS["audit-log"]
+  );
+  return value;
+}
+
+/** The always-live read behind {@link readAuditEntryById}. */
+async function readAuditEntryByIdUncached(
   id: number
 ): Promise<AuditLogEntry | null> {
   try {

@@ -12,6 +12,9 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(),
       deleteMany: vi.fn(),
     },
+    apiKeyRequestLog: {
+      create: vi.fn().mockResolvedValue({}),
+    },
     auditLog: {
       create: vi.fn(),
     },
@@ -34,6 +37,7 @@ import {
   withApiAuth,
   hashApiKey,
   deriveKeyPrefix,
+  generateApiKey,
 } from "@/lib/api-auth";
 import { POST as rotateKey } from "@/app/api/keys/[id]/rotate/route";
 import { POST as retireKey } from "@/app/api/keys/[id]/retire/route";
@@ -143,7 +147,7 @@ describe("API Key Rotation & Overlap Lifecycle", () => {
     });
 
     it("authenticates successfully with old key during the active overlap window", async () => {
-      const rawOldKey = "oph_old_valid_key_123456789";
+      const rawOldKey = generateApiKey();
       const keyHash = hashApiKey(rawOldKey);
       const prefix = deriveKeyPrefix(rawOldKey);
 
@@ -178,7 +182,7 @@ describe("API Key Rotation & Overlap Lifecycle", () => {
 
   describe("Criterion 2: After the window, old key is rejected and reason is surfaced", () => {
     it("rejects old key with ROTATION_EXPIRED_KEY reason after the overlap window has closed", async () => {
-      const rawOldKey = "oph_old_expired_window_key";
+      const rawOldKey = generateApiKey();
       const keyHash = hashApiKey(rawOldKey);
       const prefix = deriveKeyPrefix(rawOldKey);
 
@@ -219,7 +223,7 @@ describe("API Key Rotation & Overlap Lifecycle", () => {
     });
 
     it("rejects a revoked key with REVOKED_KEY reason", async () => {
-      const rawKey = "oph_revoked_key_123456789";
+      const rawKey = generateApiKey();
 
       mockApiKeyFindFirst.mockResolvedValue({
         id: "key_revoked",

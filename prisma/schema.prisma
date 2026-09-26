@@ -44,6 +44,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 // ── SQLite (development) ──────────────────────────────────
@@ -693,7 +694,9 @@ model ApiKey {
   userId    String
   /// Human-readable label (e.g. "CI bot").
   name      String
-  /// SHA-256 (or similar) hash of the raw key. Unique — one row per key.
+  /// Version-tagged SHA-256 digest of the raw key ("v1:<hex>"). Keys minted
+  /// before issue #701 store the bare 64-char SHA-256 hex instead; auth
+  /// accepts both. Unique — one row per key.
   keyHash   String   @unique
   /// First 8 characters of the raw key, for display / identification only.
   prefix    String   // First 8 chars for display
@@ -708,7 +711,7 @@ model ApiKey {
   /// If this key was rotated, points to the replacement key.
   supersededById     String?
   /// The replacement key (see ApiKey).
-  supersededBy       ApiKey?   @relation("KeyRotation", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersededBy       ApiKey?   @relation("KeyRotation", fields: [supersededById], references: [id], onDelete: Restrict, onUpdate: Restrict)
   /// Keys that were rotated into this key.
   rotations          ApiKey[]  @relation("KeyRotation")
   /// Overlap grace period expiration — after this timestamp the old key is rejected.
@@ -738,8 +741,8 @@ model ApiKeyRequestLog {
   /// When the request was made.
   createdAt DateTime @default(now())
 
-  /// Owning key (see ApiKey). Cascade-deleted with the key.
-  key       ApiKey   @relation(fields: [keyId], references: [id], onDelete: Cascade)
+  /// Owning key (see ApiKey).
+  key       ApiKey   @relation(fields: [keyId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   /// Speeds up per-key usage windows ("requests in the last N days").
   @@index([keyId, createdAt])

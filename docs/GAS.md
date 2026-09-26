@@ -299,7 +299,73 @@ Compiled with Rust 1.91.0, soroban-sdk 27.0.5, `--release`, `wasm32v1-none`, `op
 | `ophirpay_contract.wasm` | **94,096 bytes (91.9 KB)** | 36.1 KB (mainnet limit: 128 KB) |
 | `ophirpay_emitter.wasm` | **7,338 bytes (7.2 KB)** | 121 KB (mainnet limit: 128 KB) |
 
+> These are the **post-optimization** figures (after `wasm-strip` + `wasm-opt -Oz`,
+> as the `contract-wasm` CI job produces them). The contract regression workflow
+> measures the raw `cargo build --release` output **before** optimization, which
+> is the larger number it diffs against — see
+> [Contract Regression Reporting](#contract-regression-reporting-wasm-size--fees)
+> below for both numbers and the reason they differ.
+
 The OphirPay contract at 92 KB is reasonable for its scope (~5,600 lines, 90+ functions, 21 struct types, 300 error variants). The Emitter at 7 KB shows what a minimal Soroban contract looks like.
+
+---
+
+## Contract Regression Reporting (WASM size + fees)
+
+`.github/workflows/contract-regression.yml` runs on every PR that touches
+`contracts/**` and posts a **delta** report — not just a pass/fail — so a
+reviewer can judge whether a growth is justified. The report appears in the job
+summary and as a sticky PR comment:
+
+| Contract | Baseline (bytes) | New (bytes) | Δ bytes | Δ % | Absolute guardrail |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `ophirpay` | 170007 | … | +N | +x.xx% | new / 524288 |
+| `emitter` | 25182 | … | +N | +x.xx% | new / 262144 |
+
+alongside a fee table diffing `calculate_fee()` outputs against
+`contracts/fee-baseline.json` (produced by
+`contracts/ophirpay/tests/fee_report.rs`).
+
+The workflow measures the artifact **as the workflow builds it** — plain
+`cargo build --release --target wasm32v1-none`, with no `wasm-strip`/
+`wasm-opt` pass. Commit that number, not the optimized one from the table
+above; the two differ by ~40 % (at the time of writing: `ophirpay` 170,007 raw
+vs 94,096 optimized, `emitter` 25,182 raw vs 7,338 optimized).
+
+### Thresholds
+
+| Knob | Where | Default | Effect |
+| --- | --- | --- | --- |
+| `sizeThresholdPercent` | `contracts/wasm-baseline.json` | `3` | Percentage growth over the committed baseline that fails the job, naming the contract |
+| `WASM_SIZE_THRESHOLD_PERCENT` | Repository variable (or env when running the script locally) | inherits the above | Per-PR/per-run override |
+| `maxBytes` | `contracts/wasm-baseline.json` | per contract | Hard ceiling; never exceeded regardless of the percentage |
+
+Any change to `calculate_fee` also fails the job, because the fee table would
+show a non-zero delta.
+
+### Updating the baseline (explicit, reviewed step)
+
+The baseline only moves when a human records it. That keeps `+3 %` meaningful
+instead of silently re-baselining itself on every green run:
+
+```bash
+# 1. Build the release artifacts exactly as CI does
+cd contracts
+cargo build --manifest-path ophirpay/Cargo.toml --target wasm32v1-none --release
+cargo build --manifest-path emitter/Cargo.toml --target wasm32v1-none --release
+
+# 2. Record the new sizes + regenerate the fee reference
+cd ..
+OPHIRPAY_FEE_REPORT_PATH=/dev/null \
+  cargo test --manifest-path contracts/ophirpay/Cargo.toml --test fee_report
+node scripts/check-contract-regressions.mjs --update-baseline
+
+# 3. Update the "WASM Binary Sizes" table above with the new numbers
+```
+
+Commit `contracts/wasm-baseline.json` (and `contracts/fee-baseline.json` if the
+fee maths intentionally changed) in the same PR as the code that grew the
+contract, and explain the growth in the PR description.
 
 ---
 

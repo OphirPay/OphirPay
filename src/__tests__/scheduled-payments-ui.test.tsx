@@ -33,7 +33,7 @@ vi.mock("@/lib/wallets", () => ({
 }));
 
 vi.mock("@/lib/stellar", () => ({
-  isValidStellarAddress: vi.fn(() => true),
+  isValidStellarAddress: vi.fn(() => true), accountExists: vi.fn(() => Promise.resolve(true)),
   buildPaymentTx: vi.fn(),
   submitSignedTx: vi.fn(),
   getStellarExplorerUrl: vi.fn((h: string) => `https://stellar.expert/explorer/testnet/tx/${h}`),

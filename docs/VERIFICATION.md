@@ -24,7 +24,7 @@ formal verification of the OphirPay smart contracts using
 | **7** | **Timelock 24h Delay** | `execute_timelocked_action()` succeeds iff `now >= proposed_at + 86400`. Exact 24-hour enforcement. |
 | **8** | **Spending Limit Expiry** | `atomic_spend()` rejects if limit is inactive, expired (`now >= expires_at`), or daily/monthly caps are exceeded. |
 | **9** | **Composite: LOCKED_BALANCE + Deposit** | Cross-invariant proof that invariants 1 and 4 are consistent: proposal deposit is locked and refunded correctly. |
-| **10** | **compute_vested No Overflow** | Linear vesting uses `checked_mul` — overflow returns 0 (safe default). Vested amount never exceeds total. |
+| **10** | **compute_vested No Overflow** | Linear vesting is evaluated at 256-bit precision (`checked_mul` fast path, quotient/remainder fallback on overflow) — the exact vested value is returned, never `0` and never more than the stream total. |
 
 ## Quickstart
 

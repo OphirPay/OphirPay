@@ -102,33 +102,44 @@ Before adding or modifying an API endpoint, read the [API Endpoint Guide](docs/A
 
 ## CI/CD Pipeline
 
-See [`docs/MERGE_GATE.md`](docs/MERGE_GATE.md) for the authoritative table of
-required pull-request checks, local commands, and scheduled workflows that do
-not block merges.
+See **[docs/MERGE_GATE.md](docs/MERGE_GATE.md)** for the complete and authoritative reference table of required merge-gate checks, path-scoped rules, local reproduction commands, and scheduled workflows.
 
 Every PR triggers the following independent CI/CD checks across quality,
 testing, security, and DevOps. The jobs in `.github/workflows/ci.yml` are the
-merge gate, and `npm run ci` runs the same frontend chain locally
+primary merge gate, and `npm run ci` runs the same frontend chain locally
 (typecheck → lint → test → build → deploy-config guards) so the two cannot
-drift apart again.
+drift apart.
 
-| # | Job (workflow) | Runs on PR | Blocks merge |
-|---|---|---|---|
-| 1 | `lint` — ESLint `--max-warnings 0` (`ci.yml`) | ✅ | ✅ Required |
-| 2 | `typecheck` — tsc (`ci.yml`) | ✅ | ✅ Required |
-| 3 | `unit-tests` — Vitest (`ci.yml`) | ✅ | ✅ Required |
-| 4 | `build` — Next.js production build (`ci.yml`) | ✅ | ✅ Required |
-| 5 | `contract-wasm` — Soroban WASM build + tests (`ci.yml`) | ✅ | ✅ Required |
-| 6 | `deploy-config` — deploy-script config guards (`ci.yml`) | ✅ | ✅ Required |
-| 7 | `secrets-scan` — Gitleaks (`ci.yml`) | ✅ | ✅ Required |
-| 8 | `helm-lint` — Helm lint + render (`ci.yml`) | ✅ | ✅ Required |
-| 9 | `prisma` — schema + migration replay (`prisma-ci.yml`) | ✅ (prisma paths) | ✅ Required |
-| 10 | `contract-regression` — WASM size guardrails (`contract-regression.yml`) | ✅ (contract paths) | ✅ Required |
-| 11 | `enforce-base` — integration-branch guard (`enforce-integration-branch.yml`) | ✅ | ✅ Required |
+| # | Job (workflow) | Scope | Blocks merge | Local Command |
+|---|---|---|---|---|
+| 1 | `lint` — ESLint `--max-warnings 0` (`ci.yml`) | Every PR | ✅ Required | `npm run lint -- --max-warnings 0` |
+| 2 | `typecheck` — tsc (`ci.yml`) | Every PR | ✅ Required | `npm run typecheck` |
+| 3 | `unit-tests` — Vitest (`ci.yml`) | Every PR | ✅ Required | `npm test` |
+| 4 | `build` — Next.js production build (`ci.yml`) | Every PR | ✅ Required | `npm run build && node scripts/check-bundle-budget.mjs` |
+| 5 | `contract-wasm` — Soroban WASM build + tests (`ci.yml`) | Every PR | ✅ Required | `cd contracts/ophirpay && cargo test` |
+| 6 | `deploy-config` — deploy-script config guards (`ci.yml`) | Every PR | ✅ Required | `bash scripts/validate-deploy-config.sh` |
+| 7 | `secrets-scan` — Gitleaks (`ci.yml`) | Every PR | ✅ Required | `gitleaks detect --config .gitleaks.toml --redact` |
+| 8 | `helm-lint` — Helm lint + render (`ci.yml`) | Every PR | ✅ Required | `helm lint helm/ophirpay --strict` |
+| 9 | `enforce-base` — integration-branch guard (`enforce-integration-branch.yml`) | Every PR | ✅ Required | Target `integration/staging` |
+| 10 | `prisma` — schema + migration replay (`prisma-ci.yml`) | `prisma/**` | ✅ Required (path-scoped) | `npm run db:validate:migrations` |
+| 11 | `contract-regression` — WASM size guardrails (`contract-regression.yml`) | `contracts/**` | ✅ Required (path-scoped) | `node scripts/check-contract-regressions.mjs` |
+| 12 | `readme-sync` — translated README sync (`readme-sync-check.yml`) | `README*.md` | ✅ Required (path-scoped) | `node scripts/check-readme-sync.mjs` |
+| 13 | `docker-smoke` — container image build (`docker-smoke.yml`) | Docker/infra | ℹ️ Advisory | `bash scripts/docker-smoke.sh` |
+| 14 | `pr-labeler` — labeler metadata (`pr-labeler.yml`) | Every PR | ℹ️ Advisory | N/A |
 
 > **Batch mode**: while the `integration/staging` branch exists, every PR must
 > target it instead of `main` (enforced by `enforce-integration-branch.yml`),
 > and `ci.yml` runs on PRs against that branch as well as `main`.
+
+### Non-Gating Scheduled Workflows
+
+The following workflows run on schedules or manual dispatch and **do not gate pull request merges**:
+- `db-backup.yml` (Nightly database backup to S3)
+- `dependency-scan.yml` (Weekly npm and cargo CVE dependency scan)
+- `e2e-nightly.yml` (Nightly full Playwright E2E suite against deployment)
+- `scheduled-payments-cron.yml` (Hourly recurring payment processor sweep)
+- `scorecard.yml` (Weekly OpenSSF supply-chain security audit)
+- `stale.yml` (Daily stale issue and pull request cleanup)
 
 ### Branch Protection Rules (recommended)
 
@@ -139,7 +150,7 @@ Configure these in **Settings → Branches → Branch protection rules** for `ma
 - **Require approvals**: 1 minimum
 - **Dismiss stale pull request approvals when new commits are pushed**: ✅
 - **Require status checks to pass before merging**: ✅
-  - Required checks: `lint`, `typecheck`, `unit-tests`, `build`, `contract-wasm`, `deploy-config`, `secrets-scan`, `helm-lint`
+  - Required checks: `lint`, `typecheck`, `unit-tests`, `build`, `contract-wasm`, `deploy-config`, `secrets-scan`, `helm-lint`, `enforce-base`
 - **Require conversation resolution before merging**: ✅
 - **Require signed commits**: Recommended
 - **Require linear history**: Recommended
@@ -147,9 +158,9 @@ Configure these in **Settings → Branches → Branch protection rules** for `ma
 
 ### Merge Requirements Summary
 
-> A PR must pass every required check above (and the path-scoped `prisma`,
-> `contract-regression` and `enforce-base` checks) and have at least
-> **1 approving review** before it can be merged.
+> A PR must pass every required check above (and applicable path-scoped `prisma`,
+> `contract-regression` or `readme-sync` checks) and have at least
+> **1 approving review** before it can be merged. Details: [docs/MERGE_GATE.md](docs/MERGE_GATE.md).
 
 ## Testing
 

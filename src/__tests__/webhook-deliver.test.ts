@@ -7,10 +7,7 @@ const { isSafeWebhookUrlAtDeliveryMock } = vi.hoisted(() => ({
   isSafeWebhookUrlAtDeliveryMock: vi.fn(),
 }));
 
-// The guard lives in src/lib/webhooks/url-safety.ts (#758); the old
-// @/lib/webhook-url-guard path is only a re-export shim, so the mock must
-// target the canonical module the delivery path imports directly.
-vi.mock("@/lib/webhooks/url-safety", () => ({
+vi.mock("@/lib/webhook-url-guard", () => ({
   isSafeWebhookUrlAtDelivery: isSafeWebhookUrlAtDeliveryMock,
 }));
 

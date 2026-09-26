@@ -16,8 +16,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-// Canonical SSRF guard module (#758); @/lib/webhook-url-guard is a shim.
-vi.mock("@/lib/webhooks/url-safety", () => ({
+vi.mock("@/lib/webhook-url-guard", () => ({
   isSafeWebhookUrlAtDelivery: vi.fn().mockResolvedValue(true),
 }));
 

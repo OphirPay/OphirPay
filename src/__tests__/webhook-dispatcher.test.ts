@@ -21,13 +21,11 @@ vi.mock("@/lib/prisma", () => ({
   default: { webhook: { findMany: mocks.findMany } },
 }));
 
-// The dispatcher now imports its collaborators directly from the canonical
-// webhooks modules (#758); mock those, not the compatibility shims.
-vi.mock("@/lib/webhooks/delivery", () => ({
+vi.mock("@/lib/webhook-deliver", () => ({
   deliverWebhook: mocks.deliverWebhook,
 }));
 
-vi.mock("@/lib/webhooks/persistence", () => ({
+vi.mock("@/lib/webhook-event-store", () => ({
   storeWebhookEvent: mocks.storeWebhookEvent,
   recordWebhookDelivery: mocks.recordWebhookDelivery,
 }));

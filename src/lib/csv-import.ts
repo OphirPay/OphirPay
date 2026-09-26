@@ -2,9 +2,6 @@
 
 import type { BatchRecipient } from "@/types";
 import { isValidStellarAddress } from "@/lib/stellar";
-// Parser core (issue #761): `parseCsvText` and `splitCsvRow` are thin
-// adapters over the shared RFC-4180 implementation in `@/lib/csv/core`.
-import { parseCsv, splitCsvRecord } from "@/lib/csv/core";
 
 /**
  * Maximum recipients allowed in a single batch transaction (matches the
@@ -27,7 +24,75 @@ export const MEMO_MAX_BYTES = 28;
  * are entirely blank are dropped.
  */
 export function parseCsvText(text: string): string[][] {
-  return parseCsv(text);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  const clean = text.replace(/^\uFEFF/, "");
+  let i = 0;
+
+  while (i < clean.length) {
+    const ch = clean[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (clean[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i += 1;
+        continue;
+      }
+      field += ch;
+      i += 1;
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+      i += 1;
+      continue;
+    }
+
+    if (ch === ",") {
+      row.push(field);
+      field = "";
+      i += 1;
+      continue;
+    }
+
+    if (ch === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      i += 1;
+      continue;
+    }
+
+    if (ch === "\r") {
+      // CRLF or lone CR both end the row; swallow the LF if present.
+      if (clean[i + 1] === "\n") i += 1;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      i += 1;
+      continue;
+    }
+
+    field += ch;
+    i += 1;
+  }
+
+  // Push the final row (input may not end with a newline).
+  row.push(field);
+  rows.push(row);
+
+  // Drop rows that are entirely blank.
+  return rows.filter((r) => r.some((cell) => cell !== ""));
 }
 
 // ── Field-level validation ────────────────────────────────────
@@ -258,7 +323,41 @@ export interface CsvParseResult {
  * quotes, and escaped quotes ("").
  */
 export function splitCsvRow(row: string): string[] {
-  return splitCsvRecord(row, { trim: true });
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < row.length) {
+    const char = row[i];
+
+    if (char === '"') {
+      if (inQuotes && row[i + 1] === '"') {
+        // Escaped quote
+        current += '"';
+        i += 2;
+        continue;
+      } else {
+        // Toggle quote mode
+        inQuotes = !inQuotes;
+        i++;
+        continue;
+      }
+    }
+
+    if (char === "," && !inQuotes) {
+      fields.push(current.trim());
+      current = "";
+      i++;
+      continue;
+    }
+
+    current += char;
+    i++;
+  }
+
+  fields.push(current.trim());
+  return fields;
 }
 
 /**

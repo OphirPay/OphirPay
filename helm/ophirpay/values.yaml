@@ -2,24 +2,10 @@
 
 replicaCount: 2
 
-# ── Image (issue #749) ─────────────────────────────────────────
-# Pin an immutable release tag rather than `latest`. `.github/workflows/
-# release.yml` publishes `ghcr.io/ophirpay/ophirpay:<vX.Y.Z>` (and a
-# `sha-<commit>` tag) on every `v*.*.*` git tag, so the default below always
-# resolves to the same digest across restarts.
-#
-# Deliberate overrides:
-#   --set image.tag=v0.2.0            # a different release
-#   --set image.tag=latest \
-#     --set image.pullPolicy=Always   # opt back into a moving tag (not
-#                                     # recommended for production)
-#   --set image.tag=sha-<commit>      # a specific commit build
-# For the strongest pin, use the digest form
-# `--set image.repository=ghcr.io/ophirpay/ophirpay --set image.tag=sha256:<digest>`.
 image:
   repository: ghcr.io/ophirpay/ophirpay
-  tag: v0.1.0
-  pullPolicy: IfNotPresent
+  tag: latest
+  pullPolicy: Always
 
 imagePullSecrets: []
 nameOverride: ""

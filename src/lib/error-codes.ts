@@ -1,420 +1,567 @@
 // SPDX-License-Identifier: MIT
-//
-// ══════════════════════════════════════════════════════════════════════
-//  Error taxonomy — the single source of truth (issue #760)
-// ══════════════════════════════════════════════════════════════════════
-//
-//  Error handling used to be spread across five overlapping modules, so a
-//  contributor adding a failure had to decide which of them owned the HTTP
-//  status, the machine code and the user-visible copy — and reviewers could
-//  not easily check that the three agreed.
-//
-//  This module now owns the taxonomy. Each error has:
-//
-//    • a machine `code`  (e.g. `PAYMENT_NOT_FOUND`)
-//    • an HTTP `status`  (derived from the single `CODES_BY_STATUS` table)
-//    • a default user-facing `message` (humanized, with per-code overrides)
-//    • an optional interpolation `template`
-//
-//  Adding a new error means adding its name to exactly one status group in
-//  `CODES_BY_STATUS` below — the status, `ERROR_STATUS` map, `ERROR_CODES`
-//  catalog and taxonomy entry are all derived from that one edit.
-//
-//  Upstream parsers map into this taxonomy rather than returning raw strings:
-//    • `stellar-error.ts`   → `classifyStellarError()`
-//    • `contract-errors.ts` → `classifyContractError()` (in `error-messages.ts`)
-//    • `prisma-errors.ts`   → `handlePrismaError()` returns taxonomy entries
-//
-//  `api-response.ts` is the only writer of the HTTP error envelope; it
-//  serializes through `errorEnvelope()` here.
 
 /**
- * THE taxonomy table. Codes are grouped by the HTTP status they map to, so
- * the status is data (the group key), not a second lookup table. Add a new
- * error by adding its name to exactly one group.
+ * Centralized API error codes for consistent responses.
+ * These are the `code` values in `{ success: false, error: { code, message } }`.
+ *
+ * Total: 200+ error codes organized by HTTP status category.
  */
-const CODES_BY_STATUS = {
-  400: [
-    "BAD_REQUEST",
-    "VALIDATION_ERROR",
-    "MISSING_REQUIRED_FIELD",
-    "INVALID_INPUT",
-    "INVALID_PAGE",
-    "INVALID_LIMIT",
-    "INVALID_SORT",
-    "INVALID_FILTER",
-    "INVALID_CURSOR",
-    "INVALID_FORMAT",
-    "INVALID_AMOUNT",
-    "AMOUNT_TOO_SMALL",
-    "AMOUNT_TOO_LARGE",
-    "AMOUNT_BELOW_MINIMUM",
-    "AMOUNT_EXCEEDS_MAXIMUM",
-    "INVALID_ADDRESS",
-    "ADDRESS_MALFORMED",
-    "MISSING_DESTINATION",
-    "SELF_PAYMENT",
-    "DESTINATION_INVALID",
-    "INVALID_MEMO",
-    "MEMO_REQUIRED",
-    "MEMO_TOO_LONG",
-    "MEMO_INVALID_FORMAT",
-    "INVALID_ASSET",
-    "ASSET_NOT_SUPPORTED",
-    "INVALID_TRUSTLINE",
-    "CSV_IMPORT_ERROR",
-    "CSV_FORMAT_ERROR",
-    "CSV_TOO_LARGE",
-    "CSV_EMPTY",
-    "CSV_MALFORMED_ROW",
-    "EXPORT_FORMAT_INVALID",
-    "EXPORT_TOO_LARGE",
-    "DATE_RANGE_INVALID",
-    "DATE_RANGE_TOO_LARGE",
-    "INVALID_SIGNATURE",
-    "INVALID_TIMESTAMP",
-    "INVALID_CHALLENGE",
-    "CHALLENGE_EXPIRED",
-    "PAYMENT_CANCELLED",
-    "PAYMENT_EXPIRED",
-    "PAYMENT_PENDING",
-    "PAYMENT_ALREADY_PROCESSED",
-    "STREAM_PAUSED",
-    "STREAM_RESUMED",
-    "STREAM_CANCELLED",
-    "STREAM_COMPLETED",
-    "BATCH_PROCESSING",
-    "BATCH_CANCELLED",
-    "ESCROW_EXPIRED",
-    "ESCROW_RESOLVED",
-    "THRESHOLD_NOT_MET",
-    "INVALID_THRESHOLD",
-    "SIGNER_LIMIT_EXCEEDED",
-    "SIGNER_WEIGHT_EXCEEDED",
-    "SIGNER_WEIGHT_INVALID",
-    "PROPOSAL_EXPIRED",
-    "PROPOSAL_CANCELLED",
-    "PROPOSAL_NOT_ACTIVE",
-    "VOTING_ENDED",
-    "VOTING_NOT_STARTED",
-    "QUORUM_NOT_MET",
-    "INSUFFICIENT_VOTING_POWER",
-    "FOREIGN_KEY",
-  ],
-  401: [
-    "UNAUTHORIZED",
-    "INVALID_API_KEY",
-    "API_KEY_MISSING",
-    "API_KEY_DISABLED",
-    "EXPIRED_API_KEY",
-    "TOKEN_EXPIRED",
-    "TOKEN_REVOKED",
-    "TOKEN_MISSING",
-    "TOKEN_INVALID",
-    "SESSION_EXPIRED",
-    "SESSION_INVALID",
-    "INVALID_CREDENTIALS",
-  ],
-  402: ["INSUFFICIENT_FUNDS", "INSUFFICIENT_RESERVE"],
-  403: [
-    "FORBIDDEN",
-    "INSUFFICIENT_PERMISSIONS",
-    "INSUFFICIENT_SCOPE",
-    "ROLE_REQUIRED",
-    "NOT_OWNER",
-    "NOT_SIGNER",
-    "NOT_MEMBER",
-    "NOT_APPROVER",
-    "NOT_ADMIN",
-    "ACCOUNT_DISABLED",
-    "ACCOUNT_SUSPENDED",
-    "RESOURCE_LOCKED",
-    "WALLET_LOCKED",
-    "REGION_RESTRICTED",
-  ],
-  404: [
-    "NOT_FOUND",
-    "PAYMENT_NOT_FOUND",
-    "ESCROW_NOT_FOUND",
-    "STREAM_NOT_FOUND",
-    "BATCH_NOT_FOUND",
-    "WEBHOOK_NOT_FOUND",
-    "USER_NOT_FOUND",
-    "ACCOUNT_NOT_FOUND",
-    "WALLET_NOT_FOUND",
-    "SIGNER_NOT_FOUND",
-    "ASSET_NOT_FOUND",
-    "API_KEY_NOT_FOUND",
-    "KEY_NOT_FOUND",
-    "TOKEN_NOT_FOUND",
-    "CONTRACT_NOT_FOUND",
-    "FUNCTION_NOT_FOUND",
-    "FILE_NOT_FOUND",
-    "EXPORT_NOT_FOUND",
-    "NOTIFICATION_NOT_FOUND",
-    "ROUTE_NOT_FOUND",
-    "PROPOSAL_NOT_FOUND",
-  ],
-  405: ["METHOD_NOT_ALLOWED"],
-  406: ["NOT_ACCEPTABLE"],
-  408: ["REQUEST_TIMEOUT", "TRANSACTION_TIMEOUT", "CONTRACT_TIMEOUT", "RPC_TIMEOUT"],
-  409: [
-    "CONFLICT",
-    "UNIQUE_CONSTRAINT",
-    "DUPLICATE_REQUEST",
-    "STATE_CONFLICT",
-    "VERSION_CONFLICT",
-    "SEQUENCE_NUMBER_MISMATCH",
-    "OPERATION_IN_PROGRESS",
-    "RESOURCE_IN_USE",
-    "WALLET_ALREADY_CONNECTED",
-    "STREAM_ALREADY_ACTIVE",
-    "ESCROW_ALREADY_FUNDED",
-    "ESCROW_ALREADY_COMPLETED",
-    "USER_EXISTS",
-    "EMAIL_EXISTS",
-    "WALLET_EXISTS",
-    "SIGNER_EXISTS",
-    "WEBHOOK_EXISTS",
-    "BATCH_CONFLICT",
-    "ALREADY_APPROVED",
-    "ALREADY_EXECUTED",
-    "ALREADY_VOTED",
-    "PROPOSAL_ALREADY_EXECUTED",
-    "ESCROW_DISPUTED",
-    "RELATION_VIOLATION",
-  ],
-  410: ["RESOURCE_DELETED", "CONTRACT_DEPRECATED"],
-  413: [
-    "PAYLOAD_TOO_LARGE",
-    "BATCH_TOO_LARGE",
-    "FILE_TOO_LARGE",
-    "REQUEST_BODY_TOO_LARGE",
-  ],
-  415: ["UNSUPPORTED_MEDIA_TYPE", "UNSUPPORTED_ENCODING"],
-  422: ["UNPROCESSABLE_ENTITY", "BUSINESS_RULE_VIOLATION"],
-  429: [
-    "RATE_LIMITED",
-    "RATE_LIMIT_IP",
-    "RATE_LIMIT_USER",
-    "RATE_LIMIT_WALLET",
-    "RATE_LIMIT_API_KEY",
-    "RATE_LIMIT_GLOBAL",
-    "RATE_LIMIT_BACKOFF",
-  ],
-  451: ["LEGALLY_RESTRICTED"],
-  500: [
-    "INTERNAL_ERROR",
-    "DATABASE_ERROR",
-    "DATABASE_QUERY_FAILED",
-    "DATABASE_CONNECTION_FAILED",
-    "DATABASE_TRANSACTION_FAILED",
-    "DATABASE_DEADLOCK",
-    "CONTRACT_ERROR",
-    "CONTRACT_CALL_FAILED",
-    "CONTRACT_DEPLOY_FAILED",
-    "CONTRACT_COMPILE_FAILED",
-    "CONTRACT_VERIFY_FAILED",
-    "RPC_ERROR",
-    "RPC_NODE_ERROR",
-    "NETWORK_ERROR",
-    "NETWORK_TIMEOUT",
-    "STELLAR_ERROR",
-    "HORIZON_ERROR",
-    "SOROBAN_ERROR",
-    "EMAIL_SEND_FAILED",
-    "NOTIFICATION_FAILED",
-    "WEBHOOK_DELIVERY_FAILED",
-    "WEBHOOK_SIGNATURE_INVALID",
-    "FILE_UPLOAD_FAILED",
-    "FILE_PROCESSING_FAILED",
-    "EXPORT_FAILED",
-    "IMPORT_FAILED",
-    "SEARCH_INDEX_ERROR",
-    "SEARCH_FAILED",
-    "CACHE_ERROR",
-    "CACHE_MISS",
-    "CONFIG_ERROR",
-    "FEATURE_NOT_ENABLED",
-    "MAINTENANCE_MODE",
-    "UNKNOWN_ERROR",
-    "PAYMENT_FAILED",
-    "TRANSACTION_FAILED",
-    "TRANSACTION_EXPIRED",
-    "TRANSACTION_REJECTED",
-    "BATCH_PARTIAL_SUCCESS",
-    "BATCH_FAILED",
-    "MULTISIG_NOT_CONFIGURED",
-    "WALLET_NOT_INSTALLED",
-    "WALLET_CONNECTION_FAILED",
-    "WALLET_DISCONNECTED",
-    "WALLET_NETWORK_MISMATCH",
-    "WALLET_SIGN_FAILED",
-    "WALLET_SIGN_REJECTED",
-    "WALLET_NOT_SUPPORTED",
-  ],
-  503: [
-    "CONTRACT_UNAVAILABLE",
-    "SERVICE_UNAVAILABLE",
-    "OVERLOADED",
-    "DEPENDENCY_UNAVAILABLE",
-    "STELLAR_UNAVAILABLE",
-    "HORIZON_UNAVAILABLE",
-    "SOROBAN_UNAVAILABLE",
-    "RPC_UNAVAILABLE",
-    "DATABASE_UNAVAILABLE",
-    "CACHE_UNAVAILABLE",
-    "EMAIL_UNAVAILABLE",
-    "DB_CONNECTION",
-  ],
+
+export const ERROR_CODES = {
+  // ═══════════════════════════════════════════════════════════════
+  // 400 — Client errors (input validation, malformed requests)
+  // ═══════════════════════════════════════════════════════════════
+  BAD_REQUEST: "BAD_REQUEST",
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+  MISSING_REQUIRED_FIELD: "MISSING_REQUIRED_FIELD",
+  INVALID_INPUT: "INVALID_INPUT",
+  INVALID_PAGE: "INVALID_PAGE",
+  INVALID_LIMIT: "INVALID_LIMIT",
+  INVALID_SORT: "INVALID_SORT",
+  INVALID_FILTER: "INVALID_FILTER",
+  INVALID_CURSOR: "INVALID_CURSOR",
+  INVALID_FORMAT: "INVALID_FORMAT",
+  INVALID_AMOUNT: "INVALID_AMOUNT",
+  AMOUNT_TOO_SMALL: "AMOUNT_TOO_SMALL",
+  AMOUNT_TOO_LARGE: "AMOUNT_TOO_LARGE",
+  AMOUNT_BELOW_MINIMUM: "AMOUNT_BELOW_MINIMUM",
+  AMOUNT_EXCEEDS_MAXIMUM: "AMOUNT_EXCEEDS_MAXIMUM",
+  INVALID_ADDRESS: "INVALID_ADDRESS",
+  ADDRESS_MALFORMED: "ADDRESS_MALFORMED",
+  MISSING_DESTINATION: "MISSING_DESTINATION",
+  SELF_PAYMENT: "SELF_PAYMENT",
+  DESTINATION_INVALID: "DESTINATION_INVALID",
+  INVALID_MEMO: "INVALID_MEMO",
+  MEMO_REQUIRED: "MEMO_REQUIRED",
+  MEMO_TOO_LONG: "MEMO_TOO_LONG",
+  MEMO_INVALID_FORMAT: "MEMO_INVALID_FORMAT",
+  INVALID_ASSET: "INVALID_ASSET",
+  ASSET_NOT_SUPPORTED: "ASSET_NOT_SUPPORTED",
+  INVALID_TRUSTLINE: "INVALID_TRUSTLINE",
+  CSV_IMPORT_ERROR: "CSV_IMPORT_ERROR",
+  CSV_FORMAT_ERROR: "CSV_FORMAT_ERROR",
+  CSV_TOO_LARGE: "CSV_TOO_LARGE",
+  CSV_EMPTY: "CSV_EMPTY",
+  CSV_MALFORMED_ROW: "CSV_MALFORMED_ROW",
+  EXPORT_FORMAT_INVALID: "EXPORT_FORMAT_INVALID",
+  EXPORT_TOO_LARGE: "EXPORT_TOO_LARGE",
+  DATE_RANGE_INVALID: "DATE_RANGE_INVALID",
+  DATE_RANGE_TOO_LARGE: "DATE_RANGE_TOO_LARGE",
+  INVALID_SIGNATURE: "INVALID_SIGNATURE",
+  INVALID_TIMESTAMP: "INVALID_TIMESTAMP",
+  INVALID_CHALLENGE: "INVALID_CHALLENGE",
+  CHALLENGE_EXPIRED: "CHALLENGE_EXPIRED",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 401 — Authentication (credentials, tokens, sessions)
+  // ═══════════════════════════════════════════════════════════════
+  UNAUTHORIZED: "UNAUTHORIZED",
+  INVALID_API_KEY: "INVALID_API_KEY",
+  API_KEY_MISSING: "API_KEY_MISSING",
+  API_KEY_DISABLED: "API_KEY_DISABLED",
+  EXPIRED_API_KEY: "EXPIRED_API_KEY",
+  TOKEN_EXPIRED: "TOKEN_EXPIRED",
+  TOKEN_REVOKED: "TOKEN_REVOKED",
+  TOKEN_MISSING: "TOKEN_MISSING",
+  TOKEN_INVALID: "TOKEN_INVALID",
+  SESSION_EXPIRED: "SESSION_EXPIRED",
+  SESSION_INVALID: "SESSION_INVALID",
+  INVALID_CREDENTIALS: "INVALID_CREDENTIALS",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 403 — Authorization (permissions, roles, access control)
+  // ═══════════════════════════════════════════════════════════════
+  FORBIDDEN: "FORBIDDEN",
+  INSUFFICIENT_PERMISSIONS: "INSUFFICIENT_PERMISSIONS",
+  INSUFFICIENT_SCOPE: "INSUFFICIENT_SCOPE",
+  ROLE_REQUIRED: "ROLE_REQUIRED",
+  NOT_OWNER: "NOT_OWNER",
+  NOT_SIGNER: "NOT_SIGNER",
+  NOT_MEMBER: "NOT_MEMBER",
+  NOT_APPROVER: "NOT_APPROVER",
+  NOT_ADMIN: "NOT_ADMIN",
+  ACCOUNT_DISABLED: "ACCOUNT_DISABLED",
+  ACCOUNT_SUSPENDED: "ACCOUNT_SUSPENDED",
+  RESOURCE_LOCKED: "RESOURCE_LOCKED",
+  WALLET_LOCKED: "WALLET_LOCKED",
+  REGION_RESTRICTED: "REGION_RESTRICTED",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 404 — Not found (resources, entities, endpoints)
+  // ═══════════════════════════════════════════════════════════════
+  NOT_FOUND: "NOT_FOUND",
+  PAYMENT_NOT_FOUND: "PAYMENT_NOT_FOUND",
+  ESCROW_NOT_FOUND: "ESCROW_NOT_FOUND",
+  STREAM_NOT_FOUND: "STREAM_NOT_FOUND",
+  BATCH_NOT_FOUND: "BATCH_NOT_FOUND",
+  WEBHOOK_NOT_FOUND: "WEBHOOK_NOT_FOUND",
+  USER_NOT_FOUND: "USER_NOT_FOUND",
+  ACCOUNT_NOT_FOUND: "ACCOUNT_NOT_FOUND",
+  WALLET_NOT_FOUND: "WALLET_NOT_FOUND",
+  SIGNER_NOT_FOUND: "SIGNER_NOT_FOUND",
+  ASSET_NOT_FOUND: "ASSET_NOT_FOUND",
+  API_KEY_NOT_FOUND: "API_KEY_NOT_FOUND",
+  KEY_NOT_FOUND: "KEY_NOT_FOUND",
+  TOKEN_NOT_FOUND: "TOKEN_NOT_FOUND",
+  CONTRACT_NOT_FOUND: "CONTRACT_NOT_FOUND",
+  FUNCTION_NOT_FOUND: "FUNCTION_NOT_FOUND",
+  FILE_NOT_FOUND: "FILE_NOT_FOUND",
+  EXPORT_NOT_FOUND: "EXPORT_NOT_FOUND",
+  NOTIFICATION_NOT_FOUND: "NOTIFICATION_NOT_FOUND",
+  ROUTE_NOT_FOUND: "ROUTE_NOT_FOUND",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 405 — Method Not Allowed
+  // ═══════════════════════════════════════════════════════════════
+  METHOD_NOT_ALLOWED: "METHOD_NOT_ALLOWED",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 406 — Not Acceptable
+  // ═══════════════════════════════════════════════════════════════
+  NOT_ACCEPTABLE: "NOT_ACCEPTABLE",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 408 — Request Timeout
+  // ═══════════════════════════════════════════════════════════════
+  REQUEST_TIMEOUT: "REQUEST_TIMEOUT",
+  TRANSACTION_TIMEOUT: "TRANSACTION_TIMEOUT",
+  CONTRACT_TIMEOUT: "CONTRACT_TIMEOUT",
+  RPC_TIMEOUT: "RPC_TIMEOUT",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 409 — Conflict (state conflicts, duplicate operations)
+  // ═══════════════════════════════════════════════════════════════
+  CONFLICT: "CONFLICT",
+  UNIQUE_CONSTRAINT: "UNIQUE_CONSTRAINT",
+  DUPLICATE_REQUEST: "DUPLICATE_REQUEST",
+  STATE_CONFLICT: "STATE_CONFLICT",
+  VERSION_CONFLICT: "VERSION_CONFLICT",
+  SEQUENCE_NUMBER_MISMATCH: "SEQUENCE_NUMBER_MISMATCH",
+  OPERATION_IN_PROGRESS: "OPERATION_IN_PROGRESS",
+  RESOURCE_IN_USE: "RESOURCE_IN_USE",
+  WALLET_ALREADY_CONNECTED: "WALLET_ALREADY_CONNECTED",
+  STREAM_ALREADY_ACTIVE: "STREAM_ALREADY_ACTIVE",
+  ESCROW_ALREADY_FUNDED: "ESCROW_ALREADY_FUNDED",
+  ESCROW_ALREADY_COMPLETED: "ESCROW_ALREADY_COMPLETED",
+  USER_EXISTS: "USER_EXISTS",
+  EMAIL_EXISTS: "EMAIL_EXISTS",
+  WALLET_EXISTS: "WALLET_EXISTS",
+  SIGNER_EXISTS: "SIGNER_EXISTS",
+  WEBHOOK_EXISTS: "WEBHOOK_EXISTS",
+  BATCH_CONFLICT: "BATCH_CONFLICT",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 410 — Gone
+  // ═══════════════════════════════════════════════════════════════
+  RESOURCE_DELETED: "RESOURCE_DELETED",
+  CONTRACT_DEPRECATED: "CONTRACT_DEPRECATED",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 413 — Payload Too Large
+  // ═══════════════════════════════════════════════════════════════
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  BATCH_TOO_LARGE: "BATCH_TOO_LARGE",
+  FILE_TOO_LARGE: "FILE_TOO_LARGE",
+  REQUEST_BODY_TOO_LARGE: "REQUEST_BODY_TOO_LARGE",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 415 — Unsupported Media Type
+  // ═══════════════════════════════════════════════════════════════
+  UNSUPPORTED_MEDIA_TYPE: "UNSUPPORTED_MEDIA_TYPE",
+  UNSUPPORTED_ENCODING: "UNSUPPORTED_ENCODING",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 422 — Unprocessable Entity
+  // ═══════════════════════════════════════════════════════════════
+  UNPROCESSABLE_ENTITY: "UNPROCESSABLE_ENTITY",
+  BUSINESS_RULE_VIOLATION: "BUSINESS_RULE_VIOLATION",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 429 — Rate Limiting (tiers, backoff)
+  // ═══════════════════════════════════════════════════════════════
+  RATE_LIMITED: "RATE_LIMITED",
+  RATE_LIMIT_IP: "RATE_LIMIT_IP",
+  RATE_LIMIT_USER: "RATE_LIMIT_USER",
+  RATE_LIMIT_WALLET: "RATE_LIMIT_WALLET",
+  RATE_LIMIT_API_KEY: "RATE_LIMIT_API_KEY",
+  RATE_LIMIT_GLOBAL: "RATE_LIMIT_GLOBAL",
+  RATE_LIMIT_BACKOFF: "RATE_LIMIT_BACKOFF",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 451 — Unavailable For Legal Reasons
+  // ═══════════════════════════════════════════════════════════════
+  LEGALLY_RESTRICTED: "LEGALLY_RESTRICTED",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 500 — Server errors (infrastructure, dependencies)
+  // ═══════════════════════════════════════════════════════════════
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  DATABASE_ERROR: "DATABASE_ERROR",
+  DATABASE_QUERY_FAILED: "DATABASE_QUERY_FAILED",
+  DATABASE_CONNECTION_FAILED: "DATABASE_CONNECTION_FAILED",
+  DATABASE_TRANSACTION_FAILED: "DATABASE_TRANSACTION_FAILED",
+  DATABASE_DEADLOCK: "DATABASE_DEADLOCK",
+  CONTRACT_ERROR: "CONTRACT_ERROR",
+  CONTRACT_CALL_FAILED: "CONTRACT_CALL_FAILED",
+  CONTRACT_DEPLOY_FAILED: "CONTRACT_DEPLOY_FAILED",
+  CONTRACT_COMPILE_FAILED: "CONTRACT_COMPILE_FAILED",
+  CONTRACT_VERIFY_FAILED: "CONTRACT_VERIFY_FAILED",
+  CONTRACT_UNAVAILABLE: "CONTRACT_UNAVAILABLE",
+  RPC_ERROR: "RPC_ERROR",
+  RPC_NODE_ERROR: "RPC_NODE_ERROR",
+  NETWORK_ERROR: "NETWORK_ERROR",
+  NETWORK_TIMEOUT: "NETWORK_TIMEOUT",
+  STELLAR_ERROR: "STELLAR_ERROR",
+  HORIZON_ERROR: "HORIZON_ERROR",
+  SOROBAN_ERROR: "SOROBAN_ERROR",
+  EMAIL_SEND_FAILED: "EMAIL_SEND_FAILED",
+  NOTIFICATION_FAILED: "NOTIFICATION_FAILED",
+  WEBHOOK_DELIVERY_FAILED: "WEBHOOK_DELIVERY_FAILED",
+  WEBHOOK_SIGNATURE_INVALID: "WEBHOOK_SIGNATURE_INVALID",
+  FILE_UPLOAD_FAILED: "FILE_UPLOAD_FAILED",
+  FILE_PROCESSING_FAILED: "FILE_PROCESSING_FAILED",
+  EXPORT_FAILED: "EXPORT_FAILED",
+  IMPORT_FAILED: "IMPORT_FAILED",
+  SEARCH_INDEX_ERROR: "SEARCH_INDEX_ERROR",
+  SEARCH_FAILED: "SEARCH_FAILED",
+  CACHE_ERROR: "CACHE_ERROR",
+  CACHE_MISS: "CACHE_MISS",
+  CONFIG_ERROR: "CONFIG_ERROR",
+  FEATURE_NOT_ENABLED: "FEATURE_NOT_ENABLED",
+  MAINTENANCE_MODE: "MAINTENANCE_MODE",
+  UNKNOWN_ERROR: "UNKNOWN_ERROR",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 503 — Service Unavailable
+  // ═══════════════════════════════════════════════════════════════
+  SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
+  OVERLOADED: "OVERLOADED",
+  DEPENDENCY_UNAVAILABLE: "DEPENDENCY_UNAVAILABLE",
+  STELLAR_UNAVAILABLE: "STELLAR_UNAVAILABLE",
+  HORIZON_UNAVAILABLE: "HORIZON_UNAVAILABLE",
+  SOROBAN_UNAVAILABLE: "SOROBAN_UNAVAILABLE",
+  RPC_UNAVAILABLE: "RPC_UNAVAILABLE",
+  DATABASE_UNAVAILABLE: "DATABASE_UNAVAILABLE",
+  CACHE_UNAVAILABLE: "CACHE_UNAVAILABLE",
+  EMAIL_UNAVAILABLE: "EMAIL_UNAVAILABLE",
+
+  // ═══════════════════════════════════════════════════════════════
+  // Payment-specific (codes used across status ranges)
+  // ═══════════════════════════════════════════════════════════════
+  INSUFFICIENT_FUNDS: "INSUFFICIENT_FUNDS",
+  INSUFFICIENT_RESERVE: "INSUFFICIENT_RESERVE",
+  PAYMENT_FAILED: "PAYMENT_FAILED",
+  PAYMENT_CANCELLED: "PAYMENT_CANCELLED",
+  PAYMENT_EXPIRED: "PAYMENT_EXPIRED",
+  PAYMENT_PENDING: "PAYMENT_PENDING",
+  PAYMENT_ALREADY_PROCESSED: "PAYMENT_ALREADY_PROCESSED",
+  TRANSACTION_FAILED: "TRANSACTION_FAILED",
+  TRANSACTION_EXPIRED: "TRANSACTION_EXPIRED",
+  TRANSACTION_REJECTED: "TRANSACTION_REJECTED",
+  STREAM_PAUSED: "STREAM_PAUSED",
+  STREAM_RESUMED: "STREAM_RESUMED",
+  STREAM_CANCELLED: "STREAM_CANCELLED",
+  STREAM_COMPLETED: "STREAM_COMPLETED",
+  BATCH_PROCESSING: "BATCH_PROCESSING",
+  BATCH_PARTIAL_SUCCESS: "BATCH_PARTIAL_SUCCESS",
+  BATCH_CANCELLED: "BATCH_CANCELLED",
+  BATCH_FAILED: "BATCH_FAILED",
+  ESCROW_EXPIRED: "ESCROW_EXPIRED",
+  ESCROW_DISPUTED: "ESCROW_DISPUTED",
+  ESCROW_RESOLVED: "ESCROW_RESOLVED",
+
+  // ═══════════════════════════════════════════════════════════════
+  // Multisig-specific
+  // ═══════════════════════════════════════════════════════════════
+  THRESHOLD_NOT_MET: "THRESHOLD_NOT_MET",
+  ALREADY_APPROVED: "ALREADY_APPROVED",
+  ALREADY_EXECUTED: "ALREADY_EXECUTED",
+  INVALID_THRESHOLD: "INVALID_THRESHOLD",
+  SIGNER_LIMIT_EXCEEDED: "SIGNER_LIMIT_EXCEEDED",
+  SIGNER_WEIGHT_EXCEEDED: "SIGNER_WEIGHT_EXCEEDED",
+  SIGNER_WEIGHT_INVALID: "SIGNER_WEIGHT_INVALID",
+  MULTISIG_NOT_CONFIGURED: "MULTISIG_NOT_CONFIGURED",
+
+  // ═══════════════════════════════════════════════════════════════
+  // Governance
+  // ═══════════════════════════════════════════════════════════════
+  PROPOSAL_NOT_FOUND: "PROPOSAL_NOT_FOUND",
+  VOTING_ENDED: "VOTING_ENDED",
+  PROPOSAL_ALREADY_EXECUTED: "PROPOSAL_ALREADY_EXECUTED",
+  PROPOSAL_EXPIRED: "PROPOSAL_EXPIRED",
+  PROPOSAL_CANCELLED: "PROPOSAL_CANCELLED",
+  PROPOSAL_NOT_ACTIVE: "PROPOSAL_NOT_ACTIVE",
+  ALREADY_VOTED: "ALREADY_VOTED",
+  VOTING_NOT_STARTED: "VOTING_NOT_STARTED",
+  QUORUM_NOT_MET: "QUORUM_NOT_MET",
+  INSUFFICIENT_VOTING_POWER: "INSUFFICIENT_VOTING_POWER",
+
+  // ═══════════════════════════════════════════════════════════════
+  // Wallet-specific
+  // ═══════════════════════════════════════════════════════════════
+  WALLET_NOT_INSTALLED: "WALLET_NOT_INSTALLED",
+  WALLET_CONNECTION_FAILED: "WALLET_CONNECTION_FAILED",
+  WALLET_DISCONNECTED: "WALLET_DISCONNECTED",
+  WALLET_NETWORK_MISMATCH: "WALLET_NETWORK_MISMATCH",
+  WALLET_SIGN_FAILED: "WALLET_SIGN_FAILED",
+  WALLET_SIGN_REJECTED: "WALLET_SIGN_REJECTED",
+  WALLET_NOT_SUPPORTED: "WALLET_NOT_SUPPORTED",
 } as const;
 
-/** Union of every valid error code. */
-export type ErrorCode =
-  (typeof CODES_BY_STATUS)[keyof typeof CODES_BY_STATUS][number];
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 
-const ALL_CODES = (
-  Object.values(CODES_BY_STATUS) as readonly (readonly string[])[]
-).flat() as readonly ErrorCode[];
+/** HTTP status codes for each error code */
+export const ERROR_STATUS: Record<string, number> = {
+  // 400
+  BAD_REQUEST: 400,
+  VALIDATION_ERROR: 400,
+  MISSING_REQUIRED_FIELD: 400,
+  INVALID_INPUT: 400,
+  INVALID_PAGE: 400,
+  INVALID_LIMIT: 400,
+  INVALID_SORT: 400,
+  INVALID_FILTER: 400,
+  INVALID_CURSOR: 400,
+  INVALID_FORMAT: 400,
+  INVALID_AMOUNT: 400,
+  AMOUNT_TOO_SMALL: 400,
+  AMOUNT_TOO_LARGE: 400,
+  AMOUNT_BELOW_MINIMUM: 400,
+  AMOUNT_EXCEEDS_MAXIMUM: 400,
+  INVALID_ADDRESS: 400,
+  ADDRESS_MALFORMED: 400,
+  MISSING_DESTINATION: 400,
+  SELF_PAYMENT: 400,
+  DESTINATION_INVALID: 400,
+  INVALID_MEMO: 400,
+  MEMO_REQUIRED: 400,
+  MEMO_TOO_LONG: 400,
+  MEMO_INVALID_FORMAT: 400,
+  INVALID_ASSET: 400,
+  ASSET_NOT_SUPPORTED: 400,
+  INVALID_TRUSTLINE: 400,
+  CSV_IMPORT_ERROR: 400,
+  CSV_FORMAT_ERROR: 400,
+  CSV_TOO_LARGE: 400,
+  CSV_EMPTY: 400,
+  CSV_MALFORMED_ROW: 400,
+  EXPORT_FORMAT_INVALID: 400,
+  EXPORT_TOO_LARGE: 400,
+  DATE_RANGE_INVALID: 400,
+  DATE_RANGE_TOO_LARGE: 400,
+  INVALID_SIGNATURE: 400,
+  INVALID_TIMESTAMP: 400,
+  INVALID_CHALLENGE: 400,
+  CHALLENGE_EXPIRED: 400,
+  PAYMENT_CANCELLED: 400,
+  PAYMENT_EXPIRED: 400,
+  PAYMENT_PENDING: 400,
+  PAYMENT_ALREADY_PROCESSED: 400,
+  STREAM_PAUSED: 400,
+  STREAM_RESUMED: 400,
+  STREAM_CANCELLED: 400,
+  STREAM_COMPLETED: 400,
+  BATCH_PROCESSING: 400,
+  BATCH_CANCELLED: 400,
+  ESCROW_EXPIRED: 400,
+  ESCROW_RESOLVED: 400,
+  THRESHOLD_NOT_MET: 400,
+  INVALID_THRESHOLD: 400,
+  SIGNER_LIMIT_EXCEEDED: 400,
+  SIGNER_WEIGHT_EXCEEDED: 400,
+  SIGNER_WEIGHT_INVALID: 400,
+  PROPOSAL_EXPIRED: 400,
+  PROPOSAL_CANCELLED: 400,
+  PROPOSAL_NOT_ACTIVE: 400,
+  VOTING_ENDED: 400,
+  VOTING_NOT_STARTED: 400,
+  QUORUM_NOT_MET: 400,
+  INSUFFICIENT_VOTING_POWER: 400,
 
-/**
- * Machine code catalog: `ERROR_CODES.PAYMENT_NOT_FOUND === "PAYMENT_NOT_FOUND"`.
- * Derived from the taxonomy, so the two can never disagree.
- */
-export const ERROR_CODES = (() => {
-  const out: Record<string, string> = {};
-  for (const code of ALL_CODES) out[code] = code;
-  return out as { readonly [K in ErrorCode]: K };
-})();
+  // 401
+  UNAUTHORIZED: 401,
+  INVALID_API_KEY: 401,
+  API_KEY_MISSING: 401,
+  API_KEY_DISABLED: 401,
+  EXPIRED_API_KEY: 401,
+  TOKEN_EXPIRED: 401,
+  TOKEN_REVOKED: 401,
+  TOKEN_MISSING: 401,
+  TOKEN_INVALID: 401,
+  SESSION_EXPIRED: 401,
+  SESSION_INVALID: 401,
+  INVALID_CREDENTIALS: 401,
 
-/** HTTP status for each code, derived from the taxonomy groups. */
-export const ERROR_STATUS: Record<string, number> = (() => {
-  const out: Record<string, number> = {};
-  for (const [status, codes] of Object.entries(CODES_BY_STATUS)) {
-    for (const code of codes as readonly string[]) out[code] = Number(status);
-  }
-  return out;
-})();
+  // 402
+  INSUFFICIENT_FUNDS: 402,
+  INSUFFICIENT_RESERVE: 402,
 
-/** A single taxonomy entry. */
-export interface ErrorDefinition {
-  code: ErrorCode;
-  status: number;
-  message: string;
-  /** Optional interpolation template (e.g. `"{field} already exists."`). */
-  template?: string;
-}
+  // 403
+  FORBIDDEN: 403,
+  INSUFFICIENT_PERMISSIONS: 403,
+  INSUFFICIENT_SCOPE: 403,
+  ROLE_REQUIRED: 403,
+  NOT_OWNER: 403,
+  NOT_SIGNER: 403,
+  NOT_MEMBER: 403,
+  NOT_APPROVER: 403,
+  NOT_ADMIN: 403,
+  ACCOUNT_DISABLED: 403,
+  ACCOUNT_SUSPENDED: 403,
+  RESOURCE_LOCKED: 403,
+  WALLET_LOCKED: 403,
+  REGION_RESTRICTED: 403,
 
-/**
- * Per-code user-facing copy. Codes without an override get a humanized
- * default (`PAYMENT_NOT_FOUND` → "Payment not found.").
- */
-const MESSAGE_OVERRIDES: Partial<
-  Record<ErrorCode, { message: string; template?: string }>
-> = {
-  BAD_REQUEST: { message: "The request is invalid." },
-  VALIDATION_ERROR: { message: "Request validation failed." },
-  MISSING_REQUIRED_FIELD: { message: "A required field is missing.", template: "{field} is required." },
-  INVALID_INPUT: { message: "The supplied input is invalid." },
-  UNAUTHORIZED: { message: "Authentication is required." },
-  INVALID_CREDENTIALS: { message: "The supplied credentials are invalid." },
-  FORBIDDEN: { message: "You do not have permission to perform this action." },
-  INSUFFICIENT_PERMISSIONS: { message: "You do not have the required permissions." },
-  NOT_FOUND: { message: "The requested resource was not found." },
-  PAYMENT_NOT_FOUND: { message: "The payment was not found." },
-  CONFLICT: { message: "The request conflicts with the current state." },
-  UNIQUE_CONSTRAINT: { message: "A record with this value already exists.", template: "A record with this {field} already exists." },
-  RATE_LIMITED: { message: "Too many requests. Please try again later." },
-  RATE_LIMIT_IP: { message: "Too many requests from this IP. Please try again later." },
-  RATE_LIMIT_USER: { message: "Too many requests for this account. Please try again later." },
-  RATE_LIMIT_WALLET: { message: "Too many requests for this wallet. Please try again later." },
-  RATE_LIMIT_API_KEY: { message: "Too many requests for this API key. Please try again later." },
-  RATE_LIMIT_GLOBAL: { message: "The service is rate limited. Please try again later." },
-  RATE_LIMIT_BACKOFF: { message: "Temporarily rate limited. Please back off and retry." },
-  INTERNAL_ERROR: { message: "An unexpected server error occurred." },
-  SERVICE_UNAVAILABLE: { message: "The service is temporarily unavailable." },
-  DATABASE_ERROR: { message: "A database error occurred." },
-  DB_CONNECTION: { message: "Could not connect to the database." },
-  CSV_EMPTY: { message: "The CSV file is empty." },
-  CSV_FORMAT_ERROR: { message: "The CSV format is invalid." },
-  CSV_MALFORMED_ROW: { message: "A row in the CSV is malformed." },
-  CSV_TOO_LARGE: { message: "The CSV file is too large." },
-  STELLAR_ERROR: { message: "A Stellar network error occurred." },
-  HORIZON_ERROR: { message: "A Horizon request failed." },
-  SOROBAN_ERROR: { message: "A Soroban contract call failed." },
-  CONTRACT_ERROR: { message: "Smart contract execution failed." },
-  INVALID_ADDRESS: { message: "Please enter a valid Stellar address." },
-  INVALID_AMOUNT: { message: "Please enter a valid positive amount." },
-  SELF_PAYMENT: { message: "Cannot send to your own address." },
-  MEMO_TOO_LONG: { message: "Memo must be 28 characters or fewer." },
-  INSUFFICIENT_FUNDS: { message: "Insufficient funds to complete this operation." },
-  INSUFFICIENT_RESERVE: { message: "The account would fall below the minimum reserve." },
-} as Partial<Record<ErrorCode, { message: string; template?: string }>>;
+  // 404
+  NOT_FOUND: 404,
+  PAYMENT_NOT_FOUND: 404,
+  ESCROW_NOT_FOUND: 404,
+  STREAM_NOT_FOUND: 404,
+  BATCH_NOT_FOUND: 404,
+  WEBHOOK_NOT_FOUND: 404,
+  USER_NOT_FOUND: 404,
+  ACCOUNT_NOT_FOUND: 404,
+  WALLET_NOT_FOUND: 404,
+  SIGNER_NOT_FOUND: 404,
+  ASSET_NOT_FOUND: 404,
+  API_KEY_NOT_FOUND: 404,
+  KEY_NOT_FOUND: 404,
+  TOKEN_NOT_FOUND: 404,
+  CONTRACT_NOT_FOUND: 404,
+  FUNCTION_NOT_FOUND: 404,
+  FILE_NOT_FOUND: 404,
+  EXPORT_NOT_FOUND: 404,
+  NOTIFICATION_NOT_FOUND: 404,
+  ROUTE_NOT_FOUND: 404,
+  PROPOSAL_NOT_FOUND: 404,
 
-function humanize(code: string): string {
-  const words = code.toLowerCase().split("_");
-  const first = words[0] ?? code.toLowerCase();
-  words[0] = first.charAt(0).toUpperCase() + first.slice(1);
-  return `${words.join(" ")}.`;
-}
+  // 405
+  METHOD_NOT_ALLOWED: 405,
 
-/**
- * The full taxonomy: every code mapped to its status, default message and
- * optional template. Derived from `CODES_BY_STATUS` + `MESSAGE_OVERRIDES`.
- */
-export const ERROR_TAXONOMY: Record<ErrorCode, ErrorDefinition> = (() => {
-  const out = {} as Record<ErrorCode, ErrorDefinition>;
-  for (const code of ALL_CODES) {
-    const override = MESSAGE_OVERRIDES[code];
-    out[code] = {
-      code,
-      status: ERROR_STATUS[code]!,
-      message: override?.message ?? humanize(code),
-      template: override?.template,
-    };
-  }
-  return out;
-})();
+  // 406
+  NOT_ACCEPTABLE: 406,
 
-/** Look up a taxonomy entry, falling back to INTERNAL_ERROR for unknown codes. */
-export function getErrorDefinition(code: ErrorCode | string): ErrorDefinition {
-  return ERROR_TAXONOMY[code as ErrorCode] ?? ERROR_TAXONOMY.INTERNAL_ERROR;
-}
+  // 408
+  REQUEST_TIMEOUT: 408,
+  TRANSACTION_TIMEOUT: 408,
+  CONTRACT_TIMEOUT: 408,
+  RPC_TIMEOUT: 408,
 
-/** HTTP status for a code (derived from the taxonomy). */
-export function errorStatus(code: ErrorCode | string): number {
-  return getErrorDefinition(code).status;
-}
+  // 409
+  CONFLICT: 409,
+  UNIQUE_CONSTRAINT: 409,
+  DUPLICATE_REQUEST: 409,
+  STATE_CONFLICT: 409,
+  VERSION_CONFLICT: 409,
+  SEQUENCE_NUMBER_MISMATCH: 409,
+  OPERATION_IN_PROGRESS: 409,
+  RESOURCE_IN_USE: 409,
+  WALLET_ALREADY_CONNECTED: 409,
+  STREAM_ALREADY_ACTIVE: 409,
+  ESCROW_ALREADY_FUNDED: 409,
+  ESCROW_ALREADY_COMPLETED: 409,
+  USER_EXISTS: 409,
+  EMAIL_EXISTS: 409,
+  WALLET_EXISTS: 409,
+  SIGNER_EXISTS: 409,
+  WEBHOOK_EXISTS: 409,
+  BATCH_CONFLICT: 409,
+  ALREADY_APPROVED: 409,
+  ALREADY_EXECUTED: 409,
+  ALREADY_VOTED: 409,
+  PROPOSAL_ALREADY_EXECUTED: 409,
+  ESCROW_DISPUTED: 409,
 
-/** Default user-facing message for a code. */
-export function errorMessage(code: ErrorCode | string): string {
-  return getErrorDefinition(code).message;
-}
+  // 410
+  RESOURCE_DELETED: 410,
+  CONTRACT_DEPRECATED: 410,
 
-/** The JSON error envelope shape written by the single serializer. */
-export interface ErrorEnvelope {
-  success: false;
-  error: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-  timestamp: string;
-}
+  // 413
+  PAYLOAD_TOO_LARGE: 413,
+  BATCH_TOO_LARGE: 413,
+  FILE_TOO_LARGE: 413,
+  REQUEST_BODY_TOO_LARGE: 413,
 
-/**
- * Build the canonical error envelope. This is the *only* place the
- * `{ success: false, error: { code, message, details }, timestamp }` shape is
- * constructed; every response writer serializes through it.
- */
-export function errorEnvelope(
-  code: string,
-  message: string,
-  details?: unknown,
-): ErrorEnvelope {
-  return {
-    success: false,
-    error: { code, message, details: details === undefined ? undefined : details },
-    timestamp: new Date().toISOString(),
-  };
-}
+  // 415
+  UNSUPPORTED_MEDIA_TYPE: 415,
+  UNSUPPORTED_ENCODING: 415,
+
+  // 422
+  UNPROCESSABLE_ENTITY: 422,
+  BUSINESS_RULE_VIOLATION: 422,
+
+  // 429
+  RATE_LIMITED: 429,
+  RATE_LIMIT_IP: 429,
+  RATE_LIMIT_USER: 429,
+  RATE_LIMIT_WALLET: 429,
+  RATE_LIMIT_API_KEY: 429,
+  RATE_LIMIT_GLOBAL: 429,
+  RATE_LIMIT_BACKOFF: 429,
+
+  // 451
+  LEGALLY_RESTRICTED: 451,
+
+  // 500
+  INTERNAL_ERROR: 500,
+  DATABASE_ERROR: 500,
+  DATABASE_QUERY_FAILED: 500,
+  DATABASE_CONNECTION_FAILED: 500,
+  DATABASE_TRANSACTION_FAILED: 500,
+  DATABASE_DEADLOCK: 500,
+  CONTRACT_ERROR: 500,
+  CONTRACT_CALL_FAILED: 500,
+  CONTRACT_DEPLOY_FAILED: 500,
+  CONTRACT_COMPILE_FAILED: 500,
+  CONTRACT_VERIFY_FAILED: 500,
+  RPC_ERROR: 500,
+  RPC_NODE_ERROR: 500,
+  NETWORK_ERROR: 500,
+  NETWORK_TIMEOUT: 500,
+  STELLAR_ERROR: 500,
+  HORIZON_ERROR: 500,
+  SOROBAN_ERROR: 500,
+  EMAIL_SEND_FAILED: 500,
+  NOTIFICATION_FAILED: 500,
+  WEBHOOK_DELIVERY_FAILED: 500,
+  WEBHOOK_SIGNATURE_INVALID: 500,
+  FILE_UPLOAD_FAILED: 500,
+  FILE_PROCESSING_FAILED: 500,
+  EXPORT_FAILED: 500,
+  IMPORT_FAILED: 500,
+  SEARCH_INDEX_ERROR: 500,
+  SEARCH_FAILED: 500,
+  CACHE_ERROR: 500,
+  CACHE_MISS: 500,
+  CONFIG_ERROR: 500,
+  FEATURE_NOT_ENABLED: 500,
+  MAINTENANCE_MODE: 500,
+  UNKNOWN_ERROR: 500,
+  PAYMENT_FAILED: 500,
+  TRANSACTION_FAILED: 500,
+  TRANSACTION_EXPIRED: 500,
+  TRANSACTION_REJECTED: 500,
+  BATCH_PARTIAL_SUCCESS: 500,
+  BATCH_FAILED: 500,
+  MULTISIG_NOT_CONFIGURED: 500,
+  WALLET_NOT_INSTALLED: 500,
+  WALLET_CONNECTION_FAILED: 500,
+  WALLET_DISCONNECTED: 500,
+  WALLET_NETWORK_MISMATCH: 500,
+  WALLET_SIGN_FAILED: 500,
+  WALLET_SIGN_REJECTED: 500,
+  WALLET_NOT_SUPPORTED: 500,
+
+  // 503
+  CONTRACT_UNAVAILABLE: 503,
+  SERVICE_UNAVAILABLE: 503,
+  OVERLOADED: 503,
+  DEPENDENCY_UNAVAILABLE: 503,
+  STELLAR_UNAVAILABLE: 503,
+  HORIZON_UNAVAILABLE: 503,
+  SOROBAN_UNAVAILABLE: 503,
+  RPC_UNAVAILABLE: 503,
+  DATABASE_UNAVAILABLE: 503,
+  CACHE_UNAVAILABLE: 503,
+  EMAIL_UNAVAILABLE: 503,
+};

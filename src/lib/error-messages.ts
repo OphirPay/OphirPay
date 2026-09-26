@@ -2,15 +2,8 @@
 
 /**
  * User-facing error message catalog.
- *
- * This module no longer owns the error taxonomy — `error-codes.ts` does
- * (issue #760). It keeps the small, client-facing wallet/UX copy that is not
- * part of the API envelope, and maps decoded Soroban contract failures into
- * taxonomy entries.
+ * Centralized messages for consistent UX across the application.
  */
-
-import { ERROR_CODES, getErrorDefinition, type ErrorDefinition } from "@/lib/error-codes";
-import { decodeContractError } from "@/lib/contract-errors";
 
 export const ERRORS = {
   WALLET_NOT_INSTALLED:
@@ -34,17 +27,3 @@ export const ERRORS = {
   NOT_FOUND: "The requested resource was not found.",
   SERVER_ERROR: "An unexpected server error occurred. Please try again later.",
 } as const;
-
-/**
- * Map a raw Soroban contract error into a taxonomy entry.
- *
- * The raw decode still lives in `contract-errors.ts` (auto-generated from the
- * contract), but callers receive a classified error — machine code + HTTP
- * status + user-facing message — rather than a bare string.
- */
-export function classifyContractError(rawError: string): ErrorDefinition {
-  return {
-    ...getErrorDefinition(ERROR_CODES.CONTRACT_ERROR),
-    message: decodeContractError(rawError),
-  };
-}

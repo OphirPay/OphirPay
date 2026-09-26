@@ -37,49 +37,6 @@ Backups are stored in **S3 bucket `ophirpay-backups`** with the `STANDARD_IA`
 storage class and a **30-day retention policy**. This means up to 30 recovery
 points are available at any given time.
 
-### 1.1 Backup monitoring & retention
-
-A backup is only a guarantee if it is both **fresh** and **restorable**. Both
-properties are asserted automatically rather than assumed (issues #751, #752).
-
-#### Retention policy
-
-| Copy | Retained for | Location |
-|------|--------------|----------|
-| Daily | **30 days** (`BACKUP_RETENTION_DAYS`) | `s3://ophirpay-backups/ophirpay-<YYYY-MM-DDTHH-MM-SSZ>.sql.gz`, `STANDARD_IA` |
-| Sunday (weekly) | **90 days** (`BACKUP_WEEKLY_RETENTION_DAYS`) | same bucket |
-
-Expiry is applied by the `Apply retention policy` step in
-[`.github/workflows/db-backup.yml`](../.github/workflows/db-backup.yml): a
-non-Sunday copy is deleted once it is older than 30 days, and a Sunday copy once
-it is older than 90 days. Configure an S3 lifecycle rule on the bucket as a
-backstop in case the workflow itself stops running.
-
-#### Freshness assertion
-
-`db-backup.yml` runs on a **second, independent schedule** (09:00 UTC) whose
-`monitor` job asserts that the newest `*.sql.gz` object is younger than
-`BACKUP_MAX_AGE_HOURS` (default **26 h** = the 24 h RPO plus a 2 h grace for
-upload time and clock skew). Running the monitor independently of the backup
-job is what makes a **stopped** backup visible — a scheduled workflow that never
-runs cannot report its own absence.
-
-#### Failure notification
-
-When the `backup` or `monitor` job fails, a `notify` job opens (or comments on)
-a tracking issue titled **“🚨 Database backup workflow failed”**, with the run
-result and a link to the failed run. A failed backup is therefore visible
-during triage rather than only in the Actions tab.
-
-#### Restore drill
-
-[`.github/workflows/db-restore-drill.yml`](../.github/workflows/db-restore-drill.yml)
-runs weekly and on demand. It restores the newest backup into a disposable
-Postgres through [`scripts/restore-drill.sh`](../scripts/restore-drill.sh),
-asserts row counts on the core tables, and verifies `prisma migrate status`. A
-corrupt or missing backup fails the drill. See
-[Step 2.1](#step-21--run-the-automated-restore-drill).
-
 ---
 
 ## 2. When to Declare a Disaster

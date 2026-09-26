@@ -2,13 +2,7 @@
 
 /**
  * CSV export utility — generates and downloads CSV files from array data.
- *
- * All quoting/escaping is delegated to the shared RFC-4180 core
- * (`@/lib/csv/core`, issue #761) so this download helper and the server-side
- * exporters cannot drift.
  */
-
-import { serializeCsv } from "@/lib/csv/core";
 
 interface CsvOptions {
   filename?: string;
@@ -26,14 +20,14 @@ export function exportToCsv<T extends Record<string, any>>(
 ): void {
   const { filename = "export.csv", delimiter = "," } = options;
 
-  const rows: string[][] = [
-    columns.map((c) => String(c.header)),
-    ...data.map((row) => columns.map((c) => String(row[c.key] ?? ""))),
-  ];
+  const header = columns.map((c) => escapeCsvField(String(c.header), delimiter)).join(delimiter);
+  const rows = data.map((row) =>
+    columns
+      .map((c) => escapeCsvField(String(row[c.key] ?? ""), delimiter))
+      .join(delimiter)
+  );
 
-  // `quoteCarriageReturn: false` preserves this caller's historical byte
-  // output (a bare CR is emitted literally); every other rule is shared.
-  const csv = serializeCsv(rows, { delimiter, quoteCarriageReturn: false });
+  const csv = [header, ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
 
@@ -45,4 +39,11 @@ export function exportToCsv<T extends Record<string, any>>(
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function escapeCsvField(value: string, delimiter: string): string {
+  if (value.includes(delimiter) || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
 }

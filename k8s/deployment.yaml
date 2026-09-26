@@ -43,18 +43,8 @@ spec:
       serviceAccountName: ophirpay
       containers:
         - name: ophirpay
-          # ── Immutable image tag (issue #749) ────────────────────
-          # Pin the released semantic-version tag, not `latest`: a version tag
-          # always resolves to the same digest, while `latest` with
-          # `Always` re-resolved on every pod restart and could silently roll
-          # out an unreviewed image. The image is published by
-          # `.github/workflows/release.yml` on a `v*.*.*` tag.
-          #
-          # Override locally with `kubectl set image deployment/ophirpay
-          # ophirpay=ghcr.io/ophirpay/ophirpay:<tag>` (or edit this field),
-          # and prefer an exact `@sha256:<digest>` for a production pin.
-          image: ghcr.io/ophirpay/ophirpay:v0.1.0
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/ophirpay/ophirpay:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
               name: http

@@ -31,9 +31,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-prisma
       - run: npm run lint -- --max-warnings 0
 
   # ══════════════════════════════════════════════════════════════
@@ -45,10 +43,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma
       - run: npx tsc --noEmit
 
   # ══════════════════════════════════════════════════════════════
@@ -60,10 +55,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma
       - run: npx vitest run --reporter=verbose
 
   # ══════════════════════════════════════════════════════════════
@@ -77,15 +69,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma
       - run: npm run build
       - name: Verify build output
         run: |
           test -d .next && echo "✅ .next directory exists"
           test -f .next/BUILD_ID && echo "✅ BUILD_ID exists"
+
+      - name: JavaScript bundle-size budget
+        # Reads the App Router client-reference manifests emitted by the build
+        # above and fails when a route exceeds its committed budget (#739).
+        # The per-route table is also appended to the job summary.
+        run: node scripts/check-bundle-budget.mjs
 
   # ══════════════════════════════════════════════════════════════
   # 5. CONTRACT WASM BUILD — Build both Soroban contracts

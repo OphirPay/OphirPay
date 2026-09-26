@@ -93,3 +93,25 @@ jobs:
           echo "::error::/api/health did not return 200 (last status: ${status:-<none>})"
           docker logs app-smoke
           exit 1
+
+      - name: Verify the image's HEALTHCHECK reports a health status (issue #738)
+        # The acceptance criterion is that `docker inspect` reports a health
+        # status for the container — i.e. the Dockerfile's HEALTHCHECK is
+        # actually wired, not just present. The probe targets the liveness
+        # endpoint, so this passes even when a dependency is unreachable.
+        run: |
+          for _ in $(seq 1 60); do
+            status=$(docker inspect \
+              --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}<none>{{end}}' \
+              app-smoke 2>/dev/null || true)
+            if [ "$status" = "healthy" ]; then
+              echo "✅ docker inspect reports health status: ${status}"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "::error::Container never became healthy (last status: ${status:-<none>})"
+          docker inspect --format '{{json .State.Health}}' app-smoke || true
+          docker logs app-smoke
+          exit 1

@@ -4,6 +4,27 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 
 ## Getting Started
 
+### 🚀 Fastest Path: Dev Container / GitHub Codespaces
+
+The fastest way to start development without manual environment setup is using the repository's bundled **Dev Container** (`.devcontainer/`):
+- **GitHub Codespaces**: On GitHub, click **Code** → **Codespaces** → **Create codespace on integration/staging**.
+- **VS Code**: Clone the repo, open it in VS Code, and click **Reopen in Container** (requires Docker and the *Dev Containers* extension).
+
+The devcontainer automatically provisions:
+- **Node.js 20** (matching `.nvmrc`)
+- **Rust 1.91.0** with `wasm32v1-none` and `wasm32-unknown-unknown` targets (matching `contracts/rust-toolchain.toml`)
+- **PostgreSQL 16** & **Redis 7** started via `docker-compose.yml`
+- Pre-installed Prisma CLI, Postgres/Redis clients, and recommended VS Code extensions (ESLint, Prettier, Rust Analyzer, Tailwind)
+
+Once opened:
+```bash
+cp .env.example .env.local
+npm run dev                           # Next.js app on http://localhost:3000
+cd contracts/ophirpay && cargo test   # Rust contract test suite runs immediately
+```
+
+### 💻 Manual Local Setup
+
 1. Ensure you have **Node.js 20** installed (see `.nvmrc`) — `npm install`
    runs a preflight (`scripts/check-node.mjs`) and aborts with an actionable
    message on any other major, so there is no ambiguity about the supported

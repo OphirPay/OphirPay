@@ -16,7 +16,13 @@ export { useErrorTracker } from "./useErrorTracker";
 export { useCopyToClipboard } from "./useCopyToClipboard";
 export { useIsMounted, useMountedRef } from "./useIsMounted";
 export { usePrevious } from "./usePrevious";
-export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
+export {
+  useKeyboardShortcuts,
+  useKeyboardShortcutOverlay,
+  getRegisteredShortcuts,
+  REGISTERED_SHORTCUTS,
+} from "./useKeyboardShortcuts";
+export type { ShortcutDefinition, ShortcutCategory } from "./useKeyboardShortcuts";
 export { useNotifications } from "./useNotifications";
 export { useFormSubmit, useFormReset } from "@/lib/form-helpers";
 export { useXlmPrice } from "./usePrice";

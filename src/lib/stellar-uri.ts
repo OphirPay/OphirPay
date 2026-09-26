@@ -63,8 +63,17 @@ export function buildSep7PayUri(params: Sep7PayParams): string {
 
 /**
  * Build the receive payload for an account: a SEP-7 `pay` URI with no
- * amount, so the sender picks how much to send.
+ * amount, so the sender picks how much to send. Supports optional non-native
+ * asset code and issuer for asset-specific receive links.
  */
-export function buildReceivePayload(address: string): string {
-  return buildSep7PayUri({ destination: address });
+export function buildReceivePayload(
+  address: string,
+  asset?: { code: string; issuer?: string }
+): string {
+  return buildSep7PayUri({
+    destination: address,
+    assetCode: asset?.code,
+    assetIssuer: asset?.issuer,
+  });
 }
+

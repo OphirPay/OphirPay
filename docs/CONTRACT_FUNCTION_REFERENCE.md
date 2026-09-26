@@ -4,7 +4,7 @@ Complete reference for every public function of the two OphirPay Soroban
 contracts — `OphirPayContract` (the payment orchestration contract) and
 `PaymentEventEmitter` (the on-chain event emitter).
 
-- **OphirPay contract:** `contracts/ophirpay/src/lib.rs` — 94 public functions
+- **OphirPay contract:** `contracts/ophirpay/src/` (`lib.rs` and modular domain files) — 94 public functions
 - **Emitter contract:** `contracts/emitter/src/lib.rs` — 15 public functions
 - **SDK:** `soroban-sdk = 27.0.5`
 - **Error types:** `PaymentError` (OphirPay) and `EmitterError` (Emitter)
@@ -50,7 +50,7 @@ smallest unit. `u64` timestamps are Unix epoch seconds.
 
 ## PaymentError codes
 
-`PaymentError` is defined in `contracts/ophirpay/src/lib.rs` (line 423).
+`PaymentError` is defined in `contracts/ophirpay/src/errors.rs`.
 
 | Code | Variant | Description |
 |------|---------|-------------|

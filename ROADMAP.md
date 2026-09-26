@@ -34,7 +34,7 @@ fully-green repository.
 - [ ] Formal verification of key contract invariants — 10/10 Kani *model* proofs exist but do not verify the deployed contract (see contracts/ophirpay/spec/ and docs/AUDIT.md)
 
 ### Up Next
-- [ ] Contract modularization (split into Payment/Escrow/Governance modules)
+- [x] Contract modularization (split into focused domain modules: Payment, Escrow, Stream, Recurring, Refund, Governance, Multisig, Batch, Hook, Admin — #757)
 - [x] Redis-backed distributed rate limiting (`REDIS_URL`; https REST for the edge global limit, redis:// via ioredis for Node buckets — #703)
 - [ ] Bug bounty program on Immunefi
 

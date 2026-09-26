@@ -159,3 +159,179 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Print Styles ──────────────────────────────────────────────── */
+/* #793 — clean printing for payment details and receipts */
+
+@media print {
+  /* Hide navigation, sidebar, action buttons */
+  nav,
+  aside,
+  .sidebar,
+  .nav,
+  .no-print,
+  button,
+  .btn,
+  [class*="btn-"],
+  .back-link,
+  .action-bar,
+  .header-actions {
+    display: none !important;
+  }
+
+  /* Expand content to full width */
+  .container,
+  .max-w-\*,
+  .mx-auto {
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  /* Force legible colors in both themes */
+  body,
+  .bg-white,
+  .bg-gray-50,
+  .bg-gray-100,
+  .bg-gray-900,
+  .bg-gray-800,
+  .bg-gray-950 {
+    background: white !important;
+    color: black !important;
+  }
+
+  .dark,
+  [data-theme="dark"],
+  .dark .\* {
+    background: white !important;
+    color: black !important;
+  }
+
+  .dark .text-gray-900,
+  .dark .text-white,
+  .dark .text-gray-700,
+  .dark .text-gray-300 {
+    color: black !important;
+  }
+
+  .dark .border-gray-800,
+  .dark .border-gray-900,
+  .dark .divide-gray-800 {
+    border-color: #333 !important;
+  }
+
+  .dark .bg-gray-900,
+  .dark .bg-gray-800,
+  .dark .bg-gray-950 {
+    background: white !important;
+  }
+
+  /* Status badges - print-safe colors */
+  .status-badge,
+  [class*="status-"] {
+    border: 1px solid #333 !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Links - show URL */
+  a {
+    color: black !important;
+    text-decoration: underline !important;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")" !important;
+    font-size: 0.75em;
+    color: #666 !important;
+  }
+
+  /* Don't break inside key blocks */
+  dl,
+  dt,
+  dd,
+  .detail-row,
+  .card,
+  .rounded,
+  table {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Avoid breaking after headings */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  /* Monospace for code/hashes */
+  code,
+  .font-mono,
+  pre {
+    background: #f5f5f5 !important;
+    color: black !important;
+    border: 1px solid #ddd !important;
+    padding: 0.1em 0.3em !important;
+  }
+
+  /* Ensure text is visible */
+  p,
+  span,
+  div,
+  li,
+  dt,
+  dd {
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Remove shadows and transforms */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    transform: none !important;
+  }
+
+  /* Hide loading skeletons */
+  .skeleton,
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .shimmer {
+    display: none !important;
+  }
+
+  /* Show actual content instead */
+  .payment-detail,
+  .payment-details,
+  .payment-id,
+  .amount,
+  .status,
+  .transaction-hash,
+  .created,
+  .updated,
+  .memo,
+  .description,
+  .batch,
+  .error {
+    display: block !important;
+  }
+}
+
+/* Print-only helper: show elements only when printing */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block !important;
+  }
+}

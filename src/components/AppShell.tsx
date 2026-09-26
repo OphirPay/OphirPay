@@ -15,6 +15,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <QueryProvider>
+        {/* Skip to main content link for keyboard/accessibility */}
+        <a
+          href="#main-content"
+          className="
+            sr-only
+            focus:not-sr-only
+            focus:absolute
+            focus:top-2
+            focus:left-2
+            focus:z-50
+            focus:px-4
+            focus:py-2
+            focus:bg-ophir-600
+            focus:text-white
+            focus:rounded-lg
+            focus:shadow-lg
+            focus:outline-none
+            focus:ring-2
+            focus:ring-white
+            focus:ring-opacity-30
+          "
+          aria-label="Skip to main content"
+        >
+          Skip to main content
+        </a>
       <MultiWalletProvider>
         <ToastProvider>
           <OfflineBanner />

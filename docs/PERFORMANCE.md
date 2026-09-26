@@ -17,6 +17,14 @@ reach production.
 - **[autocannon](https://github.com/mcollina/autocannon)** (devDependency) —
   HTTP/1.1 benchmarking. Fast, dependency-free, and scriptable from Node.
 - The repeatable driver is [`scripts/load-test.js`](../scripts/load-test.js).
+- The SSE / connection-leak harness is
+  [`scripts/sse-load-test.mjs`](../scripts/sse-load-test.mjs).
+- The threshold gate used by CI is
+  [`scripts/check-load-baselines.mjs`](../scripts/check-load-baselines.mjs); the
+  thresholds it enforces live in
+  [`tests/load/baselines.json`](../tests/load/baselines.json).
+- [`scripts/create-load-test-key.mjs`](../scripts/create-load-test-key.mjs) mints
+  the API key the authenticated endpoint needs (and can seed rows).
 
 ## What is load-tested
 
@@ -42,14 +50,27 @@ npm run dev
 ### 2. Generate an API key (for `/api/payments`)
 
 ```bash
+# Preferred: creates a dedicated load-test user + key (and revokes any previous
+# load-test key), then prints LOAD_TEST_API_KEY=oph_…
+LOAD_TEST_SEED_PAYMENTS=2000 node scripts/create-load-test-key.mjs
+```
+
+The script mirrors the key format in `src/lib/api-auth.ts` exactly —
+`src/__tests__/load-test-key.test.ts` fails if the two drift apart.
+
+<details>
+<summary>Mint a key by hand instead</summary>
+
+```bash
 # Sign in via the UI, or mint a key directly (hash + prefix, see src/lib/api-auth.ts):
 node -e '
 const crypto = require("crypto");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 (async () => {
-  const raw = `oph_${crypto.randomBytes(24).toString("hex")}`;
-  const keyHash = crypto.createHash("sha256").update(raw).digest("hex");
+  // 32 CSPRNG bytes (issue #701); store the version-tagged digest.
+  const raw = `oph_${crypto.randomBytes(32).toString("hex")}`;
+  const keyHash = `v1:${crypto.createHash("sha256").update(raw).digest("hex")}`;
   await prisma.apiKey.create({ data: { name: "load-test", keyHash, prefix: raw.slice(0, 8), userId: "<your-user-id>" } });
   console.log(raw);
   await prisma.$disconnect();
@@ -57,12 +78,19 @@ const prisma = new PrismaClient();
 '
 ```
 
+</details>
+
 ### 3. Run the load test
 
 ```bash
 LOAD_TEST_API_KEY=oph_... node scripts/load-test.js            # run only
 LOAD_TEST_API_KEY=oph_... node scripts/load-test.js --write-docs   # run + regenerate baselines below
+LOAD_TEST_API_KEY=oph_... node scripts/load-test.js --json=tests/load/results/latest.json   # machine-readable results
 ```
+
+`--json` writes the raw results **without** touching this document — it is what
+the scheduled CI gate consumes. Add `--json=<path>` to pick the file, or use
+bare `--json` to drop a timestamped file in `LOAD_TEST_OUTPUT_DIR`.
 
 Config (all optional):
 
@@ -88,6 +116,59 @@ However, to prevent documented baselines from silently rotting and to catch perf
 - **Enforcement:** Runs `node scripts/load-test.js` and `node scripts/sse-load-test.mjs` unmodified. The run asserts observed p95 latency and error rates against the committed baselines below within a configurable margin (`PERFORMANCE_MARGIN`, default +30%).
 - **Reporting:** Publishes a Markdown table breakdown directly to the GitHub Job Summary and uploads JSON test metrics as a workflow artifact.
 - **Failure condition:** If p95 latency or error rates exceed the documented baseline threshold, the CI run fails with the exact measured, baseline, and allowable values.
+
+### Scheduled CI gate (weekly + manual dispatch)
+
+The load tests *do* run on a schedule —
+[`.github/workflows/load-test.yml`](../.github/workflows/load-test.yml) fires
+**every Monday at 03:00 UTC** and on `workflow_dispatch` (with `duration`,
+`connections`, `margin`, `sse_concurrency` and `seed_payments` inputs). It:
+
+1. builds the app and starts the standalone server against a throwaway
+   PostgreSQL + Redis,
+2. mints a load-test API key and seeds rows (default 2,000 payments),
+3. runs `scripts/load-test.js` and `scripts/sse-load-test.mjs` **unmodified**,
+4. publishes their output plus the measured-vs-allowed table in the job summary
+   and uploads `tests/load/results/` as an artifact, and
+5. **fails the run** when a measured value exceeds its threshold, printing the
+   measured value and the allowed ceiling.
+
+This is a regression *tripwire*, not a PR gate: no PR is blocked on it.
+
+### Thresholds are deliberate, not recorded
+
+`tests/load/baselines.json` is a hand-maintained policy file — it holds the
+worst documented row per endpoint (from the table below), and
+`scripts/check-load-baselines.mjs` applies:
+
+| Threshold | Compared as |
+|---|---|
+| `p95Ms`, `p99Ms` | measured ≤ threshold × `LOAD_TEST_MARGIN` (default **3**) — latency scales with runner hardware |
+| `errorPct` | measured ≤ threshold (absolute) — transport errors per connection |
+| `non2xxPct` | measured ≤ threshold (absolute) — 4xx/5xx per request (`null` for SSE) |
+
+A new endpoint in `scripts/load-test.js` with no entry in the file **fails the
+gate** rather than passing unmeasured.
+
+### Updating the baselines deliberately
+
+Baselines are only allowed to move as an explicit, reviewed decision:
+
+1. Run the load test locally (or dispatch the workflow) and look at the numbers.
+2. If the change is intentional (a real feature, a deliberate trade-off, a
+   slower-but-correct query), update **`tests/load/baselines.json`** — change
+   the value and extend its `note` with *why*.
+3. If the reference hardware changed, use `node scripts/load-test.js --write-docs`
+   to regenerate the informational table below, and adjust the JSON thresholds
+   to match.
+4. Say so in the PR body: which number moved, from what to what, and why.
+
+Never raise a threshold to silence a genuine regression — the failure message
+(`::error title=Load-test baseline exceeded::`) prints the measured value, the
+allowed value and the endpoint, which is the whole point of the gate.
+
+To try a stricter or looser run without editing the file, dispatch the workflow
+with a different `margin` input (the value is echoed in the job summary).
 
 ## What the numbers mean
 
@@ -144,6 +225,83 @@ Generated on 2026-08-27T03:48:25.922Z against http://localhost:3000 (8s per pass
   pagination helpers, `src/proxy.ts`, or any query on a hot table.
 - When adding a new endpoint that serves the dashboard.
 - After a Prisma schema change that affects the `Payment` model.
+
+## Read-path caching (#741)
+
+The read-only endpoints below used to do their upstream work on **every**
+request — one Soroban simulation per call for the contract-backed reads, four
+aggregate queries for `/api/analytics`. They are now served through
+`src/lib/api-cache.ts`:
+
+| Endpoint | Upstream work per request (before) | TTL (after) | Cache key |
+|---|---|---:|---|
+| `GET /api/stats` | 1 × `get_stats` simulation | 15 s | `stats:<contract>` |
+| `GET /api/analytics` | 3 × `count` + 1 × `aggregate` + `groupBy` | 30 s | `analytics:<userId>` |
+| `GET /api/contracts` | 2 × simulation (`get_version`, `get_owner`) | 60 s | `contracts:<contract>` |
+| `GET /api/audit-log` (+ `/sse`, `/export`) | 1 × `get_audit_log_count` + 1 × `get_audit_entry` per entry | 5 s | `audit-log:count:<contract>`, `audit-log:entry:<contract>:<id>` |
+| `GET /api/fee-config` (+ `/history`, `/collector`) | 1 × simulation each | 30 s | `fee-config:<contract>`, `fee-config:history:<contract>`, `fee-config:collector:<contract>` |
+
+### Measured before/after
+
+`src/__tests__/api-cache.benchmark.test.ts` measures the two paths in-process
+(`npx vitest run src/__tests__/api-cache.benchmark.test.ts`). Upstream latency
+is **simulated at 8 ms** — a real RPC round trip is not reproducible in CI, and
+production round trips are tens of milliseconds, so this is the conservative
+end of the range.
+
+Measured 2026-09-24, 2 000 cache-hit samples against 25 miss samples:
+
+| Path | Iterations | Avg latency |
+|---|---:|---:|
+| Uncached (pays the upstream call) | 25 | **8.21 ms** |
+| Cache hit (L1, in-process) | 2 000 | **0.003 ms** |
+| Speedup | | **~2 600×** |
+
+Read as: the cache removes essentially all of the upstream cost, which is the
+part that scales with load. The remaining per-request cost of a cached endpoint
+is the route's own work (auth, JSON serialisation), unchanged from the numbers
+in the baseline table above. L2 (Redis) hits add one round trip instead of an
+RPC/DB call, so the win there is bounded by the network hop to Redis.
+
+> Numbers are indicative, not contractual — re-run on your hardware. To extend
+the end-to-end picture, add the cached endpoints to `scripts/load-test.js` and
+regenerate the Baselines table.
+
+### Invalidation matrix
+
+Correctness does not depend on the TTL: every server-side mutation that changes
+the data drops the affected keys immediately.
+
+| Mutation | Invalidates |
+|---|---|
+| `POST /api/payments` (payment creation) | `stats`, `analytics:<userId>`, `audit-log` |
+| `POST /api/refunds`, `PATCH /api/refunds/[id]` (audit writes) | `audit-log` |
+| `POST /api/governance/execute` (proposal execution — can change fee config) | `fee-config`, `stats`, `audit-log` |
+
+`invalidateCache(scope, subject?)` is the primitive: pass `subject` for
+per-user payloads so one tenant's write never flushes another's cache, or omit
+it to drop a whole scope. Any route can call it.
+
+Writes that happen **outside** the API — transactions signed in the browser and
+submitted straight to the chain — cannot be observed by the server, so those are
+covered by the TTL alone (≤ 60 s, 5 s for the audit ledger).
+
+### Intermediaries never cache these responses
+
+Cached read responses carry `Cache-Control: private, no-cache, no-store,
+must-revalidate` plus `X-Cache-Status: HIT|MISS` (`readCacheHeaders()` in
+`src/lib/cache.ts`). The server-side cache is the only caching layer allowed to
+serve them, and only for the length of the TTL — no browser or shared
+intermediary may replay derived financial data. `X-Cache-Status` is what made
+the measurements above observable.
+
+### Redis is optional
+
+Set `REDIS_URL` (see `.env.example` / `docker-compose.yml`) to share the cache
+across replicas; the same variable already backs the rate limiter. With it
+unset — or unset-but-unreachable — every read falls back to the per-process L1
+cache and the request is served normally. The app must run correctly with
+`REDIS_URL` unset, and `src/__tests__/api-cache.test.ts` asserts exactly that.
 
 ## Interpreting regressions
 

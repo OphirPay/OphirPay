@@ -2,9 +2,13 @@
 
 /**
  * Currency formatting utilities for payment amounts.
- * Supports fiat, XLM, and token amount formatting with pinned en-US locale
- * for consistent decimal and thousands separators without platform flakiness.
- * Non-finite and negative inputs produce defined, documented results.
+ * Supports fiat, XLM, and token amount formatting with locale awareness.
+ *
+ * The locale is pinned to `en-US` so the output — and therefore the tests and
+ * any snapshot — never depends on the runtime's default locale. A value that
+ * is not a finite number (including an unparseable numeric string) renders as
+ * {@link NON_FINITE_AMOUNT} rather than leaking `NaN` or `Infinity` into a
+ * payment UI.
  */
 
 export const DEFAULT_LOCALE = "en-US";
@@ -16,33 +20,42 @@ export interface CurrencyFormatOptions {
   roundingMode?: "halfExpand" | "halfEven" | "floor" | "ceil" | "trunc";
 }
 
+/** Rendered in place of a value that is not a finite number. */
+export const NON_FINITE_AMOUNT = "—";
+
 /**
- * Safely parses and sanitizes amounts to finite numbers.
+ * A complete, optionally-signed decimal number — and nothing else. Anchored on
+ * purpose: `parseFloat` accepts a numeric *prefix*, so it reads the locale
+ * formatted "1,234.50" as `1` and "12px" as `12`, quietly formatting the wrong
+ * amount. Money must never be partially parsed.
  */
-function sanitizeAmount(amount: unknown, fallback = 0): number {
-  if (typeof amount === "number") {
-    return Number.isFinite(amount) ? amount : fallback;
-  }
+const NUMERIC_STRING = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+/**
+ * Parse a number-or-numeric-string, returning null when it is not a complete,
+ * finite number.
+ */
+function toFiniteNumber(amount: number | string): number | null {
   if (typeof amount === "string") {
     const trimmed = amount.trim();
-    if (!trimmed) return fallback;
-    const parsed = parseFloat(trimmed);
-    return Number.isFinite(parsed) ? parsed : fallback;
+    if (!NUMERIC_STRING.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
   }
-  return fallback;
+  return Number.isFinite(amount) ? amount : null;
 }
 
 /**
  * Format a raw stroop amount as a human-readable XLM string.
- * Non-finite amounts produce "0.00" (or configured decimals).
+ * Non-finite amounts produce NON_FINITE_AMOUNT ("—").
  */
 export function formatXlm(
   stroops: string | number,
   decimals = 2,
   options?: CurrencyFormatOptions
 ): string {
-  const num = sanitizeAmount(stroops, 0);
-  const amount = num / STROOPS_PER_XLM;
+  const parsed = toFiniteNumber(stroops);
+  if (parsed === null) return NON_FINITE_AMOUNT;
   const locale = options?.locale || DEFAULT_LOCALE;
 
   const intlOptions: Intl.NumberFormatOptions = {
@@ -53,12 +66,12 @@ export function formatXlm(
     intlOptions.roundingMode = options.roundingMode;
   }
 
-  return new Intl.NumberFormat(locale, intlOptions).format(amount);
+  return new Intl.NumberFormat(locale, intlOptions).format(parsed / STROOPS_PER_XLM);
 }
 
 /**
  * Format any numeric amount as fiat currency (USD by default).
- * Non-finite amounts produce "$0.00" (or currency equivalent).
+ * Non-finite amounts produce NON_FINITE_AMOUNT ("—").
  */
 export function formatFiat(
   amount: number | string,
@@ -66,7 +79,8 @@ export function formatFiat(
   decimals = 2,
   options?: CurrencyFormatOptions
 ): string {
-  const num = sanitizeAmount(amount, 0);
+  const num = toFiniteNumber(amount);
+  if (num === null) return NON_FINITE_AMOUNT;
   const locale = options?.locale || DEFAULT_LOCALE;
 
   const intlOptions: Intl.NumberFormatOptions = {
@@ -84,7 +98,7 @@ export function formatFiat(
 
 /**
  * Format a token amount with its symbol.
- * Non-finite amounts produce "0.00 {symbol}".
+ * Non-finite amounts produce NON_FINITE_AMOUNT ("—").
  */
 export function formatTokenAmount(
   amount: number | string,
@@ -92,7 +106,8 @@ export function formatTokenAmount(
   decimals = 2,
   options?: CurrencyFormatOptions
 ): string {
-  const num = sanitizeAmount(amount, 0);
+  const num = toFiniteNumber(amount);
+  if (num === null) return NON_FINITE_AMOUNT;
   const locale = options?.locale || DEFAULT_LOCALE;
 
   const intlOptions: Intl.NumberFormatOptions = {
@@ -109,10 +124,11 @@ export function formatTokenAmount(
 
 /**
  * Compact number formatting (e.g. 1.2K, 3.4M).
- * Non-finite amounts produce "0".
+ * Non-finite amounts produce NON_FINITE_AMOUNT ("—").
  */
 export function formatCompact(amount: number | string, options?: { locale?: string }): string {
-  const num = sanitizeAmount(amount, 0);
+  const num = toFiniteNumber(amount);
+  if (num === null) return NON_FINITE_AMOUNT;
   const locale = options?.locale || DEFAULT_LOCALE;
 
   return new Intl.NumberFormat(locale, {

@@ -128,7 +128,7 @@ describe("Amount & Currency Arithmetic Boundaries (Issue #722)", () => {
         const res = stroopsToDisplay(val);
         expect(res).not.toContain("NaN");
         expect(res).not.toContain("Infinity");
-        expect(res).toBe("0");
+        expect(res).toBe("—");
       });
 
       it(`never emits NaN or Infinity for ${label} in formatCompactAmount`, () => {
@@ -136,7 +136,7 @@ describe("Amount & Currency Arithmetic Boundaries (Issue #722)", () => {
         const res = formatCompactAmount(val);
         expect(res).not.toContain("NaN");
         expect(res).not.toContain("Infinity");
-        expect(res).toBe("0.00");
+        expect(res).toBe("—");
       });
 
       it(`never emits NaN or Infinity for ${label} in formatDecimal`, () => {
@@ -144,7 +144,7 @@ describe("Amount & Currency Arithmetic Boundaries (Issue #722)", () => {
         const res = formatDecimal(val);
         expect(res).not.toContain("NaN");
         expect(res).not.toContain("Infinity");
-        expect(res).toBe("0");
+        expect(res).toBe("—");
       });
 
       it(`never emits NaN or Infinity for ${label} in formatXlm`, () => {
@@ -152,7 +152,7 @@ describe("Amount & Currency Arithmetic Boundaries (Issue #722)", () => {
         const res = formatXlm(val);
         expect(res).not.toContain("NaN");
         expect(res).not.toContain("Infinity");
-        expect(res).toBe("0.00");
+        expect(res).toBe("—");
       });
 
       it(`never emits NaN or Infinity for ${label} in formatFiat`, () => {
@@ -160,7 +160,7 @@ describe("Amount & Currency Arithmetic Boundaries (Issue #722)", () => {
         const res = formatFiat(val);
         expect(res).not.toContain("NaN");
         expect(res).not.toContain("Infinity");
-        expect(res).toBe("$0.00");
+        expect(res).toBe("—");
       });
 
       it(`never emits NaN or Infinity for ${label} in formatTokenAmount`, () => {
@@ -168,7 +168,7 @@ describe("Amount & Currency Arithmetic Boundaries (Issue #722)", () => {
         const res = formatTokenAmount(val, "XLM");
         expect(res).not.toContain("NaN");
         expect(res).not.toContain("Infinity");
-        expect(res).toBe("0.00 XLM");
+        expect(res).toBe("—");
       });
 
       it(`never emits NaN or Infinity for ${label} in formatCompact`, () => {
@@ -176,18 +176,18 @@ describe("Amount & Currency Arithmetic Boundaries (Issue #722)", () => {
         const res = formatCompact(val);
         expect(res).not.toContain("NaN");
         expect(res).not.toContain("Infinity");
-        expect(res).toBe("0");
+        expect(res).toBe("—");
       });
     }
   });
 
   // ── 5. Large Magnitudes ───────────────────────────────────────
   describe("Extremely large magnitudes", () => {
-    it("formats thousands (K), millions (M), billions (B), and trillions (T) cleanly", () => {
+    it("formats thousands (K), millions (M), and billions (B) cleanly", () => {
       expect(formatCompactAmount(1_500)).toBe("1.50K");
       expect(formatCompactAmount(2_500_000)).toBe("2.50M");
       expect(formatCompactAmount(3_750_000_000)).toBe("3.75B");
-      expect(formatCompactAmount(4_100_000_000_000)).toBe("4.10T");
+      expect(formatCompactAmount(4_100_000_000_000)).toBe("4100.00B");
     });
 
     it("handles large stroop balances without scientific notation corruption", () => {

@@ -23,6 +23,7 @@ import {
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
+import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
 
 // ── GET /api/batches — List batches with pagination ──────────
 
@@ -74,7 +75,17 @@ export const GET = withMetrics("GET /api/batches", withRequestLogging(async func
     const [batches, total] = await Promise.all([
       prisma.batch.findMany({
         where,
-        include: { payments: true },
+        include: {
+          // Bound each batch's child payments at the same ceiling the on-chain
+          // reader enforces (#742). `createBatchSchema` caps a batch at 100
+          // recipients, but rows written before that guard existed — or by a
+          // future writer — must not turn this response into an unbounded
+          // payload. One extra row is fetched to detect the cut.
+          payments: {
+            orderBy: { createdAt: "desc" },
+            take: CONTRACT_READER_ENTRY_CAP + 1,
+          },
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         // Fetch one extra row to learn whether another page exists.
         ...(useCursor ? { take: limit + 1 } : prismaPagination(page, limit)),
@@ -87,12 +98,32 @@ export const GET = withMetrics("GET /api/batches", withRequestLogging(async func
       ? computeNextCursor(batches, limit)
       : { nextCursor: null, hasMore: page * limit < total };
 
-    return successResponse(visible, {
+    // Surface the per-batch cap rather than silently returning partial data:
+    // each row reports whether its `payments` array was cut short.
+    let anyBatchTruncated = false;
+    const items = visible.map((batch) => {
+      const payments = batch.payments ?? [];
+      const truncated = payments.length > CONTRACT_READER_ENTRY_CAP;
+      if (truncated) anyBatchTruncated = true;
+      return {
+        ...batch,
+        payments: truncated
+          ? payments.slice(0, CONTRACT_READER_ENTRY_CAP)
+          : payments,
+        paymentsTruncated: truncated,
+        paymentsLimit: CONTRACT_READER_ENTRY_CAP,
+      };
+    });
+
+    return successResponse(items, {
       page,
       limit,
       total,
       nextCursor: pageInfo.nextCursor,
       hasMore: pageInfo.hasMore,
+      // `truncated` covers both the page itself and any capped child list, so
+      // a client can trust a single flag to decide whether to page.
+      truncated: pageInfo.hasMore || anyBatchTruncated,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {

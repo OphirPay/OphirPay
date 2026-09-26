@@ -1,15 +1,13 @@
-# OphirPay Formal Verification
+# OphirPay Modeled Invariants
 
-> ⚠️ **Honest status (2026-08-14):** the Kani harnesses in `contracts/ophirpay/spec/`
-> verify **hand-written models** that share no code with the deployed `OphirPayContract`.
-> They are not run in CI, and several are tautological. The table below documents
-> *modeled intent* — it is **not** proof of the deployed contract, and OphirPay must
-> **not** be presented as "formally verified" until real harnesses against the contract
-> (or an independent audit) exist. See [docs/AUDIT.md](AUDIT.md) HIGH-2.
+<a id="canonical-status"></a>
+> [!WARNING]
+> ### Canonical Verification Status
+> The Kani harnesses in `contracts/ophirpay/spec/` verify **hand-written models** that share no code with the deployed `OphirPayContract`. They are **experimental, manual-only, decoupled from the contract, and not run in CI**.
+>
+> They document *modeled intent* and do **not** constitute formal verification of the actual deployed smart contract. OphirPay must **not** be presented as "formally verified" until real harnesses against the deployed contract (or an independent external audit) exist. See [docs/AUDIT.md](AUDIT.md) HIGH-2.
 
-This document describes how to run the Kani harnesses and the roadmap toward real
-formal verification of the OphirPay smart contracts using
-[Kani Rust Verifier](https://model-checking.github.io/kani/).
+This document serves as the canonical source of truth for the status of the Kani harnesses, instructions for running them locally, and the roadmap toward formal verification of the deployed OphirPay smart contracts using [Kani Rust Verifier](https://model-checking.github.io/kani/).
 
 ## Modeled Invariants (not proofs of the deployed contract)
 
@@ -44,7 +42,7 @@ cargo kani setup
 ### 2. Run All Proofs
 
 ```bash
-cd contracts/ophirpay
+cd contracts/ophirpay/spec
 cargo kani --harness all
 ```
 
@@ -155,9 +153,9 @@ komet prove run --contract contracts/ophirpay \
     --invariant one_vote_per_address_invariant
 ```
 
-## Running in CI
+## Running in CI (Roadmap)
 
-Add to `.github/workflows/ci.yml`:
+To run model checks in CI, add to `.github/workflows/ci.yml`:
 
 ```yaml
 formal-verification:
@@ -170,12 +168,12 @@ formal-verification:
         cargo install kani-verifier
         cargo kani setup
     - name: Run formal verification
-      run: cd contracts/ophirpay && cargo kani --harness all
+      run: cd contracts/ophirpay/spec && cargo kani --harness all
     - name: Upload verification report
       uses: actions/upload-artifact@v4
       with:
         name: formal-verification-report
-        path: contracts/ophirpay/target/kani/
+        path: contracts/ophirpay/spec/target/kani/
 ```
 
 ## Interpreting Results
@@ -197,14 +195,14 @@ formal-verification:
 #   - Failure: contract_balance = 100, locked_balance = 200, withdraw_amount = 50
 ```
 
-This means the invariant is broken. Fix the contract code, then re-run Kani.
+This means the invariant is broken. Fix the model code, then re-run Kani.
 
-## Timeline
+## Roadmap to Full Formal Verification
 
 | Phase | Duration | Description |
 |---|---|---|
 | Setup | 1 day | Install Kani, configure Rust toolchain |
-| Existing invariants | 1 day | Run all 10 harnesses, fix any failures |
-| New invariants | 1-3 weeks | Add proofs for escrow, streams, batches, hooks, RBAC |
-| Certora/Komet | 1-2 weeks | Port to Certora for web reports (optional) |
-| CI integration | 1 day | Add to GitHub Actions pipeline |
+| Existing modeled invariants | 1 day | Run all 10 model harnesses, fix any failures |
+| Deployed contract harnesses | 1-3 weeks | Develop proof harnesses directly against deployed `OphirPayContract` logic |
+| Certora/Komet | 1-2 weeks | Port to Certora/Komet for auditor reports |
+| CI integration | 1 day | Add CI job to `.github/workflows/ci.yml` once contract harnesses are ready |

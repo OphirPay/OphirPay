@@ -31,7 +31,7 @@ fully-green repository.
 - [x] Security, Performance & Gas, and Audit-Readiness documented in the README
 - [ ] Record fresh demo video + screenshots against the seeded demo environment
 - [ ] External security audit (Runtime Verification or Certora)
-- [ ] Formal verification of key contract invariants — 10/10 Kani *model* proofs exist but do not verify the deployed contract (see contracts/ophirpay/spec/ and docs/AUDIT.md)
+- [ ] Formal verification of deployed contract invariants — 10/10 Kani proof harnesses exist for hand-written models only (decoupled from the contract; not run in CI); see canonical status in [docs/VERIFICATION.md](docs/VERIFICATION.md)
 
 ### Up Next
 - [ ] Contract modularization (split into Payment/Escrow/Governance modules)

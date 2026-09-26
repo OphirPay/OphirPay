@@ -847,12 +847,9 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 
 ---
 
-## 🔬 Formal Verification
+## 🔬 Modeled Invariants (Formal Verification Roadmap) <a id="-formal-verification"></a>
 
-> ⚠️ **Honest status:** the Kani harnesses in `contracts/ophirpay/spec/` verify hand-written
-> **models** — they share no code with the deployed `OphirPayContract`, are not run in CI, and
-> several are tautological. The list below reflects *modeled intent*, **not** proof of the deployed
-> contract. See [docs/AUDIT.md](docs/AUDIT.md) for details.
+> ⚠️ **Canonical Status:** The Kani harnesses in `contracts/ophirpay/spec/` verify hand-written models that share no code with the deployed `OphirPayContract` (experimental, manual-only, decoupled from the contract, and not run in CI). They document modeled intent, **not** formal verification of the deployed contract. See the canonical description in [docs/VERIFICATION.md](docs/VERIFICATION.md) and [docs/AUDIT.md](docs/AUDIT.md) HIGH-2.
 
 | # | Invariant | Status |
 |---|-----------|--------|
@@ -871,7 +868,7 @@ cargo install kani-verifier && cargo kani setup
 cd contracts/ophirpay/spec && cargo kani
 ```
 
-See [docs/VERIFICATION.md](docs/VERIFICATION.md) for setup and the Certora/Komet roadmap.
+See [docs/VERIFICATION.md](docs/VERIFICATION.md) for canonical status, setup instructions, and the verification roadmap.
 
 ---
 

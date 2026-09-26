@@ -13,9 +13,13 @@ import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
-import { formatAmount, shortenAddress } from "@/lib/utils";
+import { shortenAddress } from "@/lib/utils";
 import { isValidStellarAddress } from "@/lib/stellar";
 import { FREQUENCY_OPTIONS, FREQUENCY_LABELS, nextRunAt, type Frequency } from "@/lib/recurrence";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { CurrencyAmount } from "@/components/CurrencyAmount";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 
 interface Recurrence {
   id: string;
@@ -48,6 +52,9 @@ export default function RecurringPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
 
   const [formName, setFormName] = useState("");
   const [formPayee, setFormPayee] = useState("");
@@ -181,7 +188,17 @@ export default function RecurringPage() {
             Schedule automated Daily, Weekly, or Monthly payments
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>+ New Recurring</Button>
+        <div className="flex items-center gap-3">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            size="sm"
+            showPrice
+            price={xlmPrice}
+            isUnavailable={isPriceUnavailable}
+          />
+          <Button onClick={() => setShowCreate(true)}>+ New Recurring</Button>
+        </div>
       </div>
 
       {recurrences.length === 0 ? (
@@ -213,9 +230,16 @@ export default function RecurringPage() {
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     To: <code className="text-xs">{shortenAddress(rp.destAddress, 12)}</code>
                   </p>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {formatAmount(parseFloat(rp.amount), rp.assetCode)}
-                  </p>
+                  <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                    <CurrencyAmount
+                      amount={parseFloat(rp.amount) || 0}
+                      assetCode={rp.assetCode}
+                      currency={currency}
+                      price={xlmPrice}
+                      isUnavailable={isPriceUnavailable}
+                      layout="stacked"
+                    />
+                  </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                     <span data-testid={`next-run-${rp.id}`}>
                       Next: {formatDate(rp.nextRunAt)}

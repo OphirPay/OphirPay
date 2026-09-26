@@ -18,6 +18,9 @@ import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { connectLiveEvents } from "@/lib/events/event-client";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 import type { Batch, BatchStatus } from "@/types";
 
 interface BulkCancelResult {
@@ -70,6 +73,9 @@ export default function BatchesPage() {
   const [confirmBatch, setConfirmBatch] = useState<Batch | null>(null);
   // Keeps the offending row's button in a loading state while cancelling.
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
 
   // ── Summary (status counts + per-batch drill-down) ─────────────
   const {
@@ -179,22 +185,32 @@ export default function BatchesPage() {
     <div className="space-y-6 animate-fade-in">
       <Breadcrumb items={[{ label: "Batches" }]} />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Batch Payments</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
             Process multiple payments in a single transaction
           </p>
         </div>
-        <Link
-          href="/batches/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors shadow-lg shadow-ophir-500/25 active:scale-95"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          New Batch
-        </Link>
+        <div className="flex items-center gap-3">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            size="sm"
+            showPrice
+            price={xlmPrice}
+            isUnavailable={isPriceUnavailable}
+          />
+          <Link
+            href="/batches/new"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors shadow-lg shadow-ophir-500/25 active:scale-95"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            New Batch
+          </Link>
+        </div>
       </div>
 
       {/* ── Summary view ────────────────────────────────────────── */}

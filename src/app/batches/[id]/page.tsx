@@ -3,14 +3,20 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { timeAgo, getStatusColor, formatAmount, shortenAddress } from "@/lib/utils";
+import { timeAgo, getStatusColor, shortenAddress } from "@/lib/utils";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { CurrencyAmount } from "@/components/CurrencyAmount";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 import type { BatchWithProgress } from "@/types";
 
 export default function BatchDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
 
   const {
     data: batch,
@@ -86,6 +92,14 @@ export default function BatchDetailPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <CurrencyToggle
+                value={currency}
+                onChange={setCurrency}
+                size="sm"
+                showPrice
+                price={xlmPrice}
+                isUnavailable={isPriceUnavailable}
+              />
               {batch.progress.failed > 0 && (
                 <button
                   onClick={handleRetry}
@@ -201,7 +215,14 @@ export default function BatchDetailPage() {
                           {i + 1}
                         </td>
                         <td className="py-3 px-5 font-mono font-medium text-gray-900 dark:text-white">
-                          {formatAmount(item.amount, item.assetCode)}
+                          <CurrencyAmount
+                            amount={item.amount}
+                            assetCode={item.assetCode}
+                            currency={currency}
+                            price={xlmPrice}
+                            isUnavailable={isPriceUnavailable}
+                            layout="stacked"
+                          />
                         </td>
                         <td className="py-3 px-5">
                           <span

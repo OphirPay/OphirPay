@@ -16,6 +16,10 @@ import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery, apiFetch } from "@/hooks/useApiQuery";
 import { isOnChainId } from "@/lib/type-guards";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { CurrencyAmount } from "@/components/CurrencyAmount";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 import {
   requestRefund,
   approveRefund,
@@ -68,6 +72,9 @@ export default function RefundsPage() {
   const [showRequest, setShowRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"list" | "analytics">("list");
+
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
 
   const [formPaymentId, setFormPaymentId] = useState("");
   const [formAmount, setFormAmount] = useState("");
@@ -248,34 +255,44 @@ export default function RefundsPage() {
             Structured refund lifecycle — Request → Approve → Process
           </p>
         </div>
-        <div className="flex gap-2">
-          <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden" role="tablist" aria-label="Refund views">
-            <button
-              onClick={() => setActiveTab("list")}
-              role="tab"
-              aria-selected={activeTab === "list"}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                activeTab === "list"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-              }`}
-            >
-              List
-            </button>
-            <button
-              onClick={() => setActiveTab("analytics")}
-              role="tab"
-              aria-selected={activeTab === "analytics"}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                activeTab === "analytics"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-              }`}
-            >
-              Analytics
-            </button>
+        <div className="flex items-center gap-3">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            size="sm"
+            showPrice
+            price={xlmPrice}
+            isUnavailable={isPriceUnavailable}
+          />
+          <div className="flex gap-2">
+            <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden" role="tablist" aria-label="Refund views">
+              <button
+                onClick={() => setActiveTab("list")}
+                role="tab"
+                aria-selected={activeTab === "list"}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeTab === "list"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                }`}
+              >
+                List
+              </button>
+              <button
+                onClick={() => setActiveTab("analytics")}
+                role="tab"
+                aria-selected={activeTab === "analytics"}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeTab === "analytics"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                }`}
+              >
+                Analytics
+              </button>
+            </div>
+            <Button onClick={() => setShowRequest(true)}>+ Request Refund</Button>
           </div>
-          <Button onClick={() => setShowRequest(true)}>+ Request Refund</Button>
         </div>
       </div>
 
@@ -341,7 +358,18 @@ export default function RefundsPage() {
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{r.reason}</p>
                   <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                    <span>Amount: {r.amount} {r.asset || "native"}</span>
+                    <span className="inline-flex items-center gap-1">
+                      Amount:{" "}
+                      <CurrencyAmount
+                        amount={parseFloat(r.amount) || 0}
+                        assetCode={r.asset === "native" || !r.asset ? "XLM" : r.asset}
+                        currency={currency}
+                        price={xlmPrice}
+                        isUnavailable={isPriceUnavailable}
+                        layout="inline"
+                        className="font-medium text-gray-700 dark:text-gray-300"
+                      />
+                    </span>
                     <span>Requested: {new Date(r.requestedAt).toLocaleDateString()}</span>
                     {isOnChainId(r.onChainId) && (
                       <span>On-chain refund #{r.onChainId}</span>

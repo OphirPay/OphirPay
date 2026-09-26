@@ -36,7 +36,15 @@
     "fintech",
     "defi"
   ],
+  "bin": {
+    "ophirpay": "./bin/ophirpay.mjs"
+  },
+  "exports": {
+    ".": "./src/lib/client/index.ts",
+    "./client": "./src/lib/client/index.ts"
+  },
   "scripts": {
+    "test:client": "vitest run src/__tests__/ophirpay-client-cli.test.ts",
     "preinstall": "node scripts/check-node.mjs",
     "dev": "next dev",
     "build": "next build",

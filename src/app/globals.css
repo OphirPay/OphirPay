@@ -159,3 +159,148 @@ body {
     scroll-behavior: auto !important;
   }
 }
+/* ─────────────────────────────────────────────────────────────
+   Print styles — issues #793
+
+   Printing a payment detail page used to produce the navigation
+   chrome, dark-mode backgrounds, action buttons and truncated
+   tables. A printable record is a routine need for the nonprofits
+   and small businesses this app is built for, and it is also the
+   fallback when the receipt PDF endpoint is unavailable.
+
+   Two rules of thumb below:
+     1. hide the shell (.print-hide), keep the record;
+     2. force print-safe colours, so the page is legible whichever
+        theme the user had active on screen.
+   ───────────────────────────────────────────────────────────── */
+@media print {
+  /* Page setup: A4 with a sensible margin, no browser-added header. */
+  @page {
+    margin: 12mm;
+  }
+
+  /* 1. Hide the application shell -------------------------------------
+     The shell is presentational: sidebar, header, floating banners,
+     install prompts. None of it belongs on a printed record. */
+  .print-hide,
+  [data-print="hide"] {
+    display: none !important;
+  }
+
+  /* Interactive affordances that only make sense on screen: copy
+     buttons, "try again", links styled as buttons, toasts. */
+  .print-hide-interactive,
+  button:not(.print-keep):not([data-print="keep"]),
+  [role="dialog"],
+  [role="alert"]:not([data-print="keep"]) {
+    display: none !important;
+  }
+
+  /* Decorative icon buttons inside detail rows (copy-to-clipboard)
+     carry no printed meaning — the value they copy is already text. */
+  [data-copy-button] {
+    display: none !important;
+  }
+
+  /* 2. Force print-safe colours in both themes ------------------------
+     Dark mode on paper is unreadable and wastes toner. Pin the
+     document to black-on-white regardless of the active theme, and
+     drop backgrounds that exist only to separate screen surfaces. */
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Neutralise the layout offsets the shell applied (sidebar gutter). */
+  .print-reset-offset,
+  main#main-content {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Expand the content column: the on-screen 3/2 split is a screen
+     affordance and squeezes tables into unreadable slivers on paper. */
+  .print-full,
+  [data-print="full"] {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    grid-column: 1 / -1 !important;
+  }
+
+  /* Force every descendant of a printed block back to ink-on-paper.
+     `!important` is load-bearing: Tailwind's dark: variants and the
+     .dark overrides in this file both target these elements with
+     higher specificity than a bare element selector. */
+  main#main-content * {
+    color: #000 !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Surfaces that genuinely need a border to be readable as a block
+     keep a hairline instead of a filled background. */
+  .print-surface,
+  [data-print="surface"] {
+    border: 1px solid #999 !important;
+    border-radius: 0 !important;
+    padding: 8pt !important;
+    background: #fff !important;
+  }
+
+  /* Links: show the URL for anchors that carry meaning on paper
+     (explorer links to a tx hash), because the reader cannot click. */
+  main#main-content a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    word-break: break-all;
+  }
+
+  /* Do not decorate the payment id / tx hash that is already text. */
+  main#main-content a[href^="#"]::after,
+  main#main-content a[href^="mailto:"]::after {
+    content: "";
+  }
+
+  /* 3. Avoid breaking key blocks across pages -------------------------
+     A detail row split in half across a page boundary is unreadable. */
+  .print-keep-together,
+  tr,
+  dl > div,
+  .print-surface,
+  [data-print="keep-together"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Repeat table headers on every printed page. */
+  thead {
+    display: table-header-group;
+  }
+
+  /* Headings should not be orphaned at the bottom of a page. */
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Long identifiers (tx hash, addresses) must wrap instead of being
+     clipped by the printed page edge. */
+  .font-mono,
+  code {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+
+  /* Never print link/button hover or focus rings. */
+  *:focus,
+  *:hover {
+    outline: none !important;
+  }
+}

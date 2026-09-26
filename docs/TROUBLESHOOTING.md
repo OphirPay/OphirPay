@@ -5,7 +5,7 @@
 > and open a new one with the error message, your network (`TESTNET`/`PUBLIC`),
 > and the commands you ran.
 
-**Quick links:** [Setup & environment](#-setup--environment) · [Funding (friendbot)](#-funding--friendbot) · [RPC & network](#-rpc--network) · [Trustlines](#-trustlines) · [Wallet rejections](#-wallet-rejections) · [App runtime](#-app-runtime) · [Live events (SSE)](#-live-events-sse)
+**Quick links:** [Setup & environment](#-setup--environment) · [Funding (friendbot)](#-funding-friendbot) · [RPC & network](#-rpc--network) · [Trustlines](#-trustlines) · [Wallet rejections](#-wallet-rejections) · [App runtime](#-app-runtime) · [Live events (SSE)](#-live-events-sse)
 
 ---
 
@@ -105,7 +105,7 @@ npm ci
 
 **Cause**: No `.env.local` / `.env.production` file.
 
-**Resolution**: `cp .env.example .env.local` and fill in the required values (see the [Deployment Guide](DEPLOYMENT.md#-environment-variables)). Restart the dev server — Next.js caches env at boot.
+**Resolution**: `cp .env.example .env.local` and fill in the required values (see the [Deployment Guide](DEPLOYMENT.md#environment-variables)). Restart the dev server — Next.js caches env at boot.
 
 ### `AUTH_SECRET is not set` at login
 

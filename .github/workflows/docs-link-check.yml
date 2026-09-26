@@ -1,0 +1,31 @@
+name: Docs Link Checker
+
+on:
+  push:
+    branches: [main, integration/staging]
+  pull_request:
+    branches: [main, integration/staging]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-links:
+    name: Check Documentation Links & Anchors
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate Markdown Links and Anchors
+        run: npm run docs:check-links
+      - name: Check External Links (Warnings Only)
+        run: node scripts/check-doc-links.mjs --check-external

@@ -318,7 +318,7 @@ cd contracts/emitter && cargo test                              # emitter unit t
 ## Future Verification Work
 
 - [x] Property testing with `proptest` for token-moving paths & reentrancy sequences (`LOCKED_BALANCE` conservation)
-- [ ] Bounded model checking with `kani` for the 5 highest-risk invariants
+- [x] Bounded model checking with `kani` for the 5 highest-risk invariants (see `contracts/ophirpay/spec/` and `docs/VERIFICATION.md`)
 - [ ] Formal verification of the `compute_vested()` function (overflow safety).
       The boundary branches are modelled in `contracts/ophirpay/spec/src/invariants.rs`,
       but the widened multiply path is not yet machine-checked — see the Kani

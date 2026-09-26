@@ -403,6 +403,8 @@ describe("API Routes: Webhooks, Hooks & Events", () => {
       const data = await res.json();
       expect(data.data.events).toHaveLength(1);
       expect(data.data.events[0].id).toBe("evt_1");
+      expect(data.data.hasMore).toBe(false);
+      expect(data.data.nextCursor).toBeNull();
     });
 
     it("returns 500 when fetchOnChainPayments throws", async () => {

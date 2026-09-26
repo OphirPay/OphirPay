@@ -440,10 +440,13 @@ export interface OnChainPayment {
 /**
  * Read the most recent on-chain payment records from OphirPayContract.
  * Public chain data — reads via Soroban simulation, no wallet signature required.
+ * Returns payments in descending sequence order (newest first).
+ * When `cursorId` is provided, fetches records strictly before `cursorId` (ID < cursorId).
  */
 export async function fetchOnChainPayments(
   limit = 20,
-  sourcePublicKey?: string
+  sourcePublicKey?: string,
+  cursorId?: number
 ): Promise<{ payments: OnChainPayment[]; total: number }> {
   const src = sourcePublicKey || CHAIN_READ_SOURCE;
   const contractId = OPHIRPAY_CONTRACT_ID;
@@ -469,9 +472,18 @@ export async function fetchOnChainPayments(
   };
 
   const total = await readCount();
+  if (total === 0) {
+    return { payments: [], total: 0 };
+  }
+
+  const maxId = typeof cursorId === "number" ? Math.min(total, cursorId - 1) : total;
+  if (maxId < 1) {
+    return { payments: [], total };
+  }
+
   const payments: OnChainPayment[] = [];
-  const start = Math.max(1, total - limit + 1);
-  const ids = Array.from({ length: total - start + 1 }, (_, i) => start + i);
+  const start = Math.max(1, maxId - limit + 1);
+  const ids = Array.from({ length: maxId - start + 1 }, (_, i) => start + i);
 
   const readPayment = async (id: number): Promise<OnChainPayment | null> => {
     const tx = new TransactionBuilder(account, {

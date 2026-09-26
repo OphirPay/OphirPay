@@ -70,6 +70,7 @@
 - [🧭 System Architecture](#-system-architecture)
 - [⚡ Quick Start](#-quick-start)
 - [🛠 Local Development Guide](docs/LOCAL_DEV.md)
+- [🎭 Demo Mode & Demo Environment](docs/DEMO_MODE.md)
 - [🔐 Wallet Integration](#-wallet-integration)
 - [📡 Real-Time Events](#-real-time-events)
 - [🧪 Smart Contracts](#-smart-contracts)
@@ -157,6 +158,8 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 *11 scenes: Problem → Live Dashboard → Vercel Deployment → Soroban Contracts → Send Payment → Real-Time Events → GitHub README → CI Pipeline → Multisig Security → Open Source → Outro*
 
 **▶️ Watch on [Loom](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)** · [Watch on Vercel](https://ophirpay.vercel.app/demo.mp4)
+
+> 🎭 **Preparing or reviewing a demo?** See [docs/DEMO_MODE.md](docs/DEMO_MODE.md) for what `NEXT_PUBLIC_DEMO_MODE` actually changes today, the seeded demo data, teardown steps, and the screenshot/video capture workflow.
 
 </div>
 

@@ -5,6 +5,7 @@ import {
   Suspense,
   startTransition,
   useCallback,
+  useEffect,
   useMemo,
   useState,
   useOptimistic,
@@ -32,7 +33,12 @@ import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
 import { useXlmPrice } from "@/hooks/usePrice";
 import { convertXlmToUsd, formatFiatAmount } from "@/lib/price";
 import {
-  parsePaymentSort,
+  parsePaymentQueryParams,
+  buildShareablePaymentUrl,
+  ALLOWED_PAGE_SIZES,
+  DEFAULT_PAGE_SIZE,
+} from "@/lib/payment-filters";
+import {
   applyPaymentSort,
   getSortParamUpdates,
   getNextSort,
@@ -108,9 +114,6 @@ interface OnChainData {
   total: number;
 }
 
-const ALLOWED_PAGE_SIZES = [10, 25, 50] as const;
-const DEFAULT_PAGE_SIZE = 25;
-
 // Fetch the complete on-chain dataset rather than a recent slice. Sorting and
 // pagination run client-side, so operating on a partial slice would silently
 // exclude older records — a sorted view could report the wrong minimum amount
@@ -142,11 +145,48 @@ function PaymentsClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const toast = useToast();
 
-  // Pre-populate the search box from `?q=` so filtered views are shareable
-  // (Issue #157: the search param lives in the URL).
-  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const parsedQuery = useMemo(() => parsePaymentQueryParams(searchParams), [searchParams]);
+
+  // Pre-populate search box from URL query parameter
+  const [search, setSearch] = useState(parsedQuery.search);
+
+  // Sync draft search if URL changes externally (e.g. browser Back / Forward)
+  useEffect(() => {
+    setSearch(parsedQuery.search);
+  }, [parsedQuery.search]);
+
   const debouncedSearch = useDebounce(search, 300);
+
+  const updateQuery = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null || value === "") {
+          params.delete(key);
+        } else {
+          params.set(key, value);
+        }
+      }
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [searchParams, router, pathname]
+  );
+
+  // Synchronize debounced search input with the URL
+  useEffect(() => {
+    const currentUrlSearch = searchParams.get("search") ?? searchParams.get("q") ?? "";
+    if (debouncedSearch !== currentUrlSearch) {
+      updateQuery({
+        search: debouncedSearch || null,
+        q: null, // Clear legacy param when updating
+        page: null, // Reset pagination when filter changes
+        cursor: null,
+      });
+    }
+  }, [debouncedSearch, searchParams, updateQuery]);
 
   const {
     data,
@@ -168,7 +208,6 @@ function PaymentsClient() {
   const error = fetchError ? fetchError.message : null;
 
   // ── Optimistic status updates ─────────────────────────────────
-  const toast = useToast();
   const [optimisticStatuses, setOptimisticStatuses] = useOptimistic(
     {} as Record<number, "RECORDED" | "CANCELLED">,
     (current, update: { id: number; status: "RECORDED" | "CANCELLED" }) => ({
@@ -213,37 +252,49 @@ function PaymentsClient() {
     [setOptimisticStatuses, load, toast]
   );
 
-  const statusFilter = searchParams.get("status") ?? "";
-  const dateFrom = searchParams.get("dateFrom") ?? "";
-  const dateTo = searchParams.get("dateTo") ?? "";
-  const assetFilter = searchParams.get("asset") ?? "";
+  const statusFilter = parsedQuery.status;
+  const dateFrom = parsedQuery.dateFrom;
+  const dateTo = parsedQuery.dateTo;
+  const assetFilter = parsedQuery.asset;
+
+  // Available unique assets from records
+  const availableAssets = useMemo(() => {
+    const assets = new Set<string>(["XLM"]);
+    for (const p of payments) {
+      if (p.assetCode) assets.add(p.assetCode.toUpperCase());
+    }
+    return Array.from(assets).sort();
+  }, [payments]);
 
   // Client-side search/filter
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase();
     return payments.filter(
       (p) =>
-        (!q || p.payer.toLowerCase().includes(q) || p.payee.toLowerCase().includes(q) || p.txHash.toLowerCase().includes(q) || String(p.id).includes(q)) &&
+        (!q ||
+          p.payer.toLowerCase().includes(q) ||
+          p.payee.toLowerCase().includes(q) ||
+          p.txHash.toLowerCase().includes(q) ||
+          String(p.id).includes(q)) &&
         (!statusFilter || getStatus(p) === statusFilter) &&
-        (!dateFrom || (p.timestamp !== undefined && p.timestamp >= Math.floor(new Date(`${dateFrom}T00:00:00`).getTime() / 1000))) &&
-        (!dateTo || (p.timestamp !== undefined && p.timestamp <= Math.floor(new Date(`${dateTo}T23:59:59.999`).getTime() / 1000))) &&
-        (!assetFilter || (p.assetCode ?? "XLM") === assetFilter)
+        (!dateFrom ||
+          (p.timestamp !== undefined &&
+            p.timestamp >= Math.floor(new Date(`${dateFrom}T00:00:00`).getTime() / 1000))) &&
+        (!dateTo ||
+          (p.timestamp !== undefined &&
+            p.timestamp <= Math.floor(new Date(`${dateTo}T23:59:59.999`).getTime() / 1000))) &&
+        (!assetFilter || (p.assetCode ?? "XLM").toUpperCase() === assetFilter)
     );
   }, [payments, debouncedSearch, statusFilter, dateFrom, dateTo, assetFilter, getStatus]);
 
   // Client-side pagination — page and page size are persisted in the URL
   // search params so filtered/paginated views are shareable.
-  const pageParam = Number.parseInt(searchParams.get("page") ?? "", 10);
-  const page = Number.isFinite(pageParam) && pageParam >= 1 ? pageParam : 1;
-
-  const pageSizeParam = Number.parseInt(searchParams.get("pageSize") ?? "", 10);
-  const pageSize = (ALLOWED_PAGE_SIZES as readonly number[]).includes(pageSizeParam)
-    ? pageSizeParam
-    : DEFAULT_PAGE_SIZE;
+  const page = parsedQuery.page;
+  const pageSize = parsedQuery.pageSize;
 
   // Column sorting — state lives in the URL (`sort` + `dir`) so sorted views
   // are shareable and compose with the search filter and pagination.
-  const sort = parsePaymentSort(searchParams);
+  const sort = parsedQuery.sort;
   const sorted = useMemo(() => applyPaymentSort(filtered, sort), [filtered, sort]);
 
   const toggleSort = (key: PaymentSortKey) =>
@@ -251,6 +302,7 @@ function PaymentsClient() {
       ...getSortParamUpdates(getNextSort(sort, key)),
       // Re-sorting changes the row order — jump back to the first page.
       page: null,
+      cursor: null,
     });
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
@@ -263,23 +315,99 @@ function PaymentsClient() {
   const { activeIndex, getRowProps, onRowsKeyDown, tbodyRef } =
     useTableKeyboardNavigation(paginated.length);
 
-  const updateQuery = (updates: Record<string, string | null>) => {
-    const params = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(updates)) {
-      if (value === null) params.delete(key);
-      else params.set(key, value);
-    }
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
-
-  const goToPage = (target: number) => updateQuery({ page: target <= 1 ? null : String(target) });
+  const goToPage = (target: number) =>
+    updateQuery({ page: target <= 1 ? null : String(target) });
 
   const changePageSize = (size: number) =>
     updateQuery({
       pageSize: size === DEFAULT_PAGE_SIZE ? null : String(size),
       page: null,
+      cursor: null,
     });
+
+  const handleStatusChange = (newStatus: string) => {
+    updateQuery({
+      status: newStatus || null,
+      page: null,
+      cursor: null,
+    });
+  };
+
+  const handleAssetChange = (newAsset: string) => {
+    updateQuery({
+      asset: newAsset || null,
+      page: null,
+      cursor: null,
+    });
+  };
+
+  const handleDateFromChange = (newDate: string) => {
+    updateQuery({
+      dateFrom: newDate || null,
+      page: null,
+      cursor: null,
+    });
+  };
+
+  const handleDateToChange = (newDate: string) => {
+    updateQuery({
+      dateTo: newDate || null,
+      page: null,
+      cursor: null,
+    });
+  };
+
+  const handleResetFilters = () => {
+    setSearch("");
+    updateQuery({
+      search: null,
+      q: null,
+      status: null,
+      asset: null,
+      dateFrom: null,
+      dateTo: null,
+      sort: null,
+      dir: null,
+      page: null,
+      cursor: null,
+    });
+  };
+
+  const handleCleanInvalidParams = () => {
+    const updates: Record<string, string | null> = {};
+    for (const key of parsedQuery.invalidParams) {
+      updates[key] = null;
+    }
+    updateQuery(updates);
+  };
+
+  const handleShare = async () => {
+    const url = buildShareablePaymentUrl(
+      typeof window !== "undefined" ? window.location.origin + pathname : pathname,
+      {
+        search: parsedQuery.search,
+        status: parsedQuery.status,
+        asset: parsedQuery.asset,
+        dateFrom: parsedQuery.dateFrom,
+        dateTo: parsedQuery.dateTo,
+        sort: parsedQuery.sort,
+      }
+    );
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Shareable link copied to clipboard");
+    } catch {
+      toast.error("Failed to copy link to clipboard");
+    }
+  };
+
+  const hasActiveFilters = Boolean(
+    parsedQuery.search ||
+      parsedQuery.status ||
+      parsedQuery.asset ||
+      parsedQuery.dateFrom ||
+      parsedQuery.dateTo
+  );
 
   const { currency, setCurrency } = useCurrencyDisplay();
   const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
@@ -312,14 +440,10 @@ function PaymentsClient() {
   };
 
   const handleExport = async () => {
-    // Prefer the server-side export (GET /api/payments/export): it applies the
-    // CURRENT search filter to the full DB-backed record set, so the CSV is
-    // not limited to the rows loaded into the page. It falls back to a
-    // client-side export of the loaded rows when there is no server session
-    // (e.g. wallet connected but the session cookie expired) so the button
-    // never dead-ends in a 401.
+    // Prefer server-side export with active search and status filters
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
+    if (statusFilter) params.set("status", statusFilter);
 
     try {
       const res = await fetch(`/api/payments/export?${params.toString()}`, {
@@ -338,17 +462,20 @@ function PaymentsClient() {
         return;
       }
     } catch {
-      // Network failure or missing session — fall through to the client-side
-      // export below.
+      // Network failure or missing session — fall through to client-side
     }
-    exportToCsv(filtered, [
-      { key: "id", header: "Payment ID" },
-      { key: "payer", header: "Payer" },
-      { key: "payee", header: "Payee" },
-      { key: "amountStroops", header: "Amount (Stroops)" },
-      { key: "metadata", header: "Metadata" },
-      { key: "txHash", header: "Tx Hash" },
-    ], { filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv` });
+    exportToCsv(
+      filtered,
+      [
+        { key: "id", header: "Payment ID" },
+        { key: "payer", header: "Payer" },
+        { key: "payee", header: "Payee" },
+        { key: "amountStroops", header: "Amount (Stroops)" },
+        { key: "metadata", header: "Metadata" },
+        { key: "txHash", header: "Tx Hash" },
+      ],
+      { filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv` }
+    );
   };
 
   return (
@@ -435,29 +562,158 @@ function PaymentsClient() {
         </div>
       </div>
 
-      {/* Search bar */}
-      <div className="relative max-w-sm">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+      {/* Invalid URL query parameters warning notice */}
+      {parsedQuery.invalidParams.length > 0 && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="flex items-center justify-between gap-3 p-3.5 rounded-lg border border-amber-200 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-sm text-amber-800 dark:text-amber-300"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
-          />
-        </svg>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by address, hash, or ID..."
-          className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
-        />
+          <div className="flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="w-5 h-5 flex-shrink-0 text-amber-500"
+            >
+              <path
+                fillRule="evenodd"
+                d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>
+              Invalid filter parameter{parsedQuery.invalidParams.length > 1 ? "s" : ""} ignored:{" "}
+              <span className="font-mono font-medium">{parsedQuery.invalidParams.join(", ")}</span>.
+              Safe defaults applied.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleCleanInvalidParams}
+            className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 text-amber-900 dark:text-amber-100 transition-colors"
+          >
+            Clean URL
+          </button>
+        </div>
+      )}
+
+      {/* Filter toolbar */}
+      <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+        <div className="flex flex-wrap items-center gap-2.5 flex-1">
+          {/* Search bar */}
+          <div className="relative min-w-[240px] max-w-sm flex-1">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+              />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by address, hash, or ID..."
+              aria-label="Search payments"
+              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+            />
+          </div>
+
+          {/* Status selector */}
+          <select
+            value={parsedQuery.status}
+            onChange={(e) => handleStatusChange(e.target.value)}
+            aria-label="Filter by status"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+          >
+            <option value="">All Statuses</option>
+            <option value="RECORDED">RECORDED</option>
+            <option value="CANCELLED">CANCELLED</option>
+          </select>
+
+          {/* Asset selector */}
+          <select
+            value={parsedQuery.asset}
+            onChange={(e) => handleAssetChange(e.target.value)}
+            aria-label="Filter by asset"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+          >
+            <option value="">All Assets</option>
+            {availableAssets.map((asset) => (
+              <option key={asset} value={asset}>
+                {asset}
+              </option>
+            ))}
+          </select>
+
+          {/* Date Range */}
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={parsedQuery.dateFrom}
+              onChange={(e) => handleDateFromChange(e.target.value)}
+              aria-label="Date from"
+              title="Date from"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+            />
+            <span className="text-gray-400 text-xs">to</span>
+            <input
+              type="date"
+              value={parsedQuery.dateTo}
+              onChange={(e) => handleDateToChange(e.target.value)}
+              aria-label="Date to"
+              title="Date to"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+            />
+          </div>
+
+          {/* Reset Filters button */}
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              aria-label="Reset all filters"
+              className="px-3 py-2 text-sm text-ophir-600 dark:text-ophir-400 hover:text-ophir-700 dark:hover:text-ophir-300 font-medium transition-colors"
+            >
+              Reset Filters
+            </button>
+          )}
+        </div>
+
+        {/* Share Button */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleShare}
+            aria-label="Share filtered view"
+            title="Copy shareable link"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-4 h-4 text-gray-500 dark:text-gray-400"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"
+              />
+            </svg>
+            Share
+          </button>
+        </div>
       </div>
 
       {/* Chain record count */}

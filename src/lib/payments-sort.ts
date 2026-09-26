@@ -37,18 +37,58 @@ export function getPaymentStatus(
   return payment.metadata === "CANCELLED" ? "CANCELLED" : "RECORDED";
 }
 
+export const PAYMENT_SORT_DIRS: readonly PaymentSortDir[] = ["asc", "desc"];
+
+export function isValidPaymentSortKey(key: string | null): key is PaymentSortKey {
+  return key !== null && (PAYMENT_SORT_KEYS as readonly string[]).includes(key);
+}
+
+export function isValidPaymentSortDir(dir: string | null): dir is PaymentSortDir {
+  return dir !== null && (PAYMENT_SORT_DIRS as readonly string[]).includes(dir);
+}
+
+/**
+ * Validate sort and dir parameters, reporting any invalid values found.
+ */
+export function validatePaymentSortParams(params: URLSearchParams): {
+  sort: PaymentSort;
+  invalidParams: string[];
+} {
+  const rawKey = params.get("sort");
+  const rawDir = params.get("dir");
+  const invalidParams: string[] = [];
+
+  let key: PaymentSortKey | null = null;
+  if (rawKey !== null) {
+    if (isValidPaymentSortKey(rawKey)) {
+      key = rawKey;
+    } else {
+      invalidParams.push("sort");
+    }
+  }
+
+  let dir: PaymentSortDir = "asc";
+  if (rawDir !== null) {
+    if (isValidPaymentSortDir(rawDir)) {
+      dir = rawDir;
+    } else {
+      invalidParams.push("dir");
+    }
+  }
+
+  return {
+    sort: key ? { key, dir } : DEFAULT_SORT,
+    invalidParams,
+  };
+}
+
 /**
  * Read and validate the `sort` / `dir` search params.
  * Unknown keys or directions fall back to defaults instead of throwing,
  * so a hand-edited URL can never break the table.
  */
 export function parsePaymentSort(params: URLSearchParams): PaymentSort {
-  const key = params.get("sort") as PaymentSortKey | null;
-  if (!key || !(PAYMENT_SORT_KEYS as readonly string[]).includes(key)) {
-    return DEFAULT_SORT;
-  }
-  const dir = params.get("dir") === "desc" ? "desc" : "asc";
-  return { key, dir };
+  return validatePaymentSortParams(params).sort;
 }
 
 /**

@@ -51,3 +51,25 @@ export function getEnumParam<T extends string>(
   if (raw && (allowed as readonly string[]).includes(raw)) return raw as T;
   return defaultValue;
 }
+
+/** Check if a string matches YYYY-MM-DD date format and is a valid calendar date. */
+export function isValidDateString(dateStr: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const parsed = new Date(`${dateStr}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(dateStr);
+}
+
+/** Remove empty or specified keys from URLSearchParams, returning a new instance. */
+export function cleanSearchParams(
+  params: URLSearchParams,
+  keysToRemove: string[] = []
+): URLSearchParams {
+  const next = new URLSearchParams();
+  for (const [key, value] of params.entries()) {
+    if (!keysToRemove.includes(key) && value !== "" && value !== null && value !== undefined) {
+      next.append(key, value);
+    }
+  }
+  return next;
+}
+

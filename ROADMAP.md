@@ -35,7 +35,7 @@ fully-green repository.
 
 ### Up Next
 - [ ] Contract modularization (split into Payment/Escrow/Governance modules)
-- [ ] Redis-backed distributed rate limiting
+- [x] Redis-backed distributed rate limiting (`REDIS_URL`; https REST for the edge global limit, redis:// via ioredis for Node buckets — #703)
 - [ ] Bug bounty program on Immunefi
 
 ## Q4 2026

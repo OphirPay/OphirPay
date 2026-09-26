@@ -25,7 +25,10 @@ cd contracts/ophirpay && cargo test   # Rust contract test suite runs immediatel
 
 ### 💻 Manual Local Setup
 
-1. Ensure you have Node.js 20 installed (see `.nvmrc`)
+1. Ensure you have **Node.js 20** installed (see `.nvmrc`) — `npm install`
+   runs a preflight (`scripts/check-node.mjs`) and aborts with an actionable
+   message on any other major, so there is no ambiguity about the supported
+   runtime
 2. Fork the repository
 3. Clone your fork: `git clone https://github.com/YOUR_USERNAME/OphirPay.git`
 4. Install dependencies: `npm install`
@@ -43,47 +46,121 @@ cd contracts/ophirpay && cargo test   # Rust contract test suite runs immediatel
 > WASM, Freighter, memo, trustline, path payments, sponsored reserves, and
 > more).
 
+### Supported toolchain
+
+| Tool | Supported | Declared in |
+|---|---|---|
+| Node.js | **20.x** | `.nvmrc` (`20`), `package.json` → `engines.node` (`20.x`), and `node-version-file: .nvmrc` in every workflow |
+| npm | **10.x** | `package.json` → `packageManager` (`npm@10.8.2`) |
+
+`.nvmrc` is the single source of truth. `npm install` / `npm ci` run the
+`preinstall` hook first, so an unsupported Node major stops immediately with:
+
+```
+[ERROR] Unsupported Node.js version.
+  required : Node 20.x (.nvmrc → "20", package.json engines.node → "20.x", packageManager → "npm@10.8.2")
+  running  : Node 24.14.0
+
+Switch to the supported version and re-run the install:
+  nvm install && nvm use        # reads .nvmrc
+```
+
+A running npm major that differs from `packageManager` is reported as a
+warning rather than an error (a newer npm on Node 20 still installs the same
+lockfile), but please install with the pinned manager to avoid lockfile churn.
+
+**Bumping the version** — change `.nvmrc` and `engines.node` together, then run
+`npm test -- node-preflight`. `src/__tests__/node-preflight.test.ts` fails if
+`.nvmrc`, `engines.node`, `packageManager` or any workflow's
+`node-version-file` disagree, so a half-finished bump cannot merge.
+
 ## Development Workflow
 
 - **Branch naming**: `feat/feature-name`, `fix/bug-description`, `docs/what-changed`, `ci/what-changed`, `test/what-changed`
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org)
 - **Before submitting**: Run `npm run ci` (typecheck → lint → test → build)
 
+### Dependency Updates
+
+[Dependabot](.github/dependabot.yml) checks the `npm` (root `package-lock.json`),
+`cargo` (`contracts/ophirpay` and `contracts/emitter`) and `github-actions`
+ecosystems once a week.
+
+- Minor and patch bumps in an ecosystem are grouped into a **single** PR; major
+  bumps arrive individually so they can be reviewed on their own.
+- Update PRs are labelled `dependencies` and use a `chore(deps)` commit prefix.
+- Review one like any other PR: wait for CI (the `contract-wasm` job matters for
+  Cargo bumps) and run it locally for security-sensitive packages. If a bump has
+  breaking changes or fails CI, coordinate with the team before merging instead
+  of force-landing it.
+
+### Issue triage & stale policy
+
+The [stale workflow](.github/workflows/stale.yml) runs every Monday and closes
+issues that have been inactive for **60 days + a 14-day grace period**. Bounty
+work is exempt, so the wave backlog does not get closed out from under a
+contributor:
+
+| Signal on the issue | Result |
+|---|---|
+| Label `bounty` or `Stellar Wave` | **Never** marked stale — a wave round may outlive the inactivity window |
+| Any assignee (claimed work) | **Never** marked stale — the claim is the activity signal |
+| Label `pinned`, `security`, `blocked`, `good first issue`, `help wanted` | **Never** marked stale |
+| Any milestone | Exempt (`exempt-all-issue-milestones`) |
+| Anything else, unassigned | Marked `stale` after 60 days, closed 14 days later — commenting or pushing clears it |
+
+Pull requests follow a shorter clock (30 days stale, 7 days to close); `pinned`,
+`blocked` and `security` PRs plus drafts are exempt.
+
+When adding a new long-running programme (a wave, a funded milestone, a
+migration epic), add its label to `exempt-issue-labels` in
+`.github/workflows/stale.yml` **and** to the table above so maintainers can see
+the policy in one place.
+
 ### Adding or changing an API endpoint
 
 Before adding or modifying an API endpoint, read the [API Endpoint Guide](docs/API_GUIDE.md). It documents the mandatory conventions: file structure, Zod validation, the error-handling pattern, auth middleware usage, the response envelope, rate-limit integration, a copy-pasteable worked example, and a pre-merge checklist.
 
-## 15-Job CI/CD Pipeline
+## CI/CD Pipeline
 
-Every PR triggers 15 independent CI/CD checks across quality, testing, security, and DevOps:
+See [`docs/MERGE_GATE.md`](docs/MERGE_GATE.md) for the authoritative table of
+required pull-request checks, local commands, and scheduled workflows that do
+not block merges.
 
-| # | Job | Runs on PR | Blocks merge |
+Every PR triggers the following independent CI/CD checks across quality,
+testing, security, and DevOps. The jobs in `.github/workflows/ci.yml` are the
+merge gate, and `npm run ci` runs the same frontend chain locally
+(typecheck → lint → test → build → deploy-config guards) so the two cannot
+drift apart again.
+
+| # | Job (workflow) | Runs on PR | Blocks merge |
 |---|---|---|---|
-| 1 | Lint — ESLint | ✅ | ✅ Required |
-| 2 | TypeCheck — tsc | ✅ | ✅ Required |
-| 3 | Unit Tests — Vitest | ✅ | ✅ Required |
-| 4 | Coverage — Vitest | ✅ | ⚠️ Informational |
-| 5 | Contract WASM Build | ✅ | ✅ Required |
-| 6 | Next.js Build | ✅ | ✅ Required |
-| 7 | E2E — Chromium | ✅ | ✅ Required |
-| 8 | E2E — Firefox | ✅ | ✅ Required |
-| 9 | Prisma Validate | ✅ | ✅ Required |
-| 10 | Docker Build | ✅ | ⚠️ Informational |
-| 11 | K8s Validate | ✅ | ✅ Required |
-| 12 | Helm Lint | ✅ | ✅ Required |
-| 13 | Secret Scan — Gitleaks | ✅ | ✅ Required |
-| 14 | npm Audit | ✅ | ⚠️ Advisory |
-| 15 | PR Auto-Label | ✅ | ℹ️ No block |
+| 1 | `lint` — ESLint `--max-warnings 0` (`ci.yml`) | ✅ | ✅ Required |
+| 2 | `typecheck` — tsc (`ci.yml`) | ✅ | ✅ Required |
+| 3 | `unit-tests` — Vitest (`ci.yml`) | ✅ | ✅ Required |
+| 4 | `build` — Next.js production build (`ci.yml`) | ✅ | ✅ Required |
+| 5 | `contract-wasm` — Soroban WASM build + tests (`ci.yml`) | ✅ | ✅ Required |
+| 6 | `deploy-config` — deploy-script config guards (`ci.yml`) | ✅ | ✅ Required |
+| 7 | `secrets-scan` — Gitleaks (`ci.yml`) | ✅ | ✅ Required |
+| 8 | `helm-lint` — Helm lint + render (`ci.yml`) | ✅ | ✅ Required |
+| 9 | `prisma` — schema + migration replay (`prisma-ci.yml`) | ✅ (prisma paths) | ✅ Required |
+| 10 | `contract-regression` — WASM size guardrails (`contract-regression.yml`) | ✅ (contract paths) | ✅ Required |
+| 11 | `enforce-base` — integration-branch guard (`enforce-integration-branch.yml`) | ✅ | ✅ Required |
+
+> **Batch mode**: while the `integration/staging` branch exists, every PR must
+> target it instead of `main` (enforced by `enforce-integration-branch.yml`),
+> and `ci.yml` runs on PRs against that branch as well as `main`.
 
 ### Branch Protection Rules (recommended)
 
-Configure these in **Settings → Branches → Branch protection rules** for `main`:
+Configure these in **Settings → Branches → Branch protection rules** for `main`
+(and `integration/staging` while batch mode is active):
 
 - **Require a pull request before merging**: ✅
 - **Require approvals**: 1 minimum
 - **Dismiss stale pull request approvals when new commits are pushed**: ✅
 - **Require status checks to pass before merging**: ✅
-  - Required checks: `lint`, `typecheck`, `unit-tests`, `contract-wasm`, `next-build`, `e2e-chromium`, `e2e-firefox`, `prisma-validate`, `k8s-validate`, `helm-lint`, `secret-scan`
+  - Required checks: `lint`, `typecheck`, `unit-tests`, `build`, `contract-wasm`, `deploy-config`, `secrets-scan`, `helm-lint`
 - **Require conversation resolution before merging**: ✅
 - **Require signed commits**: Recommended
 - **Require linear history**: Recommended
@@ -91,7 +168,9 @@ Configure these in **Settings → Branches → Branch protection rules** for `ma
 
 ### Merge Requirements Summary
 
-> A PR must pass **11 of 15** checks (excludes coverage, npm audit, Docker build, PR labeler) and have at least **1 approving review** before it can be merged to `main`.
+> A PR must pass every required check above (and the path-scoped `prisma`,
+> `contract-regression` and `enforce-base` checks) and have at least
+> **1 approving review** before it can be merged.
 
 ## Testing
 
@@ -102,7 +181,76 @@ npm run coverage      # Coverage report
 npm run typecheck     # TypeScript check
 npm run lint          # ESLint
 npm run test:openapi  # OpenAPI spec ↔ implementation conformance (drift)
+npm run test:e2e      # E2E tests (requires a running server at E2E_BASE_URL)
+npm run test:visual   # Visual regression tests
+npm run test:visual:update # Update visual baselines
 ```
+
+### Coverage ratchet
+
+Coverage is enforced by **per-directory budgets**, not one global number
+(`vitest.config.ts`). A single 80% global threshold was simultaneously too
+strict for thin, presentational surface area and too lenient for the
+money-handling API and security modules: a well-covered component could
+subsidise a thinly-covered auth or webhook module and keep the aggregate green.
+
+The measured surface is `src/lib/**`, `src/components/**`, `src/hooks/**` and
+`src/app/**`. `src/app/api/**` is included exactly once, as part of
+`src/app/**` — do not add a second, overlapping include entry.
+
+| Band | Glob(s) | Baseline (st / br / fn / ln) | Budget |
+|---|---|---|---|
+| 1 · API route handlers | `src/app/api/**` | 71.3 / 68.9 / 70.4 / 74.4 | 71 / 68 / 70 / 74 |
+| 1 · Security modules | `src/lib/{auth-rate-limit,auth-session,challenge,csrf,csrf-route-registry,crypto,lookup-rate-limit,sanitize,session,validation-schemas,webhook-url-guard}.ts` | 90.4 / 90.1 / 94.1 / 92.5 | 90 / 89 / 93 / 92 |
+| 2 · Shared lib logic | `src/lib/**` | 87.8 / 84.7 / 91.2 / 89.2 | 87 / 84 / 90 / 89 |
+| 3 · UI components | `src/components/**` | 70.4 / 75.0 / 69.1 / 71.5 | 70 / 74 / 69 / 71 |
+| 3 · Hooks | `src/hooks/**` | 95.3 / 82.5 / 95.7 / 97.1 | 95 / 82 / 95 / 97 |
+| 3 · App pages | `src/app/**` | 55.2 / 52.5 / 43.6 / 56.9 | 55 / 52 / 43 / 56 |
+
+A file must clear **every band whose glob it matches**, so the strictest band
+wins. That is what makes a security module's budget bite even though it also
+sits inside the broader `src/lib/**` band.
+
+**The ratchet only turns one way: budgets may rise, never fall.** When a change
+raises a band's measured coverage, bump that band's numbers in
+`vitest.config.ts` in the same PR. Lowering a budget to make a red build green is
+a review-blocking change — fix the coverage or document the exception
+explicitly in the PR description instead. Baselines in the table above are
+refreshed whenever a band's budget moves.
+
+```bash
+# Run the gate locally exactly as CI does
+npm run coverage
+```
+
+### Bundle-size budget
+
+The client JavaScript has a committed per-route budget in
+[`bundle-budget.json`](bundle-budget.json), enforced in CI by
+`scripts/check-bundle-budget.mjs` after the production build. The script reads
+the App Router client-reference manifests (`.next/server/app/**`), unions each
+route's first-load chunks, gzip-sizes them and fails with a per-route breakdown
+when a route exceeds its budget. The table is also appended to the GitHub job
+summary so reviewers see the delta on every PR.
+
+```bash
+npm run build         # produces .next
+npm run bundle:check  # enforce the committed budgets
+
+# Interactive treemap (opt-in; webpack-only, so it does not affect normal builds)
+npm run analyze       # writes .next/analyze/*.html
+```
+
+Budgets are raised **deliberately** in a PR, with a reason. Do not bump a budget
+just to make a red build green — trim the route instead.
+
+### Dark-mode colour guard
+
+`src/__tests__/dark-mode-color-guard.test.ts` fails CI if the colour-critical
+components (status badges, toasts, the payment timeline, the analytics charts)
+introduce a raw colour literal such as `text-[#ff0000]` or
+`style={{ color: "#3b82f6" }}`. Use theme tokens (CSS variables) or a Tailwind
+pair (`text-red-500 dark:text-red-400`) so the colour adapts to dark mode.
 
 ## Changelog
 
@@ -133,18 +281,20 @@ cd contracts/emitter && cargo test    # 6 emitter tests
 ```
 
 Contract WASM size is enforced in CI (hard limit: 128 KB per contract, the
-Soroban protocol limit) and a per-function gas report is uploaded as a build
-artifact — see the `contract-gas-report` job in `.github/workflows/ci.yml`.
+Soroban protocol limit) by the `contract-regression` job in
+`.github/workflows/contract-regression.yml`.
 
 ## Pull Request Process
 
-1. Create a branch from `main`: `feat/my-feature` or `fix/my-bug`
+1. Create a branch from the branch the issue targets (`main`, or
+   `integration/staging` while batch mode is active): `feat/my-feature` or
+   `fix/my-bug`
 2. Make your changes, following existing code conventions
 3. Run `npm run ci` locally to verify everything passes
-4. Push and open a PR — the 15-job CI pipeline runs automatically
-5. Ensure all 11 required checks pass (✅ green)
+4. Push and open a PR against that branch — CI runs automatically
+5. Ensure all required checks pass (✅ green)
 6. Request review from a maintainer (CODEOWNERS auto-assigns reviewers)
-7. Once approved and all checks pass, squash-merge to `main`
+7. Once approved and all checks pass, squash-merge to the target branch
 
 ## Issue Labels & Their Meanings
 
@@ -212,7 +362,7 @@ are the contract for payout — the PR must satisfy them exactly.
    conventions (Conventional Commits, `npm run ci` green, tests added).
 6. **Open the PR** referencing the issue with **`Closes #<number>`** in the
    description so the issue auto-closes on merge.
-7. **Make sure CI is green** — all 11 required checks must pass.
+7. **Make sure CI is green** — all required checks must pass.
 8. **Request review** from a maintainer and respond to feedback.
 9. **Merge** — once approved and merged, the bounty issue closes and payout is
    processed per the program's terms.
@@ -232,7 +382,7 @@ are the contract for payout — the PR must satisfy them exactly.
 
 A PR is **done** — ready for review and merge — when **all** of the following
 hold. This mirrors the [pull request template](.github/pull_request_template.md)
-and the 11 required CI checks.
+and the required CI checks listed above.
 
 ### Functional & code requirements
 
@@ -270,7 +420,7 @@ and the 11 required CI checks.
 - [ ] `npm run ci` passes locally (typecheck → lint → test → build)
 - [ ] PR description explains **what** changed and **why**, references the
       issue with `Closes #…`, and includes a test plan
-- [ ] All 11 required CI checks are green on the PR
+- [ ] All required CI checks are green on the PR
 - [ ] At least 1 maintainer approval obtained before merge
 
 > If any box can't be ticked, say so explicitly in the PR description with the

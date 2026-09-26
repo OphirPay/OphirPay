@@ -62,10 +62,14 @@ function setConfig(
   signers: string[],
   enabled: boolean,
 ): void {
-  if (threshold < 1 || threshold > signers.length) {
-    throw new Error("InvalidAmount: threshold must be 1..signers.length");
+  const uniqueSigners = Array.from(new Set(signers));
+  if (uniqueSigners.length > 50) {
+    throw new Error("MaxSignersExceeded");
   }
-  state.config = { threshold, signers, enabled };
+  if (threshold < 1 || threshold > uniqueSigners.length) {
+    throw new Error("InvalidAmount"); // or whatever error is expected
+  }
+  state.config = { threshold, signers: uniqueSigners, enabled };
 }
 
 function propose(state: SimState, proposer: string, payee: string, amount: number): number {
@@ -508,6 +512,34 @@ describe("P15 – approval count bounded by unique signers", () => {
       // Approvals in the request must exactly match uniqueApprovals
       expect(state.requests.get(reqId)!.approvals.length).toBe(uniqueApprovals.length);
       expect(state.requests.get(reqId)!.approvals.length).toBeLessThanOrEqual(m);
+    }
+  });
+});
+
+// ── P16: Duplicate signers in config are deduplicated ──────────────────
+describe("P16 – duplicate signers in config", () => {
+  it("deduplicates the initial signer list and enforces threshold against unique signers", () => {
+    for (let i = 0; i < ITERATIONS; i++) {
+      const m = rng.int(1, 10);
+      const signers = makeSigners(m);
+      // Create duplicate signers
+      const signersWithDups = [...signers, ...signers];
+      
+      const threshold = m;
+      const state = createState();
+      setConfig(state, threshold, signersWithDups, true);
+
+      // The configured signers should be deduplicated
+      expect(state.config!.signers.length).toBe(m);
+
+      // Threshold > unique signers should be rejected
+      const state2 = createState();
+      expect(() => setConfig(state2, m + 1, signersWithDups, true)).toThrow("InvalidAmount");
+      
+      // Too many signers (unique > 50) should be rejected
+      const tooManySigners = makeSigners(51);
+      const state3 = createState();
+      expect(() => setConfig(state3, 1, tooManySigners, true)).toThrow("MaxSignersExceeded");
     }
   });
 });

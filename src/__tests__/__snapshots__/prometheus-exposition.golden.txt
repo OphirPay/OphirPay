@@ -1,0 +1,90 @@
+# HELP ophirpay_http_requests_total Total HTTP requests served
+# TYPE ophirpay_http_requests_total counter
+ophirpay_http_requests_total 0
+
+# HELP ophirpay_payments_created_total Total payments created
+# TYPE ophirpay_payments_created_total counter
+ophirpay_payments_created_total 0
+
+# HELP ophirpay_payments_failed_total Total failed payment attempts
+# TYPE ophirpay_payments_failed_total counter
+ophirpay_payments_failed_total 0
+
+# HELP ophirpay_batches_processed_total Total batch payments processed
+# TYPE ophirpay_batches_processed_total counter
+ophirpay_batches_processed_total 0
+
+# HELP ophirpay_webhooks_delivered_total Total webhooks delivered
+# TYPE ophirpay_webhooks_delivered_total counter
+ophirpay_webhooks_delivered_total 0
+
+# HELP ophirpay_webhooks_failed_total Total webhooks that failed delivery
+# TYPE ophirpay_webhooks_failed_total counter
+ophirpay_webhooks_failed_total 0
+
+# HELP ophirpay_delivery_attempts_total Total delivery attempts by delivery type and attempt number
+# TYPE ophirpay_delivery_attempts_total counter
+
+# HELP ophirpay_delivery_final_outcomes_total Total terminal delivery outcomes by delivery type, final attempt number, and outcome
+# TYPE ophirpay_delivery_final_outcomes_total counter
+
+# HELP ophirpay_db_query_duration_seconds Database query duration
+# TYPE ophirpay_db_query_duration_seconds summary
+ophirpay_db_query_duration_seconds_sum 0
+ophirpay_db_query_duration_seconds_count 0
+
+# HELP ophirpay_endpoint_request_duration_seconds Request latency histogram per endpoint and status class
+# TYPE ophirpay_endpoint_request_duration_seconds histogram
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.005"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.01"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.025"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.05"} 1
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.1"} 1
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.25"} 1
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.5"} 2
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="1"} 2
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="2.5"} 2
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="5"} 2
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="10"} 2
+ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="+Inf"} 2
+ophirpay_endpoint_request_duration_seconds_sum{method="GET",endpoint="/api/payments",status_class="2xx"} 0.35
+ophirpay_endpoint_request_duration_seconds_count{method="GET",endpoint="/api/payments",status_class="2xx"} 2
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="0.005"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="0.01"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="0.025"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="0.05"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="0.1"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="0.25"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="0.5"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="1"} 0
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="2.5"} 1
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="5"} 1
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="10"} 1
+ophirpay_endpoint_request_duration_seconds_bucket{method="POST",endpoint="/api/escape/\"\\",status_class="5xx",le="+Inf"} 1
+ophirpay_endpoint_request_duration_seconds_sum{method="POST",endpoint="/api/escape/\"\\",status_class="5xx"} 1.2
+ophirpay_endpoint_request_duration_seconds_count{method="POST",endpoint="/api/escape/\"\\",status_class="5xx"} 1
+
+# HELP ophirpay_endpoint_errors_total Error counts per endpoint and status class
+# TYPE ophirpay_endpoint_errors_total counter
+ophirpay_endpoint_errors_total{method="GET",endpoint="/api/payments",status_class="2xx"} 0
+ophirpay_endpoint_errors_total{method="POST",endpoint="/api/escape/\"\\",status_class="5xx"} 1
+
+# HELP ophirpay_info OphirPay build information
+# TYPE ophirpay_info gauge
+ophirpay_info{version="1.0.0"} 1
+
+# HELP ophirpay_process_resident_set_bytes Process resident set size in bytes
+# TYPE ophirpay_process_resident_set_bytes gauge
+ophirpay_process_resident_set_bytes 0
+
+# HELP ophirpay_process_heap_used_bytes Process heap used in bytes
+# TYPE ophirpay_process_heap_used_bytes gauge
+ophirpay_process_heap_used_bytes 0
+
+# HELP ophirpay_process_heap_total_bytes Process heap total in bytes
+# TYPE ophirpay_process_heap_total_bytes gauge
+ophirpay_process_heap_total_bytes 0
+
+# HELP ophirpay_sse_open_connections Currently open SSE event-stream connections
+# TYPE ophirpay_sse_open_connections gauge
+ophirpay_sse_open_connections 0

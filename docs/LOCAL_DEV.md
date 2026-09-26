@@ -35,6 +35,9 @@ cp .env.example .env.local
 
 ## 2. Option A — SQLite (fastest, zero external services)
 
+> Provider differences (what breaks, what differs silently, the command
+> for each provider) are in [`DATABASE_PROVIDERS.md`](./DATABASE_PROVIDERS.md).
+
 SQLite is perfect for local experiments, UI work, and running the unit-test
 suite against a real database. The production schema is PostgreSQL, so two
 **local, uncommitted** edits are required first (this is intentional — CI and
@@ -60,7 +63,7 @@ Edit `prisma/schema.prisma`:
    }
    ```
 
-2. **Drop all four `@db.Decimal(18, 7)` annotations** — SQLite has no
+2. **Drop all eight `@db.Decimal(18, 7)` annotations** — SQLite has no
    fixed-precision numeric type, so Prisma stores `Decimal` as its own
    arbitrary-precision text representation. (Search the file for
    `@db.Decimal` and delete the annotation on each occurrence.)

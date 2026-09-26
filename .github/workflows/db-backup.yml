@@ -5,6 +5,15 @@ on:
     - cron: "0 3 * * *"  # Daily at 3 AM UTC
   workflow_dispatch:      # Manual trigger
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+# A backup is not ref-scoped and must not be truncated halfway by the next tick,
+# so the group is per-workflow and cancel-in-progress is false. A manual
+# workflow_dispatch therefore queues behind an in-flight scheduled backup.
+# See CONTRIBUTING.md § "Workflow concurrency convention".
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 env:
   BACKUP_BUCKET: ophirpay-backups
   BACKUP_RETENTION_DAYS: 30

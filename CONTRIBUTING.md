@@ -130,6 +130,42 @@ drift apart again.
 > target it instead of `main` (enforced by `enforce-integration-branch.yml`),
 > and `ci.yml` runs on PRs against that branch as well as `main`.
 
+### Workflow concurrency convention
+
+Every workflow declares a top-level `concurrency` block. There are exactly two
+shapes, and each one carries the comment template below so the reason for the
+choice travels with the code:
+
+**1. Interactive — one run per ref, supersede the rest.** Use this whenever the
+workflow is triggered by `pull_request`, `pull_request_target`, `push` or
+`branch_protection_rule`. A rapid follow-up push cancels the in-flight run
+instead of stacking a duplicate:
+
+```yaml
+# ── Global Concurrency — cancel stale runs on same ref ────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+**2. Scheduled — one run at a time, never cancelled.** Use this for `schedule`
+(and `workflow_dispatch`-only) workflows. A run that mutates state or uploads an
+artifact must not be truncated halfway through by the next tick, so the group is
+per-workflow and cancellation is off. A manual dispatch simply queues:
+
+```yaml
+# ── Global Concurrency — singleton, never cancelled ───────────
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+```
+
+Keying the interactive group on `${{ github.ref }}` — rather than a bare
+`${{ github.workflow }}` — is what makes cancellation ref-scoped: pushes to two
+different branches run in parallel, while duplicate runs for the _same_ branch
+collapse to one. Never use `cancel-in-progress: true` on a scheduled workflow
+that writes to the production database or uploads a report.
+
 ### Branch Protection Rules (recommended)
 
 Configure these in **Settings → Branches → Branch protection rules** for `main`

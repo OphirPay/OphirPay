@@ -15,6 +15,15 @@ on:
       - "src/__tests__/prisma-schema-ci.test.ts"
       - ".github/workflows/prisma-ci.yml"
 
+# ── Global Concurrency — cancel stale runs on same ref ────────
+# Keyed on the ref for both the pull_request and push triggers: only the newest
+# run for a given branch matters, so superseded runs are cancelled instead of
+# each replaying the migration history against a fresh Postgres service.
+# See CONTRIBUTING.md § "Workflow concurrency convention".
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

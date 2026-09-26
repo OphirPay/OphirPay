@@ -15,6 +15,15 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+# Scheduled and not ref-scoped, so one run at a time per workflow. The scan
+# uploads a JSON artifact, so allowing it to finish beats cancelling it for a
+# manual dispatch triggered seconds later.
+# See CONTRIBUTING.md § "Workflow concurrency convention".
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 

@@ -14,7 +14,10 @@ permissions:
   contents: read
   pull-requests: write
 
-# ── Global Concurrency — cancel stale runs on same PR ────────
+# ── Global Concurrency — cancel stale runs on same ref ────────
+# Per-PR and per-push workflow, so the group is keyed on the ref: only the newest
+# run for a branch matters and superseded runs are cancelled.
+# See CONTRIBUTING.md § "Workflow concurrency convention".
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

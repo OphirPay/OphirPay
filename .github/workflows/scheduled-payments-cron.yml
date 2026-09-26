@@ -18,6 +18,15 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+# Fires every 5 minutes and is not ref-scoped, so the group is per-workflow.
+# cancel-in-progress is false because two overlapping sweeps could both pick up
+# the same due payment; the next tick simply queues behind a slow run instead.
+# See CONTRIBUTING.md § "Workflow concurrency convention".
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 

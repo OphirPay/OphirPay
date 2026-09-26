@@ -4,6 +4,14 @@ on:
   schedule:
     - cron: "0 8 * * 1" # Every Monday at 08:00 UTC
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+# Weekly and not ref-scoped. The sweep mutates issues and PRs, so letting it run
+# to completion avoids leaving the label/close pass half-applied.
+# See CONTRIBUTING.md § "Workflow concurrency convention".
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   issues: write
   pull-requests: write

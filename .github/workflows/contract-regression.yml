@@ -22,6 +22,11 @@ permissions:
   contents: read
   pull-requests: write
 
+# ── Global Concurrency — cancel stale runs on same ref ────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   contract-regression:
     runs-on: ubuntu-latest

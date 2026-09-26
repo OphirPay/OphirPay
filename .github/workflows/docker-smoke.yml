@@ -25,6 +25,7 @@ on:
 permissions:
   contents: read
 
+# ── Global Concurrency — cancel stale runs on same ref ────────
 concurrency:
   group: docker-smoke-${{ github.ref }}
   cancel-in-progress: true

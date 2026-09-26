@@ -7,6 +7,11 @@ on:
 
 permissions: read-all
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   analysis:
     name: Scorecard Analysis

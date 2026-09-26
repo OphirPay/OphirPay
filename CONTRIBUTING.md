@@ -96,6 +96,42 @@ migration epic), add its label to `exempt-issue-labels` in
 `.github/workflows/stale.yml` **and** to the table above so maintainers can see
 the policy in one place.
 
+### Workflow Concurrency Convention (Issue #753)
+
+All GitHub Actions workflows in `.github/workflows/` declare a top-level `concurrency`
+block using one of two standardized shapes:
+
+#### 1. Interactive workflows (per-PR / per-ref)
+Applied to workflows triggered by `pull_request`, `push`, or `pull_request_target`
+(`ci.yml`, `contract-regression.yml`, `prisma-ci.yml`, `lighthouse.yml`, `pr-labeler.yml`,
+`docker-smoke.yml`, `enforce-integration-branch.yml`, `readme-sync-check.yml`):
+```yaml
+# ── Global Concurrency — cancel stale runs on same ref ────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+```
+- **Why**: Rapid pushes to the same pull request supersede prior runs. Cancelling
+  in-progress stale builds frees shared runner minutes, shortens queue times, and avoids
+  stacking expensive jobs (such as Soroban WASM compilation or Docker builds).
+
+#### 2. Scheduled & stateful workflows (singleton, non-cancelling)
+Applied to recurring cron jobs, backups, and security scans
+(`db-backup.yml`, `scheduled-payments-cron.yml`, `scorecard.yml`, `dependency-scan.yml`,
+`e2e-nightly.yml`, `load-test.yml`, `stale.yml`):
+```yaml
+# ── Global Concurrency — singleton, never cancelled ───────────
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+```
+- **Why**: Recurring scheduled workflows are singletons across the entire repository.
+  Cancellation is disabled (`cancel-in-progress: false`) so that a slow run (e.g.
+  database backup or payment sweep) is never truncated mid-flight by the next tick,
+  and multiple sweeps never overlap on production state.
+
+Every new workflow must adopt the matching template comment and concurrency shape.
+
 ### Adding or changing an API endpoint
 
 Before adding or modifying an API endpoint, read the [API Endpoint Guide](docs/API_GUIDE.md). It documents the mandatory conventions: file structure, Zod validation, the error-handling pattern, auth middleware usage, the response envelope, rate-limit integration, a copy-pasteable worked example, and a pre-merge checklist.

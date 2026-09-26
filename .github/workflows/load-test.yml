@@ -49,7 +49,7 @@ on:
 permissions:
   contents: read
 
-# A scheduled run and a manual dispatch must not overlap; the newer run wins.
+# ── Global Concurrency — singleton, never cancelled ───────────
 concurrency:
   group: load-test
   cancel-in-progress: false

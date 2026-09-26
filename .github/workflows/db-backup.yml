@@ -5,6 +5,11 @@ on:
     - cron: "0 3 * * *"  # Daily at 3 AM UTC
   workflow_dispatch:      # Manual trigger
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 env:
   BACKUP_BUCKET: ophirpay-backups
   BACKUP_RETENTION_DAYS: 30

@@ -21,6 +21,11 @@ on:
 permissions:
   contents: read
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   run-sweep:
     name: "Execute due scheduled payments"

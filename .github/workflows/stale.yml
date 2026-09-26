@@ -8,6 +8,11 @@ permissions:
   issues: write
   pull-requests: write
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   stale:
     name: Mark & Close Stale

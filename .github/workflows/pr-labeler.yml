@@ -10,6 +10,11 @@ permissions:
   contents: read
   pull-requests: write
 
+# ── Global Concurrency — cancel stale runs on same ref ────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pr-labeler:
     name: "🏷️ Meta — PR Labeler"

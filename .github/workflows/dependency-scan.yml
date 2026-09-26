@@ -18,6 +18,11 @@ on:
 permissions:
   contents: read
 
+# ── Global Concurrency — singleton, never cancelled ───────────
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   dependency-scan:
     name: "Dependency Vulnerability Scan (fail on high/critical)"

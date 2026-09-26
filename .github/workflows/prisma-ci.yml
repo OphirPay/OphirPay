@@ -18,6 +18,11 @@ on:
 permissions:
   contents: read
 
+# ── Global Concurrency — cancel stale runs on same ref ────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   prisma:
     name: Validate schema, replay migrations, and test invariants

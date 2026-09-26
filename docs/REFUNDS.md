@@ -163,3 +163,11 @@ To prevent unbounded iteration, gas exhaustion, and transaction timeout as the t
 ### 4. Update Refund Status
 * `PATCH /api/refunds/[id]`
 * Updates status to `APPROVED`, `REJECTED`, or `PROCESSED` and logs an entry to `AuditLog`.
+
+---
+
+## Related Documentation
+
+* See [Contract Function Reference](CONTRACT_FUNCTION_REFERENCE.md#refunds) for callable Soroban smart contract signatures.
+* See [API Guide](API_GUIDE.md) and [API Cookbook](API_COOKBOOK.md) for application REST endpoints and examples.
+

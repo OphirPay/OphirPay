@@ -70,7 +70,7 @@ describe("authenticateRequest", () => {
     expect(mocks.findFirst).not.toHaveBeenCalled();
   });
 
-  it("looks the key up by hash + prefix and returns the auth result", async () => {
+  it("looks the key up by prefix and both accepted digests", async () => {
     mocks.findFirst.mockResolvedValue(storedKey());
 
     const result = await authenticateRequest(requestWithKey(RAW_KEY));
@@ -95,6 +95,11 @@ describe("authenticateRequest", () => {
     // lastUsed / request log are fire-and-forget writes.
     expect(mocks.update).toHaveBeenCalled();
     expect(mocks.logCreate).toHaveBeenCalledWith({ data: { keyId: "key_1" } });
+  });
+
+  it("rejects malformed key material before touching the database", async () => {
+    expect(await authenticateRequest(requestWithKey("oph_livekeyvalue"))).toBeNull();
+    expect(mocks.findFirst).not.toHaveBeenCalled();
   });
 
   it("defaults a null scopes column to an empty array", async () => {

@@ -17,6 +17,15 @@ const envSchema = z.object({
   NEXT_PUBLIC_CHAIN_READ_SOURCE: z.string().optional(),
   NEXT_PUBLIC_GA_ID: z.string().optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
+  // OpenTelemetry tracing (issue #815) — all optional and off by default.
+  // Strict validation lives in src/lib/tracing.ts, which falls back to safe
+  // defaults with a warning: a misconfigured optional tracer must never
+  // refuse to boot the payment service.
+  OTEL_ENABLED: z.string().optional(),
+  OTEL_SERVICE_NAME: z.string().optional(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+  OTEL_TRACES_SAMPLER: z.string().optional(),
+  OTEL_TRACES_SAMPLER_ARG: z.string().optional(),
   RATE_LIMIT_RPM: z.coerce.number().positive().default(120),
   // Wallet-auth endpoints get stricter per-IP / per-account buckets on top of
   // the global RATE_LIMIT_RPM (see src/lib/auth-rate-limit.ts).
@@ -136,6 +145,11 @@ export function validateEnv(): Env {
       NEXT_PUBLIC_CHAIN_READ_SOURCE: process.env.NEXT_PUBLIC_CHAIN_READ_SOURCE,
       NEXT_PUBLIC_GA_ID: process.env.NEXT_PUBLIC_GA_ID,
       NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
+      OTEL_ENABLED: process.env.OTEL_ENABLED,
+      OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,
+      OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      OTEL_TRACES_SAMPLER: process.env.OTEL_TRACES_SAMPLER,
+      OTEL_TRACES_SAMPLER_ARG: process.env.OTEL_TRACES_SAMPLER_ARG,
       RATE_LIMIT_RPM: process.env.RATE_LIMIT_RPM,
       AUTH_RATE_LIMIT_IP_RPM: process.env.AUTH_RATE_LIMIT_IP_RPM,
       AUTH_RATE_LIMIT_WALLET_RPM: process.env.AUTH_RATE_LIMIT_WALLET_RPM,

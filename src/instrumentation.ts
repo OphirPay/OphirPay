@@ -4,6 +4,9 @@
  * Next.js instrumentation hook — runs once on server startup.
  * Validates environment, initializes rate-limit store, logs config, and
  * starts the optional WebSocket event server (SSE remains the fallback).
+ * OpenTelemetry tracing is initialized first when enabled so subsequent
+ * startup work is already covered by spans (disabled by default — see
+ * src/lib/tracing.ts and docs/TRACING.md).
  *
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/instrumentation
  */
@@ -13,6 +16,9 @@ export async function register() {
     process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.NEXT_PHASE !== "phase-production-build"
   ) {
+    const { initTracing } = await import("@/lib/tracing");
+    await initTracing();
+
     const { bootstrap } = await import("@/lib/startup");
     await bootstrap();
 

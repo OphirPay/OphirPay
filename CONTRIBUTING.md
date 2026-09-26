@@ -165,6 +165,19 @@ npm run test:visual   # Visual regression tests
 npm run test:visual:update # Update visual baselines
 ```
 
+### Smart Contract Tests
+
+Smart contracts live under `contracts/ophirpay` and `contracts/emitter`. Both follow a unified testing convention documented in [`contracts/TESTING_CONVENTION.md`](contracts/TESTING_CONVENTION.md):
+- **Unit Tests** (`src/tests/`): Verify internal contract logic, storage keys, and private helpers (`pub(crate)`).
+- **Integration Tests** (`tests/integration_tests.rs`): End-to-end client flows and event assertions via generated contract clients.
+- **Property Tests** (`tests/proptest_*.rs`): Generative fuzzing tests verifying conservation laws and arithmetic boundaries.
+
+```bash
+cargo test --manifest-path contracts/ophirpay/Cargo.toml   # OphirPay contract suite
+cargo test --manifest-path contracts/emitter/Cargo.toml    # Emitter contract suite
+```
+
+
 ### Coverage ratchet
 
 Coverage is enforced by **per-directory budgets**, not one global number

@@ -89,6 +89,7 @@
   "time": { "from": "now-6h", "to": "now" },
   "timepicker": {},
   "timezone": "utc",
+  "description": "Production dashboard for OphirPay payment processing infrastructure. Compatible with Grafana 10.x, 11.x, and 9.5+ (schemaVersion 39).",
   "title": "OphirPay — Payment Infrastructure",
   "uid": "ophirpay",
   "version": 1

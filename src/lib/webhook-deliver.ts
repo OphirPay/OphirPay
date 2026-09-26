@@ -23,6 +23,7 @@ export interface WebhookDeliveryResult {
 
 export const WEBHOOK_TIMESTAMP_HEADER = "X-OphirPay-Timestamp";
 export const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
+export const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS;
 
 export function webhookSignedInput(
   timestamp: string,
@@ -31,7 +32,7 @@ export function webhookSignedInput(
   return `${timestamp}.${canonicalBody}`;
 }
 
-export function canonicalizeWebhookBody(payload: WebhookPayload): string {
+export function canonicalizeWebhookBody(payload: WebhookPayload | Record<string, unknown>): string {
   return JSON.stringify({ ...payload, signature: "" });
 }
 
@@ -92,6 +93,88 @@ export function buildWebhookRequestPreview(
       [WEBHOOK_TIMESTAMP_HEADER]: timestamp,
     },
   };
+}
+
+export interface VerifyWebhookOptions {
+  body: string | Record<string, unknown>;
+  signature: string;
+  secret: string;
+  timestamp?: string;
+  maxAgeSeconds?: number;
+  now?: Date;
+}
+
+export interface VerifyWebhookResult {
+  valid: boolean;
+  reason: string;
+}
+
+export function verifyWebhookSignature({
+  body,
+  signature,
+  secret,
+  timestamp,
+  maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+  now = new Date(),
+}: VerifyWebhookOptions): VerifyWebhookResult {
+  let canonical: string;
+  let parsed: Record<string, unknown>;
+  try {
+    if (typeof body === "string") {
+      parsed = JSON.parse(body);
+    } else {
+      parsed = body as Record<string, unknown>;
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error("body must be a JSON object");
+    }
+    canonical = JSON.stringify({ ...parsed, signature: "" });
+  } catch (err) {
+    return {
+      valid: false,
+      reason: `invalid body: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const effectiveTimestamp =
+    timestamp || (typeof parsed.timestamp === "string" ? parsed.timestamp : undefined);
+  if (!effectiveTimestamp) {
+    return { valid: false, reason: "missing or invalid timestamp" };
+  }
+
+  const toSign = webhookSignedInput(effectiveTimestamp, canonical);
+  const expected = crypto.createHmac("sha256", secret).update(toSign).digest("hex");
+  const provided = Buffer.from(String(signature ?? ""));
+  const expectedBuf = Buffer.from(expected);
+
+  const matches =
+    provided.length === expectedBuf.length &&
+    crypto.timingSafeEqual(provided, expectedBuf);
+  if (!matches) {
+    return { valid: false, reason: "signature mismatch" };
+  }
+
+  if (maxAgeSeconds > 0) {
+    const ts = Date.parse(effectiveTimestamp);
+    if (Number.isNaN(ts)) {
+      return { valid: false, reason: "missing or invalid timestamp" };
+    }
+    const ageSeconds = (now.getTime() - ts) / 1000;
+    if (ageSeconds > maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload too old (${Math.round(ageSeconds)}s > ${maxAgeSeconds}s) — possible replay`,
+      };
+    }
+    if (ageSeconds < -maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload timestamp is in the future (${Math.round(-ageSeconds)}s ahead)`,
+      };
+    }
+  }
+
+  return { valid: true, reason: "valid" };
 }
 
 export async function deliverWebhook(

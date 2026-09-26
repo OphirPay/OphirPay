@@ -16,6 +16,8 @@ import {
   buildSignedPayload,
   buildWebhookRequestPreview,
   deliverWebhook,
+  verifyWebhookSignature,
+  DEFAULT_WEBHOOK_TOLERANCE_SECONDS,
   BLOCKED_WEBHOOK_TARGET_ERROR,
   canonicalizeWebhookBody,
   webhookSignedInput,
@@ -89,7 +91,7 @@ describe("signWebhookPayload", () => {
 
 describe("buildSignedPayload", () => {
   it("produces a body whose signature a receiver can verify (empty-and-reserialize canonicalization)", () => {
-    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
     const received = JSON.parse(body);
     const stripped = { ...received, signature: "" };
     const canonical = JSON.stringify(stripped);
@@ -99,6 +101,7 @@ describe("buildSignedPayload", () => {
       .digest("hex");
     expect(signature).toBe(expected);
     expect(received.signature).toBe(signature);
+    expect(timestamp).toBe(samplePayload.timestamp);
   });
 
   it("exposes the exact canonical input, wire body, and headers used by delivery", () => {
@@ -115,7 +118,7 @@ describe("buildSignedPayload", () => {
   });
 
   it("signs over the body with the signature field emptied (not the raw payload)", () => {
-    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
     const canonical = JSON.stringify({ ...samplePayload, signature: "" });
     const expected = crypto
       .createHmac("sha256", SECRET)
@@ -173,6 +176,141 @@ describe("replay window", () => {
   });
 });
 
+describe("verifyWebhookSignature (replay protection & validity)", () => {
+  it("accepts a valid signature with a fresh timestamp", () => {
+    const now = new Date("2026-08-14T00:01:00Z");
+    const { body, signature, timestamp } = buildSignedPayload(
+      { ...samplePayload, timestamp: "2026-08-14T00:00:30Z" },
+      SECRET
+    );
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      now,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.reason).toBe("valid");
+  });
+
+  it("rejects a valid signature with a stale timestamp (> 300s old)", () => {
+    const now = new Date("2026-08-14T00:10:00Z"); // 600s after timestamp
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      now,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("payload too old");
+    expect(result.reason).toContain("possible replay");
+  });
+
+  it("rejects a timestamp too far in the future (> 300s ahead)", () => {
+    const now = new Date("2026-08-14T00:00:00Z");
+    const futurePayload = { ...samplePayload, timestamp: "2026-08-14T00:10:00Z" };
+    const { body, signature, timestamp } = buildSignedPayload(futurePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      now,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("in the future");
+  });
+
+  it("rejects a replay attempt where the attacker alters the timestamp header", () => {
+    const now = new Date("2026-08-14T01:00:00Z");
+    // Original delivery was valid at 2026-08-14T00:00:00Z
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    // Attacker sends fresh timestamp header to bypass age check, keeping captured signature
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp: now.toISOString(),
+      now,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("rejects a tampered payload body", () => {
+    const now = new Date("2026-08-14T00:00:30Z");
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const tamperedBody = body.replace('"amount":100', '"amount":9999');
+    const result = verifyWebhookSignature({
+      body: tamperedBody,
+      signature,
+      secret: SECRET,
+      timestamp,
+      now,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("rejects when verified with the wrong secret", () => {
+    const now = new Date("2026-08-14T00:00:30Z");
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: "wrong-secret-0000000000",
+      timestamp,
+      now,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("accepts a timestamp exactly at the tolerance boundary (300s)", () => {
+    const now = new Date("2026-08-14T00:05:00Z"); // exactly 300s after 00:00:00Z
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      maxAgeSeconds: DEFAULT_WEBHOOK_TOLERANCE_SECONDS,
+      now,
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("supports custom maxAgeSeconds tolerance window", () => {
+    const now = new Date("2026-08-14T00:01:30Z"); // 90s after 00:00:00Z
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    // Strict 60s window fails on 90s old payload
+    const strictResult = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      maxAgeSeconds: 60,
+      now,
+    });
+    expect(strictResult.valid).toBe(false);
+    expect(strictResult.reason).toContain("payload too old (90s > 60s)");
+
+    // Relaxed 120s window passes
+    const relaxedResult = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      maxAgeSeconds: 120,
+      now,
+    });
+    expect(relaxedResult.valid).toBe(true);
+  });
+});
+
 describe("deliverWebhook", () => {
   const originalFetch = globalThis.fetch;
 
@@ -210,6 +348,7 @@ describe("deliverWebhook", () => {
     expect(headers["X-OphirPay-Signature"]).toBe(body.signature);
     // Issue #702: the timestamp travels in a dedicated, signed header.
     expect(headers[WEBHOOK_TIMESTAMP_HEADER]).toBe(samplePayload.timestamp);
+    expect(headers["X-OphirPay-Event"]).toBe("payment.created");
     expect(body.timestamp).toBe(samplePayload.timestamp);
     expect(ok.attempts).toBe(1);
     expect(ok.latencyMs).toBeGreaterThanOrEqual(0);

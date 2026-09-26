@@ -1,0 +1,34 @@
+# SEP-1: Stellar.toml for OphirPay
+# Standard discovery file for Stellar wallets, explorers, and ecosystem tooling.
+VERSION="2.0.0"
+NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+FEDERATION_SERVER="https://ophirpay.vercel.app/api/federation"
+
+[DOCUMENTATION]
+ORG_NAME="OphirPay"
+ORG_URL="https://ophirpay.vercel.app"
+ORG_DESCRIPTION="Open-source payment orchestration layer for Stellar — smart contracts, webhooks, batch payments, refunds, multisig, governance, and real-time event streaming"
+ORG_LOGO="https://ophirpay.vercel.app/icon.svg"
+ORG_GITHUB="https://github.com/OphirPay/OphirPay"
+
+[PRINCIPALS]
+NAME="OphirPay Team"
+EMAIL="security@ophirpay.com"
+
+[[CURRENCIES]]
+code="USDC"
+issuer="GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+display_decimals=7
+status="live"
+
+[[CURRENCIES]]
+code="XLM"
+display_decimals=7
+status="live"
+
+[ACCOUNTS]
+ACCOUNTS=["GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU"]
+
+[CONTRACTS]
+PAYMENT_CONTRACT="CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET"
+EMITTER_CONTRACT="CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN"

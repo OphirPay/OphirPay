@@ -7387,5 +7387,98 @@ mod tests {
         assert_eq!(missing.total, 0);
         assert!(!missing.truncated);
     }
+
+    /// Verifies that querying hooks for a subscriber with no registered hooks
+    /// returns an empty list, zero total, and truncated == false.
+    #[test]
+    fn test_get_subscriber_hooks_empty_is_not_truncated() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let subscriber = Address::generate(&env);
+        let _ = client.init(&owner);
+
+        let result = client.get_subscriber_hooks(&subscriber);
+        assert_eq!(result.items.len(), 0);
+        assert_eq!(result.total, 0);
+        assert!(!result.truncated);
+    }
+
+    /// Verifies that deactivating (unregistering) a hook keeps it present in the
+    /// subscriber's hook list with active == false, preserving the total count and
+    /// correct ordering without causing false truncation flags.
+    #[test]
+    fn test_get_subscriber_hooks_preserves_deactivated_hooks() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let subscriber = Address::generate(&env);
+        let _ = client.init(&owner);
+
+        let hid1 = client.register_hook(
+            &subscriber,
+            &String::from_str(&env, "payment_recorded"),
+            &String::from_str(&env, "https://example.com/webhook1"),
+        );
+        let hid2 = client.register_hook(
+            &subscriber,
+            &String::from_str(&env, "refund_processed"),
+            &String::from_str(&env, "https://example.com/webhook2"),
+        );
+
+        client.unregister_hook(&subscriber, &hid1);
+
+        let result = client.get_subscriber_hooks(&subscriber);
+        assert_eq!(result.items.len(), 2);
+        assert_eq!(result.total, 2);
+        assert!(!result.truncated);
+
+        let hook_newest = result.items.get(0).unwrap();
+        let hook_older = result.items.get(1).unwrap();
+        assert_eq!(hook_newest.id, hid2);
+        assert!(hook_newest.active);
+        assert_eq!(hook_older.id, hid1);
+        assert!(!hook_older.active);
+    }
+
+    /// Verifies that querying payments for a batch with 0 payment IDs returns
+    /// an empty list with total == 0 and truncated == false.
+    #[test]
+    fn test_get_payments_by_batch_empty_ids_is_not_truncated() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let _ = client.init(&owner);
+
+        let empty_batch = BatchPayment {
+            id: 2,
+            creator: owner.clone(),
+            total_recipients: 0,
+            total_amount: 0,
+            asset: sac.clone(),
+            timestamp: env.ledger().timestamp(),
+            tx_hash: String::from_str(&env, "empty_batch_tx"),
+            payment_ids: Vec::new(&env),
+        };
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .persistent()
+                .set(&(BATCH_KEY, 2u64), &empty_batch);
+        });
+
+        let result = client.get_payments_by_batch(&2);
+        assert_eq!(result.items.len(), 0);
+        assert_eq!(result.total, 0);
+        assert!(!result.truncated);
+    }
 }
+
 

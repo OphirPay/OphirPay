@@ -50,108 +50,77 @@ smallest unit. `u64` timestamps are Unix epoch seconds.
 
 ## PaymentError codes
 
-`PaymentError` is defined in `contracts/ophirpay/src/lib.rs` (line 423).
+`PaymentError` is defined in `contracts/ophirpay/src/lib.rs` (line 502).
 
-| Code | Variant | Description |
+Per docs/AUDIT.md LOW-6 and issue #766, the contract runtime defines exactly 54 reachable
+error variants. Unallocated numeric slots in the `1..=308` range are maintained as documented
+reserved blocks to preserve numeric parity without false coverage:
+
+| Code | Variant | Category / Description |
 |------|---------|-------------|
-| 1 | `NotInitialized` | Contract storage has no owner — call `init` first. |
-| 2 | `AlreadyInitialized` | `init` called a second time. |
-| 3 | `PaymentNotFound` | Payment `id` does not exist. |
-| 4 | `Unauthorized` | Caller failed an owner/auth guard. |
-| 5 | `InvalidAmount` | Amount is zero or negative. |
-| 6 | `EscrowNotDue` | Escrow deadline has not been reached. |
-| 7 | `EscrowAlreadyReleased` | Escrow already released/claimed. |
-| 8 | `EscrowNotFound` | Escrow `id` does not exist. |
-| 9 | `StreamNotStarted` | Stream start time is in the future. |
-| 10 | `StreamAlreadyCancelled` | Stream already cancelled. |
-| 11 | `StreamNotFound` | Stream `id` does not exist. |
-| 12 | `StreamFullyClaimed` | No claimable amount remains. |
-| 13 | `BatchTooLarge` | Batch exceeds the max recipient count. |
-| 14 | `BatchEmpty` | Batch has no recipients. |
-| 15 | `TokenTransferFailed` | Underlying token transfer failed. |
-| 16 | `InsufficientBalance` | Locked balance insufficient. |
-| 17 | `PaymentAlreadyCancelled` | Payment already cancelled. |
-| 18 | `ContractPaused` | Contract is paused (emergency pause). |
-| 19 | `NoTokensToWithdraw` | No locked balance to withdraw. |
-| 20 | `UpgradeNotProposed` | No upgrade proposal pending. |
-| 21 | `UpgradeTimelockActive` | Upgrade timelock still active. |
-| 22 | `MultisigNotConfigured` | Multisig not configured. |
-| 23 | `NotASigner` | Caller is not a multisig signer. |
-| 24 | `AlreadyApproved` | Signer already approved this request. |
-| 25 | `ThresholdNotMet` | Approval threshold not met. |
-| 26 | `AlreadyExecuted` | Action already executed. |
-| 27 | `NotARoleHolder` | Caller lacks the required role. |
-| 28 | `AuditLogEmpty` | Audit log has no entries. |
-| 29 | `AuditEntryNotFound` | Audit entry `id` does not exist. |
-| 30 | `RecurringNotFound` | Recurring schedule `id` does not exist. |
-| 31 | `RecurringNotDue` | Recurring payment not yet due. |
-| 32 | `RecurringAlreadyCancelled` | Recurring schedule already cancelled. |
-| 33 | `RecurringExpired` | Recurring schedule exhausted its runs. |
-| 34 | `FeeConfigNotFound` | No fee config stored. |
-| 35 | `FeeTooHigh` | Fee basis points exceed 1000 (10%). |
-| 36 | `TimelockNotFound` | Timelocked action `id` does not exist. |
-| 37 | `TimelockNotDue` | Timelock delay not elapsed. |
-| 38 | `TimelockAlreadyExecuted` | Timelocked action already executed. |
-| 39 | `GovernanceNotConfigured` | Governance not configured. |
-| 40 | `ProposalNotFound` | Proposal `id` does not exist. |
-| 41 | `VotingPeriodEnded` | Proposal voting period has ended. |
-| 42 | `ProposalAlreadyExecuted` | Proposal already executed. |
-| 43 | `QuorumNotMet` | Proposal did not reach quorum. |
-| 44 | `ProposalDefeated` | Proposal was voted down. |
-| 45 | `DepositTooLow` | Proposal deposit below minimum. |
-| 46 | `SpendingLimitExpired` | Spending limit has expired. |
-| 47 | `RefundNotFound` | Refund `id` does not exist. |
-| 48 | `RefundAlreadyProcessed` | Refund already processed. |
-| 49 | `PaymentAlreadyRefunded` | Payment already refunded. |
-| 50 | `RefundWindowExpired` | Refund window has expired. |
-| 51 | `AlreadyVoted` | Voter already voted on proposal. |
-| 52 | `ReentrantCall` | Reentrancy guard triggered. |
-| 53 | `SpendCapExceeded` | Spend exceeds configured cap. |
-| 54 | `DisputeAlreadyFiled` | Dispute already filed. |
-| 55 | `DisputeNotFound` | Dispute `id` does not exist. |
-| 56 | `DisputeWindowExpired` | Dispute window has expired. |
-| 57 | `RefundRejected` | Refund was rejected. |
-| 58 | `InsufficientLiquidity` | Not enough liquidity for operation. |
-| 59 | `AssetDepegged` | Asset is depegged. |
-| 60 | `ProposalNotPassed` | Proposal did not pass. |
-| 61 | `InvalidSignature` | Signature invalid. |
-| 62 | `HookNotFound` | Notification hook `id` does not exist. |
-| 63 | `HookAlreadyExists` | Duplicate hook for subscriber+event. |
-| 64 | `RateLimitExceeded` | Rate limit exceeded. |
-| 65 | `AssetNotSupported` | Asset not supported. |
-| 66 | `InvalidMetadataLength` | Metadata string too long. |
-| 67 | `MaxRecipientsExceeded` | Too many recipients. |
-| 68 | `DuplicateRecipient` | Duplicate recipient in batch. |
-| 69 | `StreamEndBeforeStart` | Stream end time before start. |
-| 70 | `EscrowDeadlineInPast` | Escrow deadline in the past. |
-| 71 | `PendingOwnershipTransfer` | Ownership transfer pending. |
-| 72 | `OwnershipTransferExpired` | Ownership transfer expired. |
-| 73 | `InvalidAddressFormat` | Malformed address. |
-| 74 | `BatchItemFailed` | One batch item failed. |
-| 75 | `RecurringScheduleInvalid` | Invalid recurring schedule. |
-| 76 | `FeeCollectorNotSet` | No fee collector configured. |
-| 77 | `EmitterNotLinked` | No emitter contract linked. |
-| 78 | `ProposalDepositLocked` | Proposal deposit locked. |
-| 79 | `MultisigSignerLimit` | Signer limit reached. |
-| 80 | `InvalidTokenContract` | Invalid token contract address. |
-| 81 | `StorageLimitExceeded` | Storage limit exceeded. |
-| 82 | `ContractMigrationRequired` | Contract requires migration. |
-| 83 | `InvalidEventType` | Unknown event type. |
-| 84 | `WebhookUrlTooLong` | Webhook URL too long. |
-| 85 | `MaxHooksExceeded` | Hook limit reached. |
-| 86 | `HookNotActive` | Hook is not active. |
-| 87 | `CrossContractCallFailed` | Cross-contract call failed. |
-| 88 | `InvalidScValEncoding` | Invalid SCVal encoding. |
-| 89 | `UnsupportedOperation` | Operation not supported. |
-| 90 | `ContractNotLinked` | Contract not linked. |
-| 91 | `MaxSignersExceeded` | Max signers exceeded. |
-| 92 | `ZeroAddressNotAllowed` | Zero address not allowed. |
-| 93 | `InvalidNetwork` | Invalid network. |
-| 94 | `StakingNotConfigured` | Staking not configured. |
-| 95 | `StakingAlreadyActive` | Staking already active. |
-| 96 | `RewardsPoolEmpty` | Rewards pool is empty. |
-| 97 | `UnstakingPeriodActive` | Unstaking period active. |
-| 98+ | *(reserved)* | Reserved for future expansion. |
+| 1 | `NotInitialized` | Contract not initialized: call init() first |
+| 2 | `AlreadyInitialized` | Contract already initialized |
+| 3 | `PaymentNotFound` | Payment not found |
+| 4 | `Unauthorized` | Unauthorized: caller does not have permission |
+| 5 | `InvalidAmount` | Invalid amount: must be greater than zero |
+| 6 | `EscrowNotDue` | Escrow not yet due: deadline has not passed |
+| 7 | `EscrowAlreadyReleased` | Escrow already released |
+| 8 | `EscrowNotFound` | Escrow not found |
+| 9 | `StreamNotStarted` | Stream not started: start time is in the future |
+| 10 | `StreamAlreadyCancelled` | Stream already cancelled |
+| 11 | `StreamNotFound` | Stream not found |
+| 12 | `StreamFullyClaimed` | Stream fully claimed: no remaining balance |
+| 13 | `BatchTooLarge` | Batch too large: exceeds maximum recipients |
+| 14 | `BatchEmpty` | Batch empty: no recipients provided |
+| 15–16 | *(reserved)* | Reserved: Token transfer / balance errors |
+| 17 | `PaymentAlreadyCancelled` | Payment already cancelled |
+| 18 | `ContractPaused` | Contract paused: operations are temporarily disabled |
+| 19 | `NoTokensToWithdraw` | No tokens available to withdraw |
+| 20 | `UpgradeNotProposed` | Upgrade not proposed: call propose_upgrade() first |
+| 21 | `UpgradeTimelockActive` | Upgrade timelock active: 24-hour delay has not elapsed |
+| 22 | `MultisigNotConfigured` | Multisig not configured: call set_multisig_config() first |
+| 23 | `NotASigner` | Not a signer: you are not in the multisig signer list |
+| 24 | `AlreadyApproved` | Already approved: duplicate approval detected |
+| 25 | `ThresholdNotMet` | Threshold not met: insufficient approvals |
+| 26 | `AlreadyExecuted` | Already executed: this action has already been processed |
+| 27 | `NotARoleHolder` | Not a role holder: insufficient RBAC permissions |
+| 28 | *(reserved)* | Reserved: Audit log empty |
+| 29 | `AuditEntryNotFound` | Audit entry not found |
+| 30 | `RecurringNotFound` | Recurring payment not found |
+| 31 | `RecurringNotDue` | Recurring payment not yet due |
+| 32 | `RecurringAlreadyCancelled` | Recurring payment already cancelled |
+| 33–34 | *(reserved)* | Reserved: Recurring schedule lifecycle & fee lookup |
+| 35 | `FeeTooHigh` | Fee too high: exceeds maximum 1000 bps (10%) |
+| 36 | `TimelockNotFound` | Timelocked action not found |
+| 37 | `TimelockNotDue` | Timelocked action not yet due: 24-hour delay has not elapsed |
+| 38 | `TimelockAlreadyExecuted` | Timelocked action already executed |
+| 39 | `GovernanceNotConfigured` | Governance not configured: call configure_governance() first |
+| 40 | `ProposalNotFound` | Proposal not found |
+| 41 | `VotingPeriodEnded` | Voting period ended: proposal is closed |
+| 42 | `ProposalAlreadyExecuted` | Proposal already executed |
+| 43–44 | *(reserved)* | Reserved: Governance quorum & proposal defeat |
+| 45 | `DepositTooLow` | Deposit too low: must meet minimum proposal deposit |
+| 46 | `SpendingLimitExpired` | Spending limit expired: limit has been deactivated or expired |
+| 47 | `RefundNotFound` | Refund not found |
+| 48 | `RefundAlreadyProcessed` | Refund already processed |
+| 49–50 | *(reserved)* | Reserved: Refund history & window |
+| 51 | `AlreadyVoted` | Already voted: duplicate vote on proposal |
+| 52 | `ReentrantCall` | Reentrant call detected: operation blocked by reentrancy guard |
+| 53–61 | *(reserved)* | Reserved: Spending caps, dispute resolution & stability |
+| 62 | `HookNotFound` | Hook not found |
+| 63–64 | *(reserved)* | Reserved: Hook collisions & rate limiting |
+| 65 | `AssetNotSupported` | Asset not supported: invalid or unapproved asset address |
+| 66–90 | *(reserved)* | Reserved: Protocol parameters, recipient limits & streaming bounds |
+| 91 | `MaxSignersExceeded` | Maximum signers exceeded |
+| 92–300 | *(reserved)* | Reserved: Advanced DeFi, privacy, analytics, and interoperability |
+| 301 | `RevocationNotFound` | Revocation not found |
+| 302 | `RevocationNotDue` | Revocation not due |
+| 303 | `RevocationAlreadyExecuted` | Revocation already executed |
+| 304 | `CannotRevokeSelf` | Cannot revoke self |
+| 305 | `NoPendingOwner` | No pending ownership transfer |
+| 306 | `MathOverflow` | Math overflow |
+| 307 | `StreamInvariantViolated` | Stream accounting invariant violated: refused to pay an inconsistent amount |
+| 308 | `InvalidPauseScope` | Pause scope not recognized: unknown scope identifier |
 
 ## EmitterError codes
 

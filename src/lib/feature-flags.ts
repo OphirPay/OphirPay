@@ -5,6 +5,8 @@
  * Flags are environment-driven and can be overridden via localStorage in dev.
  */
 
+import { STORAGE_KEYS } from "@/lib/storage-keys";
+
 export const FEATURE_FLAGS = {
   /** Enable multi-asset support (USDC, custom tokens) */
   MULTI_ASSET: process.env.NEXT_PUBLIC_FEATURE_MULTI_ASSET !== "false",
@@ -26,7 +28,7 @@ export type FeatureFlag = keyof typeof FEATURE_FLAGS;
  */
 export function isFeatureEnabled(flag: FeatureFlag): boolean {
   if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
-    const override = localStorage.getItem(`ff_${flag}`);
+    const override = localStorage.getItem(`${STORAGE_KEYS.FEATURE_FLAG_PREFIX}${flag}`);
     if (override === "true") return true;
     if (override === "false") return false;
   }
@@ -38,6 +40,6 @@ export function isFeatureEnabled(flag: FeatureFlag): boolean {
  */
 export function overrideFeatureFlag(flag: FeatureFlag, value: boolean): void {
   if (process.env.NODE_ENV === "development") {
-    localStorage.setItem(`ff_${flag}`, String(value));
+    localStorage.setItem(`${STORAGE_KEYS.FEATURE_FLAG_PREFIX}${flag}`, String(value));
   }
 }

@@ -75,7 +75,7 @@ ecosystems once a week.
 
 ### Issue triage & stale policy
 
-The [stale workflow](.github/workflows/stale.yml) runs every Monday and closes
+The [stale workflow](.github/workflows/stale.yml) runs every Monday (and can be triggered manually via `workflow_dispatch`) and closes
 issues that have been inactive for **60 days + a 14-day grace period**. Bounty
 work is exempt, so the wave backlog does not get closed out from under a
 contributor:
@@ -84,7 +84,7 @@ contributor:
 |---|---|
 | Label `bounty` or `Stellar Wave` | **Never** marked stale — a wave round may outlive the inactivity window |
 | Any assignee (claimed work) | **Never** marked stale — the claim is the activity signal |
-| Label `pinned`, `security`, `blocked`, `good first issue`, `help wanted` | **Never** marked stale |
+| Label `pinned`, `security`, `blocked`, `good first issue`, `help wanted`, `long-running` | **Never** marked stale |
 | Any milestone | Exempt (`exempt-all-issue-milestones`) |
 | Anything else, unassigned | Marked `stale` after 60 days, closed 14 days later — commenting or pushing clears it |
 
@@ -94,7 +94,7 @@ Pull requests follow a shorter clock (30 days stale, 7 days to close); `pinned`,
 When adding a new long-running programme (a wave, a funded milestone, a
 migration epic), add its label to `exempt-issue-labels` in
 `.github/workflows/stale.yml` **and** to the table above so maintainers can see
-the policy in one place.
+the policy in one place. Maintainers can trigger the workflow on demand via GitHub Actions `workflow_dispatch`.
 
 ### Adding or changing an API endpoint
 

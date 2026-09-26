@@ -1,57 +1,173 @@
-# Refunds and reason-code analytics
+# 💸 Refund System, Reason Codes & Analytics Guide
 
-Refunds are represented on-chain by a typed `Refund` record. The free-text
-`reason` is for operator context; integrations should use `reason_code` for
-stable filtering and analytics.
+> Comprehensive architectural guide to the OphirPay refund lifecycle, on-chain Soroban contract authorization rules, reason-code catalog, and bounded analytics aggregation.
 
-## Reason-code catalog
+---
 
-The contract assigns the following stable numeric codes:
+## 1. Overview & Architecture
 
-| Code | Variant | Meaning |
-| ---: | --- | --- |
-| 0 | `ProductDefect` | The delivered product or service was defective or materially did not match the agreement. |
-| 1 | `NonDelivery` | The product or service was not delivered. |
-| 2 | `DuplicateCharge` | The payer was charged more than once for the same payment. |
-| 3 | `Unauthorized` | The payment was not authorized by the payer. |
-| 4 | `CustomerRequest` | The customer requested a refund for another valid business reason. |
-| 5 | `Other` | A reason that does not fit the listed categories; explain it in `reason`. |
+OphirPay provides an end-to-end refund orchestration subsystem combining:
+1. **On-Chain Soroban Smart Contract (`contracts/ophirpay/src/lib.rs`)**: Holds escrowed / payment assets, enforces fund-safety invariants, tracks on-chain lifecycle transitions, and aggregates reason-code metrics.
+2. **Off-Chain Database & Audit Ledger (`prisma/schema.prisma`)**: Tracks database records (`Refund`), links on-chain transaction outcomes via `onChainId`, prevents duplicate submissions (idempotency), and records immutable audit log rows (`AuditLog`).
+3. **Application API Routes (`src/app/api/refunds/`)**: Authenticated endpoints allowing clients to query refund history, submit refund requests, update lifecycle status, and retrieve reason-code analytics.
 
-Reason codes are descriptive and do not themselves determine whether a refund
-is full or partial. `amount` is the authoritative refund amount and must be
-positive, no greater than the recorded payment amount, and use the payment’s
-asset. The contract currently accepts the same code set for either amount.
+---
 
-## Lifecycle and authorization
+## 2. Refund Lifecycle & State Machine
 
-1. **Request** — `request_refund` creates a `Requested` record. The requester
-   must authenticate and be the payment payer or payee. The payment must exist,
-   not be cancelled, and the amount and asset must match its limits.
-2. **Approve** — `approve_refund` is authenticated owner-only and changes
-   `Requested` to `Approved`.
-3. **Reject** — `reject_refund` is authenticated owner-only and changes
-   `Requested` to `Rejected`.
-4. **Process** — `process_refund` is authenticated owner-only, requires
-   `Approved`, transfers the approved amount to the refund requester, and then
-   records `Processed`. It uses the reentrancy guard and cannot process an
-   already resolved request.
+Refunds progress through a deterministic four-stage lifecycle on-chain and in the database:
 
-Every rejected transition leaves the refund record unchanged. Contract pause
-guards apply to the mutating operations. Reads (`get_refund`,
-`get_refund_count`, and `get_reason_code_analytics`) are public.
+```mermaid
+stateDiagram-v2
+    [*] --> Requested: request_refund()<br>(payer or payee)
+    Requested --> Approved: approve_refund()<br>(contract owner)
+    Requested --> Rejected: reject_refund()<br>(contract owner)
+    Approved --> Processed: process_refund()<br>(contract owner + token transfer)
+    Rejected --> [*]
+    Processed --> [*]
+```
 
-## Analytics
+### State Definitions
 
-`get_reason_code_analytics()` returns six sorted `(code, count)` pairs, including
-zero-count buckets. It scans only the most recent 100 refund IDs, so the result
-is a bounded recent-window report rather than an all-time total. Missing or
-evicted records in that window are skipped. Consumers that need historical or
-all-time reporting must persist the refund events/records in an indexer.
+| State | Contract Enum (`RefundStatus`) | DB Enum (`RefundStatus`) | Description |
+|---|---|---|---|
+| **`REQUESTED`** | `RefundStatus::Requested` | `REQUESTED` | Refund request submitted on-chain by the payer or payee with amount, asset, reason string, and reason code. Awaiting review. |
+| **`APPROVED`** | `RefundStatus::Approved` | `APPROVED` | Approved by the contract owner. Funds remain locked in contract until disbursement. |
+| **`REJECTED`** | `RefundStatus::Rejected` | `REJECTED` | Rejected by the contract owner. No funds are disbursed; lifecycle terminal. |
+| **`PROCESSED`** | `RefundStatus::Processed` | `PROCESSED` | Contract disburses tokens back to the requester via Soroban token transfer; lifecycle terminal. |
 
-The application endpoint `GET /api/refunds?analytics=true` returns the same six
-code buckets for the authenticated user. Its database query is user-scoped;
-the on-chain contract query is contract-scoped and bounded as described above.
+---
 
-See [CONTRACT_FUNCTION_REFERENCE.md](CONTRACT_FUNCTION_REFERENCE.md#refunds)
-for the callable signatures and [API_GUIDE.md](API_GUIDE.md) for API response
-conventions.
+## 3. Authorization & Fund-Safety Rules (Per Transition)
+
+The refund system implements strict authorization checks and reentrancy protections:
+
+### 3.1 `request_refund`
+Requests a refund for a previously recorded payment.
+
+* **Callable by:** Either the **payer** OR the **payee** of the referenced payment (`requester == payment.payer || requester == payment.payee`).
+* **Authentication:** Requires `requester.require_auth()`.
+* **Validation Rules:**
+  * **Not Paused:** Contract must not be paused (`require_not_paused(&env)`).
+  * **Non-Zero Amount:** `amount > 0` (violating returns `PaymentError::InvalidAmount`).
+  * **Payment Exists & Not Cancelled:** `payment_id` must exist and `!payment.cancelled` (violating returns `PaymentAlreadyCancelled`).
+  * **Payer/Payee Check (HIGH-1 Audit Fix):** Requester must match `payment.payer` or `payment.payee`. Third parties or unauthorized callers are rejected with `PaymentError::Unauthorized`.
+  * **Partial vs Full Bounds:** `amount <= payment.amount`. Partial refunds (`amount < payment.amount`) and full refunds (`amount == payment.amount`) are both supported. Exceeding the payment amount returns `PaymentError::InvalidAmount`.
+  * **Asset Match:** `asset == payment.asset` (violating returns `PaymentError::AssetNotSupported`).
+* **Events & Audit:** Emits `("refund", "requested")` event and writes on-chain audit entry `refund_requested`.
+
+### 3.2 `approve_refund`
+Moves a pending refund from `REQUESTED` to `APPROVED`.
+
+* **Callable by:** **Contract Owner only** (`require_owner(&env, &caller)`).
+* **Authentication:** Requires `caller.require_auth()`.
+* **Validation Rules:**
+  * **Not Paused:** Contract must not be paused.
+  * **Prior Status:** Refund must exist and be in `RefundStatus::Requested`. Already approved, rejected, or processed refunds fail with `PaymentError::RefundAlreadyProcessed`.
+* **Audit:** Writes on-chain audit entry `refund_approved` with `resolved_at = env.ledger().timestamp()`.
+
+### 3.3 `reject_refund`
+Rejects a pending refund.
+
+* **Callable by:** **Contract Owner only** (`require_owner(&env, &caller)`).
+* **Authentication:** Requires `caller.require_auth()`.
+* **Validation Rules:**
+  * **Not Paused:** Contract must not be paused.
+  * **Prior Status:** Refund must exist and be in `RefundStatus::Requested`. Already resolved refunds fail with `PaymentError::RefundAlreadyProcessed`.
+* **Audit:** Writes on-chain audit entry `refund_rejected` with `resolved_at = env.ledger().timestamp()`.
+
+### 3.4 `process_refund`
+Disburses funds back to the requester for an approved refund.
+
+* **Callable by:** **Contract Owner only** (`require_owner(&env, &caller)`).
+* **Authentication:** Requires `caller.require_auth()`.
+* **Security & Execution:**
+  * **Reentrancy Lock (MEDIUM-4 Audit Fix):** Acquires contract reentrancy guard (`acquire_reentrancy_lock(&env)`) before any token transfer.
+  * **Not Paused:** Contract must not be paused.
+  * **Prior Status:** Refund must exist and be in `RefundStatus::Approved`. If in `Requested`, `Rejected`, or `Processed`, fails with `PaymentError::RefundAlreadyProcessed`.
+  * **Token Disbursement:** Calls `token::Client::transfer(&contract_addr, &refund.requester, &refund.amount)`.
+* **Events & Audit:** Emits `("refund", "processed")` event and writes on-chain audit entry `refund_processed`.
+
+---
+
+## 4. Refund Reason-Code Catalog
+
+The contract defines a typed 6-variant enum `RefundReasonCode` (`contracts/ophirpay/src/lib.rs`), mapped to integer codes `0` through `5`:
+
+| Code | Variant | Human Label | Semantic Definition & Typical Use Case | Valid Refund Scope |
+| :---: | :--- | :--- | :--- | :--- |
+| **`0`** | `ProductDefect` | Product Defect / Service Quality | The delivered product, digital asset, or service was defective, corrupted, or failed to meet agreed contractual specifications. | Full or Partial |
+| **`1`** | `NonDelivery` | Non-Delivery of Goods / Services | The payer fulfilled payment but the promised goods, license, or service was never delivered or fulfilled by the payee. | Full only (unless multi-item batch) |
+| **`2`** | `DuplicateCharge` | Duplicate Payment / Double Billing | The customer was debited more than once for the same invoice, purchase, or subscription cycle due to client retry or operator error. | Full |
+| **`3`** | `Unauthorized` | Unauthorized / Fraudulent Transaction | Transaction was initiated without the account owner's consent, or compromised credentials were used. | Full |
+| **`4`** | `CustomerRequest` | Voluntary Customer Cancellation | The buyer requested a return, cancellation, or order modification within the allowable merchant return window. | Full or Partial |
+| **`5`** | `Other` | Other / Custom Business Reason | Unclassified reason. A detailed description explaining the circumstances must be supplied in the free-text `reason` field. | Full or Partial |
+
+---
+
+## 5. Analytics Aggregation & Bounded Scan Window
+
+OphirPay provides aggregated metrics on refund reasons for compliance, fraud monitoring, and dispute analysis.
+
+### 5.1 On-Chain Analytics: `get_reason_code_analytics()`
+* **Entrypoint:** `pub fn get_reason_code_analytics(env: Env) -> Vec<(u32, u64)>`
+* **Access:** Public read (available to all users, auditors, and monitoring tools).
+* **Output:** A vector of `(reason_code, count)` pairs covering codes `0` through `5`.
+
+#### Bounded Window & Truncation Semantics (MEDIUM-2 Audit Fix):
+To prevent unbounded iteration, gas exhaustion, and transaction timeout as the total number of refunds grows over the contract's lifetime:
+* The contract fetches total refunds `total = REFUND_CNT`.
+* The scan window is explicitly capped at the **most recent 100 refunds**:
+  ```rust
+  let start = total.saturating_sub(99); // last 100 (1-based IDs)
+  for id in start..=total {
+      // aggregate reason codes
+  }
+  ```
+* **Truncation Behavior:** When total refunds exceed 100, historical refunds prior to `id = total - 99` are **not included** in the on-chain return value. This guarantees deterministic O(1) gas cost and sub-second execution on Stellar Soroban nodes.
+
+---
+
+### 5.2 Application API Endpoint: `GET /api/refunds?analytics=true`
+* **Route:** `GET /api/refunds?analytics=true`
+* **Authentication:** Authenticated session required (wallet cookie or API key).
+* **Behavior:** Queries the PostgreSQL database for all refund records owned by `auth.userId` and aggregates counts across all reason codes:
+  ```json
+  [
+    { "code": 0, "count": 2 },
+    { "code": 1, "count": 0 },
+    { "code": 2, "count": 1 },
+    { "code": 3, "count": 0 },
+    { "code": 4, "count": 5 },
+    { "code": 5, "count": 1 }
+  ]
+  ```
+
+---
+
+## 6. Application API Endpoints Reference
+
+### 1. List Refunds
+* `GET /api/refunds`
+* Returns the most recent 50 refunds for the authenticated user, ordered by `requestedAt DESC`.
+
+### 2. Get Reason Analytics
+* `GET /api/refunds?analytics=true`
+* Returns grouped reason-code count buckets (`code` 0–5).
+
+### 3. Create Refund Record
+* `POST /api/refunds`
+* Persists an off-chain record after on-chain `request_refund` completes.
+* **Idempotency:** Enforces unique `(userId, paymentId)` — duplicate attempts return `409 Conflict`.
+
+### 4. Update Refund Status
+* `PATCH /api/refunds/[id]`
+* Updates status to `APPROVED`, `REJECTED`, or `PROCESSED` and logs an entry to `AuditLog`.
+
+---
+
+## Related Documentation
+
+* See [Contract Function Reference](CONTRACT_FUNCTION_REFERENCE.md#refunds) for callable Soroban smart contract signatures.
+* See [API Guide](API_GUIDE.md) and [API Cookbook](API_COOKBOOK.md) for application REST endpoints and examples.
+

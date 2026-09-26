@@ -381,7 +381,7 @@ export function CsvBatchImport({
 
 // ── Editable cell ─────────────────────────────────────────────
 
-function CellInput({
+export function CellInput({
   value,
   error,
   placeholder,

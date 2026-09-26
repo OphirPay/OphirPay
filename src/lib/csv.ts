@@ -4,7 +4,7 @@
  * CSV export utility — generates and downloads CSV files from array data.
  */
 
-interface CsvOptions {
+export interface CsvOptions {
   filename?: string;
   delimiter?: string;
 }
@@ -41,9 +41,10 @@ export function exportToCsv<T extends Record<string, any>>(
   URL.revokeObjectURL(url);
 }
 
-function escapeCsvField(value: string, delimiter: string): string {
-  if (value.includes(delimiter) || value.includes('"') || value.includes("\n")) {
+export function escapeCsvField(value: string, delimiter = ","): string {
+  if (value.includes(delimiter) || value.includes('"') || value.includes("\n") || value.includes("\r")) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
 }
+

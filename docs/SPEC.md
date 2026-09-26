@@ -275,6 +275,55 @@ clean error.
 
 ---
 
+### INV-12: Error Code Hygiene & Reserved Ranges
+
+**Statement:** The contract runtime SHALL only emit `PaymentError` variants that
+correspond to active, implemented validation checks and invariants (docs/AUDIT.md LOW-6,
+issue #766). Unallocated numeric error slots in the `1..=308` range MUST remain
+documented as reserved ranges without assigned enum variants. Future feature
+implementations SHALL allocate error codes from their designated reserved range
+without renumbering existing variants or breaking client decoders.
+
+The 54 reachable variants and 9 reserved blocks partition the `1..=308` code space:
+
+| Code / Range | Category | Status / Purpose |
+|---|---|---|
+| 1–8 | Core Lifecycle | Active (`NotInitialized` .. `EscrowNotFound`) |
+| 9–12 | Streams | Active (`StreamNotStarted` .. `StreamFullyClaimed`) |
+| 13–14 | Batches | Active (`BatchTooLarge`, `BatchEmpty`) |
+| 15–16 | Token Transfer | **Reserved** (Token transfer / balance errors) |
+| 17–21 | Payments & Circuit Breaker | Active (`PaymentAlreadyCancelled` .. `UpgradeTimelockActive`) |
+| 22–26 | Multisig | Active (`MultisigNotConfigured` .. `AlreadyExecuted`) |
+| 27 | RBAC | Active (`NotARoleHolder`) |
+| 28 | Audit | **Reserved** (Audit log empty) |
+| 29 | Audit | Active (`AuditEntryNotFound`) |
+| 30–32 | Recurring | Active (`RecurringNotFound` .. `RecurringAlreadyCancelled`) |
+| 33–34 | Recurring Lifecycle | **Reserved** (Recurring schedule lifecycle & fee lookup) |
+| 35–38 | Fees & Timelocks | Active (`FeeTooHigh` .. `TimelockAlreadyExecuted`) |
+| 39–42 | Governance | Active (`GovernanceNotConfigured` .. `ProposalAlreadyExecuted`) |
+| 43–44 | Governance Quorum | **Reserved** (Governance quorum & proposal defeat) |
+| 45–46 | Governance & Limits | Active (`DepositTooLow`, `SpendingLimitExpired`) |
+| 47–48 | Refunds | Active (`RefundNotFound`, `RefundAlreadyProcessed`) |
+| 49–50 | Refund History | **Reserved** (Refund history & window) |
+| 51–52 | Governance & Reentrancy | Active (`AlreadyVoted`, `ReentrantCall`) |
+| 53–61 | Advanced Resolution | **Reserved** (Spending caps, dispute resolution & stability) |
+| 62 | Hooks | Active (`HookNotFound`) |
+| 63–64 | Hooks & Limits | **Reserved** (Hook collisions & rate limiting) |
+| 65 | Assets | Active (`AssetNotSupported`) |
+| 66–90 | Streaming & Batch Bounds | **Reserved** (Protocol parameters, recipient limits) |
+| 91 | Signer Limits | Active (`MaxSignersExceeded`) |
+| 92–300 | Advanced Modules | **Reserved** (DeFi, privacy, analytics, and interoperability) |
+| 301–308 | Revocation & Invariants | Active (`RevocationNotFound` .. `InvalidPauseScope`) |
+
+**Code evidence:**
+- `contracts/ophirpay/src/lib.rs`: `PaymentError` enum has exactly 54 variants with comments marking reserved blocks.
+- `contracts/ophirpay/tests/error_uniqueness.rs`: `every_payment_error_discriminant_is_unique` and `allocated_and_reserved_partition_1_to_max` guarantee zero collisions and complete partition of `1..=308`.
+- `src/lib/contract-errors.ts`: Maps the 54 reachable variants to descriptive human-readable strings with fallback decoding.
+
+**Tests:** `every_payment_error_discriminant_is_unique`, `allocated_and_reserved_partition_1_to_max`, `src/__tests__/contract-error-catalog.test.ts`.
+
+---
+
 ## State Transition Diagram
 
 ```

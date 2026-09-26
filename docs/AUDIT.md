@@ -299,7 +299,12 @@ and re-run the IP/hostname check against the final resolved address after follow
    `SystemFatalError = 300`) for many features that are **not implemented** (staking, bridge,
    insurance, KYC, routing, gas, oracle, dispute resolution). The large reserved catalog exists
    to keep the TS error catalog and the contract enum in lockstep, but the unused variants add
-   code size and a false sense of coverage.
+   code size and a false sense of coverage. — ✅ **FIXED (2026-09-26, issue #766).** Trimmed
+   `PaymentError` from 308 variants down to the exact 54 reachable variants emitted by the
+   contract runtime. Unallocated numeric slots in the `1..=308` range are maintained as documented
+   reserved blocks so numeric parity is preserved without false coverage. The TS catalog
+   (`src/lib/contract-errors.ts`) was regenerated to match the 54 active errors with fallback
+   decoding, verified by contract partition unit tests and TypeScript catalog test suites.
 7. **`set_multisig_config`** does not deduplicate signers or enforce the documented
    `MaxSignersExceeded` (error 91) / `MaxSignersExceeded` caps.
 8. **`create_batch`** uses unchecked `total_amount += amount` (potential `i128` overflow with 100
@@ -373,7 +378,7 @@ and re-run the IP/hostname check against the final resolved address after follow
 | P1 | MEDIUM-6 webhook SSRF redirect bypass | ✅ Fixed | Low |
 | P2 | MEDIUM-4 reentrancy on token-moving fns | ✅ Fixed (`REENTRANCY_LOCK` now wraps all token-transfer paths: escrow release/claim, stream claim/cancel, proposal deposit/refund, refund processing, emergency ops) | Medium |
 | P2 | MEDIUM-5 cross-contract pause result | ✅ Fixed | Low |
-| P2 | LOW validation/hygiene items | Partially fixed (LOW-9 HMAC, LOW-11 counts) | Low |
+| P2 | LOW validation/hygiene items | Partially fixed (LOW-6 error catalog, LOW-9 HMAC, LOW-11 counts) | Low |
 
 > **MEDIUM-2 note:** `get_payments_range` now iterates the most-recent tail first and stops at
 > 100 entries (matching `get_audit_log_range`), and `get_reason_code_analytics` scans only the

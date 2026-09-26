@@ -6,12 +6,13 @@ export type {
   SignOptions,
   MultiWalletState,
   WalletRegistryEntry,
+  WalletStatus,
 } from "./types";
 export { WALLET_REGISTRY } from "./types";
 export { freighterConnector } from "./freighter";
 export { albedoConnector } from "./albedo";
 export { xBullConnector } from "./xbull";
-export { ledgerConnector, hasWebUsb } from "./ledger";
+export { ledgerConnector, hasWebUsb, isWebUsbSupported } from "./ledger";
 export { rabetConnector } from "./rabet";
 export { lobstrConnector } from "./lobstr";
 

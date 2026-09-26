@@ -26,10 +26,10 @@
       <img src="https://img.shields.io/github/actions/workflow/status/OphirPay/OphirPay/ci.yml?label=CI&logo=githubactions&logoColor=white" alt="CI" />
     </a>
     <a href="#-testing--quality">
-      <img src="https://img.shields.io/badge/tests-2498%20passed%20(2334%20app%20%2B%2067%20contracts%20%2B%2097%20e2e)-brightgreen.svg" alt="2498 Tests Passing" />
+      <img src="https://img.shields.io/badge/tests-2738%20passed%20(2574%20app%20%2B%2067%20contracts%20%2B%2097%20e2e)-brightgreen.svg" alt="2738 Tests Passing" />
     </a>
     <a href="#-testing--quality">
-      <img src="https://img.shields.io/badge/coverage-68.6%25%20overall-brightgreen.svg?logo=vitest" alt="68.6% Overall Coverage" />
+      <img src="https://img.shields.io/badge/coverage-68.9%25%20overall-brightgreen.svg?logo=vitest" alt="68.9% Overall Coverage" />
     </a>
     <a href="docs/AUDIT.md">
       <img src="https://img.shields.io/badge/audit-manual%20review%2C%202H%2F6M%20fixed-orange.svg" alt="Manual review — 2 High / 6 Medium fixed in code, 3rd-party audit pending" />
@@ -110,7 +110,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **Real-time event streaming** (SSE) | ✅ | ❌ |
 | **Webhook delivery** (HMAC signed, retries) | ✅ | ❌ |
 | **Cross-contract communication** | ✅ | ❌ |
-| **Multi-wallet support** (5 active: Freighter, xBull, Rabet, Albedo, Lobstr; Ledger pending) | ✅ | ❌ |
+| **Multi-wallet support** (5 wallets: Freighter, xBull, Rabet, Albedo, Lobstr; Ledger pending) | ✅ | ❌ |
 | **Multi-asset support** (USDC, custom tokens) | ✅ | ❌ |
 | **Path payments** (cross-asset sends, rate preview, slippage protection) | ✅ | ❌ |
 | **PWA with offline support** | ✅ | ❌ |
@@ -301,7 +301,7 @@ OphirPay supports multiple Stellar wallets through a unified connector abstracti
 
 | Feature | Implementation |
 |---|---|
-| **Multi-wallet** | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr (Ledger hardware wallet pending) |
+| **Multi-wallet** | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr (the Ledger connector is pending) |
 | **Connect** | Wallet selector modal → `connector.connect()` |
 | **Disconnect** | Full state reset + connector-specific cleanup |
 | **Session persistence** | Auto-detects existing connections on page load |
@@ -313,14 +313,25 @@ OphirPay supports multiple Stellar wallets through a unified connector abstracti
 
 **Supported wallets:**
 
-| Wallet | Type | Status | Notes |
-|---|---|---|---|
-| Freighter | Browser extension | ✅ Supported | Recommended for desktop |
-| xBull | Browser extension | ✅ Supported | Full multi-asset support |
-| Rabet | Browser extension | ✅ Supported | Desktop extension |
-| Albedo | Web-based (no extension) | ✅ Supported | Works on mobile and desktop |
-| Lobstr | Web-based (SEP-7) | ✅ Supported | Seamless mobile/web handoff |
-| Ledger | Hardware (WebUSB) | ⏳ Pending | Requires Chromium browser (Chrome/Edge/Brave) with WebUSB & `@ledgerhq` driver packages |
+| Wallet | Type | Status |
+|---|---|---|
+| Freighter | Browser extension | ✅ Supported |
+| xBull | Browser extension | ✅ Supported |
+| Rabet | Browser extension | ✅ Supported |
+| Albedo | Web-based (no extension) | ✅ Supported |
+| Lobstr | Web-based (SEP-7) | ✅ Supported |
+| Ledger | Hardware (WebUSB) | ⏳ Pending — connector is a stub, not offered in the selector |
+
+> ⏳ **Ledger is pending.** `src/lib/wallets/ledger.ts` is a stub: it detects
+> WebUSB but the `@ledgerhq/hw-transport-webusb` and `@ledgerhq/hw-app-str`
+> packages are not dependencies, so it cannot sign a transaction. It is marked
+> `pending` in the wallet registry and is therefore not offered in the wallet
+> selector (no "Unable to connect" dead end). Even once implemented, Ledger
+> browser signing requires **WebUSB**, which only Chromium-based browsers
+> (Chrome, Edge, Brave, Opera) expose, over HTTPS or `localhost`, with the
+> Stellar app open on the device. See
+> [docs/STELLAR_101.md](docs/STELLAR_101.md#wallet-connectors--ledger-status).
+> Until then, use Freighter, xBull, Rabet, Albedo or Lobstr.
 
 ```tsx
 // Consuming the wallet anywhere in your app
@@ -555,10 +566,10 @@ cd contracts/emitter && cargo test
 ## 📊 Testing & Quality
 
 ```bash
-# All app tests (2,334 cases across 168 suites)
+# All app tests (2,574 cases across 185 suites)
 npm test
 
-# Coverage report (68.6% overall — 69.8% statements / 66.4% branches / 67.1% functions / 71.3% lines)
+# Coverage report (68.9% overall — 70.2% statements / 66.8% branches / 67.2% functions / 71.5% lines)
 # Budgets are per-directory bands, not one global number: see vitest.config.ts
 # and the "Coverage ratchet" section of CONTRIBUTING.md.
 npm run coverage
@@ -569,14 +580,18 @@ npx playwright test
 # Full CI pipeline
 npm run ci   # typecheck → lint → test → build
 
+# Bundle analysis (opt-in webpack treemap) and committed size budget
+npm run analyze       # writes .next/analyze/*.html
+npm run bundle:check  # enforce bundle-budget.json (runs in CI on every build)
+
 # Visual Regression
 npm run test:visual        # Compare against baselines
 npm run test:visual:update # Update baselines
 ```
 
-### Unit Tests (Vitest) — 2,334 cases
+### Unit Tests (Vitest) — 2,574 cases
 
-All app tests live in `src/__tests__/` (168 files, 2,334 cases): auth & sessions, CSRF, API responses & branches, error codes, contract utilities & invocation, Stellar integration, transaction simulation, webhook URL guard & delivery, validation schemas, type guards, UI components, hooks, loading & error boundaries, and branch coverage suites.
+All app tests live in `src/__tests__/` (185 files, 2,574 cases): auth & sessions, CSRF, API responses & branches, error codes, contract utilities & invocation, Stellar integration, transaction simulation, webhook URL guard & delivery, validation schemas, type guards, UI components, hooks, loading & error boundaries, and branch coverage suites.
 
 ### Coverage budgets (per-directory)
 
@@ -687,7 +702,10 @@ Path-scoped workflows add Prisma schema/migration replay
 the integration-branch guard (`enforce-integration-branch.yml`), dependency
 scanning (`dependency-scan.yml`), PR auto-labeling (`pr-labeler.yml`),
 security scorecard (`scorecard.yml`), issue staleness (`stale.yml`), database
-backups (`db-backup.yml`), and scheduled payments (`scheduled-payments-cron.yml`).
+backups (`db-backup.yml`), scheduled payments (`scheduled-payments-cron.yml`),
+the nightly E2E suite (`e2e-nightly.yml`), the Docker image smoke test
+(`docker-smoke.yml`), and the weekly load-test baseline gate (`load-test.yml`, see
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md)).
 
 **→ [View the latest core CI run](https://github.com/OphirPay/OphirPay/actions/workflows/ci.yml)**
 
@@ -736,7 +754,7 @@ backups (`db-backup.yml`), and scheduled payments (`scheduled-payments-cron.yml`
 | **Styling** | [Tailwind CSS v4](https://tailwindcss.com) | Utility-first, dark mode, custom theme |
 | **Blockchain** | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org) | Horizon, Soroban RPC, TX building |
 | **Contracts** | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27 | WASM compilation, cross-contract invocation |
-| **Wallet** | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) | 5-wallet connector abstraction (Ledger pending) |
+| **Wallet** | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) (pending) | 5-wallet connector abstraction + pending Ledger connector |
 | **Database** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite | Type-safe ORM, provider switching |
 | **Testing** | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | Unit, integration & E2E coverage |
 | **CI/CD** | [GitHub Actions](https://github.com/features/actions) | Gating pipeline on every PR |
@@ -801,7 +819,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 | ✅ Mobile responsive UI | **Done** |
 | ✅ CI/CD pipeline + 806 app tests + 67 contract tests + 97 e2e | **Done** |
 | ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr) | **Done** |
-| ⏳ Ledger hardware wallet connector (WebUSB / `@ledgerhq`) | **Pending** |
+| ⏳ Ledger hardware wallet connector | **Pending** — WebUSB integration not shipped |
 | ✅ Stellar assets (USDC, custom tokens, trustline checks) | **Done** |
 | ✅ Payment request links (shareable invoices, QR codes) | **Done** |
 | ✅ Webhook delivery (HMAC signed, retries) | **Done** |

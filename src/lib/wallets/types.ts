@@ -46,6 +46,8 @@ export interface WalletConnector {
   isConnected(): Promise<boolean>;
 }
 
+export type WalletStatus = "supported" | "pending";
+
 export interface MultiWalletState {
   connected: boolean;
   publicKey: string | null;
@@ -62,7 +64,7 @@ export interface WalletRegistryEntry {
   icon: string;
   priority: number; // lower = shown first
   supported: boolean;
-  status: "supported" | "pending" | "unsupported";
+  status: WalletStatus;
 }
 
 /** All known wallet connectors registry */
@@ -97,7 +99,7 @@ export const WALLET_REGISTRY: WalletRegistryEntry[] = [
   {
     id: "ledger",
     name: "Ledger",
-    description: "Hardware wallet — requires WebUSB in Chromium + Ledger Stellar app (Pending integration)",
+    description: "Hardware wallet — Pending WebUSB integration",
     icon: "🔐",
     priority: 4,
     supported: false,

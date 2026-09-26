@@ -38,10 +38,6 @@ export function WalletSelector({
 }: WalletSelectorProps) {
   const [hovered, setHovered] = useState<WalletId | null>(null);
 
-  const displayedWallets = WALLET_REGISTRY.filter(
-    (w) => includeUnsupported || w.supported !== false,
-  ).sort((a, b) => a.priority - b.priority);
-
   return (
     <Modal
       open
@@ -65,26 +61,25 @@ export function WalletSelector({
     >
       {/* Wallet list */}
       <div className="space-y-1">
-        {displayedWallets.map((wallet) => {
-          const isSupported = wallet.supported !== false;
-          const isAvailable = isSupported && availableWallets.includes(wallet.id);
+        {WALLET_REGISTRY.sort((a, b) => a.priority - b.priority).map((wallet) => {
+          const isPending = wallet.status === "pending" || wallet.supported === false;
+          const isAvailable = !isPending && availableWallets.includes(wallet.id);
           const isConnectingWallet = connectingWallet === wallet.id;
 
           return (
             <button
               key={wallet.id}
-              onClick={() => isAvailable && isSupported && onSelect(wallet.id)}
-              disabled={!isAvailable || !isSupported || isConnecting}
+              onClick={() => isAvailable && onSelect(wallet.id)}
+              disabled={!isAvailable || isConnecting}
               onMouseEnter={() => setHovered(wallet.id)}
               onMouseLeave={() => setHovered(null)}
               className={cn(
                 "w-full flex items-center gap-4 px-4 py-3.5 rounded-xl text-left transition-all",
-                isAvailable && isSupported
+                isAvailable
                   ? "hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
                   : "opacity-50 cursor-not-allowed",
                 hovered === wallet.id &&
                   isAvailable &&
-                  isSupported &&
                   "bg-gray-50 dark:bg-gray-800 ring-1 ring-ophir-200 dark:ring-ophir-800",
               )}
             >
@@ -124,7 +119,7 @@ export function WalletSelector({
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                ) : !isSupported ? (
+                ) : isPending ? (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
                     Pending
                   </span>
@@ -142,6 +137,18 @@ export function WalletSelector({
           );
         })}
       </div>
+
+      {/* Pending connectors */}
+      {WALLET_REGISTRY.some((w) => w.status === "pending") && (
+        <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+          <span className="font-medium text-gray-700 dark:text-gray-300">
+            Ledger is pending:
+          </span>{" "}
+          the hardware connector is not shipped yet and needs WebUSB, which only
+          Chromium-based browsers (Chrome, Edge, Brave, Opera) support. Use
+          Freighter, xBull, Rabet, Albedo or Lobstr for now.
+        </p>
+      )}
 
       {/* Error */}
       {error && (

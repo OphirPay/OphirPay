@@ -17,6 +17,7 @@
 - [Horizon — Stellar's REST API](#-horizon--stellars-rest-api)
 - [Soroban — Smart Contracts on Stellar](#-soroban--smart-contracts-on-stellar)
 - [Minimal Working Example: Send XLM](#-minimal-working-example-send-xlm)
+- [Wallet Connectors & Ledger Status](#wallet-connectors--ledger-status)
 - [Glossary](#-glossary)
 - [Further Reading](#-further-reading)
 
@@ -349,28 +350,47 @@ try {
 
 ---
 
-## Stellar Wallets & Hardware Signers
+## Wallet Connectors & Ledger Status
 
-OphirPay integrates with Stellar accounts via client-side wallet connectors. Transactions are constructed in the application, serialized into XDR (External Data Representation), and handed to the connected wallet for signature. The application never sees or handles your private keys.
+OphirPay ships one unified connector per wallet. Five of the six registry
+entries actually sign; **Ledger is pending**.
 
-### Active Supported Wallets
+| Wallet | Type | Status |
+|---|---|---|
+| Freighter | Browser extension | ✅ Supported |
+| xBull | Browser extension | ✅ Supported |
+| Rabet | Browser extension | ✅ Supported |
+| Albedo | Web-based (no extension) | ✅ Supported |
+| Lobstr | Web-based (SEP-7) | ✅ Supported |
+| Ledger | Hardware (WebUSB) | ⏳ Pending — connector is a stub |
 
-| Wallet | Type | Target Environment | Status |
-|---|---|---|---|
-| **Freighter** | Browser Extension | Desktop (Chrome, Firefox, Edge, Brave) | ✅ Active (Recommended) |
-| **Albedo** | Web-based popup | Desktop & Mobile (no extension required) | ✅ Active |
-| **xBull** | Browser Extension / Web | Desktop & Mobile | ✅ Active |
-| **Rabet** | Browser Extension | Desktop | ✅ Active |
-| **Lobstr** | Web / Mobile (SEP-7) | Web & Mobile link handoff | ✅ Active |
+### Why Ledger is pending
 
-### Hardware Wallets (Ledger) Status & Requirements
+`src/lib/wallets/ledger.ts` only checks whether `navigator.usb` exists. The
+real integration (`@ledgerhq/hw-transport-webusb` + `@ledgerhq/hw-app-str`) is
+not in `package.json`, and the connector's `connect()` / `signTransaction()`
+paths deliberately throw. To avoid offering a wallet that fails on connect, the
+connector reports `isAvailable() === false` and the wallet registry marks it
+`status: "pending"` — the selector shows it disabled with a **Pending** badge
+rather than an "Installed" badge it cannot honour.
 
-Hardware wallets isolate private keys on a dedicated secure element chip.
+### Browser and device requirements (for when it ships)
 
-- **Status**: ⏳ **Pending Integration** (connector currently disabled in UI).
-- **Driver Requirements**: Requires `@ledgerhq/hw-transport-webusb` and `@ledgerhq/hw-app-str` dependencies.
-- **Browser Requirements**: Ledger browser communication relies on the **WebUSB API**, which is only supported in **Chromium-based browsers** (Google Chrome, Microsoft Edge, Brave, Opera). Non-Chromium browsers such as Firefox and Safari do not support WebUSB.
-- **Fallback**: While hardware wallet driver integration is pending, users are directed to connect using one of the five active software wallets (such as Freighter or Albedo).
+- **WebUSB** is required, and only **Chromium-based** browsers implement it:
+  Chrome, Edge, Brave and Opera. Firefox and Safari cannot talk to a Ledger
+  from a web page at all.
+- The page must be served over **HTTPS** (or `localhost`) — WebUSB is a
+  secure-context API.
+- The device must be connected over USB with the **Stellar app open**.
+- The browser prompts for permission to access the device; a denied prompt has
+  to be reset in the browser's USB settings before retrying.
+
+### Fallback
+
+Until the Ledger connector lands, sign with **Freighter, xBull, Rabet, Albedo
+or Lobstr**. Hardware-key custody is still possible outside OphirPay — for
+example by signing with a Ledger through Stellar Laboratory or the Stellar CLI
+— but it is not wired into OphirPay's connect flow yet.
 
 ---
 

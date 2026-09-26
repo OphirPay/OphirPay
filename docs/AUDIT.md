@@ -308,6 +308,10 @@ and re-run the IP/hostname check against the final resolved address after follow
    canonicalizes the HMAC over `JSON.stringify({...payload, signature: ""})` and transmits the
    body with the real signature populated; a receiver empties the `signature` field and
    re-serializes to recompute an identical HMAC. Covered by `src/__tests__/webhook-deliver.test.ts`.
+   **Replay hardening (2026-09-25, issue #702):** the signed input is now
+   `<X-OphirPay-Timestamp>.<canonical body>`, so the timestamp header is authenticated and a
+   captured delivery cannot be re-dated; the reference verifiers and docs enforce a 300s
+   freshness window on the signed timestamp.
 10. **API keys hashed with plain SHA-256** (`src/lib/api-auth.ts`): fine for high-entropy random
     keys, but there is no enforcement that keys are long/random. Prefer a slow KDF (bcrypt/scrypt/
     argon2) or enforce 32+ byte CSPRNG keys at creation.

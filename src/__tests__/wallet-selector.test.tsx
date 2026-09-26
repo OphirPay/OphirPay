@@ -28,27 +28,22 @@ describe("WalletSelector", () => {
     expect(screen.getByText("xBull")).toBeInTheDocument();
   });
 
-  it("does not offer Ledger in the UI by default (pending status)", () => {
-    renderSelector({ availableWallets: ["freighter", "albedo", "xbull", "ledger"] as never });
-    expect(screen.queryByText(/Ledger/i)).toBeNull();
-  });
-
-  it("shows Ledger as disabled with Pending badge when includeUnsupported is true", () => {
-    renderSelector({
-      availableWallets: ["freighter", "ledger"] as never,
-      includeUnsupported: true,
-    });
-    expect(screen.getByText("Ledger")).toBeInTheDocument();
-    expect(screen.getByText("Pending")).toBeInTheDocument();
-    const ledgerButton = screen.getByRole("button", { name: /ledger/i });
-    expect(ledgerButton).toBeDisabled();
-  });
 
   it("marks available wallets as Installed and others as Not found", () => {
     renderSelector({ availableWallets: ["freighter"] });
     expect(screen.getByText("Installed")).toBeInTheDocument();
     // Albedo/xBull are not available in this render
     expect(screen.getAllByText("Not found").length).toBeGreaterThan(0);
+  });
+
+  it("shows the pending Ledger connector as Pending and does not select it", () => {
+    const onSelect = vi.fn();
+    renderSelector({ availableWallets: [...WALLET_IDS], onSelect });
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    const ledger = screen.getByRole("button", { name: /ledger/i });
+    expect(ledger).toBeDisabled();
+    fireEvent.click(ledger);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("calls onSelect when an available wallet is clicked", () => {

@@ -15,6 +15,11 @@ info:
     **Conventions** — see [docs/API_GUIDE.md](./API_GUIDE.md) for the
     endpoint conventions: file structure, Zod validation, error handling,
     auth usage, the response envelope, and rate limiting.
+
+    **Client SDK & Automation** — official typed client and GitHub Actions:
+    - `@ophirpay/client` SDK — see [docs/API_CLIENT.md](./API_CLIENT.md)
+    - `ophirpay` CLI — `bin/ophirpay.mjs`
+    - GitHub Actions — `.github/actions/batch-payment` & `.github/actions/create-payment`
   version: 0.1.0
   contact:
     name: OphirPay Team

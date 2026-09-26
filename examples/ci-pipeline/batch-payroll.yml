@@ -1,0 +1,43 @@
+name: Automated Batch Payout
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_name:
+        description: "Name of the batch"
+        required: true
+        default: "Payroll-Sep-2026"
+  schedule:
+    # Run at 00:00 on the 1st of every month
+    - cron: "0 0 1 * *"
+
+jobs:
+  payout:
+    name: Execute Batch Payout
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: OphirPay Batch Payment Action
+        id: ophirpay-batch
+        uses: OphirPay/OphirPay/.github/actions/batch-payment@main
+        with:
+          api-key: ${{ secrets.OPHIRPAY_API_KEY }}
+          base-url: "https://api.ophirpay.com"
+          csv-file: "./examples/ci-pipeline/recipients-sample.csv"
+          batch-name: ${{ github.event.inputs.batch_name || 'Scheduled-Monthly-Payout' }}
+          source-account: ${{ secrets.STELLAR_SOURCE_ACCOUNT }}
+          fail-on-rejected: "true"
+
+      - name: Log Payout Output
+        run: |
+          echo "Batch ID: ${{ steps.ophirpay-batch.outputs.batch-id }}"
+          echo "Status: ${{ steps.ophirpay-batch.outputs.status }}"
+          echo "Total Recipients: ${{ steps.ophirpay-batch.outputs.total-recipients }}"
+          echo "Total Amount: ${{ steps.ophirpay-batch.outputs.total-amount }}"

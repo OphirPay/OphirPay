@@ -16,6 +16,7 @@ const counters = {
   batches_processed_total: 0,
   webhooks_delivered_total: 0,
   webhooks_failed_total: 0,
+  rpc_failovers_total: 0,
   db_query_duration_seconds_sum: 0,
   db_query_duration_seconds_count: 0,
   /** Gauge: currently open SSE event-stream connections (inc on connect, dec on disconnect). */

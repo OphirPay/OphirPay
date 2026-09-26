@@ -7,6 +7,7 @@ import {
   getEndpointMetrics,
   LATENCY_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
+import { getRpcFailoverState } from "@/lib/rpc-failover";
 import { timingSafeEqual } from "@/lib/crypto";
 import { authenticateRequest } from "@/lib/api-auth";
 import { hasScope, ADMIN_SCOPE } from "@/lib/api-scopes";
@@ -104,6 +105,14 @@ function buildMetrics(): string {
     "# HELP ophirpay_webhooks_failed_total Total webhooks that failed delivery",
     "# TYPE ophirpay_webhooks_failed_total counter",
     `ophirpay_webhooks_failed_total ${c.webhooks_failed_total}`,
+    "",
+    "# HELP ophirpay_rpc_failovers_total Total Soroban RPC endpoint failovers",
+    "# TYPE ophirpay_rpc_failovers_total counter",
+    `ophirpay_rpc_failovers_total ${c.rpc_failovers_total}`,
+    "",
+    "# HELP ophirpay_rpc_on_fallback Whether the app serves from a non-primary RPC endpoint",
+    "# TYPE ophirpay_rpc_on_fallback gauge",
+    `ophirpay_rpc_on_fallback ${getRpcFailoverState().onFallback ? 1 : 0}`,
     "",
     "# HELP ophirpay_delivery_attempts_total Total delivery attempts by delivery type and attempt number",
     "# TYPE ophirpay_delivery_attempts_total counter",

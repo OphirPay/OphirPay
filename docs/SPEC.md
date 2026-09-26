@@ -304,7 +304,7 @@ clean error.
 ## Testing Strategy
 
 Each invariant is verified by unit tests, property-based proptests, and integration harnesses:
-- **Unit Tests**: `contracts/ophirpay/src/lib.rs` (lines ~3840+)
+- **Unit Tests**: `contracts/ophirpay/src/tests.rs` (in-crate unit and property tests)
 - **Proptest Suite**: `contracts/ophirpay/tests/proptest_token_moving.rs` (fuzzing token paths, reentrancy-shaped sequences, and `LOCKED_BALANCE` conservation)
 - **Integration Tests**: `contracts/ophirpay/tests/integration/` (end-to-end multi-contract flows)
 

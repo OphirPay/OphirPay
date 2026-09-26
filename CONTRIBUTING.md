@@ -160,9 +160,27 @@ npm run coverage      # Coverage report
 npm run typecheck     # TypeScript check
 npm run lint          # ESLint
 npm run test:openapi  # OpenAPI spec ↔ implementation conformance (drift)
-npm run test:e2e      # E2E tests (requires a running server at E2E_BASE_URL)
+npm run test:e2e      # Playwright E2E (needs a running, seeded server — see below)
 npm run test:visual   # Visual regression tests
 npm run test:visual:update # Update visual baselines
+```
+
+### E2E (Playwright)
+
+`playwright.config.ts` has no `webServer` block, so the E2E suite runs
+against a server **you** start (default `http://localhost:3000`, override
+with `E2E_BASE_URL`) and a seeded database — running it with nothing
+listening just gives a connection error. The full local procedure (build +
+start vs dev server, seed, required env vars, the main/visual/accessibility
+configurations, targeting a project or shard, and which specs use the mocked
+Stellar/SSE helpers) lives in
+**[docs/testing/e2e-local.md](docs/testing/e2e-local.md)**.
+
+One-command path — starts the server, waits for `/api/health`, runs the
+suite, then stops the server:
+
+```bash
+npm run test:e2e:local -- --project=chromium
 ```
 
 ### Coverage ratchet

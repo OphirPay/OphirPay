@@ -270,8 +270,9 @@ curl -s http://localhost:3000/api/health
 Optional extras:
 
 - **Playwright E2E** — `npm run test:e2e` (needs a running production build +
-  Postgres; see the `e2e-tests` job in `.github/workflows/ci.yml` for the exact
-  recipe).
+  Postgres; see [Running the E2E suite locally](testing/e2e-local.md) — or run
+  `npm run test:e2e:local` to have the server started, waited on and stopped
+  for you).
 - **Testnet integration** — `npm run test:testnet` runs live RPC checks against
   Soroban Testnet (uses the Friendbot, see §5).
 - **Redis-backed rate limiting** — set `REDIS_URL=redis://localhost:6379` and

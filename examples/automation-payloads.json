@@ -1,0 +1,97 @@
+{
+  "//": "Generated reference payloads for OphirPay webhook events. Validated by tests/automation-payloads.test.ts against the WEBHOOK_EVENTS registry and the payload envelope shape used by src/lib/webhook-dispatcher.ts. Do not hand-edit: run `npm run test -- tests/automation-payloads.test.ts` afterwards.",
+  "envelope": {
+    "event": "payment.created",
+    "timestamp": "2026-09-25T12:00:00Z",
+    "data": {}
+  },
+  "lifecycle": {
+    "created": {
+      "event": "payment.created",
+      "description": "A payment row exists but has not been submitted to the network yet. Your automation should record the payment as pending and never act on it financially.",
+      "payload": {
+        "event": "payment.created",
+        "timestamp": "2026-09-25T12:00:00Z",
+        "data": {
+          "id": "pay_01J8ZQ4K2M9V7T3XN6B5C0D8EF",
+          "status": "PENDING",
+          "amount": "250.00",
+          "asset": {
+            "code": "USDC",
+            "issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+            "type": "credit_alphanum4"
+          },
+          "destination": "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+          "memo": {
+            "type": "text",
+            "value": "invoice-2026-0917"
+          },
+          "idempotencyKey": "b7e3a1f2-4c5d-4e6f-8a9b-0c1d2e3f4a5b",
+          "createdAt": "2026-09-25T11:59:58Z"
+        }
+      }
+    },
+    "signed": {
+      "event": "payment.signed",
+      "description": "The transaction envelope is signed locally. Nothing is on-chain yet — a signed payment can still be discarded before submission.",
+      "payload": {
+        "event": "payment.signed",
+        "timestamp": "2026-09-25T12:00:04Z",
+        "data": {
+          "id": "pay_01J8ZQ4K2M9V7T3XN6B5C0D8EF",
+          "status": "SIGNED",
+          "transactionHash": null,
+          "signedEnvelopeLength": 216,
+          "signedAt": "2026-09-25T12:00:04Z"
+        }
+      }
+    },
+    "submitted": {
+      "event": "payment.submitted",
+      "description": "The signed envelope was accepted by Horizon for inclusion in a ledger. Inclusion is not finality — the result is still unknown.",
+      "payload": {
+        "event": "payment.submitted",
+        "timestamp": "2026-09-25T12:00:07Z",
+        "data": {
+          "id": "pay_01J8ZQ4K2M9V7T3XN6B5C0D8EF",
+          "status": "SUBMITTED",
+          "transactionHash": "9f2c1b8a7d6e5f4c3b2a1908172635445a6b7c8d9e0f1a2b3c4d5e6f708192a3",
+          "ledger": 58123456,
+          "submittedAt": "2026-09-25T12:00:07Z"
+        }
+      }
+    },
+    "confirmed": {
+      "event": "payment.confirmed",
+      "description": "The ledger containing the transaction has been confirmed by the network. The payment succeeded; funds movement is settled from this point.",
+      "payload": {
+        "event": "payment.confirmed",
+        "timestamp": "2026-09-25T12:00:22Z",
+        "data": {
+          "id": "pay_01J8ZQ4K2M9V7T3XN6B5C0D8EF",
+          "status": "CONFIRMED",
+          "transactionHash": "9f2c1b8a7d6e5f4c3b2a1908172635445a6b7c8d9e0f1a2b3c4d5e6f708192a3",
+          "ledger": 58123457,
+          "confirmedAt": "2026-09-25T12:00:22Z"
+        }
+      }
+    },
+    "failed": {
+      "event": "payment.failed",
+      "description": "The network rejected the transaction or the submission timed out. The payment row stays pending so it can be retried — treat this as a recoverable signal, not a loss.",
+      "payload": {
+        "event": "payment.failed",
+        "timestamp": "2026-09-25T12:00:31Z",
+        "data": {
+          "id": "pay_01J8ZQ4K2M9V7T3XN6B5C0D8EF",
+          "status": "FAILED",
+          "transactionHash": "9f2c1b8a7d6e5f4c3b2a1908172635445a6b7c8d9e0f1a2b3c4d5e6f708192a3",
+          "errorCode": "tx_failed",
+          "errorMessage": "The transaction failed when submitted to the stellar network.",
+          "operationResultCodes": ["op_underfunded"],
+          "failedAt": "2026-09-25T12:00:31Z"
+        }
+      }
+    }
+  }
+}

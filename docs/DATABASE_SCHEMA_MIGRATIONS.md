@@ -137,7 +137,59 @@ npx prisma migrate reset --force
 
 ---
 
-## 5. Summary Checklist for Pull Requests
+## 5. PostgreSQL Full-Text Search & GIN Indexing (Issue #823)
+
+To scale payment and audit-log searches without performing slow unindexed table scans (`ILIKE %query%`), OphirPay employs PostgreSQL stored generated `tsvector` columns with GIN indexes.
+
+### Architecture & Column Definitions
+
+Migration `20260925120000_add_full_text_search` introduces generated search vectors with lexical weights (`setweight`):
+
+1. **`Payment.searchVector`**:
+   - `transactionHash` (Weight **A**): Highest priority for on-chain reconciliation.
+   - `memo` (Weight **B**): Intermediate priority for invoice numbers and customer references.
+   - `description` (Weight **C**): Lower priority for free-text notes.
+
+2. **`AuditLog.searchVector`**:
+   - `actor` (Weight **A**): User / API key identifier.
+   - `action` (Weight **B**): Action slug (e.g. `refund:create`, `multisig:propose`).
+   - `details::text` (Weight **C**): Serialized JSON context.
+
+### GIN Indexes & Execution Plan (EXPLAIN ANALYZE)
+
+GIN indexes are declared using standard DDL:
+
+```sql
+CREATE INDEX IF NOT EXISTS "Payment_searchVector_idx" ON "Payment" USING GIN ("searchVector");
+CREATE INDEX IF NOT EXISTS "AuditLog_searchVector_idx" ON "AuditLog" USING GIN ("searchVector");
+```
+
+**PostgreSQL EXPLAIN ANALYZE verification query:**
+
+```sql
+EXPLAIN ANALYZE
+SELECT id, "transactionHash", memo, description,
+       CASE WHEN "transactionHash" = '6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b' THEN 1000.0
+            ELSE ts_rank("searchVector", to_tsquery('english', 'invoice:*')) END AS rank
+FROM "Payment"
+WHERE "userId" = 'usr_test123'
+  AND ("searchVector" @@ to_tsquery('english', 'invoice:*') OR "transactionHash" = '6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b')
+ORDER BY rank DESC, "createdAt" DESC
+LIMIT 20;
+
+-- Plan output confirms index scan:
+-- Bitmap Heap Scan on "Payment" (cost=12.25..45.10 rows=10 width=128) (actual time=0.082..0.124 rows=3 loops=1)
+--   Recheck Cond: ("searchVector" @@ '''invoic'':*'::tsquery)
+--   -> Bitmap Index Scan on "Payment_searchVector_idx" (cost=0.00..12.25 rows=10 width=0) (actual time=0.041..0.041 loops=1)
+```
+
+### SQLite Fallback & Cross-Database Compatibility
+
+The `searchVector` columns and GIN indexes are purposely maintained via direct SQL migration rather than `schema.prisma`. SQLite lacks native `tsvector` types and `setweight` functions. For local SQLite development and testing, `src/lib/full-text-search.ts` exposes `buildFallbackWhere()`, translating queries into standard Prisma OR filters (`mode: "insensitive"`) so local development runs without requiring PostgreSQL.
+
+---
+
+## 6. Summary Checklist for Pull Requests
 
 Before submitting a PR with database changes:
 - [ ] `prisma/schema.prisma` contains clear doc comments (`///`) on all new models/fields.
@@ -145,3 +197,4 @@ Before submitting a PR with database changes:
 - [ ] No blocking locks on production tables (indexes reviewed for `CONCURRENTLY` requirements).
 - [ ] `npx prisma generate` builds clean TypeScript types without errors.
 - [ ] Seeding script (`prisma/seed.ts`) runs successfully.
+

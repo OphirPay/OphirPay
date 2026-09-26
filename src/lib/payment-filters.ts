@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import type { PaymentStatus, Prisma } from "@prisma/client";
+import { buildFallbackWhere } from "@/lib/full-text-search";
 
 /**
  * Filters shared by the payment list route (GET /api/payments) and the
@@ -26,18 +27,11 @@ export function buildPaymentWhere(
     where.status = filters.status as PaymentStatus;
   }
   if (filters.search) {
-    // Issue #157 — server-side reconciliation search:
-    //  - `memo` and `description` are substring matches, case-insensitive for
-    //    `memo` (the Postgres ILIKE equivalent via Prisma `mode`), because memo
-    //    text users type rarely matches on-chain casing;
-    //  - `transactionHash` is an EXACT match — hashes are emitted by the network
-    //    in a canonical case, and a partial match would produce false positives
-    //    across near-identical hashes.
-    where.OR = [
-      { description: { contains: filters.search } },
-      { memo: { contains: filters.search, mode: "insensitive" } },
-      { transactionHash: { equals: filters.search } },
-    ];
+    // Issue #157 / #823 — server-side reconciliation search:
+    // Uses buildFallbackWhere so the SQLite development path and the
+    // Prisma query builder stay in sync with documented search semantics.
+    const or = buildFallbackWhere(filters.search);
+    if (or) where.OR = or;
   }
   return where;
 }

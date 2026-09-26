@@ -58,6 +58,15 @@ export function validateBatchRecipients(
     totalAmount += amount;
   }
 
+  const MAX_I128 = 1.7014118346046923e38;
+  if (totalAmount > MAX_I128) {
+    errors.push({
+      index: -1,
+      field: "total",
+      message: "Math overflow",
+    });
+  }
+
   if (availableBalance !== undefined && totalAmount > availableBalance) {
     errors.push({
       index: -1,

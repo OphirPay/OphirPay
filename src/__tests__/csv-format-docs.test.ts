@@ -60,7 +60,7 @@ describe("docs/CSV_FORMAT.md — sample file", () => {
       "utf8"
     ).trim();
 
-    const codeBlock = doc.match(/```csv\n([\s\S]*?)```/);
+    const codeBlock = doc.match(/```csv\r?\n([\s\S]*?)```/);
     expect(codeBlock).not.toBeNull();
     expect(codeBlock![1].trim()).toBe(sample);
   });

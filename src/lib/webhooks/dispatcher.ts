@@ -14,8 +14,8 @@
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import type { WebhookEventType } from "@/app/api/webhooks/event-types";
-import { deliverWebhook } from "./delivery";
-import { recordWebhookDelivery, storeWebhookEvent } from "./store";
+import { deliverWebhook } from "@/lib/webhook-deliver";
+import { recordWebhookDelivery, storeWebhookEvent } from "@/lib/webhook-event-store";
 import { isSubscribedToEvent } from "./filter";
 
 /**

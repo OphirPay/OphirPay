@@ -6,6 +6,10 @@
  */
 
 export {
+  DEFAULT_ALLOWED_WEBHOOK_PORTS,
+  getAllowedWebhookPorts,
   isSafeWebhookUrl,
+  validateWebhookUrlAtDelivery,
   isSafeWebhookUrlAtDelivery,
+  type WebhookUrlValidation,
 } from "./webhooks/url-guard";

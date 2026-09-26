@@ -126,16 +126,16 @@ describe("Webhook Consolidated Architecture (Issue #758)", () => {
   // ── 3. Replay Bounds & Integrator Test Event ──────────────────
   describe("Replay bounds and test event builder", () => {
     it("resolveReplayBounds clamps limits and time range", () => {
-      const now = new Date();
       const bounds = Webhooks.resolveReplayBounds({
         userId: "usr_1",
         subscribedEvents: ["payment.completed"],
         limit: 200, // exceeds max 100
       });
+      const now = new Date();
 
       expect(bounds.limit).toBe(100);
       expect(bounds.until.getTime()).toBeLessThanOrEqual(now.getTime());
-      expect(bounds.since.getTime()).toBeLessThan(now.getTime());
+      expect(bounds.since.getTime()).toBeLessThan(bounds.until.getTime());
     });
 
     it("buildTestWebhookPayload marks payload as simulation", () => {

@@ -17,33 +17,62 @@ export interface WebhookPayload {
   test?: boolean;
 }
 
-/**
- * Generate HMAC-SHA256 signature for a webhook payload.
- * Receiving endpoints can verify authenticity by recomputing the signature.
- */
-export function signWebhookPayload(payload: WebhookPayload, secret: string): string {
-  const body = JSON.stringify(payload);
-  return crypto.createHmac("sha256", secret).update(body).digest("hex");
+export const WEBHOOK_TIMESTAMP_HEADER = "X-OphirPay-Timestamp";
+export const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
+
+export function webhookSignedInput(
+  timestamp: string,
+  canonicalBody: string
+): string {
+  return `${timestamp}.${canonicalBody}`;
 }
 
-/**
- * Build the exact HTTP body that will be transmitted and sign it, so a
- * receiver verifying the HMAC over the received body always matches.
- *
- * Canonicalization: the HMAC is computed over the body with the signature
- * field emptied — `JSON.stringify({...payload, signature: ""})`. A receiver
- * recomputes identically: parse the received body, empty the `signature`
- * field, re-serialize (stable key order), and compare against the
- * `X-OphirPay-Signature` header.
- */
+export function canonicalizeWebhookBody(payload: WebhookPayload): string {
+  return JSON.stringify({ ...payload, signature: "" });
+}
+
+export function signWebhookPayload(payload: WebhookPayload, secret: string): string {
+  const canonical = canonicalizeWebhookBody(payload);
+  return crypto
+    .createHmac("sha256", secret)
+    .update(webhookSignedInput(payload.timestamp, canonical))
+    .digest("hex");
+}
+
 export function buildSignedPayload(
   payload: WebhookPayload,
   secret: string
-): { body: string; signature: string } {
-  const canonical = JSON.stringify({ ...payload, signature: "" });
+): { body: string; signature: string; timestamp: string } {
+  const timestamp = payload.timestamp;
+  const canonical = canonicalizeWebhookBody(payload);
   const signature = crypto
     .createHmac("sha256", secret)
-    .update(canonical)
+    .update(webhookSignedInput(timestamp, canonical))
     .digest("hex");
-  return { body: JSON.stringify({ ...payload, signature }), signature };
+  return { body: JSON.stringify({ ...payload, signature }), signature, timestamp };
+}
+
+export interface WebhookRequestPreview {
+  canonicalBody: string;
+  body: string;
+  signature: string;
+  headers: Record<string, string>;
+}
+
+export function buildWebhookRequestPreview(
+  payload: WebhookPayload,
+  secret: string
+): WebhookRequestPreview {
+  const { body, signature, timestamp } = buildSignedPayload(payload, secret);
+  return {
+    canonicalBody: canonicalizeWebhookBody(payload),
+    body,
+    signature,
+    headers: {
+      "Content-Type": "application/json",
+      "X-OphirPay-Signature": signature,
+      "X-OphirPay-Event": payload.event,
+      [WEBHOOK_TIMESTAMP_HEADER]: timestamp,
+    },
+  };
 }

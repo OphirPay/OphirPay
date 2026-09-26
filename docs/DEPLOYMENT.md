@@ -15,6 +15,7 @@
 - [Cache Headers for Static Assets and APIs](#-cache-headers-for-static-assets-and-apis)
 - [Soroban Contract Deployment](#-soroban-contract-deployment)
 - [Database Setup](#-database-setup)
+- [Disaster Recovery & Backups](DISASTER_RECOVERY.md)
 - [Post-Deployment Verification](#-post-deployment-verification)
 - [Troubleshooting](#-troubleshooting)
 
@@ -579,7 +580,11 @@ DATABASE_PROVIDER=sqlite npx prisma db push
 ```
 
 > ⚠️ SQLite is for local development only. Production must use PostgreSQL.
-
+ 
+### Backups & Disaster Recovery
+ 
+For scheduled backup jobs, S3 retention policies, restoration procedures, post-restore database verification queries, and on-chain ledger reconciliation, refer to the [Disaster Recovery Runbook](DISASTER_RECOVERY.md).
+ 
 ---
 
 ## Post-Deployment Verification

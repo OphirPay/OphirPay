@@ -1,645 +1,507 @@
-# 🚨 OphirPay Disaster Recovery Runbook
+# 🚨 Disaster Recovery Runbook & Restore Procedures
 
-> **Executable checklist** for restoring OphirPay's PostgreSQL database from a
-> nightly S3 backup, reconciling the restored database with on-chain Stellar
-> state, and cutting traffic back to the recovered system.
+> **Purpose:** Canonical disaster recovery (DR) procedures for OphirPay. Defines Recovery Point Objective (RPO) and Recovery Time Objective (RTO), backup storage and retention policies, step-by-step restoration workflows, post-restore database verification, on-chain ledger reconciliation, and incident communication protocols.
 >
-> Read this document end-to-end before executing any step. Steps that have
-> never been exercised outside a drill are marked **⚠️ UNTESTED IN PRODUCTION**.
+> **Last Audited:** 2026-09-24  
+> **Target Environment:** PostgreSQL 16+, AWS S3, Stellar / Soroban Mainnet & Testnet  
+> **Related Documents:** [DEPLOYMENT.md](DEPLOYMENT.md) · [SECRETS_ROTATION.md](SECRETS_ROTATION.md) · [SECURITY.md](../SECURITY.md)
 
 ---
 
 ## Table of Contents
 
-1. [Recovery Objectives (RPO & RTO)](#1-recovery-objectives-rpo--rto)
-2. [When to Declare a Disaster](#2-when-to-declare-a-disaster)
-3. [Pre-Requisites](#3-pre-requisites)
-4. [Phase 1 — Isolate & Communicate](#phase-1--isolate--communicate)
-5. [Phase 2 — Restore the Database](#phase-2--restore-the-database)
-6. [Phase 3 — Verify the Restored Database](#phase-3--verify-the-restored-database)
-7. [Phase 4 — Chain-vs-Database Reconciliation](#phase-4--chainvs-database-reconciliation)
-8. [Phase 5 — Cut Traffic to the Recovered System](#phase-5--cut-traffic-to-the-recovered-system)
-9. [Phase 6 — Post-Recovery Verification](#phase-6--post-recovery-verification)
-10. [Phase 7 — Rollback (if the Restore Fails)](#phase-7--rollback-if-the-restore-fails)
-11. [Communication Templates](#communication-templates)
-12. [Related Documents](#related-documents)
+- [1. Executive Summary & Emergency Checklist](#1-executive-summary--emergency-checklist)
+- [2. Recovery Objectives (RPO & RTO)](#2-recovery-objectives-rpo--rto)
+- [3. Backup Architecture & Retention Policy](#3-backup-architecture--retention-policy)
+- [4. Step-by-Step Restoration Procedures](#4-step-by-step-restoration-procedures)
+  - [4.1 Scenario A: Automated Disposable Drill (`scripts/restore-drill.sh`)](#41-scenario-a-automated-disposable-drill-scriptsrestore-drillsh)
+  - [4.2 Scenario B: Production Emergency Database Recovery](#42-scenario-b-production-emergency-database-recovery)
+- [5. Post-Restore Data Verification Queries](#5-post-restore-data-verification-queries)
+- [6. Blockchain vs. Database Reconciliation](#6-blockchain-vs-database-reconciliation)
+  - [6.1 The Immutability Gap ($T_{\text{restore}}$ to $T_{\text{outage}}$)](#61-the-immutability-gap-t_textrestore-to-t_textoutage)
+  - [6.2 In-Flight Payments Reconciliation (`payment-sync.ts`)](#62-in-flight-payments-reconciliation-payment-syncts)
+  - [6.3 On-Chain Horizon Log Audit & Backfill](#63-on-chain-horizon-log-audit--backfill)
+  - [6.4 Webhook Delivery Considerations](#64-webhook-delivery-considerations)
+- [7. Traffic Switching & Rollback Plan](#7-traffic-switching--rollback-plan)
+- [8. Incident Communication & Status Updates](#8-incident-communication--status-updates)
+- [9. Tested vs. Untested / Manual Matrix & Follow-Up Checklist](#9-tested-vs-untested--manual-matrix--follow-up-checklist)
 
 ---
 
-## 1. Recovery Objectives (RPO & RTO)
+## 1. Executive Summary & Emergency Checklist
 
-| Metric | Target | How it is met |
-|--------|--------|---------------|
-| **RPO** (Recovery Point Objective — maximum acceptable data loss) | **24 hours** | `.github/workflows/db-backup.yml` runs `pg_dump → gzip → S3` every day at **03:00 UTC** (`cron: "0 3 * * *"`). The worst-case scenario is a failure that occurs just before the next backup, meaning up to 24 hours of transactions must be reconciled from on-chain state (see [Phase 4](#phase-4--chainvs-database-reconciliation)). |
-| **RTO** (Recovery Time Objective — time to restore service) | **2 hours** | Breakdown: ~15 min to locate the backup and spin up a fresh PostgreSQL instance, ~30 min to restore + verify (depending on database size), ~45 min for chain reconciliation, ~15 min for traffic cutover and smoke testing. The 2-hour target assumes a single on-call engineer with the required credentials and tool access. |
+In the event of total loss, corruption, or catastrophic failure of the primary PostgreSQL database:
 
-Backups are stored in **S3 bucket `ophirpay-backups`** with the `STANDARD_IA`
-storage class and a **30-day retention policy**. This means up to 30 recovery
-points are available at any given time.
+```mermaid
+flowchart TD
+    A["Incident Declared: Primary DB Lost"] --> B["1. Freeze Public Ingress / Set Maintenance Mode"]
+    B --> C["2. Fetch Latest Valid Backup from S3"]
+    C --> D["3. Restore into Clean Target PostgreSQL Instance"]
+    D --> E["4. Run Prisma Migrations (migrate deploy)"]
+    E --> F["5. Execute Data Verification Queries"]
+    F --> G["6. Run Payment Status Reconciliation (payment-sync)"]
+    G --> H["7. Switch DATABASE_URL & Re-enable Ingress"]
+    H --> I["8. Post-Recovery Monitoring & Incident Review"]
+```
+
+### Emergency Runbook Quick Reference
+
+1. **Declare Incident & Stop Ingress:** Put frontend/API into maintenance mode to prevent split-brain writes.
+2. **Identify Latest Backup:**
+   ```bash
+   aws s3 ls s3://ophirpay-backups/ | grep '\.sql\.gz$' | sort -k1,2 | tail -1
+   ```
+3. **Download & Verify Archive:**
+   ```bash
+   aws s3 cp s3://ophirpay-backups/<BACKUP_FILE>.sql.gz ./
+   gzip -t <BACKUP_FILE>.sql.gz
+   ```
+4. **Restore to Fresh Database:**
+   ```bash
+   gunzip -c <BACKUP_FILE>.sql.gz | psql "$RESTORE_DATABASE_URL" --single-transaction --set ON_ERROR_STOP=1
+   ```
+5. **Apply Any Pending Schema Migrations:**
+   ```bash
+   DIRECT_DATABASE_URL="$RESTORE_DATABASE_URL" DATABASE_URL="$RESTORE_DATABASE_URL" npx prisma migrate deploy
+   ```
+6. **Reconcile On-Chain Transactions with Stellar:**
+   Run Horizon status reconciliation pass (`runPaymentStatusSync`) for submitted payments.
+7. **Repoint Ingress & Resume Traffic:** Update `DATABASE_URL` across Vercel / Kubernetes secrets and monitor `/api/health`.
 
 ---
 
-## 2. When to Declare a Disaster
+## 2. Recovery Objectives (RPO & RTO)
 
-Trigger this runbook when **any** of the following are true and cannot be
-resolved by a normal restart or rollback within 30 minutes:
+### 2.1 Recovery Point Objective (RPO): 24 Hours
 
-- Primary PostgreSQL instance is unrecoverable (corrupted data files, accidental
-  `DROP DATABASE`, storage failure).
-- Data is found to be inconsistent after a failed migration or bulk operation and
-  the issue cannot be fixed in place.
-- A security incident requires spinning up a clean database from a known-good
-  backup.
+* **Target Value:** **24 hours** (maximum data loss window).
+* **How It Is Met:**
+  - Automated database backups run once daily at **03:00 UTC** via GitHub Actions workflow `.github/workflows/db-backup.yml` (`cron: "0 3 * * *"`).
+  - Backups are dumped with `pg_dump --no-owner --no-acl`, compressed via `gzip`, and uploaded to AWS S3.
+* **Limitations & Risk Profile:**
+  - **No Continuous WAL Archiving / PITR:** Continuous Write-Ahead Log (WAL) archiving is currently not enabled. If an outage occurs at 02:59 UTC, up to 23 hours and 59 minutes of off-chain database transactions may be lost from the database tier.
+  - *Mitigation:* Stellar ledger transactions remain immutable on-chain; missing off-chain records must be reconstructed via Horizon reconciliation (see [Section 6](#6-blockchain-vs-database-reconciliation)).
 
-If the issue is an application code bug or an infrastructure failure that does
-**not** affect the database, use [docs/MAINNET_RUNBOOK.md](./MAINNET_RUNBOOK.md)
-(Phase 5 — Rollback procedures) instead.
+### 2.2 Recovery Time Objective (RTO): Target < 1 Hour (Currently Unbenchmarked)
+
+* **Target Value:** **< 1 hour (30–60 minutes)** from incident declaration to traffic restoration.
+* **Current Operational Status:** **Unbenchmarked / Untested in production.** The restoration drill script (`scripts/restore-drill.sh`) tests recovery into a local ephemeral Docker container, but automated production-scale failover has not yet been timed under live emergency conditions.
+* **Estimated Component Breakdown:**
+  | Step | Estimated Duration | Dependencies |
+  |---|---|---|
+  | Incident confirmation & maintenance mode | 3–5 min | Cloudflare / Vercel DNS / edge proxy |
+  | S3 archive download (~200MB–2GB) | 2–5 min | AWS network throughput |
+  | Target PostgreSQL provisioning | 5–15 min | Cloud DB (RDS / Supabase / Neon) provision API |
+  | Single-transaction `psql` restore | 5–20 min | DB compute & I/O speed |
+  | Prisma migration verification | 2–3 min | `npx prisma migrate deploy` |
+  | SQL sanity & row-count checks | 2–5 min | Operational queries |
+  | On-chain Stellar reconciliation pass | 5–10 min | Horizon API rate limits |
+  | Ingress traffic rerouting & health check | 3–5 min | Environment variable propagation / restarts |
+  | **Total Estimated Recovery Time** | **27–68 min** | Meets < 1 hour target under optimal conditions |
 
 ---
 
-## 3. Pre-Requisites
+## 3. Backup Architecture & Retention Policy
 
-Complete every item before starting Phase 1. If any item is missing, resolve it
-before proceeding.
+### 3.1 Infrastructure Overview
 
-### 3.1 Tools
+```mermaid
+flowchart LR
+    subgraph Primary Infrastructure
+        DB[(Primary PostgreSQL)]
+    end
 
-| Tool | Version | Check command |
-|------|---------|---------------|
-| `aws` CLI | v2+ | `aws --version` |
-| `docker` | 24+ | `docker --version` |
-| `psql` (PostgreSQL client) | 14+ | `psql --version` |
-| `jq` | 1.6+ | `jq --version` |
-| `curl` | any | `curl --version` |
+    subgraph CI / Backup Runner
+        GHA[GitHub Actions Runner\n.github/workflows/db-backup.yml]
+    end
 
-### 3.2 Credentials
+    subgraph AWS Storage
+        S3[(AWS S3 Bucket\ns3://ophirpay-backups/)]
+        KMS[AWS KMS / SSE-S3\nEncryption]
+    end
 
-All of the following environment variables must be set on the machine running
-the restore. See [docs/SECRETS_ROTATION.md](./SECRETS_ROTATION.md) for where
-each secret is stored and how to retrieve it.
+    DB -->|pg_dump pipe gzip| GHA
+    GHA -->|aws s3 cp --storage-class STANDARD_IA| S3
+    S3 -.-> KMS
+```
+
+### 3.2 Configuration Parameters
+
+* **S3 Bucket:** `s3://ophirpay-backups/` (configured via `BACKUP_BUCKET` env var, defaults to `ophirpay-backups`).
+* **Storage Class:** `STANDARD_IA` (Infrequent Access) for cost-effective durability.
+* **Encryption:** Encrypted at rest via AWS S3-managed keys (`SSE-S3`) or AWS KMS (`aws:kms`).
+* **Retention Policy:** **30 Days** (`BACKUP_RETENTION_DAYS: 30`).
+  - The backup workflow computes a cutoff date (`date -d "-30 days" -u +"%Y-%m-%d"`).
+  - Any S3 archive with a datestamp older than 30 days is automatically purged during the daily cleanup phase.
+* **Archive Naming Convention:**
+  ```text
+  ophirpay-YYYY-MM-DDTHH-MM-SSZ.sql.gz
+  Example: ophirpay-2026-09-24T03-00-12Z.sql.gz
+  ```
+* **Required GitHub Actions Secrets:**
+  - `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`: Database credentials.
+  - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`: AWS IAM credentials with `s3:PutObject`, `s3:ListBucket`, and `s3:DeleteObject` permissions on `s3://ophirpay-backups/*`.
+
+### 3.3 Manual Backup Trigger
+
+To force an out-of-band backup prior to high-risk maintenance:
 
 ```bash
-export DB_HOST="<production-postgres-host>"      # target DB host for the restored DB
-export DB_USER="<db-username>"
-export DB_NAME="ophirpay"
-export DB_PASSWORD="<db-password>"
-export AWS_ACCESS_KEY_ID="<aws-key>"
-export AWS_SECRET_ACCESS_KEY="<aws-secret>"
-export AWS_REGION="<aws-region>"
+gh workflow run db-backup.yml
+```
+
+Or via GitHub Web UI: **Actions** → **Database Backup** → **Run workflow**.
+
+---
+
+## 4. Step-by-Step Restoration Procedures
+
+### 4.1 Scenario A: Automated Disposable Drill (`scripts/restore-drill.sh`)
+
+Use this script for non-destructive monthly validation drills or staging tests. It spins up an ephemeral PostgreSQL Docker container on port `5433`, restores the latest backup, runs row-count assertions against canonical Prisma models, and tears down the container.
+
+#### Prerequisites
+- Docker installed and daemon running.
+- AWS CLI configured with read access to `s3://ophirpay-backups/`.
+- `psql` (PostgreSQL client) installed locally.
+
+#### Invocation
+```bash
+export AWS_ACCESS_KEY_ID="<your-key>"
+export AWS_SECRET_ACCESS_KEY="<your-secret>"
+export AWS_REGION="us-east-1"
 export BACKUP_BUCKET="ophirpay-backups"
+
+./scripts/restore-drill.sh
 ```
 
-> 🔐 **Never paste these values into a chat, ticket, or commit.** Retrieve them
-> from the secrets manager or GitHub Actions Secrets (Settings → Secrets and
-> variables → Actions). If credentials are suspected to be compromised, rotate
-> them first — see [docs/SECRETS_ROTATION.md](./SECRETS_ROTATION.md).
-
-### 3.3 Access
-
-- [ ] AWS IAM permissions: `s3:GetObject`, `s3:ListBucket` on `ophirpay-backups`
-- [ ] Network access to the target PostgreSQL host (VPN or bastion if required)
-- [ ] Docker daemon running on the restore machine
-- [ ] Write access to the production database host (for Phase 2, step 2.4)
+#### What the Drill Executes
+1. Queries `s3://${BACKUP_BUCKET}/` for the latest `.sql.gz` archive.
+2. Downloads the file to the local directory.
+3. Starts a temporary Docker container `ophirpay-restore-drill-<PID>` on port `5433`.
+4. Executes `gunzip -c | docker exec -i ... psql -U postgres -d ophirpay_drill --single-transaction --set ON_ERROR_STOP=1`.
+5. Queries row counts for canonical Prisma models: `User`, `Account`, `Payment`, `Batch`, `PaymentRequest`, `Webhook`, `ApiKey`.
+6. Sets `PASS=false` and returns exit code 1 if any table check fails.
+7. Automatically cleans up the Docker container and downloaded archive via bash `EXIT` trap.
 
 ---
 
-## Phase 1 — Isolate & Communicate
+### 4.2 Scenario B: Production Emergency Database Recovery
 
-> **Goal:** Stop new writes to the broken database and notify stakeholders before
-> starting the restore. This prevents the gap between the backup and "now" from
-> growing while you work.
+Follow these steps if the primary database is lost, corrupted, or unrecoverable.
 
-- [ ] **1.1 Put the application into maintenance mode** — scale down the app
-  pods or flip the load balancer to a maintenance page:
-
+#### Step 1: Declare Incident & Enable Maintenance Mode
+Halt user traffic immediately to stop writes from diverging:
+- **Vercel:** Route incoming traffic to a static 503 maintenance page or set maintenance middleware.
+- **Kubernetes:** Scale app deployment replicas to 0 or update ingress to redirect to maintenance:
   ```bash
-  # Kubernetes (scale to 0 replicas)
-  kubectl scale deployment ophirpay --replicas=0 -n ophirpay
-
-  # Or via Helm (set replicaCount to 0 in values):
-  helm upgrade ophirpay ./helm/ophirpay --namespace ophirpay --set replicaCount=0 --wait
+  kubectl scale deployment/ophirpay --replicas=0 -n ophirpay
   ```
 
-  > ⚠️ **UNTESTED IN PRODUCTION** — verify the exact deployment name and
-  > namespace with `kubectl get deployments -n ophirpay` before running.
+#### Step 2: Provision Target PostgreSQL Database
+Create a clean PostgreSQL 16+ database instance (via AWS RDS, Supabase, Neon, or self-hosted).
+Record the target direct connection URL:
+```bash
+export RESTORE_DATABASE_URL="postgresql://ophirpay:<SECURE_PASSWORD>@<NEW_HOST>:5432/ophirpay"
+```
 
-- [ ] **1.2 Record the exact time maintenance mode was activated** — you will
-  use this timestamp in Phase 4 to bound the chain query window.
+#### Step 3: Fetch Target Backup from S3
+List and download the desired backup snapshot:
+```bash
+# List available snapshots (sorted by timestamp)
+aws s3 ls s3://ophirpay-backups/ | grep '\.sql\.gz$' | sort -k1,2
 
-  ```bash
-  echo "MAINTENANCE_START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" | tee -a recovery.log
-  ```
+# Set chosen snapshot filename
+BACKUP_FILE="ophirpay-2026-09-24T03-00-12Z.sql.gz"
 
-- [ ] **1.3 Notify stakeholders** — see [Communication Templates](#communication-templates).
-  At minimum: post in the incident Slack channel, update the status page to
-  "Investigating", and page the on-call engineer if not already active.
+# Download to recovery workspace
+aws s3 cp "s3://ophirpay-backups/${BACKUP_FILE}" "./${BACKUP_FILE}"
+```
 
-- [ ] **1.4 Open a recovery log file** and record every command and its output:
+#### Step 4: Validate File Integrity
+Verify the archive is complete and uncorrupted:
+```bash
+# Verify gzip integrity (returns 0 on success)
+gzip -t "${BACKUP_FILE}" || { echo "Archive corrupt!"; exit 1; }
 
-  ```bash
-  exec > >(tee -a recovery.log) 2>&1
-  echo "=== Recovery started at $(date -u) by $(whoami) ==="
-  ```
+# Inspect initial SQL headers
+gunzip -c "${BACKUP_FILE}" | head -n 30
+```
 
----
-
-## Phase 2 — Restore the Database
-
-> **Goal:** Restore the latest available backup into a clean PostgreSQL instance
-> and verify its integrity using `scripts/restore-drill.sh`.
-
-### Step 2.1 — Run the automated restore drill
-
-The `scripts/restore-drill.sh` script handles fetching the backup, spinning up
-an ephemeral Postgres instance, and asserting row counts. Run it first to
-confirm the backup is restorable before touching production.
+#### Step 5: Restore Database in a Single Transaction
+Restore the SQL dump into the target database.
+> [!IMPORTANT]
+> Always execute with `--single-transaction --set ON_ERROR_STOP=1` so that any SQL failure aborts the entire restoration, preventing a partially populated, corrupted schema state.
 
 ```bash
-# From the repository root, with all env vars set from Section 3.2:
-bash scripts/restore-drill.sh
+gunzip -c "${BACKUP_FILE}" | psql "$RESTORE_DATABASE_URL" \
+  --single-transaction \
+  --set ON_ERROR_STOP=1 \
+  --echo-errors
 ```
 
-Expected output:
-```
-=== OphirPay Restore Drill ===
-Timestamp: 2026-09-25T10:00:00Z
-→ Locating latest backup in s3://ophirpay-backups/ ...
-✓ Latest backup: ophirpay-2026-09-25T03-00-00Z.sql.gz
-→ Starting ephemeral Postgres on port 5433 ...
-✓ Postgres is ready
-→ Restoring ophirpay-2026-09-25T03-00-00Z.sql.gz ...
-✓ Restore complete
-→ Asserting key table row counts...
-  ✓ Payment: <N> rows
-  ✓ Escrow: <N> rows
-  ✓ Stream: <N> rows
-  ✓ Batch: <N> rows
-  ✓ WebhookEndpoint: <N> rows
-  ✓ PaymentRequest: <N> rows
-→ Tearing down ephemeral Postgres ...
-=== Restore Drill Complete ===
-✓ All assertions passed
-```
-
-Record the row counts from the drill output — you will compare them against the
-production restore in Step 2.4.
-
-**If the drill fails**, see [Phase 7 — Rollback](#phase-7--rollback-if-the-restore-fails).
-
-### Step 2.2 — Identify the backup to restore
-
-Normally you want the **latest** backup. If the latest backup is itself
-corrupted or was taken after the incident began, list available backups and
-select the last known-good one:
-
+#### Step 6: Apply Pending Prisma Migrations
+If application code has deployed new migrations since the backup was generated, synchronize the schema:
 ```bash
-aws s3 ls "s3://${BACKUP_BUCKET}/" | grep '\.sql\.gz$' | sort -k1,2
-```
-
-Backup filenames follow the format `ophirpay-<YYYY-MM-DDTHH-MM-SSZ>.sql.gz`.
-The timestamp is when the backup was created (03:00 UTC daily). Note the
-filename you will restore:
-
-```bash
-export RESTORE_FILE="ophirpay-2026-09-25T03-00-00Z.sql.gz"
-echo "Restoring from: ${RESTORE_FILE}" | tee -a recovery.log
-```
-
-### Step 2.3 — Download and validate the backup file
-
-```bash
-aws s3 cp "s3://${BACKUP_BUCKET}/${RESTORE_FILE}" "./${RESTORE_FILE}"
-
-# Verify the file is non-empty and a valid gzip
-test -s "./${RESTORE_FILE}" && echo "✓ File is non-empty" || { echo "✕ File is empty"; exit 1; }
-gzip -t "./${RESTORE_FILE}" && echo "✓ Valid gzip" || { echo "✕ Invalid gzip"; exit 1; }
-```
-
-### Step 2.4 — Restore into the production database
-
-> ⚠️ **UNTESTED IN PRODUCTION** — this step overwrites the production database.
-> Confirm that the application is in maintenance mode (Phase 1, Step 1.1) and
-> that all stakeholders have been notified before continuing.
-
-```bash
-# Drop and recreate the target database to start from a clean slate
-PGPASSWORD="${DB_PASSWORD}" psql \
-  -h "${DB_HOST}" -U "${DB_USER}" -d postgres \
-  -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${DB_NAME}';"
-
-PGPASSWORD="${DB_PASSWORD}" psql \
-  -h "${DB_HOST}" -U "${DB_USER}" -d postgres \
-  -c "DROP DATABASE IF EXISTS ${DB_NAME};"
-
-PGPASSWORD="${DB_PASSWORD}" psql \
-  -h "${DB_HOST}" -U "${DB_USER}" -d postgres \
-  -c "CREATE DATABASE ${DB_NAME};"
-
-# Restore from the backup
-gunzip -c "./${RESTORE_FILE}" | PGPASSWORD="${DB_PASSWORD}" psql \
-  -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}"
-
-echo "✓ Restore complete at $(date -u)" | tee -a recovery.log
-```
-
-### Step 2.5 — Run pending migrations (if any)
-
-If there were database migrations between the backup timestamp and the
-current application version, apply them now:
-
-```bash
-DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/${DB_NAME}" \
-  npx prisma migrate deploy
-```
-
-> If `prisma migrate deploy` reports that no migrations are pending, that is
-> expected when restoring to the same app version that was running at backup
-> time. If it fails, stop here and escalate — do not proceed with an
-> inconsistent schema.
-
-### Step 2.6 — Clean up the downloaded backup file
-
-```bash
-rm -f "./${RESTORE_FILE}"
+DIRECT_DATABASE_URL="$RESTORE_DATABASE_URL" \
+DATABASE_URL="$RESTORE_DATABASE_URL" \
+npx prisma migrate deploy
 ```
 
 ---
 
-## Phase 3 — Verify the Restored Database
+## 5. Post-Restore Data Verification Queries
 
-> **Goal:** Confirm the production restore is structurally sound before allowing
-> any traffic.
+Before redirecting application traffic to the restored database, run these verification queries using `psql "$RESTORE_DATABASE_URL"`:
 
-### Step 3.1 — Row count verification
-
-Connect to the restored production database and compare row counts against what
-`scripts/restore-drill.sh` reported in Step 2.1:
+### 5.1 Verify Key Table Counts
+Confirm core business tables exist and contain valid records:
 
 ```sql
--- Connect:
--- PGPASSWORD=<DB_PASSWORD> psql -h <DB_HOST> -U <DB_USER> -d <DB_NAME>
-
-SELECT
-  'Payment'         AS table_name, COUNT(*) FROM "Payment"
-UNION ALL SELECT 'Escrow',         COUNT(*) FROM "Escrow"
-UNION ALL SELECT 'Stream',         COUNT(*) FROM "Stream"
-UNION ALL SELECT 'Batch',          COUNT(*) FROM "Batch"
-UNION ALL SELECT 'WebhookEndpoint',COUNT(*) FROM "WebhookEndpoint"
-UNION ALL SELECT 'PaymentRequest', COUNT(*) FROM "PaymentRequest";
+SELECT 
+  'User' as model, count(*) from "User"
+UNION ALL
+SELECT 'Account', count(*) from "Account"
+UNION ALL
+SELECT 'Payment', count(*) from "Payment"
+UNION ALL
+SELECT 'Batch', count(*) from "Batch"
+UNION ALL
+SELECT 'PaymentRequest', count(*) from "PaymentRequest"
+UNION ALL
+SELECT 'Webhook', count(*) from "Webhook"
+UNION ALL
+SELECT 'ApiKey', count(*) from "ApiKey"
+UNION ALL
+SELECT 'Refund', count(*) from "Refund";
 ```
 
-Expected: counts match the drill output from Step 2.1.
-
-### Step 3.2 — Check the most recent records
+### 5.2 Determine Snapshot Cutoff Timestamp ($T_{\text{restore}}$)
+Identify the exact timestamp of the newest records in the restored database:
 
 ```sql
--- Most recent 5 payments (confirms data is not truncated)
-SELECT id, "createdAt", status, amount
-FROM "Payment"
-ORDER BY "createdAt" DESC
-LIMIT 5;
-
--- Most recent backup timestamp approximation
-SELECT MAX("createdAt") AS latest_payment_ts FROM "Payment";
-SELECT MAX("createdAt") AS latest_transaction_ts FROM "Escrow";
+SELECT 
+  MAX("createdAt") AS latest_payment_created,
+  MAX("updatedAt") AS latest_payment_updated
+FROM "Payment";
 ```
+*Record this timestamp as $T_{\text{restore}}$ (e.g. `2026-09-24T03:00:12Z`). All transactions confirmed on Stellar after this time require reconciliation.*
 
-Record the `latest_payment_ts` value — you will use it in Phase 4 to define
-the reconciliation window.
-
-```bash
-echo "BACKUP_LATEST_TS=<value from query above>" | tee -a recovery.log
-```
-
-### Step 3.3 — Schema integrity check
+### 5.3 Audit In-Flight Payment States
+Check distribution of payments that were pending/submitted when the backup ran:
 
 ```sql
--- Confirm foreign-key constraints are intact (no orphaned rows)
-SELECT COUNT(*) FROM "Payment" p
-LEFT JOIN "Escrow" e ON p."escrowId" = e.id
-WHERE p."escrowId" IS NOT NULL AND e.id IS NULL;
--- Expected: 0
+SELECT status, count(*) 
+FROM "Payment" 
+GROUP BY status 
+ORDER BY count(*) DESC;
 ```
+*Note: Any payment in `SUBMITTED`, `PROCESSING`, or `PENDING` must be verified against Horizon.*
 
-### Step 3.4 — Health endpoint check (optional pre-cutover)
-
-If you have a staging environment pointed at the restored database, run a quick
-health check:
-
-```bash
-curl -sf http://<staging-host>/api/health | jq .
-# Expected: { "status": "ok", "database": "connected" }
-```
-
----
-
-## Phase 4 — Chain-vs-Database Reconciliation
-
-> **This is the most critical phase for a payments system.** The on-chain Stellar
-> ledger is immutable — it cannot be rolled back. After a database restore, the
-> DB reflects state as of the backup timestamp. Any Stellar transactions
-> submitted between the backup and the incident must be re-indexed into the
-> database.
-
-### Why reconciliation is necessary
-
-OphirPay records payment state in both the Stellar blockchain (via the
-`OphirPayContract` / `PaymentEventEmitter` Soroban contracts) and the
-PostgreSQL database (for querying, history, and business logic). The on-chain
-record is the source of truth. After restoring from a backup, the database may
-be **hours behind** the chain. Payments that were processed on-chain but are
-absent from the DB would appear missing to users and in internal reporting.
-
-### Step 4.1 — Determine the reconciliation window
-
-```bash
-# From Phase 3, Step 3.2:
-BACKUP_TS="${BACKUP_LATEST_TS}"       # e.g. "2026-09-25T03:00:00Z"
-INCIDENT_TS="${MAINTENANCE_START}"    # recorded in Phase 1, Step 1.2
-
-echo "Reconciliation window: ${BACKUP_TS} → ${INCIDENT_TS}" | tee -a recovery.log
-```
-
-### Step 4.2 — Query Stellar Horizon for missing transactions
-
-Use the Stellar Horizon REST API to fetch all contract events emitted by the
-`PaymentEventEmitter` contract in the reconciliation window. Replace
-`<EMITTER_CONTRACT_ID>` with the value from [docs/MAINNET_RUNBOOK.md](./MAINNET_RUNBOOK.md)
-Phase 4 registry.
-
-```bash
-EMITTER_CONTRACT_ID="<EMITTER_CONTRACT_ID>"
-HORIZON_URL="https://horizon.stellar.org"
-
-# Fetch contract events paged from the backup timestamp onward
-# The cursor can be derived from a Stellar ledger sequence number near BACKUP_TS.
-# Use the /ledgers endpoint to find the ledger at the backup time:
-curl -s "${HORIZON_URL}/ledgers?order=asc&limit=1&cursor=$(
-  # Convert ISO timestamp to approximate cursor — use Horizon's ledger search:
-  curl -s "${HORIZON_URL}/ledgers?order=desc&limit=200" \
-    | jq -r "[.._embedded.records[]? | select(.closed_at < \"${BACKUP_TS}\")] | last | .paging_token // empty"
-)" | jq '.paging_token'
-```
-
-> ⚠️ **UNTESTED IN PRODUCTION** — The cursor arithmetic above is a starting
-> point. Adjust the `limit` and `cursor` values based on the actual ledger
-> volume. See [docs/STELLAR_101.md](./STELLAR_101.md) for Stellar ledger
-> concepts.
-
-A simpler, more reliable approach for most incidents:
-
-```bash
-# List all contract events for the emitter in the window (using stellar CLI):
-stellar events \
-  --network public \
-  --contract-id "${EMITTER_CONTRACT_ID}" \
-  --start-ledger <ledger-at-backup-time>
-```
-
-### Step 4.3 — Re-index missing transactions
-
-For each on-chain event found in Step 4.2 that does not exist in the database:
-
-1. Extract the payment ID, sender, recipient, amount, asset, and timestamp from
-   the on-chain event data.
-2. Insert a matching row into the `Payment` table with `status = 'CONFIRMED'`
-   and the on-chain `txHash`.
-3. If an associated `Escrow` record is expected, upsert it with the recovered
-   state.
-
-> ⚠️ **UNTESTED IN PRODUCTION** — The re-indexing logic depends on the
-> application's internal event schema. Coordinate with the engineering team
-> before writing directly to the DB. If an automated re-indexer script exists
-> in the codebase (check `scripts/` and `src/jobs/`), prefer that over manual
-> SQL.
-
-Manual SQL template (adapt to actual schema from [docs/SCHEMA.md](./SCHEMA.md)):
+### 5.4 Relational Integrity Check
+Verify there are no orphaned records:
 
 ```sql
--- Example: insert a recovered payment record
-INSERT INTO "Payment" (id, "txHash", sender, recipient, amount, asset, status, "createdAt", "updatedAt")
-VALUES (
-  '<payment-id-from-chain>',
-  '<stellar-tx-hash>',
-  '<sender-public-key>',
-  '<recipient-public-key>',
-  <amount-in-stroops>,
-  '<asset-code>',
-  'CONFIRMED',
-  '<on-chain-timestamp>',
-  NOW()
-)
-ON CONFLICT (id) DO NOTHING;
+-- Payments with missing users
+SELECT count(*) FROM "Payment" p LEFT JOIN "User" u ON p."userId" = u.id WHERE u.id IS NULL;
+
+-- Batches with missing users
+SELECT count(*) FROM "Batch" b LEFT JOIN "User" u ON b."userId" = u.id WHERE u.id IS NULL;
+```
+*Expected count: `0`.*
+
+---
+
+## 6. Blockchain vs. Database Reconciliation
+
+### 6.1 The Immutability Gap ($T_{\text{restore}}$ to $T_{\text{outage}}$)
+
+> [!WARNING]
+> The Stellar blockchain and Soroban smart contracts are decentralized, immutable ledgers. Restoring the PostgreSQL database **does not and cannot roll back on-chain transactions**.
+
+When restoring a database backup taken at $T_{\text{restore}}$ after an outage at $T_{\text{outage}}$:
+
+```
+T_restore (Backup Dump)                       T_outage (DB Loss)          T_now (Restore)
+───┼───────────────────────────────────────────────┼────────────────────────────┼───▶
+   │ ◄─────── DATA GAP IN DATABASE (up to 24h) ────► │
+   │                                               │
+   │ On-Chain Transactions Still Happened!         │
+   │ • Payments confirmed on Stellar               │
+   │ • Soroban contract events emitted             │
+   │ • Funds transferred between accounts          │
 ```
 
-### Step 4.4 — Mark reconciliation complete
+There are three categories of discrepancy to reconcile:
 
-When all missing transactions have been re-indexed:
+1. **In-Flight Payments (`status = SUBMITTED`):**
+   Payments created before $T_{\text{restore}}$ that were submitted to Stellar with a `transactionHash`, but the database snapshot captured them prior to confirmation.
+2. **Missing Payments (Created between $T_{\text{restore}}$ and $T_{\text{outage}}$):**
+   Payments initiated and submitted after the backup snapshot. The off-chain row does not exist in the restored database, but the on-chain transfer succeeded.
+3. **Scheduled & Recurring Payments:**
+   Payments that the cron executed during the gap window. Restored database shows them as `SCHEDULED`, but the transaction was already broadcast by the server account.
 
-```sql
--- Record the reconciliation event for audit purposes
--- (Adapt to your audit/event log table if one exists)
-INSERT INTO "AuditLog" (action, detail, "createdAt")
-VALUES (
-  'DISASTER_RECOVERY_RECONCILIATION',
-  json_build_object(
-    'backup_file', :'RESTORE_FILE',
-    'backup_ts',   :'BACKUP_TS',
-    'incident_ts', :'INCIDENT_TS',
-    'recovered_by', current_user
-  )::text,
-  NOW()
-);
-```
+---
 
-> If no `AuditLog` table exists, record this in the recovery log file and in
-> the incident ticket.
+### 6.2 In-Flight Payments Reconciliation (`payment-sync.ts`)
 
+OphirPay provides built-in reconciliation logic in [`src/lib/payment-sync.ts`](../src/lib/payment-sync.ts).
+
+The function `runPaymentStatusSync(trigger: 'admin')`:
+1. Queries all `Payment` rows where `status = 'SUBMITTED'` and `transactionHash IS NOT NULL`.
+2. Queries Stellar Horizon for each transaction hash.
+3. If confirmed on-chain: updates status to `CONFIRMED` and dispatches `payment.confirmed` webhook.
+4. If failed on-chain: updates status to `FAILED` and dispatches `payment.failed` webhook.
+5. If not found (404) or timeout: leaves untouched for retry.
+6. Records results in `PaymentSyncRun` table.
+
+#### Triggering Reconciliation Post-Restore
+Run the sync script via node / CLI runner:
 ```bash
-echo "Reconciliation complete at $(date -u). Re-indexed <N> transactions." | tee -a recovery.log
+DATABASE_URL="$RESTORE_DATABASE_URL" \
+node -e '
+  const { runPaymentStatusSync } = require("./dist/lib/payment-sync");
+  runPaymentStatusSync("admin").then(console.log).catch(console.error);
+'
 ```
 
 ---
 
-## Phase 5 — Cut Traffic to the Recovered System
+### 6.3 On-Chain Horizon Log Audit & Backfill
 
-> **Goal:** Restore normal application traffic to the recovered database.
+For payments created and completed during the gap period (missing entirely from the restored database):
 
-- [ ] **5.1 Re-run database migrations** (idempotent — safe to run again):
-
-  ```bash
-  DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/${DB_NAME}" \
-    npx prisma migrate deploy
-  ```
-
-- [ ] **5.2 Scale the application back up**:
-
-  ```bash
-  # Kubernetes
-  kubectl scale deployment ophirpay --replicas=<desired-count> -n ophirpay
-
-  # Or via Helm
-  helm upgrade ophirpay ./helm/ophirpay --namespace ophirpay \
-    --set replicaCount=<desired-count> --wait
-  ```
-
-  See [docs/DEPLOYMENT.md](./DEPLOYMENT.md) for Helm values and replica counts
-  for each environment.
-
-- [ ] **5.3 Confirm the health endpoint returns healthy**:
-
-  ```bash
-  curl -sf https://ophirpay.com/api/health | jq .
-  # Expected: { "status": "ok", "database": "connected" }
-  ```
-
-- [ ] **5.4 Update the status page** — change from "Investigating" to
-  "Monitoring" or "Resolved" depending on confidence.
-
-- [ ] **5.5 Notify stakeholders** that service has been restored — see
-  [Communication Templates](#communication-templates).
+1. **Query Horizon for Server Operator & Contract Accounts:**
+   ```bash
+   # Retrieve all transactions on the operator account since T_restore
+   curl -s "https://horizon.stellar.org/accounts/${OPERATOR_PUBLIC_KEY}/transactions?order=asc&limit=200" | jq .
+   ```
+2. **Inspect Soroban Contract Events:**
+   Query the OphirPay contract (`NEXT_PUBLIC_CONTRACT_ID`) events via Soroban RPC:
+   ```bash
+   stellar contract invoke \
+     --id "$NEXT_PUBLIC_CONTRACT_ID" \
+     --source-account "$OPERATOR_SECRET" \
+     --rpc-url "$NEXT_PUBLIC_STELLAR_RPC_URL" \
+     --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
+     -- get_payment_count
+   ```
+3. **Backfill Procedure (Manual):**
+   For any transaction hash found on-chain that has no matching row in `Payment`:
+   - Match recipient address and memo to identify user account.
+   - Insert recovered row into `Payment` with `status = 'COMPLETED'`, `transactionHash`, and `metadata = '{"recovered_post_dr": true}'`.
 
 ---
 
-## Phase 6 — Post-Recovery Verification
+### 6.4 Webhook Delivery Considerations
 
-Run these checks after traffic has been restored to confirm end-to-end health.
-
-- [ ] Dashboard loads: `curl -s -o /dev/null -w "%{http_code}" https://ophirpay.com/` → `200`
-
-- [ ] Contract endpoints answer:
-
-  ```bash
-  curl -sf https://ophirpay.com/api/contracts | jq .
-  # Expected: returns contract version and owner — confirms app is wired to mainnet contracts
-  ```
-
-- [ ] SSE stream connects and emits heartbeats:
-
-  ```bash
-  curl -N --max-time 30 https://ophirpay.com/api/events
-  # Expected: "event: connected" then "event: heartbeat" every 15 seconds
-  ```
-
-- [ ] Metrics are healthy: `GET /api/metrics` (with `METRICS_TOKEN` bearer
-  token) returns Prometheus-format counters with no error spikes.
-
-- [ ] Verify a small test payment end-to-end (non-production funds only — use
-  the on-call team's test wallet).
-
-- [ ] Re-enable the nightly backup workflow if it was disabled during the
-  incident:
-
-  ```bash
-  gh workflow enable db-backup.yml --repo OphirPay/OphirPay
-  ```
-
-- [ ] Confirm the next scheduled backup runs successfully (check GitHub Actions
-  at 03:00 UTC the following day).
+When replaying or backfilling transactions post-restore:
+- Reconciled payments will trigger `payment.confirmed` webhook deliveries.
+- `WebhookDelivery.isReplay` should be marked `true` if re-dispatching known events.
+- **Guidance to Webhook Consumers:** OphirPay webhook consumers must implement idempotent delivery handling using `transactionHash` and `paymentId` to ignore duplicate notifications.
 
 ---
 
-## Phase 7 — Rollback (if the Restore Fails)
+## 7. Traffic Switching & Rollback Plan
 
-Use this phase if `scripts/restore-drill.sh` fails or the production restore
-produces an inconsistent database that cannot be reconciled.
+### 7.1 Switching Traffic to the Restored Database
 
-### 7.1 Drill failure — try the next-oldest backup
+Once verification queries pass and reconciliation is executed:
 
-```bash
-# List backups in reverse order and pick the previous one
-aws s3 ls "s3://${BACKUP_BUCKET}/" | grep '\.sql\.gz$' | sort -k1,2 -r | head -5
+1. **Update Environment Secrets:**
+   - **Vercel:** Update `DATABASE_URL` and `DIRECT_DATABASE_URL` under Project Settings → Environment Variables (Production), then redeploy or promote deployment.
+   - **Kubernetes:**
+     ```bash
+     kubectl create secret generic ophirpay-secrets \
+       --namespace ophirpay \
+       --from-literal=DATABASE_URL="$RESTORE_DATABASE_URL" \
+       --dry-run=client -o yaml | kubectl apply -f -
+     kubectl rollout restart deployment/ophirpay -n ophirpay
+     ```
+   - **Docker / Standalone:** Update `.env.local` / `docker-compose.yml` and restart containers (`docker compose restart app`).
+2. **Verify Live Health Check:**
+   ```bash
+   curl -s https://ophirpay.com/api/health | jq .
+   # Expected: { "status": "ok", "database": "connected" }
+   ```
+3. **Disable Maintenance Mode:** Restore public ingress and monitor live traffic.
 
-# Set RESTORE_FILE to the previous backup and repeat Phase 2
-export RESTORE_FILE="ophirpay-2026-09-24T03-00-00Z.sql.gz"
+### 7.2 Rollback Plan
+
+If the restored database displays schema inconsistencies, application errors, or data corruption after traffic switch:
+
+```mermaid
+flowchart TD
+    A["Post-Switch Alert / Elevated Error Rate"] --> B["1. Re-enable Maintenance Mode Immediately"]
+    B --> C{"Identify Cause"}
+    C -->|Corrupt Restore Snapshot| D["Fallback to N-1 Snapshot (Previous Day)"]
+    C -->|Missing Prisma Migrations| E["Run prisma migrate deploy / resolve"]
+    C -->|Network / Connection Exhaustion| F["Adjust Connection Pool / PgBouncer"]
+    D --> G["Restore N-1 Snapshot to Fresh DB"]
+    G --> H["Repeat Horizon Reconciliation & Verification"]
 ```
 
-Repeat Phases 2–4 with the older backup. Extend the reconciliation window
-accordingly.
-
-### 7.2 Point-in-time restore (if supported by the DB provider)
-
-If the PostgreSQL instance is hosted on AWS RDS or Aurora and PITR
-(Point-in-Time Recovery) is enabled:
-
-```bash
-# AWS RDS — restore to a specific time
-aws rds restore-db-instance-to-point-in-time \
-  --source-db-instance-identifier ophirpay-production \
-  --target-db-instance-identifier ophirpay-recovered \
-  --restore-time "2026-09-25T02:55:00Z"
-```
-
-> ⚠️ **UNTESTED IN PRODUCTION** — confirm that PITR is enabled and that the
-> restore window covers the required timestamp before relying on this path.
-
-### 7.3 Escalation
-
-If neither option produces a restorable database within the 2-hour RTO:
-
-1. Keep the application in maintenance mode.
-2. Page the engineering lead and CTO.
-3. Assess whether a partial restore (restoring only critical tables) is viable.
-4. Evaluate standing up a read replica from the last known-good replica snapshot
-   if one exists.
-5. Document every step taken in the recovery log for the post-mortem.
+1. **Immediate Ingress Cutoff:** Re-enable maintenance page or zero out replicas to protect downstream integrity.
+2. **Identify Secondary Snapshot:** If current snapshot is corrupt, fetch previous day's snapshot ($N-1$):
+   ```bash
+   PREV_BACKUP=$(aws s3 ls s3://ophirpay-backups/ | grep '\.sql\.gz$' | sort -k1,2 | tail -2 | head -1 | awk '{print $4}')
+   aws s3 cp "s3://ophirpay-backups/${PREV_BACKUP}" ./
+   ```
+3. **Repeat Restore & Reconcile:** Restore $N-1$ backup and rely on Horizon on-chain transaction history to bridge the wider time window.
 
 ---
 
-## Communication Templates
+## 8. Incident Communication & Status Updates
 
-### Initial incident notification (Slack / PagerDuty)
+### 8.1 Incident Command Roles
+* **Incident Commander (IC):** Directs the overall recovery response and timeline.
+* **Technical Lead (TL):** Executes database restoration, schema migrations, and SQL checks.
+* **Blockchain Lead (BL):** Reconciles Horizon transactions and Soroban contract states.
+* **Communications Lead (CL):** Owns public status page and stakeholder communications.
 
-```
-🚨 [INCIDENT] OphirPay database recovery in progress
-- Severity: P1
-- Status: Database restore initiated
-- Maintenance started: <MAINTENANCE_START>
-- Estimated recovery: <MAINTENANCE_START + 2 hours>
-- On-call: <engineer name>
-- Incident channel: #incident-<date>
-- Status page: https://status.ophirpay.com
-```
+### 8.2 Standard Incident Status Page Templates
 
-### Status page update — "Investigating"
+#### Initial Notification (T + 5m)
+> **Title:** Database Service Degradation & Investigation  
+> **Status:** Investigating  
+> **Message:** We are currently investigating an issue impacting our database layer. Read and write operations are temporarily paused while our team assesses system state. On-chain Stellar balances and contract funds remain secure. Updates will follow within 20 minutes.
 
-```
-We are investigating an issue affecting OphirPay. Payments may be temporarily
-unavailable. Our team is actively working on a resolution. Next update in 30 minutes.
-```
+#### Restore in Progress (T + 25m)
+> **Title:** Database Restoration in Progress  
+> **Status:** In Progress  
+> **Message:** The engineering team has initiated a point-in-time database restoration from our secure backup repository. Core services remain in maintenance mode. We are preparing to verify data consistency and synchronize on-chain ledger activity.
 
-### Status page update — "Resolved"
+#### Ledger Reconciliation Phase (T + 45m)
+> **Title:** Verifying Ledger Transactions  
+> **Status:** In Progress  
+> **Message:** Database restoration is complete. We are currently reconciling recent Stellar network transactions and pending payment states with the restored database. Ingress traffic will resume shortly.
 
-```
-The database has been restored and all services are operating normally.
-Payments processed during the maintenance window have been reconciled with
-on-chain state. We apologise for the disruption. A full post-mortem will be
-published within 48 hours.
-```
-
-### Internal post-restore summary
-
-```
-Recovery complete — summary:
-- Backup restored: <RESTORE_FILE>
-- Backup timestamp: <BACKUP_TS>
-- Maintenance window: <MAINTENANCE_START> → <end time>
-- Transactions re-indexed: <count>
-- All health checks: PASS
-- Recovery log: recovery.log (attach to incident ticket)
-```
+#### Resolution Notification
+> **Title:** Systems Operational & Services Restored  
+> **Status:** Resolved  
+> **Message:** All database services have been restored and fully synchronized with the Stellar blockchain. Webhook events have been re-dispatched. We will publish a full post-mortem within 48 hours.
 
 ---
 
-## Related Documents
+## 9. Tested vs. Untested / Manual Matrix & Follow-Up Checklist
 
-| Document | Relevance |
-|----------|-----------|
-| [docs/SECRETS_ROTATION.md](./SECRETS_ROTATION.md) | How to retrieve and rotate the credentials needed for this runbook |
-| [docs/DEPLOYMENT.md](./DEPLOYMENT.md) | Helm values, replica counts, and environment configuration for cutover |
-| [docs/MAINNET_RUNBOOK.md](./MAINNET_RUNBOOK.md) | App-level rollback procedures; Phase 4 registry for contract IDs |
-| [docs/SCHEMA.md](./SCHEMA.md) | Database schema reference for reconciliation SQL |
-| [docs/STELLAR_101.md](./STELLAR_101.md) | Stellar ledger and Horizon API concepts used in Phase 4 |
-| [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Symptom → fix for common errors during recovery |
-| `.github/workflows/db-backup.yml` | Backup workflow definition (schedule, bucket, retention) |
-| `scripts/restore-drill.sh` | Automated restore drill script used in Phase 2 |
+The following audit matrix documents the exact operational state of each disaster recovery component:
+
+| Component / Workflow | Execution Mode | Test / Operational Status | Notes & Gaps |
+|---|---|---|---|
+| **Scheduled Backup** (`db-backup.yml`) | Automated (`cron: "0 3 * * *"`) | ✅ **Tested & Verified** | Dumps database nightly to S3; 30-day retention pruning. |
+| **Disposable Restore Drill** (`restore-drill.sh`) | Semi-automated (Local Docker) | ⚠️ **Manual Trigger Only** | Has no scheduled CI workflow caller. Asserts Prisma models (`User`, `Account`, `Payment`, `Batch`, `PaymentRequest`, `Webhook`, `ApiKey`). |
+| **Single-Transaction Restore** | Automated (`--single-transaction`) | ✅ **Tested & Verified** | Enforced in `restore-drill.sh` and runbook instructions. |
+| **Target Database Provisioning** | Manual (Cloud console / CLI) | ⚠️ **Untested in Drill** | Provisioning a real production RDS/Supabase instance is not automated via IaC (Terraform). |
+| **Prisma Migration Alignment** | Manual (`prisma migrate deploy`) | ✅ **Standard Procedure** | Covered in runbook Step 6. |
+| **In-Flight Payment Reconciliation** | Application code (`payment-sync.ts`) | ⚠️ **Manual Invocation** | `runPaymentStatusSync()` is implemented and tested, but lacks an automated cron or event trigger. |
+| **Missing On-Chain Payment Backfill** | Manual (Horizon curl & SQL) | 🔴 **Untested / Manual** | No automated script exists to ingest missing payments directly from Soroban contract events into PostgreSQL. |
+| **RTO Benchmark (< 1 Hour)** | Theoretical estimate | 🔴 **Untested in Production** | Actual recovery duration has not been measured under live production conditions. |
+
+### Follow-Up Action Checklist for Mainnet Readiness
+
+- [ ] **Wire `restore-drill.sh` into Scheduled CI:** Create `.github/workflows/restore-drill.yml` running monthly on GitHub Actions with test credentials.
+- [ ] **Continuous WAL Archiving (PITR):** Enable PostgreSQL continuous WAL archiving (e.g. AWS RDS PITR or `pgBackRest`) to reduce RPO from 24 hours to < 5 minutes.
+- [ ] **Automate `runPaymentStatusSync` Cron:** Schedule a recurring job (or hook into `/api/cron`) that runs `runPaymentStatusSync` periodically to prevent state drift.
+- [ ] **Develop On-Chain Backfill CLI Tool:** Author `scripts/reconcile-chain-backfill.ts` to automatically scan Horizon for payments created during the outage and generate restorative SQL inserts.
+- [ ] **Conduct Timed Disaster Drill:** Perform a live, timed staging failover to validate and certify the < 1 hour RTO objective.

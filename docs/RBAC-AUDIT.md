@@ -118,19 +118,4 @@ or a local cache) before calling the contract, returning 403 with
 enforces a minimum deposit but does not require a specific role. This is
 intentional (open governance), but worth documenting.
 
-## Test Coverage
-
-Tests in `src/__tests__/rbac-enforcement.test.ts` assert:
-- All state-changing routes return 401 without authentication.
-- The route audit table is consistent with the actual codebase.
-- Admin-only routes are identified for future enforcement.
-
-## Recommendations
-
-1. **Add API-level RBAC guards** for `POST /api/multisig` (Admin) and
-   `POST /api/governance/execute` (Admin) as a defense-in-depth measure.
-2. **Cache role lookups** to avoid per-request Soroban simulation for
-   RBAC checks (use a short TTL, e.g., 60 seconds).
-3. **Return 403 (not 401)** when the caller is authenticated but lacks
-   the required role — currently these routes return contract simulation
-   errors which are less clear.
+##

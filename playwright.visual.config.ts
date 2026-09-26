@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MIT
 //
 // Playwright config for visual regression tests only.
-// Run with: npm run test:visual  (compare against committed baselines)
-// Update baselines with: npm run test:visual:update
+//
+//   Compare against committed baselines:  npm run test:visual
+//   Regenerate every baseline (light + dark):  npm run test:visual:update
+//
+// Every page is captured once per colour-scheme project below, so a single
+// `--update-snapshots` run regenerates BOTH the light and the dark baselines.
 
 import { defineConfig, devices } from "@playwright/test";
 
@@ -22,13 +26,24 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  // Store baselines next to the spec.
+  // Store baselines next to the spec, namespaced by project so light and dark
+  // captures can never collide (the project name is part of the path).
   snapshotPathTemplate:
-    "{testDir}/__screenshots__/{testFilePath}/{arg}{ext}",
+    "{testDir}/__screenshots__/{testFilePath}/{projectName}/{arg}{ext}",
+  //
+  // Two colour-scheme projects (issue #715). `colorScheme` drives
+  // `prefers-color-scheme`, so the app's ThemeProvider resolves dark mode even
+  // before any persisted preference is read; the spec additionally pins the
+  // persisted theme per project so the render is deterministic.
+  //
   projects: [
     {
-      name: "visual-chromium",
-      use: { ...devices["Desktop Chrome"] },
+      name: "visual-light",
+      use: { ...devices["Desktop Chrome"], colorScheme: "light" },
+    },
+    {
+      name: "visual-dark",
+      use: { ...devices["Desktop Chrome"], colorScheme: "dark" },
     },
   ],
   // No webServer — visual tests run against a live deployment (same as E2E).

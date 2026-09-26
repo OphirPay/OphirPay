@@ -1,3 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Minimal standalone example — the Helm chart is the supported path.
+#
+# These manifests mirror the defaults in helm/ophirpay/values.yaml so the app
+# can be applied with `kubectl apply -f k8s/` where Helm is unavailable. The
+# chart renders the same objects plus the flag-gated extras (autoscaling, PDB,
+# NetworkPolicy, ServiceAccount) from values; prefer it for real deployments.
+# Keep changes here in sync with helm/ophirpay/values.yaml.
+#
+# NEXT_PUBLIC_* values (k8s/namespace-config.yaml) are inlined by Next.js at
+# build time, so a prebuilt image ignores them — see docs/DEPLOYMENT.md.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ophirpay
+  namespace: ophirpay
+  labels:
+    app: ophirpay
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,6 +40,7 @@ spec:
       labels:
         app: ophirpay
     spec:
+      serviceAccountName: ophirpay
       containers:
         - name: ophirpay
           image: ghcr.io/ophirpay/ophirpay:latest
@@ -169,6 +190,16 @@ spec:
         - protocol: TCP
           port: 3000
   egress:
+    # Cluster DNS — required for in-cluster names to resolve.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
     - to:
         - podSelector:
             matchLabels:

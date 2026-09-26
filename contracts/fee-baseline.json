@@ -1,0 +1,130 @@
+{
+  "$comment": "Reference outputs of OphirPayContract::calculate_fee(amount, fee_bps) = amount * fee_bps / 10000 (floored; 0 when fee_bps is 0). Consumed by scripts/check-contract-regressions.mjs and produced by contracts/ophirpay/tests/fee_report.rs. Update with the same command that updates contracts/wasm-baseline.json — see docs/GAS.md.",
+  "fees": [
+    {
+      "amount": 10000,
+      "bps": 0,
+      "fee": 0
+    },
+    {
+      "amount": 10000,
+      "bps": 30,
+      "fee": 30
+    },
+    {
+      "amount": 10000,
+      "bps": 50,
+      "fee": 50
+    },
+    {
+      "amount": 10000,
+      "bps": 100,
+      "fee": 100
+    },
+    {
+      "amount": 10000,
+      "bps": 150,
+      "fee": 150
+    },
+    {
+      "amount": 1000000,
+      "bps": 0,
+      "fee": 0
+    },
+    {
+      "amount": 1000000,
+      "bps": 30,
+      "fee": 3000
+    },
+    {
+      "amount": 1000000,
+      "bps": 50,
+      "fee": 5000
+    },
+    {
+      "amount": 1000000,
+      "bps": 100,
+      "fee": 10000
+    },
+    {
+      "amount": 1000000,
+      "bps": 150,
+      "fee": 15000
+    },
+    {
+      "amount": 10000000,
+      "bps": 0,
+      "fee": 0
+    },
+    {
+      "amount": 10000000,
+      "bps": 30,
+      "fee": 30000
+    },
+    {
+      "amount": 10000000,
+      "bps": 50,
+      "fee": 50000
+    },
+    {
+      "amount": 10000000,
+      "bps": 100,
+      "fee": 100000
+    },
+    {
+      "amount": 10000000,
+      "bps": 150,
+      "fee": 150000
+    },
+    {
+      "amount": 1000000000,
+      "bps": 0,
+      "fee": 0
+    },
+    {
+      "amount": 1000000000,
+      "bps": 30,
+      "fee": 3000000
+    },
+    {
+      "amount": 1000000000,
+      "bps": 50,
+      "fee": 5000000
+    },
+    {
+      "amount": 1000000000,
+      "bps": 100,
+      "fee": 10000000
+    },
+    {
+      "amount": 1000000000,
+      "bps": 150,
+      "fee": 15000000
+    },
+    {
+      "amount": 333333,
+      "bps": 0,
+      "fee": 0
+    },
+    {
+      "amount": 333333,
+      "bps": 30,
+      "fee": 999
+    },
+    {
+      "amount": 333333,
+      "bps": 50,
+      "fee": 1666
+    },
+    {
+      "amount": 333333,
+      "bps": 100,
+      "fee": 3333
+    },
+    {
+      "amount": 333333,
+      "bps": 150,
+      "fee": 4999
+    }
+  ]
+}

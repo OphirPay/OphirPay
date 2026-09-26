@@ -73,10 +73,10 @@ describe("KeyboardShortcutsModal Component", () => {
   });
 
   it("renders key caps using kbd elements", () => {
-    const { container } = render(
+    const { baseElement } = render(
       <KeyboardShortcutsModal open={true} onClose={vi.fn()} />
     );
-    const kbdElements = container.querySelectorAll("kbd");
+    const kbdElements = baseElement.querySelectorAll("kbd");
     expect(kbdElements.length).toBeGreaterThanOrEqual(ALL_SHORTCUTS.length);
   });
 });
@@ -108,7 +108,7 @@ describe("KeyboardShortcutsOverlay Component & Keyboard Interaction", () => {
 
     // Press 'Escape'
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      fireEvent.keyDown(document, { key: "Escape" });
     });
 
     expect(screen.queryByRole("dialog")).toBeNull();

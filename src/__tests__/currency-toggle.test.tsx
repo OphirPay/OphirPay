@@ -161,6 +161,28 @@ describe("useXlmPrice Hook", () => {
     expect(result.current.error).toBe("Sources down");
   });
 
+  it("exposes stale price metadata as unavailable for display", async () => {
+    vi.spyOn(priceModule, "fetchXlmPrice").mockResolvedValue({
+      price: 0.15,
+      source: "cached",
+      isStale: true,
+      staleAgeMs: 360_000,
+      rateLimited: true,
+    });
+
+    const { result } = renderHook(() => useXlmPrice());
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(result.current.price).toBe(0.15);
+    expect(result.current.isStale).toBe(true);
+    expect(result.current.staleAgeMs).toBe(360_000);
+    expect(result.current.rateLimited).toBe(true);
+    expect(result.current.isUnavailable).toBe(true);
+  });
+
   it("handles unexpected thrown errors gracefully", async () => {
     vi.spyOn(priceModule, "fetchXlmPrice").mockRejectedValue(new Error("Unexpected crash"));
 

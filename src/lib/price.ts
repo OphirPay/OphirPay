@@ -23,6 +23,8 @@
  */
 
 export const PRICE_CACHE_TTL_MS = 60_000; // 60 seconds
+export const PRICE_STALE_THRESHOLD_MS = 5 * 60_000; // 5 minutes
+export const PRICE_BACKOFF_MS = 30_000; // 30 seconds after rate limits/upstream errors
 export const DEFAULT_PRICE_TIMEOUT_MS = 5_000; // 5 seconds
 
 export const ROUNDING_RULES = {
@@ -38,6 +40,9 @@ export interface PriceResult {
   source: "coingecko" | "coinbase" | "cached" | null;
   error?: string;
   timestamp?: number;
+  isStale?: boolean;
+  staleAgeMs?: number;
+  rateLimited?: boolean;
 }
 
 interface CacheEntry {
@@ -48,6 +53,7 @@ interface CacheEntry {
 
 let priceCache: CacheEntry | null = null;
 let pendingPriceFetch: Promise<PriceResult> | null = null;
+let backoffUntil = 0;
 
 /**
  * Clear cached price. Primarily for testing or manual cache busting.
@@ -55,6 +61,7 @@ let pendingPriceFetch: Promise<PriceResult> | null = null;
 export function clearPriceCache(): void {
   priceCache = null;
   pendingPriceFetch = null;
+  backoffUntil = 0;
 }
 
 /**
@@ -82,19 +89,38 @@ export async function fetchXlmPrice(options?: {
   forceRefresh?: boolean;
   ttlMs?: number;
   timeoutMs?: number;
+  staleThresholdMs?: number;
+  apiKey?: string;
   signal?: AbortSignal;
 }): Promise<PriceResult> {
   const ttl = options?.ttlMs ?? PRICE_CACHE_TTL_MS;
   const timeoutMs = options?.timeoutMs ?? DEFAULT_PRICE_TIMEOUT_MS;
+  const staleThresholdMs = options?.staleThresholdMs ?? PRICE_STALE_THRESHOLD_MS;
+  const apiKey = options?.apiKey ?? getPriceProviderApiKey();
   const now = Date.now();
 
   // 1. Check in-memory cache
   if (!options?.forceRefresh && priceCache && now - priceCache.timestamp < ttl) {
+    const staleAgeMs = now - priceCache.timestamp;
     return {
       price: priceCache.price,
       source: "cached",
       timestamp: priceCache.timestamp,
+      isStale: staleAgeMs > staleThresholdMs,
+      staleAgeMs,
     };
+  }
+
+  // Avoid hammering a rate-limited or failing upstream during backoff.
+  if (backoffUntil > now) {
+    return staleCacheResult(
+      now,
+      staleThresholdMs,
+      priceCache
+        ? "Price feed is in backoff; using last known price"
+        : "Price feed is in backoff; price unavailable",
+      true
+    );
   }
 
   // 2. Deduplicate concurrent requests
@@ -103,6 +129,8 @@ export async function fetchXlmPrice(options?: {
   }
 
   const fetchPromise = (async (): Promise<PriceResult> => {
+    let wasRateLimited = false;
+
     // Primary: CoinGecko
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -115,17 +143,23 @@ export async function fetchXlmPrice(options?: {
       const res = await fetch(
         "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd",
         {
-          headers: { Accept: "application/json" },
+          headers: buildPriceHeaders(apiKey),
           signal: combinedSignal,
         }
       );
+
+      if (res.status === 429) {
+        wasRateLimited = true;
+        backoffUntil = Date.now() + PRICE_BACKOFF_MS;
+      }
 
       if (res.ok) {
         const data = await res.json();
         const price = data?.stellar?.usd;
         if (typeof price === "number" && !isNaN(price) && price > 0) {
           priceCache = { price, source: "coingecko", timestamp: Date.now() };
-          return { price, source: "coingecko", timestamp: priceCache.timestamp };
+          backoffUntil = 0;
+          return { price, source: "coingecko", timestamp: priceCache.timestamp, isStale: false, staleAgeMs: 0 };
         }
       }
     } catch {
@@ -146,9 +180,14 @@ export async function fetchXlmPrice(options?: {
         : controller.signal;
 
       const res = await fetch("https://api.coinbase.com/v2/prices/XLM-USD/spot", {
-        headers: { Accept: "application/json" },
+        headers: buildPriceHeaders(apiKey),
         signal: combinedSignal,
       });
+
+      if (res.status === 429) {
+        wasRateLimited = true;
+        backoffUntil = Date.now() + PRICE_BACKOFF_MS;
+      }
 
       if (res.ok) {
         const data = await res.json();
@@ -156,7 +195,8 @@ export async function fetchXlmPrice(options?: {
         const price = typeof priceStr === "string" ? parseFloat(priceStr) : Number(priceStr);
         if (typeof price === "number" && !isNaN(price) && price > 0) {
           priceCache = { price, source: "coinbase", timestamp: Date.now() };
-          return { price, source: "coinbase", timestamp: priceCache.timestamp };
+          backoffUntil = 0;
+          return { price, source: "coinbase", timestamp: priceCache.timestamp, isStale: false, staleAgeMs: 0 };
         }
       }
     } catch {
@@ -169,18 +209,22 @@ export async function fetchXlmPrice(options?: {
 
     // If cache has a stale price, return it with error indication rather than complete failure if available
     if (priceCache) {
-      return {
-        price: priceCache.price,
-        source: "cached",
-        error: "Price sources currently unreachable, using last known price",
-        timestamp: priceCache.timestamp,
-      };
+      backoffUntil = Math.max(backoffUntil, Date.now() + PRICE_BACKOFF_MS);
+      return staleCacheResult(
+        Date.now(),
+        staleThresholdMs,
+        "Price sources currently unreachable, using last known price",
+        wasRateLimited
+      );
     }
 
+    backoffUntil = Math.max(backoffUntil, Date.now() + PRICE_BACKOFF_MS);
     return {
       price: null,
       source: null,
       error: "XLM/USD price sources unavailable",
+      isStale: true,
+      rateLimited: wasRateLimited,
     };
   })();
 
@@ -190,6 +234,48 @@ export async function fetchXlmPrice(options?: {
   } finally {
     pendingPriceFetch = null;
   }
+}
+
+function getPriceProviderApiKey(): string | undefined {
+  return process.env.NEXT_PUBLIC_PRICE_PROVIDER_API_KEY ?? process.env.PRICE_PROVIDER_API_KEY;
+}
+
+function buildPriceHeaders(apiKey?: string): HeadersInit {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
+function staleCacheResult(
+  now: number,
+  staleThresholdMs: number,
+  error: string,
+  rateLimited = false
+): PriceResult {
+  const staleAgeMs = priceCache ? now - priceCache.timestamp : undefined;
+  const isStale = typeof staleAgeMs === "number" ? staleAgeMs > staleThresholdMs : true;
+  return {
+    price: priceCache?.price ?? null,
+    source: priceCache ? "cached" : null,
+    error,
+    timestamp: priceCache?.timestamp,
+    isStale,
+    staleAgeMs,
+    rateLimited,
+  };
+}
+
+export function formatPriceUnavailableFallback(
+  xlmAmount: number | string,
+  result: Pick<PriceResult, "price" | "isStale"> | null | undefined
+): string | null {
+  if (result?.price !== null && result?.price !== undefined && !result.isStale) {
+    return null;
+  }
+  const amount = typeof xlmAmount === "string" ? xlmAmount : xlmAmount.toString();
+  return `${amount} XLM (USD price unavailable)`;
 }
 
 /**

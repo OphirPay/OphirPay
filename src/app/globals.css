@@ -159,3 +159,48 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Print records (issue #793): hide app chrome, force print-safe light
+   colors in both themes, let content use the full page width. */
+@media print {
+  aside,
+  header,
+  nav,
+  button,
+  [role="dialog"],
+  [data-toast-viewport] {
+    display: none !important;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  [class*="dark:bg-"] {
+    background-color: #fff !important;
+  }
+
+  [class*="dark:text-"] {
+    color: #111 !important;
+  }
+
+  [class*="dark:border-"] {
+    border-color: #e5e7eb !important;
+  }
+
+  #main-content {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+
+  a {
+    text-decoration: none !important;
+    color: #000 !important;
+  }
+}

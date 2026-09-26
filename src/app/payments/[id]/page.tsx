@@ -205,7 +205,7 @@ export default function PaymentDetailPage() {
           </p>
           <Link
             href="/payments"
-            className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors"
+            className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors print:hidden"
           >
             ← Back to Payments
           </Link>
@@ -230,7 +230,7 @@ export default function PaymentDetailPage() {
               {status && <StatusBadge status={status} />}
               <Link
                 href="/payments"
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors"
+                className="text-sm text-gray-500 dark:text-gray-400 hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors print:hidden"
               >
                 ← All payments
               </Link>
@@ -239,7 +239,7 @@ export default function PaymentDetailPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             {/* Details */}
-            <Card className="lg:col-span-3 p-6">
+            <Card className="lg:col-span-3 p-6 print:break-inside-avoid print:shadow-none">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
                 Payment details
               </h2>
@@ -251,15 +251,21 @@ export default function PaymentDetailPage() {
                 {onChain && (
                   <>
                     <DetailRow label="Payer" mono>
-                      <span className="inline-flex items-center gap-2">
+                      <span className="inline-flex items-center gap-2 print:hidden">
                         {shortenAddress(onChain.payer, 8)}
                         <CopyButton value={onChain.payer} label="Payer" />
                       </span>
+                      <span className="hidden print:inline break-all">
+                        {onChain.payer}
+                      </span>
                     </DetailRow>
                     <DetailRow label="Payee" mono>
-                      <span className="inline-flex items-center gap-2">
+                      <span className="inline-flex items-center gap-2 print:hidden">
                         {shortenAddress(onChain.payee, 8)}
                         <CopyButton value={onChain.payee} label="Payee" />
+                      </span>
+                      <span className="hidden print:inline break-all">
+                        {onChain.payee}
                       </span>
                     </DetailRow>
                   </>
@@ -267,17 +273,22 @@ export default function PaymentDetailPage() {
 
                 <DetailRow label="Tx hash" mono>
                   {txHash ? (
-                    <span className="inline-flex items-center gap-2">
-                      <a
-                        href={explorerUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-ophir-600 dark:text-ophir-400 hover:underline"
-                      >
-                        {shortenAddress(txHash, 8)}
-                      </a>
-                      <CopyButton value={txHash} label="Hash" />
-                    </span>
+                    <>
+                      <span className="inline-flex items-center gap-2 print:hidden">
+                        <a
+                          href={explorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-ophir-600 dark:text-ophir-400 hover:underline"
+                        >
+                          {shortenAddress(txHash, 8)}
+                        </a>
+                        <CopyButton value={txHash} label="Hash" />
+                      </span>
+                      <span className="hidden print:inline break-all">
+                        {txHash}
+                      </span>
+                    </>
                   ) : (
                     "—"
                   )}
@@ -316,7 +327,7 @@ export default function PaymentDetailPage() {
             </Card>
 
             {/* Lifecycle */}
-            <Card className="lg:col-span-2 p-6">
+            <Card className="lg:col-span-2 p-6 print:break-inside-avoid print:shadow-none">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
                 Lifecycle
               </h2>

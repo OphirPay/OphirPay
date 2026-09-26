@@ -29,7 +29,8 @@ fully-green repository.
 - [x] End-to-end refund lifecycle (Request → Approve → Process) demonstrable in the UI
 - [x] Multisig approve/execute address real on-chain request ids
 - [x] Security, Performance & Gas, and Audit-Readiness documented in the README
-- [ ] Record fresh demo video + screenshots against the seeded demo environment
+- [x] Demo mode environment, seeded test data, smoke tests, and capture workflows documented ([docs/DEMO_MODE.md](docs/DEMO_MODE.md))
+- [ ] Record fresh demo video + screenshots against the seeded demo environment (see [docs/DEMO_MODE.md](docs/DEMO_MODE.md))
 - [ ] External security audit (Runtime Verification or Certora)
 - [ ] Formal verification of key contract invariants — 10/10 Kani *model* proofs exist but do not verify the deployed contract (see contracts/ophirpay/spec/ and docs/AUDIT.md)
 

@@ -2,8 +2,8 @@
 #![cfg(test)]
 
 use ophirpay_contract::{
-    BatchCreateResult, OphirPayContract, OphirPayContractClient, Payment, PaymentError,
-    RefundReasonCode, RefundStatus,
+    AdminAction, BatchCreateResult, FeeConfig, OphirPayContract, OphirPayContractClient, Payment,
+    PaymentError, RefundReasonCode, RefundStatus, Role,
 };
 use ophirpay_emitter::{EmitterError, PaymentEventEmitter, PaymentEventEmitterClient};
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -756,6 +756,133 @@ fn test_cross_contract_emergency_pause_orchestration() {
     let evt_id =
         emitter_client.emit_payment(&fix.owner, &source, &payer, &payee, &100i128, &tx_hash);
     assert_eq!(evt_id, 1);
+}
+
+// ── Timelocked Action Dispatch Tests ──────────────────────────────────────────
+
+#[test]
+fn test_timelocked_action_dispatches_fee_config() {
+    let fix = TestFixture::new();
+
+    // Verify initial fee config is unset
+    assert_eq!(fix.client.get_fee_config(), None);
+
+    let fee_config = FeeConfig {
+        payment_fee_bps: 100,
+        escrow_fee_bps: 150,
+        stream_fee_bps: 200,
+        batch_base_fee: 5000,
+        batch_per_item_fee: 250,
+        enabled: true,
+    };
+
+    // Propose timelocked fee config change
+    let action_id = fix.client.propose_timelocked_action(
+        &fix.owner,
+        &AdminAction::SetFeeConfig(fee_config.clone()),
+    );
+    assert_eq!(action_id, 1);
+    assert_eq!(fix.client.get_timelock_count(), 1);
+
+    // Verify state has NOT changed before execution
+    assert_eq!(fix.client.get_fee_config(), None);
+
+    // Fast-forward past 24-hour delay
+    let now = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(now + 86401);
+
+    // Execute the timelocked action
+    fix.client.execute_timelocked_action(&action_id);
+
+    // Verify intended on-chain state mutated
+    let updated = fix.client.get_fee_config().expect("fee config should be set");
+    assert_eq!(updated.payment_fee_bps, 100);
+    assert_eq!(updated.escrow_fee_bps, 150);
+    assert_eq!(updated.stream_fee_bps, 200);
+    assert_eq!(updated.batch_base_fee, 5000);
+    assert_eq!(updated.batch_per_item_fee, 250);
+    assert_eq!(updated.enabled, true);
+
+    // Verify history recorded the version
+    let history = fix.client.get_fee_config_history();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history.get(0).unwrap().version, 1);
+}
+
+#[test]
+fn test_timelocked_action_dispatches_emitter_link() {
+    let fix = TestFixture::new();
+    let (emitter_id, _) = fix.setup_emitter();
+
+    assert_eq!(fix.client.get_emitter(), None);
+
+    let action_id = fix.client.propose_timelocked_action(
+        &fix.owner,
+        &AdminAction::SetEmitter(emitter_id.clone()),
+    );
+
+    let now = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(now + 86401);
+
+    fix.client.execute_timelocked_action(&action_id);
+    assert_eq!(fix.client.get_emitter(), Some(emitter_id));
+}
+
+#[test]
+fn test_timelocked_action_dispatches_role_grant() {
+    let fix = TestFixture::new();
+    let operator = Address::generate(&fix.env);
+
+    assert_eq!(fix.client.get_role(&operator), None);
+
+    let action_id = fix.client.propose_timelocked_action(
+        &fix.owner,
+        &AdminAction::GrantRole(operator.clone(), Role::Operator),
+    );
+
+    let now = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(now + 86401);
+
+    fix.client.execute_timelocked_action(&action_id);
+    assert_eq!(fix.client.get_role(&operator), Some(Role::Operator));
+}
+
+#[test]
+fn test_timelocked_action_early_execution_fails_integration() {
+    let fix = TestFixture::new();
+    let collector = Address::generate(&fix.env);
+
+    let action_id = fix.client.propose_timelocked_action(
+        &fix.owner,
+        &AdminAction::SetFeeCollector(collector),
+    );
+
+    // Fast-forward only 1 hour (less than 24 hours)
+    let now = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(now + 3600);
+
+    let res = fix.client.try_execute_timelocked_action(&action_id);
+    assert_eq!(res, Err(Ok(PaymentError::TimelockNotDue)));
+    assert_eq!(fix.client.get_fee_collector(), None);
+}
+
+#[test]
+fn test_timelocked_action_cancelled_cannot_be_executed_integration() {
+    let fix = TestFixture::new();
+
+    let action_id = fix.client.propose_timelocked_action(
+        &fix.owner,
+        &AdminAction::EmergencyPauseAll,
+    );
+
+    fix.client.cancel_timelocked_action(&fix.owner, &action_id);
+
+    let now = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(now + 86401);
+
+    let res = fix.client.try_execute_timelocked_action(&action_id);
+    assert_eq!(res, Err(Ok(PaymentError::TimelockAlreadyExecuted)));
+    assert_eq!(fix.client.is_paused(), false);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -275,6 +275,48 @@ clean error.
 
 ---
 
+### INV-12: Timelocked Admin Action Execution and Dispatch
+
+**Statement:** Timelocked admin operations proposed via `propose_timelocked_action()` SHALL:
+1. Bind their full typed payload (`AdminAction`) at proposal time in persistent storage under `(TIMELOCK_KEY, id)`.
+2. Enforce a strict 24-hour delay (86,400 ledger seconds) before `execute_timelocked_action()` can be called (`TimelockNotDue` error prior to expiry).
+3. Prevent payload substitution at execution time: `execute_timelocked_action(env, id)` accepts only the `action_id`, guaranteeing execution of the exact payload committed at proposal time.
+4. Directly dispatch on-chain state mutations to the target admin functions upon execution, updating configurations, roles, links, or pauses atomically.
+5. Prevent re-execution: once executed or cancelled, further execution attempts MUST fail with `TimelockAlreadyExecuted`.
+
+**Code evidence:**
+- `propose_timelocked_action()` verifies caller authorization (`require_owner`), validates action parameters, sets `unlocks_at = now + 86400`, and writes `TimelockedAction` containing `action: AdminAction` to storage.
+- `execute_timelocked_action()` verifies `now >= unlocks_at`, marks `action.executed = true`, and executes pattern matching on `action.action`, dispatching to `SetFeeConfig`, `SetFeeCollector`, `SetEmitter`, `SetMultisigConfig`, `GrantRole`, `RevokeRole`, `ConfigureGovernance`, `SetSpendingLimit`, `ConfigureEscalation`, `EmergencyPauseAll`, or `EmergencyUnpauseAll`.
+- `cancel_timelocked_action()` marks `action.executed = true`, preventing subsequent execution.
+
+**Test:** `test_timelocked_action_propose_and_execute`, `test_timelocked_action_dispatches_state_change`, `test_timelocked_action_dispatches_fee_config` (integration) — verifies payload commitment, delay enforcement, and on-chain state mutation.
+
+---
+
+## Administrative Operations: Timelocked vs Immediate
+
+OphirPay classifies administrative operations into two categories based on key compromise risk and operational agility:
+
+| Operation | Immediate Execution | Timelocked Dispatch (24h) | Protected State / Scope |
+|---|---|---|---|
+| **Contract Code Upgrade** | ❌ Disallowed | ✅ `propose_upgrade` → `execute_upgrade` | Contract WASM hash (`UPG_HASH`, `UPG_LOCK`) |
+| **Ownership Transfer** | ❌ Disallowed | ✅ `transfer_ownership` → `accept_ownership` | Contract ownership (`OWNER`, `PND_OWN`, `OWN_PAT`) |
+| **Role Revocation (Safe Flow)** | Immediate via `revoke_role` | ✅ `propose_revoke_role` → `execute_revoke_role` | RBAC role removal (`PR_REV`, `ROLE`) |
+| **Platform Fee Config** | Immediate via `set_fee_config` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | `FeeConfig`, basis points, version archive |
+| **Fee Collector Address** | Immediate via `set_fee_collector` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Platform fee beneficiary address (`FEE_COLL`) |
+| **Multisig Approvals Config** | Immediate via `set_multisig_config` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | N-of-M thresholds & signers (`MULTI_CF`, `MS_VER`) |
+| **RBAC Role Grant** | Immediate via `grant_role` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Admin / Operator / Auditor role grants (`ROLE`) |
+| **RBAC Role Revoke** | Immediate via `revoke_role` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Role removal (`ROLE`) |
+| **Governance Parameters** | Immediate via `configure_governance` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Minimum deposit, voting period, quorum (`GOV_CONF`) |
+| **Spending Limits** | Immediate via `set_spending_limit` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Per-user caps, daily/monthly spend windows (`SPNDLIM`) |
+| **Escalation Rules** | Immediate via `configure_escalation` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Value thresholds for operator approvals (`ESCLATN`) |
+| **Linked Emitter Contract** | Immediate via `set_emitter` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Event emitter orchestration link (`EMITTER`) |
+| **Emergency Pause All** | Immediate via `emergency_pause_all` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Global freeze across OphirPay + Emitter (`PAUSED`) |
+| **Emergency Unpause All** | Immediate via `emergency_unpause_all` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Resume contract operations (`PAUSED`) |
+
+
+---
+
 ## State Transition Diagram
 
 ```

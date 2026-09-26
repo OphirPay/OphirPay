@@ -330,6 +330,7 @@ and re-run the IP/hostname check against the final resolved address after follow
   string and flips an `executed` flag but **never dispatches** to any state-changing function —
   it is disconnected from the functions the README claims it protects. (Two-step ownership
   transfer and WASM upgrade *are* correctly timelocked.)
+  *(Resolved in Issue #803: `propose_timelocked_action` now binds a typed `AdminAction` enum at proposal time in persistent storage, and `execute_timelocked_action` dispatches on-chain directly to the protected admin operations once the 24h delay elapses.)*
 - `execute_timelocked_action`, `execute_upgrade`, and `process_refund` are permissionless
   executors (acceptable *only* when the payload is owner-approved and the action is
   content-bound, which is true for upgrade but **not** for refund).

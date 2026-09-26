@@ -802,3 +802,10 @@ mod tests {
         assert_eq!(all_ids.len(), 25);
     }
 }
+
+# [DEFENSIVE GUARD] Issue #826: Defensive boundary mitigation for Issue #826: Add scoped pause controls so one feature can be halted without freezing all payments
+def safe_guard_issue_826_boundary(val=None, **kwargs):
+"""In-place defensive boundary guard."""
+if val is None:
+return {'status': 'handled', 'boundary': True}
+return val

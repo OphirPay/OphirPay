@@ -19,6 +19,7 @@ import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { incMetric } from "@/lib/metrics-counters";
 import { buildPaymentWhere } from "@/lib/payment-filters";
+import { isFtsAvailable, searchPaymentsRanked } from "@/lib/fts-search";
 import { invalidateCaches } from "@/lib/api-cache";
 import {
   buildCursorWhere,
@@ -63,6 +64,22 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
     // shared helper so the list route and CSV export stay in lockstep.
     const baseWhere = buildPaymentWhere(auth.userId, { status, search });
     if (!includeDeleted) baseWhere.deletedAt = null;
+
+    // Ranked full-text search (issue #823): on PostgreSQL, resolve the query
+    // to ranked ids first (exact tx-hash first, then ts_rank) and paginate
+    // the ranked set. Response shape is unchanged; the SQLite dev path keeps
+    // the LIKE-based baseWhere below.
+    if (search && isFtsAvailable()) {
+      const ranked = await searchPaymentsRanked(auth.userId, search, baseWhere, {
+        page,
+        limit,
+      });
+      return successResponse(ranked.rows, {
+        ...computePagination(page ?? 1, limit, ranked.total),
+        nextCursor: null,
+        hasMore: ranked.hasMore,
+      });
+    }
 
     // Keyset (cursor) pagination is the default for plain list requests — it
     // never deep-skips, so later pages stay fast as the table grows. Offset

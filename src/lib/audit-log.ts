@@ -86,6 +86,10 @@ export const auditLogQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).default(20),
     actor: z.string().trim().min(1).optional(),
     action: z.string().trim().min(1).optional(),
+    // Free-text search over action/actor/details (issue #823). Ranked
+    // full-text on PostgreSQL, LIKE fallback on SQLite. Additive: existing
+    // consumers are unaffected when absent.
+    q: z.string().trim().min(1).optional(),
     resource: z.coerce.number().int().nonnegative().optional(),
     since: yearSuffixCheck.optional(),
     until: yearSuffixCheck.optional(),

@@ -137,6 +137,31 @@ npx prisma migrate reset --force
 
 ---
 
+### Provider-Specific SQL Outside schema.prisma (Full-Text Search)
+
+The `20260925000000_add_search_vectors` migration adds `tsvector`
+generated columns + GIN indexes for ranked search (issue #823). These live
+**only in the migration SQL**, deliberately absent from `schema.prisma`:
+
+- `tsvector` has no Prisma equivalent — declaring it would break the local
+  SQLite path (`db push` cannot create it).
+- Migrations run exclusively on PostgreSQL (`migrate deploy`); SQLite dev
+  uses `db push` and never applies migration files, so the columns simply
+  do not exist there.
+- Application code branches on provider: `isFtsAvailable()` (PostgreSQL)
+  uses the GIN-indexed rank query, otherwise the existing LIKE search.
+- Consequence for §4 drift checks: `migrate diff` reports these two columns
+  as drift by design. That diff is expected and must not be "fixed" by
+  adding the columns to the schema.
+
+Verify index usage on PostgreSQL with:
+
+```sql
+EXPLAIN SELECT id FROM "Payment"
+WHERE "search_vector" @@ plainto_tsquery('english', 'invoice');
+-- expect: Bitmap Heap Scan + Bitmap Index Scan on Payment_search_vector_idx
+```
+
 ## 5. Summary Checklist for Pull Requests
 
 Before submitting a PR with database changes:

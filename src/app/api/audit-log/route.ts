@@ -3,6 +3,8 @@
 import { withApiAuth } from "@/lib/api-auth";
 import { successResponse, handleApiError, validationError } from "@/lib/api-response";
 import prisma from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
+import { isFtsAvailable, searchAuditLogIds } from "@/lib/fts-search";
 import { withRequestLogging } from "@/lib/request-logging";
 import {
   auditLogQuerySchema,
@@ -107,6 +109,7 @@ async function _GET(request: Request) {
       until: param("until"),
       order: param("order"),
       source: param("source"),
+      q: param("q"),
     });
     if (!parsed.success) return validationError(parsed.error);
 
@@ -134,7 +137,7 @@ async function _GET(request: Request) {
           ? (parseAuditTimestamp(parsed.data.until) ?? undefined)
           : undefined,
     };
-    const dbWhere = {
+    const dbWhere: Prisma.AuditLogWhereInput = {
       ...(filters.action ? { action: filters.action } : {}),
       ...(filters.actor ? { actor: { contains: parsed.data.actor } } : {}),
       ...(filters.resource != null
@@ -142,32 +145,59 @@ async function _GET(request: Request) {
         : {}),
     };
 
+    // Ranked full-text search (issue #823): on PostgreSQL, resolve `q` to
+    // ranked ids first (exact action first, then ts_rank). SQLite keeps the
+    // filter-based path below.
+    let ftsOrder: Map<string, number> | null = null;
+    const dbWhereWithFts = { ...dbWhere };
+    if (parsed.data.q && isFtsAvailable() && (source === "db" || source === "all")) {
+      const ranked = await searchAuditLogIds(parsed.data.q);
+      if (ranked.length === 0) {
+        if (source === "db") {
+          return successResponse([], { page, limit, total: 0 });
+        }
+      } else {
+        ftsOrder = new Map(ranked.map((r, i) => [r.id, i]));
+        dbWhereWithFts.id = { in: ranked.map((r) => r.id) };
+      }
+    }
+
     // Persisted (DB) audit entries — refund lifecycle history with record
     // ids (issue #365).
     const dbRows =
       source === "db" || source === "all"
         ? (
             await prisma.auditLog.findMany({
-              where: dbWhere,
+              where: dbWhereWithFts,
               orderBy: { createdAt: "desc" },
-              skip: (page - 1) * limit,
-              take: limit,
+              skip: ftsOrder ? undefined : (page - 1) * limit,
+              take: ftsOrder ? 500 : limit,
             })
           ).map(mapDbRow)
         : [];
+    if (ftsOrder) {
+      const rankOf = (row: { id: string }) =>
+        ftsOrder.get(row.id) ?? Number.MAX_SAFE_INTEGER;
+      dbRows.sort((a, b) => rankOf(a) - rankOf(b));
+    }
+    const dbPage = ftsOrder
+      ? dbRows.slice((page - 1) * limit, (page - 1) * limit + limit)
+      : dbRows;
     const dbTotal =
       source === "db" || source === "all"
-        ? await prisma.auditLog.count({ where: dbWhere })
+        ? ftsOrder
+          ? dbRows.length
+          : await prisma.auditLog.count({ where: dbWhereWithFts })
         : 0;
 
     if (source === "db") {
-      return successResponse(dbRows, { page, limit, total: dbTotal });
+      return successResponse(dbPage, { page, limit, total: dbTotal });
     }
 
     // ── On-chain ledger (source=contract | all) ────────────────
     const totalCount = await readAuditLogTotalCount();
     if (totalCount === 0) {
-      return successResponse(dbRows, { page, limit, total: dbTotal });
+      return successResponse(dbPage, { page, limit, total: dbTotal });
     }
 
     // Which ids to read (ids are 1-indexed, newest = highest id):
@@ -213,7 +243,7 @@ async function _GET(request: Request) {
     const total = entries.length + (source === "all" ? dbTotal : 0);
     const data =
       source === "all"
-        ? [...pageItems, ...dbRows]
+        ? [...pageItems, ...dbPage]
         : pageItems;
     return successResponse(data, { page, limit, total });
   } catch (error) {

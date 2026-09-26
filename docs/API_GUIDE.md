@@ -5,7 +5,7 @@ OphirPay. It documents the conventions every route must follow so that new
 endpoints are consistent, secure, and maintainable.
 
 > **Before you start:** read the [Contributing guide](../CONTRIBUTING.md) and
-> the [Integration Guide](./integration-guide.md). Keep this page open while
+> the [Integration Guide](./integration-guide.md). For runnable recipes and endpoint examples, consult the [API Cookbook](API_COOKBOOK.md); for on-chain escrows and payment streams, see [Escrows & Streams Guide](ESCROWS_AND_STREAMS.md). Keep this page open while
 > you implement — the [checklist](#checklist) at the end is the gate for
 > merging.
 

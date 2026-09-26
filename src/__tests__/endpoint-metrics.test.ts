@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   recordEndpointLatency,
   getEndpointMetrics,
@@ -9,10 +9,31 @@ import {
 } from "@/lib/metrics-counters";
 import { withMetrics } from "@/lib/metrics-middleware";
 import { GET } from "@/app/api/metrics/route";
+import { resetMetricsForTest } from "@/lib/metrics-counters";
+
+// The metrics route falls back to API-key auth, which imports Prisma. These
+// tests only exercise the static METRICS_TOKEN path, so stub the module to
+// keep the suite free of a database client.
+vi.mock("@/lib/api-auth", () => ({
+  authenticateRequest: vi.fn(async () => null),
+}));
+
+const METRICS_TOKEN = "test-metrics-token-0123456789abcdef";
+
+function authenticatedRequest(token = METRICS_TOKEN): Request {
+  return new Request("http://localhost/api/metrics", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+}
 
 describe("per-endpoint metrics", () => {
   beforeEach(() => {
     resetEndpointMetrics();
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+  });
+
+  afterEach(() => {
+    delete process.env.METRICS_TOKEN;
   });
 
   it("produces a metric key for a successful (2xx) request", () => {
@@ -90,7 +111,7 @@ describe("per-endpoint metrics", () => {
     recordEndpointLatency("GET", "/api/payments", 200, 0.01);
     recordEndpointLatency("POST", "/api/payments", 500, 0.2);
 
-    const res = await GET();
+    const res = await GET(authenticatedRequest());
     const text = await res.text();
 
     expect(text).toContain(
@@ -103,5 +124,127 @@ describe("per-endpoint metrics", () => {
       'ophirpay_endpoint_errors_total{method="POST",endpoint="/api/payments",status_class="5xx"} 1'
     );
     expect(text).toContain("# TYPE ophirpay_endpoint_errors_total counter");
+  });
+
+  it("matches the Prometheus exposition format golden file", async () => {
+    resetMetricsForTest();
+    recordEndpointLatency("GET", "/api/payments", 200, 0.05);
+    recordEndpointLatency("GET", "/api/payments", 200, 0.3);
+    recordEndpointLatency("POST", '/api/escape/"\\', 500, 1.2);
+
+    const res = await GET(authenticatedRequest());
+    const text = await res.text();
+    
+    // Ignore dynamic parts like memory info
+    const staticText = text
+      .replace(/ophirpay_process_resident_set_bytes \d+/g, 'ophirpay_process_resident_set_bytes 0')
+      .replace(/ophirpay_process_heap_used_bytes \d+/g, 'ophirpay_process_heap_used_bytes 0')
+      .replace(/ophirpay_process_heap_total_bytes \d+/g, 'ophirpay_process_heap_total_bytes 0');
+
+    await expect(staticText).toMatchFileSnapshot("__snapshots__/prometheus-exposition.golden.txt");
+  });
+
+  it("produces valid structural formatting (TYPE lines and cumulative buckets)", async () => {
+    resetMetricsForTest();
+    recordEndpointLatency("GET", "/api/payments", 200, 0.05);
+    recordEndpointLatency("GET", "/api/payments", 200, 0.3);
+    recordEndpointLatency("POST", '/api/escape/"\\', 500, 1.2);
+
+    const res = await GET(authenticatedRequest());
+    const text = await res.text();
+    const lines = text.split("\n");
+
+    const metricFamilies = new Set<string>();
+    const typeLines = new Set<string>();
+    
+    let previousBucketVal = 0;
+    let currentBucketName = "";
+
+    for (const line of lines) {
+      if (!line || line.startsWith("# HELP") || line.startsWith("# TYPE")) {
+        if (line.startsWith("# TYPE")) {
+          const parts = line.split(" ");
+          typeLines.add(parts[2]);
+        }
+        continue;
+      }
+      
+      const name = line.split("{")[0].split(" ")[0];
+      const familyName = name.replace(/_bucket$|_sum$|_count$/, "");
+      metricFamilies.add(familyName);
+
+      if (name.endsWith("_bucket")) {
+        const val = Number(line.split(" ").pop());
+        const bucketBaseName = line.split(",le=")[0];
+        if (bucketBaseName !== currentBucketName) {
+           previousBucketVal = 0;
+           currentBucketName = bucketBaseName;
+        }
+        expect(val).toBeGreaterThanOrEqual(previousBucketVal);
+        previousBucketVal = val;
+        
+        if (line.includes('le="+Inf"')) {
+          currentBucketName = ""; // reset for next histogram
+        }
+      }
+    }
+
+    // Every family should have a matching TYPE line
+    for (const family of metricFamilies) {
+      expect(typeLines.has(family)).toBe(true);
+    }
+  });
+});
+
+describe("GET /api/metrics authentication (#699)", () => {
+  beforeEach(() => {
+    resetEndpointMetrics();
+  });
+
+  afterEach(() => {
+    delete process.env.METRICS_TOKEN;
+  });
+
+  it("returns 401 with no metric body when no credential is presented", async () => {
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+    const res = await GET(new Request("http://localhost/api/metrics"));
+    expect(res.status).toBe(401);
+    const text = await res.text();
+    expect(text).not.toContain("ophirpay_http_requests_total");
+    expect(text).not.toContain("ophirpay_process_resident_set_bytes");
+    expect(res.headers.get("WWW-Authenticate")).toContain("Bearer");
+  });
+
+  it("returns 401 when the bearer token is wrong", async () => {
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+    const res = await GET(authenticatedRequest("not-the-right-token"));
+    expect(res.status).toBe(401);
+    expect(await res.text()).not.toContain("ophirpay_info");
+  });
+
+  it("fails closed when METRICS_TOKEN is unset", async () => {
+    delete process.env.METRICS_TOKEN;
+    const res = await GET(authenticatedRequest());
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the unchanged exposition format for a valid bearer token", async () => {
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+    const res = await GET(authenticatedRequest());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/plain");
+    const text = await res.text();
+    expect(text).toContain("ophirpay_http_requests_total");
+    expect(text).toContain("ophirpay_info");
+  });
+
+  it("accepts a lowercase bearer scheme", async () => {
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+    const res = await GET(
+      new Request("http://localhost/api/metrics", {
+        headers: { authorization: `bearer ${METRICS_TOKEN}` },
+      })
+    );
+    expect(res.status).toBe(200);
   });
 });

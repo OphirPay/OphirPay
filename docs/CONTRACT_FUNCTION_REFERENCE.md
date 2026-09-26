@@ -537,6 +537,29 @@ Returns whether the contract is paused.
 
 - **Access:** public read.
 
+### `set_scope_paused(caller: Address, scope: u32, paused: bool) -> Result<(), PaymentError>`
+
+Pauses or resumes a single feature scope without touching the global pause.
+Scope ids: `0` Payments, `1` Escrows, `2` Streams, `3` Recurring, `4` Refunds,
+`5` Governance, `6` Hooks, `7` Batches.
+
+- **Access:** owner-only (`caller.require_auth()` + `require_owner`).
+- **Errors:** `NotInitialized` (1), `Unauthorized` (4), `InvalidPauseScope` (308).
+
+### `is_scope_paused(scope: u32) -> Result<bool, PaymentError>`
+
+Returns whether a single feature scope is paused. Unknown scope ids return
+`InvalidPauseScope` (308).
+
+- **Access:** public read.
+
+### `get_paused_scopes() -> Vec<u32>`
+
+Returns the numeric ids of every scope that is currently paused, ascending.
+An empty vector means no scope is paused.
+
+- **Access:** public read.
+
 ### `get_locked_balance() -> i128`
 
 Returns the total locked balance.
@@ -707,7 +730,7 @@ Creates a payment stream; returns the stream ID.
 Claims the accrued stream amount; returns the claimed amount.
 
 - **Access:** actor auth (`recipient.require_auth()`).
-- **Errors:** `StreamNotFound` (11), `StreamNotStarted` (9), `StreamFullyClaimed` (12), `Unauthorized` (4).
+- **Errors:** `StreamNotFound` (11), `StreamNotStarted` (9), `StreamFullyClaimed` (12), `StreamInvariantViolated` (307), `Unauthorized` (4).
 
 ### `cancel_stream(creator: Address, stream_id: u64) -> Result<i128, PaymentError>`
 
@@ -770,6 +793,9 @@ Returns the number of recurring schedules.
 ---
 
 ## Refunds
+
+See the [Refunds guide](REFUNDS.md) for the complete reason-code catalog,
+lifecycle authorization rules, and the bounded analytics behavior.
 
 ### `request_refund(requester: Address, payment_id: u64, amount: i128, asset: Address, reason: String, reason_code: RefundReasonCode) -> Result<u64, PaymentError>`
 
@@ -842,9 +868,12 @@ Returns `(hook_id, url)` pairs for an event type.
 
 - **Access:** public read.
 
-### `get_subscriber_hooks(subscriber: Address) -> Vec<NotificationHook>`
+### `get_subscriber_hooks(subscriber: Address) -> HookList`
 
-Returns all hooks for a subscriber.
+Returns a subscriber's hooks, **most recently registered first**, capped at
+`MAX_READER_ENTRIES` (100). `HookList` = `{ items: Vec<NotificationHook>,
+ total: u32, truncated: bool }`; `truncated` is true when the subscriber has
+more hooks than were returned (issue #742, SPEC.md INV-11).
 
 - **Access:** public read.
 
@@ -879,9 +908,13 @@ Returns the number of batches.
 
 - **Access:** public read.
 
-### `get_payments_by_batch(batch_id: u64) -> Vec<Payment>`
+### `get_payments_by_batch(batch_id: u64) -> PaymentList`
 
-Returns the payments belonging to a batch.
+Returns the payments belonging to a batch, **most recently recorded first**,
+capped at `MAX_READER_ENTRIES` (100). `PaymentList` = `{ items: Vec<Payment>,
+ total: u32, truncated: bool }`; `truncated` is true when the batch holds more
+payments than were returned (issue #742, SPEC.md INV-11). An unknown batch
+returns an empty, untruncated list.
 
 - **Access:** public read.
 

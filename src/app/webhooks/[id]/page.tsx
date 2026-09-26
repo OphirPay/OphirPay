@@ -1,7 +1,6 @@
 "use client";
-// SPDX-License-Identifier: MIT
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
@@ -10,8 +9,12 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
-import { WEBHOOK_EVENT_LABELS } from "@/app/api/webhooks/event-types";
-import type { WebhookEventType } from "@/app/api/webhooks/event-types";
+import {
+  ALL_WEBHOOK_EVENTS,
+  WEBHOOK_EVENTS,
+  WEBHOOK_EVENT_LABELS,
+  type WebhookEventType,
+} from "@/app/api/webhooks/event-types";
 
 interface WebhookData {
   id: string;
@@ -22,6 +25,20 @@ interface WebhookData {
   createdAt: string;
 }
 
+interface RequestPreview {
+  canonicalBody: string;
+  body: string;
+  signature: string;
+  headers: Record<string, string>;
+}
+
+interface PreviewData {
+  targetUrl: string;
+  event: string;
+  timestamp: string;
+  preview: RequestPreview;
+}
+
 interface TestResult {
   delivered: boolean;
   status: "delivered" | "failed";
@@ -29,21 +46,12 @@ interface TestResult {
   test: boolean;
   durationMs: number;
   sentAt: string;
+  responseStatus: number | null;
+  responseBodyExcerpt: string;
+  deliveryId: string;
+  targetUrl?: string;
+  preview?: RequestPreview;
 }
-
-const SAMPLE_PAYLOAD = {
-  event: "payment.completed",
-  timestamp: "2026-08-14T00:00:00.000Z",
-  test: true,
-  data: {
-    test: true,
-    paymentId: "test_payment_000000000000000000000000",
-    amount: "25.00",
-    assetCode: "USDC",
-    status: "COMPLETED",
-    description: "OphirPay test event — no real payment was created",
-  },
-};
 
 export default function WebhookDetailPage() {
   const params = useParams<{ id: string }>();
@@ -51,6 +59,8 @@ export default function WebhookDetailPage() {
   const toast = useToast();
   const id = params?.id as string;
 
+  const [event, setEvent] = useState<WebhookEventType>(WEBHOOK_EVENTS.PAYMENT_COMPLETED);
+  const [previewTimestamp, setPreviewTimestamp] = useState<string | null>(null);
   const [result, setResult] = useState<TestResult | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -62,7 +72,20 @@ export default function WebhookDetailPage() {
   const webhooks = Array.isArray(rawWebhooks) ? rawWebhooks : [];
   const webhook = webhooks.find((w) => w.id === id);
 
-  const testMutation = useApiMutation<undefined, TestResult>(
+  useEffect(() => {
+    setPreviewTimestamp(new Date().toISOString());
+  }, []);
+
+  const previewTime = previewTimestamp ?? "";
+  const previewQuery = useApiQuery<PreviewData>(
+    ["webhook-test-preview", id, event, previewTime],
+    previewTime
+      ? `/api/webhooks/${id}/test?event=${encodeURIComponent(event)}&timestamp=${encodeURIComponent(previewTime)}`
+      : undefined,
+    { enabled: Boolean(previewTime) },
+  );
+
+  const testMutation = useApiMutation<{ event: WebhookEventType; timestamp?: string }, TestResult>(
     `/api/webhooks/${id}/test`,
   );
 
@@ -76,10 +99,19 @@ export default function WebhookDetailPage() {
 
   const handleSendTest = async () => {
     setSendError(null);
+    if (previewQuery.error) {
+      setSendError(previewQuery.error.message || "The webhook target was rejected by the URL guard.");
+      return;
+    }
+    if (!previewQuery.data) {
+      setSendError("Wait for the request preview to finish loading before sending.");
+      return;
+    }
+
     setSending(true);
     setResult(null);
     try {
-      const res = await testMutation.mutateAsync(undefined);
+      const res = await testMutation.mutateAsync({ event, timestamp: previewTimestamp ?? undefined });
       setResult(res);
       if (res.delivered) {
         toast.success("Test event delivered", `Accepted by your endpoint in ${res.durationMs}ms.`);
@@ -118,7 +150,7 @@ export default function WebhookDetailPage() {
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
-              d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"
+              d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757 1.757a4.5 4.5 0 01-6.364 6.364l-1.757-1.757"
             />
           </svg>
         }
@@ -131,6 +163,7 @@ export default function WebhookDetailPage() {
   }
 
   const events = parseEvents(webhook.events);
+  const preview = previewQuery.data?.preview;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -143,9 +176,7 @@ export default function WebhookDetailPage() {
             ← All webhooks
           </Link>
           <div className="flex items-center gap-2 mt-1">
-            <p className="font-mono text-sm text-gray-900 dark:text-white truncate">
-              {webhook.url}
-            </p>
+            <p className="font-mono text-sm text-gray-900 dark:text-white truncate">{webhook.url}</p>
             <CopyButton value={webhook.url} />
           </div>
         </div>
@@ -161,19 +192,14 @@ export default function WebhookDetailPage() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Configuration */}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-            Configuration
-          </h2>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Configuration</h2>
           <div>
             <p className="text-xs text-gray-400 mb-1">Subscribed events</p>
             <div className="flex flex-wrap gap-1.5">
               {events.length > 0 ? (
                 events.map((evt) => (
-                  <Badge key={evt} variant="info">
-                    {WEBHOOK_EVENT_LABELS[evt] ?? evt}
-                  </Badge>
+                  <Badge key={evt} variant="info">{WEBHOOK_EVENT_LABELS[evt] ?? evt}</Badge>
                 ))
               ) : (
                 <span className="text-xs text-gray-400">None</span>
@@ -183,9 +209,7 @@ export default function WebhookDetailPage() {
           <div>
             <p className="text-xs text-gray-400 mb-1">Signing secret</p>
             <p className="text-xs text-gray-600 dark:text-gray-300">
-              {webhook.hasSecret
-                ? "Configured — used to sign test and live events."
-                : "Not configured."}
+              {webhook.hasSecret ? "Configured — used to sign test and live events." : "Not configured."}
             </p>
           </div>
           <div>
@@ -202,35 +226,36 @@ export default function WebhookDetailPage() {
           </div>
         </div>
 
-        {/* Send test event */}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 space-y-4">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Send Test Event
-            </h2>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Send Test Event</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Fires a sample <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">payment.completed</code>{" "}
-              payload to your endpoint with a valid HMAC signature. No real payment is
-              created — the event is clearly marked <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">test: true</code>.
+              Send a clearly marked test event and inspect the exact request before delivery.
             </p>
           </div>
-
-          <Button onClick={handleSendTest} disabled={sending || !webhook.isActive}>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300">
+            Event
+            <select
+              value={event}
+              onChange={(e) => setEvent(e.target.value as WebhookEventType)}
+              className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+            >
+              {ALL_WEBHOOK_EVENTS.map((evt) => (
+                <option key={evt} value={evt}>{WEBHOOK_EVENT_LABELS[evt]}</option>
+              ))}
+            </select>
+          </label>
+          <Button onClick={handleSendTest} disabled={sending || !webhook.isActive || previewQuery.isFetching}>
             {sending ? "Sending…" : "Send test event"}
           </Button>
-
           {!webhook.isActive && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              Resume this webhook to send a test event.
-            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">Resume this webhook to send a test event.</p>
           )}
-
           {sendError && (
             <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
               <p className="text-sm text-red-600 dark:text-red-400">{sendError}</p>
             </div>
           )}
-
           {result && (
             <div
               data-testid="test-result"
@@ -240,55 +265,64 @@ export default function WebhookDetailPage() {
                   : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
               }`}
             >
-              <div className="flex items-center justify-between">
-                <p
-                  className={`text-sm font-medium ${
-                    result.delivered
-                      ? "text-green-800 dark:text-green-300"
-                      : "text-red-600 dark:text-red-400"
-                  }`}
-                >
+              <div className="flex items-center justify-between gap-3">
+                <p className={`text-sm font-medium ${result.delivered ? "text-green-800 dark:text-green-300" : "text-red-600 dark:text-red-400"}`}>
                   {result.delivered ? "Delivered" : "Failed"}
                 </p>
-                <Badge variant={result.delivered ? "success" : "danger"}>
-                  {result.status}
-                </Badge>
+                <Badge variant={result.delivered ? "success" : "danger"}>{result.responseStatus ?? result.status}</Badge>
               </div>
               <dl className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-300">
-                <div className="flex justify-between">
-                  <dt className="text-gray-400">Event</dt>
-                  <dd className="font-mono">{result.event}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-400">Latency</dt>
-                  <dd>{result.durationMs} ms</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-400">Sent at</dt>
-                  <dd>{new Date(result.sentAt).toLocaleTimeString()}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-400">Test markers</dt>
-                  <dd className="font-mono">test: true</dd>
-                </div>
+                <div className="flex justify-between gap-3"><dt className="text-gray-400">Event</dt><dd className="font-mono">{result.event}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-gray-400">Latency</dt><dd>{result.durationMs} ms</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-gray-400">Test markers</dt><dd className="font-mono">test: true</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-gray-400">Response body</dt><dd className="text-right break-all">{result.responseBodyExcerpt || "(empty)"}</dd></div>
               </dl>
+              {result.deliveryId && (
+                <Link href={`/webhooks/${id}/deliveries/${result.deliveryId}`} className="inline-flex mt-3 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                  View full delivery record →
+                </Link>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Sample payload preview */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
-          Sample payload
-        </h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          This is the exact body (signed with your secret) that gets delivered when you
-          send a test event.
-        </p>
-        <pre className="text-xs bg-gray-900 text-green-400 rounded-lg p-4 overflow-x-auto">
-          {JSON.stringify(SAMPLE_PAYLOAD, null, 2)}
-        </pre>
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Request preview</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              These are the exact bytes prepared for the next test delivery. The signature is calculated over the canonical body with an empty signature field.
+            </p>
+          </div>
+          {previewQuery.isFetching && <span className="text-xs text-gray-400">Loading…</span>}
+        </div>
+        {previewQuery.error && (
+          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+            <p className="text-sm text-red-600 dark:text-red-400">{previewQuery.error.message}</p>
+            <p className="text-xs text-red-500 dark:text-red-400 mt-1">No request was sent.</p>
+          </div>
+        )}
+        {preview && previewQuery.data && (
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Target URL after URL-guard validation</p>
+              <div className="flex items-center gap-2"><p className="font-mono text-xs text-gray-900 dark:text-white break-all">{previewQuery.data.targetUrl}</p><CopyButton value={previewQuery.data.targetUrl} /></div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1"><p className="text-xs text-gray-400">Canonical signing input (signature: &quot;&quot;)</p><CopyButton value={preview.canonicalBody} /></div>
+              <pre className="text-xs bg-gray-900 text-yellow-300 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words">{preview.canonicalBody}</pre>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1"><p className="text-xs text-gray-400">Exact body sent over the wire</p><CopyButton value={preview.body} /></div>
+              <pre className="text-xs bg-gray-900 text-green-400 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words">{preview.body}</pre>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Headers</p>
+              <pre className="text-xs bg-gray-900 text-blue-300 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words">{Object.entries(preview.headers).map(([key, value]) => `${key}: ${value}`).join("\n")}</pre>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,51 @@
+name: "🚧 Enforce Integration Branch"
+
+on:
+  # `edited` also fires when the PR base branch is changed, so retargeting
+  # a PR re-runs this check.
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enforce-base-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  enforce-base:
+    name: "🚧 Enforce Integration Branch"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify PR targets the integration branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Self-retiring guard: while `integration/staging` exists the repo is
+          # in batch mode and every PR must target it instead of `main`.
+          # Once that branch is merged and deleted, this workflow passes for
+          # everyone and can be removed at any time.
+          INTEGRATION_BRANCH="integration/staging"
+
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${INTEGRATION_BRANCH}" >/dev/null 2>&1; then
+            echo "Batch mode over: '${INTEGRATION_BRANCH}' does not exist. Passing."
+            exit 0
+          fi
+
+          if [ "${HEAD_REF}" = "${INTEGRATION_BRANCH}" ]; then
+            echo "PR #${PR_NUMBER} is the integration branch itself merging. Passing."
+            exit 0
+          fi
+
+          if [ "${BASE_REF}" = "main" ]; then
+            echo "::error title=Wrong base branch::PR #${PR_NUMBER} targets 'main'. Batch mode is active - retarget this PR to '${INTEGRATION_BRANCH}'."
+            exit 1
+          fi
+
+          echo "OK: PR #${PR_NUMBER} targets '${BASE_REF}' (batch mode active)."

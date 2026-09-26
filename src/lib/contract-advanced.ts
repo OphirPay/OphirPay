@@ -311,6 +311,21 @@ export async function processRefund(
   return signAndSubmit(caller, CONTRACT_ID, "process_refund", args);
 }
 
+/**
+ * Reject a requested refund on-chain (`reject_refund`). Owner-only in the
+ * contract; the caller's signature over the invocation is what authorizes it.
+ */
+export async function rejectRefund(
+  caller: string,
+  refundId: number,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(refundId, { type: "u64" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "reject_refund", args);
+}
+
 // ── Notification Hook Functions ───────────────────────────────
 
 export async function registerHook(

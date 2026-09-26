@@ -99,9 +99,15 @@ describe("CsvBatchImport", () => {
       csvFile(`address,amount,memo\n${VALID_ADDRESS},100,\nBAD,50,\n`)
     );
     await screen.findByText("Invalid Stellar address.");
-    expect(onRowsChange).toHaveBeenLastCalledWith([
-      { address: VALID_ADDRESS, amount: "100", memo: undefined },
-    ]);
+    // onRowsChange is called from a passive effect, which React can flush
+    // after the DOM commit that `findByText` observes, so the synchronous
+    // assertion would still see the mount-time call with []. Wait for the
+    // callback to settle instead of racing the effect flush.
+    await waitFor(() => {
+      expect(onRowsChange).toHaveBeenLastCalledWith([
+        { address: VALID_ADDRESS, amount: "100", memo: undefined },
+      ]);
+    });
   });
 
   it("detects duplicate addresses and clears the error when one is removed", async () => {

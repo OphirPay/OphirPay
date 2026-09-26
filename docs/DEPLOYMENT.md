@@ -224,6 +224,7 @@ The `Dockerfile` uses a 3-stage build:
 - Puppeteer download is skipped (`PUPPETEER_SKIP_DOWNLOAD=true`) — not needed for production
 - Final image runs as **non-root** user for security
 - Standalone output is used (configured in `next.config.ts`)
+- **Slim Runner Stage (Issue #737)**: Next.js `output: "standalone"` automatically bundles a minimal, traced `node_modules` containing only runtime dependencies. The runner stage drops the builder's entire `node_modules` directory (~828 MB), copying only `.next/standalone` and the generated Prisma query engine (`node_modules/.prisma`). This eliminates all build-time devDependencies (TypeScript, Tailwind, Vitest, ESLint, Playwright, Puppeteer, autocannon) from the production image, reducing image size by over 800 MB while preserving full Prisma and contract capabilities.
 - The runner stage declares a `HEALTHCHECK` (issue #738) — see below
 
 ### Liveness vs readiness

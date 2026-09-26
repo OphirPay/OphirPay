@@ -40,9 +40,11 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --chown=node:node --from=builder /app/public ./public
-COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+# Next.js standalone output contains pruned production dependencies.
+# Only copy the generated Prisma client & query engine which standalone does not bundle.
 COPY --chown=node:node --from=builder /app/.next/standalone ./
 COPY --chown=node:node --from=builder /app/.next/static ./.next/static
+COPY --chown=node:node --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 EXPOSE 3000
 

@@ -5,6 +5,7 @@
 import { WalletButton } from "./WalletButton";
 import { NotificationCenter } from "./NotificationCenter";
 import { useTheme } from "@/hooks/useTheme";
+import { Kbd } from "@/components/ui/Kbd";
 
 export function Header() {
   const { toggle, resolved } = useTheme();
@@ -20,8 +21,17 @@ export function Header() {
           </h2>
         </div>
 
-        {/* Right: Notifications + Theme toggle + Wallet button */}
+        {/* Right: Notifications + Theme toggle + Shortcuts + Wallet button */}
         <div className="flex items-center gap-2 md:gap-3">
+          <button
+            onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "?" }))}
+            aria-label="Keyboard shortcuts (?)"
+            title="Keyboard shortcuts (?)"
+            className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors border border-gray-200 dark:border-gray-800"
+          >
+            <span>Shortcuts</span>
+            <Kbd>?</Kbd>
+          </button>
           <NotificationCenter />
           {/* Dark mode toggle */}
           <button

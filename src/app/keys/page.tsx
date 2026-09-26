@@ -21,6 +21,11 @@ interface ApiKeyRecord {
   lastUsed: string | null;
   createdAt: string;
   expiresAt: string | null;
+  rotationExpiresAt?: string | null;
+  rotatedToId?: string | null;
+  rotatedFromId?: string | null;
+  revokedAt?: string | null;
+  rotatedAt?: string | null;
 }
 
 interface KeyUsage {
@@ -65,6 +70,62 @@ export default function ApiKeysPage() {
   // Edit panel
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editScopes, setEditScopes] = useState<ApiScope[]>([]);
+
+  // Rotation modal & state
+  const [rotatingId, setRotatingId] = useState<string | null>(null);
+  const [rotatedKeyModal, setRotatedKeyModal] = useState<{
+    newRawKey: string;
+    keyName: string;
+    expiresAt: string;
+  } | null>(null);
+
+  const handleRotate = async (key: ApiKeyRecord) => {
+    if (!confirm(`Rotate key "${key.name}"? A replacement key with the same scopes will be issued, and this current key will remain valid for 24 hours to prevent downtime.`)) {
+      return;
+    }
+    setRotatingId(key.id);
+    try {
+      const res = await fetch(`/api/keys/${key.id}/rotate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ overlapHours: 24 }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || "Failed to rotate API key");
+      }
+      const data = await res.json();
+      setRotatedKeyModal({
+        newRawKey: data.data.key,
+        keyName: key.name,
+        expiresAt: data.data.oldKey.rotationExpiresAt,
+      });
+      toast.success("API key rotated", "Replacement key issued with 24h overlap window.");
+      loadKeys();
+    } catch (err: any) {
+      toast.error("Rotation failed", err.message || "Please try again.");
+    } finally {
+      setRotatingId(null);
+    }
+  };
+
+  const handleEndOverlap = async (keyId: string) => {
+    if (!confirm("Immediately invalidate this rotated key and end its overlap window?")) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/keys/${keyId}/revoke`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to end overlap");
+      toast.success("Overlap ended", "The old key has been immediately revoked.");
+      loadKeys();
+    } catch {
+      toast.error("Failed to end overlap", "Please try again.");
+    }
+  };
 
   // Usage-stats window
   const [window, setWindow] = useState("30d");
@@ -299,6 +360,31 @@ export default function ApiKeysPage() {
             </div>
           </div>
         )}
+
+        {rotatedKeyModal && (
+          <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-amber-800 dark:text-amber-300 font-semibold">
+                🔑 New Replacement Key Issued for “{rotatedKeyModal.keyName}”
+              </p>
+              <button
+                onClick={() => setRotatedKeyModal(null)}
+                className="text-xs text-amber-700 dark:text-amber-400 hover:underline"
+              >
+                Dismiss
+              </button>
+            </div>
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Copy your replacement key now. The old key remains valid until {formatDate(rotatedKeyModal.expiresAt)} (24-hour overlap window).
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 break-all text-xs font-mono text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800">
+                {rotatedKeyModal.newRawKey}
+              </code>
+              <CopyButton value={rotatedKeyModal.newRawKey} label="Key" />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* List */}
@@ -349,7 +435,44 @@ export default function ApiKeysPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
+                    {key.revokedAt ? (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400">
+                        Revoked
+                      </span>
+                    ) : key.rotationExpiresAt && new Date(key.rotationExpiresAt) > new Date() ? (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                        Rotating (Overlap until {formatDate(key.rotationExpiresAt)})
+                      </span>
+                    ) : key.rotationExpiresAt ? (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                        Rotated (Overlap expired)
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                        Active
+                      </span>
+                    )}
+
+                    {!key.revokedAt && (!key.rotationExpiresAt || new Date(key.rotationExpiresAt) > new Date()) && (
+                      <button
+                        onClick={() => handleRotate(key)}
+                        disabled={rotatingId === key.id}
+                        className="px-3 py-1.5 rounded-lg border border-ophir-300 dark:border-ophir-700 text-ophir-700 dark:text-ophir-300 text-xs font-medium hover:bg-ophir-50 dark:hover:bg-ophir-950/30 transition-colors disabled:opacity-50"
+                      >
+                        {rotatingId === key.id ? "Rotating…" : "Rotate key"}
+                      </button>
+                    )}
+
+                    {key.rotationExpiresAt && new Date(key.rotationExpiresAt) > new Date() && !key.revokedAt && (
+                      <button
+                        onClick={() => handleEndOverlap(key.id)}
+                        className="px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/30"
+                      >
+                        End overlap
+                      </button>
+                    )}
+
                     <button
                       onClick={() => openEdit(key)}
                       className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800"

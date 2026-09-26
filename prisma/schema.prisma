@@ -715,6 +715,16 @@ model ApiKey {
   createdAt DateTime @default(now())
   /// Optional expiry — the key stops working after this time.
   expiresAt DateTime?
+  /// When this key was rotated out and entered its overlap grace window.
+  rotatedAt DateTime?
+  /// When the overlap grace window closes. After this, the key is rejected.
+  rotationExpiresAt DateTime?
+  /// ID of the new replacement key that supersedes this one.
+  rotatedToId String?
+  /// ID of the predecessor key that this key replaced during rotation.
+  rotatedFromId String?
+  /// When this key was explicitly revoked or cancelled.
+  revokedAt DateTime?
 
   /// Owner of this key (see User).
   user      User     @relation(fields: [userId], references: [id])

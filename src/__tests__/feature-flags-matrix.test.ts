@@ -119,44 +119,35 @@ describe("Feature Flags Matrix & Override Documentation Conformance", () => {
 
     afterEach(() => {
       vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
       for (const k of Object.keys(mockStorage)) delete mockStorage[k];
     });
 
     it("respects overrides in development mode", () => {
-      const originalNodeEnv = process.env.NODE_ENV;
-      try {
-        process.env.NODE_ENV = "development";
+      vi.stubEnv("NODE_ENV", "development");
 
-        // Override ADVANCED_ANALYTICS to true
-        overrideFeatureFlag("ADVANCED_ANALYTICS", true);
-        expect(isFeatureEnabled("ADVANCED_ANALYTICS")).toBe(true);
-        expect(mockStorage[`${STORAGE_KEYS.FEATURE_FLAG_PREFIX}ADVANCED_ANALYTICS`]).toBe("true");
+      // Override ADVANCED_ANALYTICS to true
+      overrideFeatureFlag("ADVANCED_ANALYTICS", true);
+      expect(isFeatureEnabled("ADVANCED_ANALYTICS")).toBe(true);
+      expect(mockStorage[`${STORAGE_KEYS.FEATURE_FLAG_PREFIX}ADVANCED_ANALYTICS`]).toBe("true");
 
-        // Override MULTI_ASSET to false
-        overrideFeatureFlag("MULTI_ASSET", false);
-        expect(isFeatureEnabled("MULTI_ASSET")).toBe(false);
-      } finally {
-        process.env.NODE_ENV = originalNodeEnv;
-      }
+      // Override MULTI_ASSET to false
+      overrideFeatureFlag("MULTI_ASSET", false);
+      expect(isFeatureEnabled("MULTI_ASSET")).toBe(false);
     });
 
     it("ignores overrides in production mode", () => {
-      const originalNodeEnv = process.env.NODE_ENV;
-      try {
-        process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
 
-        // Put an override directly in storage
-        mockStorage[`${STORAGE_KEYS.FEATURE_FLAG_PREFIX}ADVANCED_ANALYTICS`] = "true";
+      // Put an override directly in storage
+      mockStorage[`${STORAGE_KEYS.FEATURE_FLAG_PREFIX}ADVANCED_ANALYTICS`] = "true";
 
-        // Must still evaluate to the environment/default constant (false), ignoring storage
-        expect(isFeatureEnabled("ADVANCED_ANALYTICS")).toBe(FEATURE_FLAGS.ADVANCED_ANALYTICS);
+      // Must still evaluate to the environment/default constant (false), ignoring storage
+      expect(isFeatureEnabled("ADVANCED_ANALYTICS")).toBe(FEATURE_FLAGS.ADVANCED_ANALYTICS);
 
-        // Attempting to set an override in production is a no-op
-        overrideFeatureFlag("WEBHOOKS", false);
-        expect(mockStorage[`${STORAGE_KEYS.FEATURE_FLAG_PREFIX}WEBHOOKS`]).toBeUndefined();
-      } finally {
-        process.env.NODE_ENV = originalNodeEnv;
-      }
+      // Attempting to set an override in production is a no-op
+      overrideFeatureFlag("WEBHOOKS", false);
+      expect(mockStorage[`${STORAGE_KEYS.FEATURE_FLAG_PREFIX}WEBHOOKS`]).toBeUndefined();
     });
   });
 });

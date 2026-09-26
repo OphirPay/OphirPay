@@ -1,0 +1,47 @@
+name: Monitoring validation
+
+# Validates the shipped monitoring artifacts against the metrics the app
+# actually exposes (issue #755 — Grafana dashboard JSON + metric queries).
+on:
+  pull_request:
+    branches: [main, integration/staging]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "monitoring/**"
+      - "src/app/api/metrics/**"
+      - "scripts/validate-grafana-dashboard.mjs"
+      - "src/__tests__/grafana-dashboard.test.ts"
+      - "tests/fixtures/grafana/**"
+      - ".github/workflows/monitoring-validation.yml"
+  push:
+    branches: [main, integration/staging]
+    paths:
+      - "monitoring/**"
+      - "src/app/api/metrics/**"
+      - "scripts/validate-grafana-dashboard.mjs"
+      - "src/__tests__/grafana-dashboard.test.ts"
+      - "tests/fixtures/grafana/**"
+      - ".github/workflows/monitoring-validation.yml"
+
+permissions:
+  contents: read
+
+# ── Global Concurrency — cancel stale runs on same PR ────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ══════════════════════════════════════════════════════════════
+  # MONITORING — Grafana dashboard JSON + metric query sync
+  # ══════════════════════════════════════════════════════════════
+  grafana-dashboard:
+    name: "🎛️ Monitoring — Grafana dashboard (JSON + metric sync)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: '.nvmrc' }
+      - name: Validate dashboard JSON and metric queries
+        run: node scripts/validate-grafana-dashboard.mjs

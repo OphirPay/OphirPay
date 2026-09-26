@@ -1,0 +1,25 @@
+{
+  "title": "Unpublished-metric fixture",
+  "uid": "grafana-fixture-unpublished-metric",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "id": 1,
+      "title": "Platform Health",
+      "type": "stat",
+      "targets": [{ "expr": "ophirpay_http_requests_total", "legendFormat": "HTTP Requests" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "id": 2,
+      "title": "Renamed Metric Panel",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(ophirpay_nonexistent_metric_total[5m])", "legendFormat": "Renamed" }
+      ]
+    }
+  ],
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] }
+}

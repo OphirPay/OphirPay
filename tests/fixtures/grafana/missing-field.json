@@ -1,0 +1,15 @@
+{
+  "title": "Missing-field fixture",
+  "uid": "grafana-fixture-missing-field",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "id": 1,
+      "title": "Platform Health",
+      "type": "stat",
+      "targets": [{ "expr": "ophirpay_http_requests_total", "legendFormat": "HTTP Requests" }]
+    }
+  ],
+  "time": { "from": "now-6h", "to": "now" }
+}

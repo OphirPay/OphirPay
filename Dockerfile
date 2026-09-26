@@ -31,6 +31,8 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 3: Runner
+# Shipped container image is scanned in CI for OS/binary CVEs via
+# .github/workflows/container-scan.yml and scripts/audit-container-image.mjs
 FROM node:20-slim AS runner
 RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 USER node

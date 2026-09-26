@@ -17,12 +17,22 @@ export async function persistDeliveryResult(
   webhookId: string,
   eventId: string,
   result: WebhookDeliveryResult,
-  options?: Omit<RecordDeliveryOptions, "responseCode" | "latencyMs" | "attempts" | "errorMessage">,
+  options?: Omit<RecordDeliveryOptions, "responseCode" | "latencyMs" | "attempts" | "errorMessage"> & {
+    status?: "SUCCESS" | "FAILED" | "DEAD_LETTER";
+  },
 ): Promise<string> {
+  const status =
+    options?.status ??
+    (result.success
+      ? "SUCCESS"
+      : result.isDeadLetter
+      ? "DEAD_LETTER"
+      : "FAILED");
+
   return recordWebhookDelivery(
     webhookId,
     eventId,
-    result.success ? "SUCCESS" : "FAILED",
+    status as any,
     {
       responseCode: result.statusCode,
       latencyMs: result.latencyMs,

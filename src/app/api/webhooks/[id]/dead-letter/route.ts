@@ -8,13 +8,16 @@ import {
   handleApiError,
 } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
-import { webhookDeliveriesQuerySchema } from "@/lib/validation-schemas";
+import { z } from "zod";
+
+const deadLetterQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+});
 
 /**
- * GET /api/webhooks/[id]/deliveries
+ * GET /api/webhooks/[id]/dead-letter
  *
- * Returns delivery history for a webhook (original + replay attempts).
- * Used by the dashboard to surface delivery status.
+ * Query deliveries in DEAD_LETTER state with retained payloads and failure reasons.
  */
 export async function GET(
   request: Request,
@@ -27,24 +30,24 @@ export async function GET(
     const { id } = await params;
     const webhook = await prisma.webhook.findFirst({
       where: { id, userId: auth.userId },
-      select: { id: true },
+      select: { id: true, url: true },
     });
     if (!webhook) return badRequestError("Webhook not found");
 
     const { searchParams } = new URL(request.url);
-    const parsed = webhookDeliveriesQuerySchema.safeParse(
+    const parsed = deadLetterQuerySchema.safeParse(
       Object.fromEntries(searchParams.entries()),
     );
     if (!parsed.success) {
       return badRequestError(parsed.error.issues.map((e) => e.message).join("; "));
     }
 
-    const { limit, status } = parsed.data;
+    const { limit } = parsed.data;
 
-    const deliveries = await prisma.webhookDelivery.findMany({
+    const deadLetters = await prisma.webhookDelivery.findMany({
       where: {
         webhookId: webhook.id,
-        ...(status ? { status } : {}),
+        status: "DEAD_LETTER",
       },
       orderBy: { deliveredAt: "desc" },
       take: limit,
@@ -61,6 +64,7 @@ export async function GET(
         deliveredAt: true,
         event: {
           select: {
+            id: true,
             event: true,
             timestamp: true,
             data: true,
@@ -70,7 +74,7 @@ export async function GET(
     });
 
     return successResponse(
-      deliveries.map((d) => ({
+      deadLetters.map((d) => ({
         id: d.id,
         eventId: d.eventId,
         eventType: d.event.event,
@@ -91,9 +95,9 @@ export async function GET(
         replayBatchId: d.replayBatchId,
         deliveredAt: d.deliveredAt.toISOString(),
       })),
-      { limit, total: deliveries.length },
+      { total: deadLetters.length, limit },
     );
   } catch (err) {
-    return handleApiError(err, "GET /api/webhooks/[id]/deliveries");
+    return handleApiError(err, "GET /api/webhooks/[id]/dead-letter");
   }
 }

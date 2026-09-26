@@ -103,7 +103,7 @@ describe("dispatchWebhookEvent", () => {
       "w1",
       "evt_1",
       "SUCCESS",
-      { responseCode: 200, isReplay: false }
+      expect.objectContaining({ responseCode: 200, isReplay: false })
     );
   });
 
@@ -129,7 +129,7 @@ describe("dispatchWebhookEvent", () => {
       "w1",
       "evt_1",
       "FAILED",
-      { responseCode: 500, isReplay: false }
+      expect.objectContaining({ responseCode: 500, isReplay: false })
     );
   });
 

@@ -136,6 +136,12 @@ export const CSRF_EXEMPT_ROUTES: CsrfExemptRoute[] = [
   },
   {
     method: "POST",
+    path: "/api/jobs/reconcile-payments",
+    routeFile: "jobs/reconcile-payments/route.ts",
+    reason: "Payment status reconciliation job; authenticated by CRON_SECRET or admin session.",
+  },
+  {
+    method: "POST",
     path: "/api/scheduled/run",
     routeFile: "scheduled/run/route.ts",
     reason: "Scheduled-payment runner; authenticated by CRON_SECRET, not a browser session.",

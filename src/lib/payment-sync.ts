@@ -162,40 +162,48 @@ export async function runPaymentStatusSync(
       const outcome = await lookupOnChainOutcome(txHash);
 
       if (outcome === "success") {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { status: "CONFIRMED" },
+        const updateResult = await prisma.payment.updateMany({
+          where: { id: payment.id, status: AWAITING_STATUS },
+          data: { status: "CONFIRMED", reconciliationSource: "poll" },
         });
-        dispatchWebhookEventAsync(
-          WEBHOOK_EVENTS.PAYMENT_CONFIRMED,
-          {
-            paymentId: payment.id,
-            amount: payment.amount,
-            assetCode: payment.assetCode,
-            transactionHash: txHash,
-            confirmedAt: new Date().toISOString(),
-          },
-          payment.userId
-        );
-        counters.confirmed += 1;
+        if (updateResult.count === 1) {
+          dispatchWebhookEventAsync(
+            WEBHOOK_EVENTS.PAYMENT_CONFIRMED,
+            {
+              paymentId: payment.id,
+              amount: payment.amount,
+              assetCode: payment.assetCode,
+              transactionHash: txHash,
+              confirmedAt: new Date().toISOString(),
+            },
+            payment.userId
+          );
+          counters.confirmed += 1;
+        }
       } else if (outcome === "failed") {
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: { status: "FAILED", errorMessage: ON_CHAIN_FAILED_MESSAGE },
-        });
-        dispatchWebhookEventAsync(
-          WEBHOOK_EVENTS.PAYMENT_FAILED,
-          {
-            paymentId: payment.id,
-            amount: payment.amount,
-            assetCode: payment.assetCode,
-            transactionHash: txHash,
+        const updateResult = await prisma.payment.updateMany({
+          where: { id: payment.id, status: AWAITING_STATUS },
+          data: {
+            status: "FAILED",
             errorMessage: ON_CHAIN_FAILED_MESSAGE,
-            failedAt: new Date().toISOString(),
+            reconciliationSource: "poll",
           },
-          payment.userId
-        );
-        counters.failed += 1;
+        });
+        if (updateResult.count === 1) {
+          dispatchWebhookEventAsync(
+            WEBHOOK_EVENTS.PAYMENT_FAILED,
+            {
+              paymentId: payment.id,
+              amount: payment.amount,
+              assetCode: payment.assetCode,
+              transactionHash: txHash,
+              errorMessage: ON_CHAIN_FAILED_MESSAGE,
+              failedAt: new Date().toISOString(),
+            },
+            payment.userId
+          );
+          counters.failed += 1;
+        }
       } else if (outcome === "not_found") {
         // Not ingested yet — leave untouched, retried on the next run.
         counters.notFound += 1;

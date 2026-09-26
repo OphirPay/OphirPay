@@ -200,3 +200,40 @@ export function PaymentLiveTracker({ paymentId }: { paymentId: string }) {
 1. **Automatic Exponential Backoff:** Native browser `EventSource` handles connection retries automatically. When implementing custom Node.js / Python subscribers, always apply exponential backoff (e.g. 1s, 2s, 4s, max 30s).
 2. **Missed Event Reconciliation:** If a client goes offline, on reconnection it should query `GET /api/payments/:id` to reconcile any states that were broadcast during the disconnection window.
 3. **Heartbeat Pings:** The OphirPay SSE server transmits `:keepalive\n\n` comments every 15 seconds to prevent intermediate proxy / NAT timeouts.
+
+---
+
+## Backend Horizon Transaction Streaming & Reconciliation (Issue #819)
+
+In addition to frontend client SSE streams, OphirPay connects to **Stellar Horizon Server-Sent Event (SSE)** transaction streams in the backend (`src/lib/payment-status-stream.ts`) to achieve sub-second payment status reconciliation without waiting for periodic polling intervals.
+
+```
+┌─────────────────┐       SSE Events       ┌──────────────────────────────┐
+│  Stellar Horizon├───────────────────────►│ src/lib/payment-status-stream│
+└─────────────────┘                        └──────────────┬───────────────┘
+                                                          │
+                                         Atomic CAS Update (status: "SUBMITTED")
+                                         reconciliationSource: "stream"
+                                                          │
+                                                          ▼
+                                                   ┌──────────────┐
+                                                   │  PostgreSQL  │
+                                                   └──────────────┘
+                                                          ▲
+                                                          │
+                                         Atomic CAS Update (status: "SUBMITTED")
+                                         reconciliationSource: "poll"
+                                                          │
+┌────────────────────────┐  Periodic Poll  ┌──────────────┴───────────────┐
+│ /api/jobs/reconcile    ├────────────────►│   src/lib/payment-sync.ts    │
+│ (Cron / Admin Backstop)│                 │   (Polling Safety Net)       │
+└────────────────────────┘                 └──────────────────────────────┘
+```
+
+### Key Architectural Guarantees:
+1. **Immediate Stream Transition:** When a transaction is included in a Stellar ledger, Horizon pushes the transaction record. The stream handler transitions the payment from `SUBMITTED` to `CONFIRMED` or `FAILED` and dispatches webhooks instantly.
+2. **Exponential Backoff & Catch-Up on Reconnect:** If the Horizon connection drops, the stream reconnects with exponential backoff (`reconnectBaseMs: 500ms`, `reconnectMaxMs: 30s`). Reconnects resume from the last paging token and invoke `reconcileMissedEvents` to ensure any transactions confirmed during downtime are immediately processed.
+3. **Race-Free Deduplication:** Both streaming and the polling fallback use atomic conditional CAS updates (`where: { id, status: "SUBMITTED" }`). If one mechanism completes the transition, the other observes `count: 0` and produces zero duplicate webhooks or double status changes.
+4. **Source Tracking:** Each terminal update records `reconciliationSource` (`"stream"` or `"poll"`) on the `Payment` row to enable auditability and performance benchmarking.
+5. **Periodic Safety Net:** The polling job (`POST /api/jobs/reconcile-payments`, `runPaymentStatusSync`) remains active as a backstop for disconnected environments or missed events.
+

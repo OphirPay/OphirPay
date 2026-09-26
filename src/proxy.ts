@@ -2,26 +2,14 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getRateLimitStore } from "@/lib/rate-limit";
+import {
+  getRateLimitStore,
+  buildBucketKey,
+  writeRateLimitHeaders,
+  RATE_LIMIT_POLICIES,
+  type RateLimitInfo,
+} from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
-
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-// Configurable via RATE_LIMIT_RPM env (defaults to 120 requests/min/IP)
-const RATE_LIMIT_MAX = Math.max(
-  1,
-  parseInt(process.env.RATE_LIMIT_RPM || "120", 10) || 120
-);
-
-// Global rate-limit store, resolved once per instance.
-//
-// This file runs on the Edge runtime, where `ioredis` cannot run. The store
-// therefore selects its backend from the *shape* of REDIS_URL: an `https://`
-// endpoint (Upstash-compatible REST) is shared across every replica, while a
-// `redis://` URL falls back to in-memory here (the Node runtime uses ioredis
-// for route-level buckets — see src/lib/rate-limit.ts). With no Redis
-// configured the limit is per-instance, exactly as before.
-const rateLimitStore = getRateLimitStore();
-
 const isProd = process.env.NODE_ENV === "production";
 
 function getClientIp(request: NextRequest): string {
@@ -84,39 +72,52 @@ export async function proxy(request: NextRequest) {
       pathname.startsWith("/api/health/") ||
       pathname === "/api/metrics";
 
-    let remaining = RATE_LIMIT_MAX;
-    let resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;
+    const policy = RATE_LIMIT_POLICIES.PROXY;
+    const windowMs = policy.windowMs;
+    const ipLimit = Math.max(
+      1,
+      parseInt(process.env.RATE_LIMIT_RPM || String(policy.ipLimit), 10) || policy.ipLimit
+    );
+    const store = getRateLimitStore();
+
+    let remaining = ipLimit;
+    let resetAt = Date.now() + windowMs;
 
     if (!skipRateLimit) {
       const ip = getClientIp(request);
-      const result = await rateLimitStore.increment(
-        ip,
-        RATE_LIMIT_WINDOW_MS,
-        RATE_LIMIT_MAX
+      const key = buildBucketKey(policy.name, "ip", ip);
+      const result = await store.increment(
+        key,
+        windowMs,
+        ipLimit
       );
       remaining = result.remaining;
       resetAt = result.resetAt;
 
       // Rate limit exceeded
       if (!result.allowed) {
-        const retryAfter = Math.ceil((resetAt - Date.now()) / 1000);
         // Rejected before any route handler runs, so log here (with the same
         // request id returned in the response header below).
         logger.request(request.method, pathname, 429, performance.now() - startedAt, requestId);
+        const info: RateLimitInfo = {
+          limit: ipLimit,
+          remaining: 0,
+          reset: Math.ceil(resetAt / 1000),
+        };
+        const headers = writeRateLimitHeaders(info, {
+          "X-Request-Id": requestId,
+        });
         return NextResponse.json(
           {
             success: false,
             error: {
-              code: "RATE_LIMITED",
-              message: "Too many requests. Please try again later.",
+              code: policy.ipErrorCode,
+              message: policy.errorMessage,
             },
           },
           {
             status: 429,
-            headers: {
-              "Retry-After": String(retryAfter),
-              "X-Request-Id": requestId,
-            },
+            headers,
           }
         );
       }
@@ -138,9 +139,16 @@ export async function proxy(request: NextRequest) {
     response.headers.set("X-Content-Type-Options", "nosniff");
     response.headers.set("X-Frame-Options", "DENY");
     response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    response.headers.set("X-RateLimit-Limit", String(RATE_LIMIT_MAX));
-    response.headers.set("X-RateLimit-Remaining", String(remaining));
-    response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetAt / 1000)));
+
+    const info: RateLimitInfo = {
+      limit: ipLimit,
+      remaining,
+      reset: Math.ceil(resetAt / 1000),
+    };
+    const rlHeaders = writeRateLimitHeaders(info);
+    response.headers.set("X-RateLimit-Limit", rlHeaders["X-RateLimit-Limit"]);
+    response.headers.set("X-RateLimit-Remaining", rlHeaders["X-RateLimit-Remaining"]);
+    response.headers.set("X-RateLimit-Reset", rlHeaders["X-RateLimit-Reset"]);
 
     // Production CORS — restrict origins in production
     const origin = request.headers.get("origin") || "";

@@ -133,10 +133,10 @@ describe("Node version agreement (.nvmrc · engines.node · CI)", () => {
     const offenders: string[] = [];
     for (const file of workflows) {
       const source = readFileSync(path.join(dir, file), "utf8");
-      if (!source.includes("actions/setup-node")) continue;
+      if (!source.includes("actions/setup-node@")) continue;
       // A hard-coded `node-version: 20` would drift from .nvmrc the moment the
       // pin is bumped, so every setup-node step must use node-version-file.
-      const steps = source.split("actions/setup-node").slice(1);
+      const steps = source.split(/actions\/setup-node@/).slice(1);
       for (const step of steps) {
         const block = step.slice(0, 200);
         if (!/node-version-file:\s*['"]?\.nvmrc/.test(block)) {

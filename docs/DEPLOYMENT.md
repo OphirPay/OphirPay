@@ -381,7 +381,8 @@ server {
 
 A Helm chart is included in `helm/ophirpay/`, and standalone manifests live in `k8s/`.
 
-> 📖 **Comprehensive Kubernetes Guide**: For an in-depth reference covering required values, secret provisioning patterns, database migration Jobs/initContainers, ingress/TLS configuration, probe tuning, and pre-flight validation checklists, see **[Kubernetes & Helm Deployment Guide](KUBERNETES.md)**. Note that the Helm chart is provided as an extensible reference architecture rather than a turnkey cloud product.
+> 📖 **Comprehensive Kubernetes Guide**: For an in-depth reference covering prerequisites, required values, secret provisioning patterns, build-time `NEXT_PUBLIC_*` behavior, database migration Jobs/initContainers, ingress/TLS configuration, probe tuning, and pre-flight validation checklists, see **[Kubernetes & Helm Deployment Guide](KUBERNETES.md)**. Note that the Helm chart is provided as an extensible reference architecture rather than a turnkey cloud product.
+
 
 ### Deploy with Helm
 

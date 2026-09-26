@@ -102,6 +102,10 @@ Before adding or modifying an API endpoint, read the [API Endpoint Guide](docs/A
 
 ## CI/CD Pipeline
 
+See [`docs/MERGE_GATE.md`](docs/MERGE_GATE.md) for the authoritative table of
+required pull-request checks, local commands, and scheduled workflows that do
+not block merges.
+
 Every PR triggers the following independent CI/CD checks across quality,
 testing, security, and DevOps. The jobs in `.github/workflows/ci.yml` are the
 merge gate, and `npm run ci` runs the same frontend chain locally

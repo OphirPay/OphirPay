@@ -5,8 +5,11 @@ values (CSV) file. This document is the canonical reference for that format:
 the exact columns, the validation rules applied, and the error messages you
 may see.
 
-The importer lives in [`src/lib/csv-import.ts`](../src/lib/csv-import.ts)
-(`parseRecipientsCsv`) and feeds the recipient validator in
+The RFC-4180 parser/serializer core lives in
+[`src/lib/csv/core.ts`](../src/lib/csv/core.ts) (`parseCsv` / `serializeCsv`),
+which every CSV call site shares. The importer is a thin adapter over it in
+[`src/lib/csv-import.ts`](../src/lib/csv-import.ts) (`parseRecipientsCsv`) and
+feeds the recipient validator in
 [`src/lib/batch-validator.ts`](../src/lib/batch-validator.ts)
 (`validateBatchRecipients`). A ready-to-edit example is available at
 [`docs/samples/batch-payments.csv`](samples/batch-payments.csv).
@@ -34,7 +37,7 @@ GXMZE7ZAGXTLJ2VN3RFNNQLHZN2OR23KWWXF4DYLY2EBDR6F4RHYJOCJ,0.0000001,USDC,gas fee 
 
 > **Tip:** the same file is used by the in-app template download
 > (`generateRecipientsCsvTemplate` / `downloadCsvTemplate` in
-> `src/lib/csv-import.ts`).
+> `src/lib/csv-import.ts`), which serializes through `src/lib/csv/core.ts`.
 
 ---
 

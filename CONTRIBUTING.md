@@ -73,6 +73,16 @@ ecosystems once a week.
   breaking changes or fails CI, coordinate with the team before merging instead
   of force-landing it.
 
+#### GitHub Actions SHA Pinning
+
+To mitigate supply-chain attacks and ensure deterministic CI builds:
+- All GitHub Actions in `.github/workflows/*.yml` MUST be pinned to full 40-character commit SHAs, never mutable version tags (such as `@v4` or `@main`).
+- Always append an inline comment with the upstream release tag for readability:
+  ```yaml
+  uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+  ```
+- Dependabot automatically detects and bumps these pinned SHAs, updating both the commit hash and version comment in pull requests.
+
 ### Issue triage & stale policy
 
 The [stale workflow](.github/workflows/stale.yml) runs every Monday and closes

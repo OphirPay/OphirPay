@@ -159,3 +159,160 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Print Stylesheet & Utilities (#793) ─────────────────────── */
+
+.print-only {
+  display: none !important;
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 12mm 15mm;
+  }
+
+  /* Utility display toggles */
+  .print-only {
+    display: block !important;
+  }
+
+  .no-print,
+  [data-no-print],
+  aside,
+  header,
+  nav,
+  [role="navigation"],
+  [aria-label="Breadcrumb"],
+  button,
+  .btn,
+  .toast-container,
+  [role="alert"],
+  #sidebar,
+  #header,
+  #offline-banner,
+  #install-prompt {
+    display: none !important;
+  }
+
+  /* Base print canvas — pure white background, dark legible text */
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    font-size: 11pt !important;
+    line-height: 1.4 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Unconstrain app shell and remove sidebar spacing */
+  .min-h-screen,
+  div.min-h-screen {
+    min-height: auto !important;
+  }
+
+  .lg\:ml-64,
+  [class*="lg:ml-64"] {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  main,
+  #main-content {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Theme-independent color overrides — forces high-contrast legible print values in both themes */
+  *,
+  *::before,
+  *::after {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html.dark,
+  .dark,
+  .dark body,
+  .dark main,
+  .dark [class*="bg-"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .dark .text-white,
+  .dark .text-gray-100,
+  .dark .text-gray-200,
+  .dark .text-gray-300,
+  .text-white {
+    color: #111827 !important;
+  }
+
+  .dark .text-gray-400,
+  .dark .text-gray-500,
+  .text-gray-500,
+  .text-gray-400 {
+    color: #4b5563 !important;
+  }
+
+  .dark .border-gray-800,
+  .dark .border-gray-700,
+  .border,
+  [class*="border-"] {
+    border-color: #d1d5db !important;
+  }
+
+  /* Containers, cards, and receipts */
+  .card,
+  [class*="rounded-xl"] {
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Long hash, address, and mono text wrapping */
+  code,
+  pre,
+  .font-mono,
+  span,
+  p,
+  dd {
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  /* Avoid breaking critical blocks across pages */
+  tr,
+  dl,
+  .break-inside-avoid,
+  .print-avoid-break,
+  [data-print-avoid-break] {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Simplify multi-column grid layout for single-column printing */
+  .grid.lg\:grid-cols-5 {
+    display: block !important;
+  }
+
+  .grid.lg\:grid-cols-5 > * {
+    width: 100% !important;
+    margin-bottom: 1.25rem !important;
+  }
+}
+

@@ -157,12 +157,14 @@ export default function PaymentDetailPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <Breadcrumb
-        items={[
-          { label: "Payments", href: "/payments" },
-          { label: displayId ? `Payment #${displayId}` : "Payment" },
-        ]}
-      />
+      <div className="no-print">
+        <Breadcrumb
+          items={[
+            { label: "Payments", href: "/payments" },
+            { label: displayId ? `Payment #${displayId}` : "Payment" },
+          ]}
+        />
+      </div>
 
       {loading && (
         <div className="space-y-4" role="status" aria-label="Loading payment">
@@ -214,6 +216,20 @@ export default function PaymentDetailPage() {
 
       {!loading && !error && !notFound && (
         <>
+          {/* Print-only official header */}
+          <div className="print-only mb-6 border-b border-gray-300 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">OphirPay Payment Record</h1>
+                <p className="text-xs text-gray-500">Stellar Payment Orchestration Network</p>
+              </div>
+              <div className="text-right text-xs text-gray-600">
+                <p className="font-semibold text-gray-900">Record #{displayId}</p>
+                <p>Status: {status ?? "RECORDED"}</p>
+              </div>
+            </div>
+          </div>
+
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -226,11 +242,55 @@ export default function PaymentDetailPage() {
                   : "Payment record"}
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="no-print inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm"
+                title="Print payment record"
+                aria-label="Print payment record"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="w-3.5 h-3.5"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.656h10.5z"
+                  />
+                </svg>
+                <span>Print</span>
+              </button>
+              <Link
+                href={`/payments/${encodeURIComponent(displayId)}/receipt`}
+                className="no-print inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shadow-sm"
+                title="View printable receipt"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                  stroke="currentColor"
+                  className="w-3.5 h-3.5"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                  />
+                </svg>
+                <span>Receipt</span>
+              </Link>
               {status && <StatusBadge status={status} />}
               <Link
                 href="/payments"
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors"
+                className="no-print text-sm text-gray-500 dark:text-gray-400 hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors"
               >
                 ← All payments
               </Link>
@@ -252,13 +312,15 @@ export default function PaymentDetailPage() {
                   <>
                     <DetailRow label="Payer" mono>
                       <span className="inline-flex items-center gap-2">
-                        {shortenAddress(onChain.payer, 8)}
+                        <span className="no-print">{shortenAddress(onChain.payer, 8)}</span>
+                        <span className="print-only break-all font-mono text-xs">{onChain.payer}</span>
                         <CopyButton value={onChain.payer} label="Payer" />
                       </span>
                     </DetailRow>
                     <DetailRow label="Payee" mono>
                       <span className="inline-flex items-center gap-2">
-                        {shortenAddress(onChain.payee, 8)}
+                        <span className="no-print">{shortenAddress(onChain.payee, 8)}</span>
+                        <span className="print-only break-all font-mono text-xs">{onChain.payee}</span>
                         <CopyButton value={onChain.payee} label="Payee" />
                       </span>
                     </DetailRow>
@@ -274,7 +336,8 @@ export default function PaymentDetailPage() {
                         rel="noopener noreferrer"
                         className="text-ophir-600 dark:text-ophir-400 hover:underline"
                       >
-                        {shortenAddress(txHash, 8)}
+                        <span className="no-print">{shortenAddress(txHash, 8)}</span>
+                        <span className="print-only break-all font-mono text-xs">{txHash}</span>
                       </a>
                       <CopyButton value={txHash} label="Hash" />
                     </span>
@@ -316,7 +379,7 @@ export default function PaymentDetailPage() {
             </Card>
 
             {/* Lifecycle */}
-            <Card className="lg:col-span-2 p-6">
+            <Card className="lg:col-span-2 p-6 print-avoid-break">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
                 Lifecycle
               </h2>

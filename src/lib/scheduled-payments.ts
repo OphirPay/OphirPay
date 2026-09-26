@@ -3,6 +3,7 @@
 import { Keypair, TransactionBuilder, Operation, Asset, Memo } from "@stellar/stellar-sdk";
 import prisma from "@/lib/prisma";
 import { getHorizonServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import { withTimeout, STELLAR_TIMEOUT_MS } from "@/lib/timeout";
 import type { ScheduledPayment, ScheduledPaymentStatus } from "@prisma/client";
 
 /**
@@ -52,7 +53,11 @@ export async function submitScheduledPayment(
 ): Promise<string> {
   const keypair = Keypair.fromSecret(getScheduledSourceSecret());
   const server = getHorizonServer();
-  const sourceAccount = await server.loadAccount(keypair.publicKey());
+  const sourceAccount = await withTimeout(
+    server.loadAccount(keypair.publicKey()),
+    STELLAR_TIMEOUT_MS,
+    "Stellar Horizon loadAccount timed out"
+  );
   const now = Math.floor(Date.now() / 1000);
 
   const paymentAsset =
@@ -60,12 +65,18 @@ export async function submitScheduledPayment(
       ? Asset.native()
       : new Asset(payment.assetCode, payment.assetIssuer);
 
+  const baseFee = await withTimeout(
+    server.fetchBaseFee(),
+    STELLAR_TIMEOUT_MS,
+    "Stellar Horizon fetchBaseFee timed out"
+  );
+
   let builder = new TransactionBuilder(sourceAccount, {
-    fee: (await server.fetchBaseFee()).toString(),
+    fee: baseFee.toString(),
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,
-      maxTime: now + 300, // 5 minutes
+      maxTime: now + 300,
     },
   }).addOperation(
     Operation.payment({
@@ -81,7 +92,11 @@ export async function submitScheduledPayment(
 
   const tx = builder.build();
   tx.sign(keypair);
-  const result = await server.submitTransaction(tx);
+  const result = await withTimeout(
+    server.submitTransaction(tx),
+    STELLAR_TIMEOUT_MS,
+    "Stellar Horizon submitTransaction timed out"
+  );
   return result.hash;
 }
 

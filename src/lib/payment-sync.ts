@@ -29,6 +29,7 @@
 
 import prisma from "@/lib/prisma";
 import { getHorizonServer } from "@/lib/stellar";
+import { withTimeout, STELLAR_TIMEOUT_MS } from "@/lib/timeout";
 import { logger } from "@/lib/logger";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
@@ -87,10 +88,14 @@ function isHorizonNotFound(err: unknown): boolean {
  */
 async function lookupOnChainOutcome(txHash: string): Promise<OnChainOutcome> {
   try {
-    const htx = await getHorizonServer()
-      .transactions()
-      .transaction(txHash)
-      .call();
+    const htx = await withTimeout(
+      getHorizonServer()
+        .transactions()
+        .transaction(txHash)
+        .call(),
+      STELLAR_TIMEOUT_MS,
+      "Horizon transaction lookup timed out"
+    );
     return htx.successful ? "success" : "failed";
   } catch (err) {
     if (isHorizonNotFound(err)) return "not_found";

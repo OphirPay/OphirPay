@@ -239,11 +239,14 @@ import { withCsrf } from "@/lib/csrf";
 
 ## Security Headers
 
-OphirPay implements the following security headers via `src/proxy.ts` and `next.config.ts`:
+OphirPay implements the following security headers via `src/proxy.ts` and `next.config.ts`
+([`next.config.ts`](next.config.ts) is the single source of truth for static headers; `vercel.json`
+does not duplicate them):
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
-- `X-XSS-Protection: 0`
+- `X-XSS-Protection: 0` (the legacy `1; mode=block` filter is deprecated and
+  must not be re-enabled)
 - `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`
 - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
 - `Cross-Origin-Opener-Policy: same-origin`

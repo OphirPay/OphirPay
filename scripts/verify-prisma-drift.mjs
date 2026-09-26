@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * scripts/verify-prisma-drift.mjs
  *

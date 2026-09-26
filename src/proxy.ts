@@ -2,7 +2,7 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { InMemoryRateLimitStore } from "@/lib/rate-limit";
+import { getRateLimitStore } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
@@ -12,11 +12,15 @@ const RATE_LIMIT_MAX = Math.max(
   parseInt(process.env.RATE_LIMIT_RPM || "120", 10) || 120
 );
 
-// Single shared in-memory rate limit store (Edge Runtime safe)
-// NOTE: per-instance by design. For multi-instance production rate
-// limiting, terminate TLS at a load balancer / gateway that enforces
-// limits, or route through a Redis-backed limiter at the platform layer.
-const rateLimitStore = new InMemoryRateLimitStore();
+// Global rate-limit store, resolved once per instance.
+//
+// This file runs on the Edge runtime, where `ioredis` cannot run. The store
+// therefore selects its backend from the *shape* of REDIS_URL: an `https://`
+// endpoint (Upstash-compatible REST) is shared across every replica, while a
+// `redis://` URL falls back to in-memory here (the Node runtime uses ioredis
+// for route-level buckets — see src/lib/rate-limit.ts). With no Redis
+// configured the limit is per-instance, exactly as before.
+const rateLimitStore = getRateLimitStore();
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -80,9 +84,14 @@ export async function proxy(request: NextRequest) {
   // ── API routes: rate limiting + API headers ─────────────────
   if (pathname.startsWith("/api/")) {
     // Skip rate limiting for health checks and metrics (monitoring endpoints
-    // are hit frequently by orchestrators and should never be throttled)
+    // are hit frequently by orchestrators and should never be throttled).
+    // The whole `/api/health` subtree is exempt: the readiness probe lives at
+    // `/api/health` and the liveness probe at `/api/health/live` (#738), and
+    // both must keep answering even when the app is under attack or overloaded.
     const skipRateLimit =
-      pathname === "/api/health" || pathname === "/api/metrics";
+      pathname === "/api/health" ||
+      pathname.startsWith("/api/health/") ||
+      pathname === "/api/metrics";
 
     let remaining = RATE_LIMIT_MAX;
     let resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;

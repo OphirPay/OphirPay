@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import FeeConfigPage from "./page";
+import FeeConfigPage from "@/app/fee-config/page";
 
 // Hoisted mocks let tests configure each module mock before the page renders.
 // The mocked modules are declared via `vi.mock` below, and tests drive the

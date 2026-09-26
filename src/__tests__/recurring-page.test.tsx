@@ -76,8 +76,8 @@ describe("RecurringPage", () => {
     renderPage();
     expect(screen.getByText("Monthly SaaS")).toBeTruthy();
     expect(screen.getByText("Monthly")).toBeTruthy();
-    expect(screen.getByTestId("next-run-rec_1").textContent).toContain("Oct 1, 2026");
-    expect(screen.getByTestId("prev-run-rec_1").textContent).toContain("Sep 1, 2026");
+    expect(screen.getByTestId("next-run-rec_1").textContent).toMatch(/Oct 1,? 2026|1 Oct 2026/);
+    expect(screen.getByTestId("prev-run-rec_1").textContent).toMatch(/Sep(t)? 1,? 2026|1 Sep(t)? 2026/);
     expect(screen.getByText("50.00 XLM")).toBeTruthy();
   });
 

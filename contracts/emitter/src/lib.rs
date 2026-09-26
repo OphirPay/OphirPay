@@ -22,6 +22,7 @@ const ALLOWED_SOURCE: Symbol = symbol_short!("ALW_SRC");
 const EVENT_SCHEMA_VERSION: u32 = 1;
 
 // ── Data Types ─────────────────────────────────────────────────
+const TMLOCK_DELAY: u64 = 86400; // 24 hours
 
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -291,7 +292,7 @@ impl PaymentEventEmitter {
         if caller != owner {
             return Err(EmitterError::Unauthorized);
         }
-        let unlock_at = env.ledger().timestamp() + 86400;
+        let unlock_at = env.ledger().timestamp().saturating_add(TMLOCK_DELAY);
         env.storage().instance().set(&UPGRADE_HASH, &new_wasm_hash);
         env.storage().instance().set(&UPGRADE_TIMELOCK, &unlock_at);
         env.storage().instance().extend_ttl(5000, 50000);
@@ -377,7 +378,7 @@ impl PaymentEventEmitter {
             .get(&OWNER_PROPOSED_AT)
             .unwrap_or(0);
         let now = env.ledger().timestamp();
-        if now.saturating_sub(proposed_at) < 86400 {
+        if now.saturating_sub(proposed_at) < TMLOCK_DELAY {
             return Err(EmitterError::UpgradeTimelockActive);
         }
         env.storage().instance().remove(&PENDING_OWNER);

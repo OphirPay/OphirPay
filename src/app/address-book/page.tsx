@@ -11,6 +11,7 @@ import {
   type AddressEntry,
 } from "@/lib/address-book";
 import { isValidStellarAddress } from "@/lib/stellar";
+import { exportToCsv } from "@/lib/csv";
 import { shortenAddress, timeAgo } from "@/lib/utils";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Button } from "@/components/ui/Button";
@@ -51,6 +52,10 @@ export default function AddressBookPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<AddressEntry | null>(null);
   const [editingOriginalKey, setEditingOriginalKey] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importErrors, setImportErrors] = useState<{ row: number; message: string }[]>([]);
+  const [importPreview, setImportPreview] = useState<{ label: string; publicKey: string; memo?: string }[]>([]);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     return search.trim() ? searchAddressBook(search.trim()) : contacts;
@@ -116,6 +121,109 @@ export default function AddressBookPage() {
     toast.success("Contact deleted", deleting.label);
   };
 
+  const handleExport = () => {
+    const book = getAddressBook();
+    if (book.length === 0) {
+      toast.info("Address book is empty", "Nothing to export");
+      return;
+    }
+    exportToCsv(
+      book,
+      [
+        { key: "label", header: "label" },
+        { key: "publicKey", header: "address" },
+        { key: "memo", header: "memo" },
+      ],
+      { filename: "address-book.csv" }
+    );
+    toast.success("Address book exported", \`\${book.length} contacts saved to address-book.csv\`);
+  };
+
+  const openImport = () => {
+    setImporting(true);
+    setImportErrors([]);
+    setImportPreview([]);
+    if (importInputRef.current) importInputRef.current.value = "";
+  };
+
+  const closeImport = () => {
+    setImporting(false);
+    setImportErrors([]);
+    setImportPreview([]);
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const rows = text.split(/\r?\n/).filter((r) => r.trim());
+      if (rows.length < 2) {
+        setImportErrors([{ row: 0, message: "CSV must have a header row and at least one data row." }]);
+        return;
+      }
+      const header = rows[0].split(",").map((h) => h.trim().toLowerCase().replace(/"/g, ""));
+      const labelIdx = header.indexOf("label");
+      const addressIdx = header.indexOf("address");
+      const memoIdx = header.indexOf("memo");
+
+      if (labelIdx < 0 || addressIdx < 0) {
+        setImportErrors([{ row: 0, message: "CSV must contain 'label' and 'address' columns." }]);
+        return;
+      }
+
+      const dataRows = rows.slice(1);
+      const preview: { label: string; publicKey: string; memo?: string }[] = [];
+      const errors: { row: number; message: string }[] = [];
+
+      for (let i = 0; i < dataRows.length; i++) {
+        const cols = dataRows[i].split(",").map((c) => c.trim().replace(/^"(.*)"$/, "$1"));
+        const label = cols[labelIdx] ?? "";
+        const address = cols[addressIdx] ?? "";
+        const memo = memoIdx >= 0 ? cols[memoIdx] : "";
+
+        if (!label) {
+          errors.push({ row: i + 2, message: "Label is required." });
+          continue;
+        }
+        if (!isValidStellarAddress(address)) {
+          errors.push({ row: i + 2, message: `Invalid Stellar address: \${address}` });
+          continue;
+        }
+        if (memo && memo.length > 28) {
+          errors.push({ row: i + 2, message: "Memo must be 28 characters or fewer." });
+          continue;
+        }
+
+        preview.push({ label, publicKey: address, memo: memo || undefined });
+      }
+
+      setImportPreview(preview);
+      setImportErrors(errors);
+    } catch (e) {
+      setImportErrors([{ row: 0, message: "Failed to parse CSV file." }]);
+    }
+  };
+
+  const handleConfirmImport = () => {
+    if (importPreview.length === 0) return;
+    const book = getAddressBook();
+    const existing = new Set(book.map((a) => a.publicKey));
+    let added = 0;
+    let skipped = 0;
+
+    for (const entry of importPreview) {
+      if (existing.has(entry.publicKey)) {
+        skipped++;
+        continue;
+      }
+      saveAddress({ publicKey: entry.publicKey, label: entry.label, memo: entry.memo });
+      added++;
+    }
+    refresh();
+    closeImport();
+    if (added > 0) toast.success(\`\${added} contact\${added !== 1 ? "s" : ""} imported\`, \`\${skipped} duplicate\${skipped !== 1 ? "s" : ""} skipped\`);
+    else toast.info("No new contacts imported", \`\${skipped} already existed\`);
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
       <Breadcrumb items={[{ label: "Address Book" }]} />
@@ -130,9 +238,17 @@ export default function AddressBookPage() {
             Frequently used Stellar addresses — stored locally in your browser
           </p>
         </div>
-        <Button onClick={openAdd} leftIcon={<PlusIcon />}>
-          Add Contact
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleExport} disabled={contacts.length === 0}>
+            Export CSV
+          </Button>
+          <Button variant="outline" onClick={openImport}>
+            Import CSV
+          </Button>
+          <Button onClick={openAdd} leftIcon={<PlusIcon />}>
+            Add Contact
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -235,6 +351,85 @@ export default function AddressBookPage() {
           ))}
         </ul>
       )}
+
+      {/* Import CSV modal */}
+      <Modal
+        open={importing}
+        onClose={closeImport}
+        title="Import Contacts from CSV"
+        description="Upload a CSV with columns: label,address,memo (memo optional). Valid rows will be added; errors are shown below."
+        footer={
+          <>
+            <Button variant="outline" onClick={closeImport}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmImport} disabled={importPreview.length === 0}>
+              Import {importPreview.length} Valid Contact{importPreview.length !== 1 ? "s" : ""}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && handleImportFile(e.target.files[0])}
+          />
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            className="w-full border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-ophir-400 dark:hover:border-ophir-600 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 mx-auto mb-3 text-gray-400 dark:text-gray-500">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            </svg>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Drag & drop your CSV here, or click to browse</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Columns: <span className="font-mono">label,address,memo</span> (memo optional)</p>
+          </button>
+
+          {importErrors.length > 0 && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+              <p className="text-sm font-medium text-red-600 dark:text-red-400 mb-2">
+                {importErrors.length} error{importErrors.length !== 1 ? "s" : ""} found:
+              </p>
+              <ul className="text-sm text-red-600 dark:text-red-400 space-y-1 max-h-40 overflow-y-auto">
+                {importErrors.map((e, i) => (
+                  <li key={i}>Row {e.row}: {e.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {importPreview.length > 0 && (
+            <div className="max-h-60 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50">
+                    <th className="py-2 px-3 font-medium">Label</th>
+                    <th className="py-2 px-3 font-medium min-w-[200px]">Address</th>
+                    <th className="py-2 px-3 font-medium">Memo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importPreview.map((entry, i) => (
+                    <tr key={i} className="border-t border-gray-100 dark:border-gray-800/50">
+                      <td className="py-2 px-3">{entry.label}</td>
+                      <td className="py-2 px-3 font-mono text-gray-600 dark:text-gray-400 truncate max-w-[200px]">{entry.publicKey}</td>
+                      <td className="py-2 px-3 text-gray-500 dark:text-gray-400">{entry.memo ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 px-3">
+                {importPreview.length} valid row{importPreview.length !== 1 ? "s" : ""} ready to import
+              </p>
+            </div>
+          )}
+
+        </div>
+      </Modal>
 
       {/* Add/Edit modal */}
       <Modal

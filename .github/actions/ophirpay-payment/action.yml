@@ -1,0 +1,74 @@
+﻿name: "OphirPay CI Payment Runner"
+description: "Submit batch payouts from CSV in CI pipelines and automatically fail the job on any rejected payments"
+author: "OphirPay"
+
+inputs:
+  api-key:
+    description: "OphirPay API Key (typically stored in secrets.OPHIRPAY_API_KEY)"
+    required: true
+  base-url:
+    description: "OphirPay base URL (default: https://api.ophirpay.com)"
+    required: false
+    default: "https://api.ophirpay.com"
+  batch-csv:
+    description: "Path to the CSV file containing payments (columns: address,amount,[assetCode],[memo])"
+    required: true
+  source-account:
+    description: "Stellar source account public key"
+    required: true
+  batch-name:
+    description: "Descriptive label for this payment run"
+    required: false
+    default: "CI Pipeline Batch Run"
+  fail-on-rejected:
+    description: "Fail the GitHub Actions job if any payment in the batch is rejected or fails"
+    required: false
+    default: "true"
+
+outputs:
+  batch-id:
+    description: "The created OphirPay batch ID"
+    value: ${{ steps.run-batch.outputs.batch_id }}
+  status:
+    description: "Status of the batch payment"
+    value: ${{ steps.run-batch.outputs.status }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20.x"
+
+    - name: Run OphirPay Batch Payment
+      id: run-batch
+      shell: bash
+      run: |
+        FAIL_FLAG=""
+        if [ "${{ inputs.fail-on-rejected }}" = "true" ]; then
+          FAIL_FLAG="--fail-on-rejected"
+        fi
+
+        OUTPUT=$(node bin/ophirpay.mjs batch submit \
+          --file "${{ inputs.batch-csv }}" \
+          --name "${{ inputs.batch-name }}" \
+          --source "${{ inputs.source-account }}" \
+          --api-key "${{ inputs.api-key }}" \
+          --base-url "${{ inputs.base-url }}" \
+          --json \
+          $FAIL_FLAG)
+
+        EXIT_CODE=$?
+        echo "Response: $OUTPUT"
+
+        BATCH_ID=$(echo "$OUTPUT" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(d).id||'')}catch{console.log('')}})")
+        BATCH_STATUS=$(echo "$OUTPUT" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{console.log(JSON.parse(d).status||'')}catch{console.log('')}})")
+
+        echo "batch_id=$BATCH_ID" >> $GITHUB_OUTPUT
+        echo "status=$BATCH_STATUS" >> $GITHUB_OUTPUT
+
+        if [ $EXIT_CODE -ne 0 ]; then
+          echo "::error::OphirPay batch payment submission failed or contains rejected payments."
+          exit $EXIT_CODE
+        fi

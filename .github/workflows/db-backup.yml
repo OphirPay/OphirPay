@@ -1,26 +1,47 @@
-name: Database Backup
+name: Database Backup & Restore Drill
 
 on:
   schedule:
-    - cron: "0 3 * * *"  # Daily at 3 AM UTC
-  workflow_dispatch:      # Manual trigger
+    - cron: "0 3 * * *"  # Daily at 3 AM UTC (Backup)
+    - cron: "0 4 * * 0"  # Weekly on Sunday at 4 AM UTC (Scheduled Restore Drill)
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task to execute ('both', 'backup', 'drill', or 'verify_negative_drill')"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - "both"
+          - "backup"
+          - "drill"
+          - "verify_negative_drill"
 
 env:
   BACKUP_BUCKET: ophirpay-backups
   BACKUP_RETENTION_DAYS: 30
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # ══════════════════════════════════════════════════════════════
+  # 1. BACKUP — Produce compressed SQL dump and upload to S3
+  # ══════════════════════════════════════════════════════════════
   backup:
-    name: Backup Postgres
+    name: Backup Postgres to S3
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'schedule' && github.event.schedule == '0 3 * * *' ||
+      github.event_name == 'workflow_dispatch' && (inputs.task == 'backup' || inputs.task == 'both')
+    outputs:
+      backup_file: ${{ steps.create_backup.outputs.backup_file }}
     env:
       DB_HOST: ${{ secrets.DB_HOST }}
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       DB_NAME: ${{ secrets.DB_NAME }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,6 +50,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Create backup
+        id: create_backup
         run: |
           set -euo pipefail
           : "${DB_HOST:?DB_HOST secret not set — add it to GitHub Actions secrets}"
@@ -39,7 +61,8 @@ jobs:
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
           BACKUP_FILE="ophirpay-${TIMESTAMP}.sql.gz"
           echo "Backup file: ${BACKUP_FILE}"
-          echo "BACKUP_FILE=${BACKUP_FILE}" >> $GITHUB_ENV
+          echo "backup_file=${BACKUP_FILE}" >> "$GITHUB_OUTPUT"
+          echo "BACKUP_FILE=${BACKUP_FILE}" >> "$GITHUB_ENV"
 
           # pipefail so a pg_dump failure fails this step instead of being
           # masked by gzip's exit 0 (which used to upload empty backups).
@@ -52,15 +75,19 @@ jobs:
 
           test -s "${BACKUP_FILE}" || { echo "::error::pg_dump produced an empty backup"; exit 1; }
           gzip -t "${BACKUP_FILE}" || { echo "::error::backup is not a valid gzip file"; exit 1; }
-          echo "Backup created: $(du -h ${BACKUP_FILE} | cut -f1)"
+          echo "Backup created: $(du -h "${BACKUP_FILE}" | cut -f1)"
 
       - name: Validate AWS credentials
         run: |
           : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID secret not set — add it to GitHub Actions secrets}"
           : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY secret not set}"
           : "${AWS_REGION:?AWS_REGION secret not set}"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
 
-      - name: Upload to S3
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -85,7 +112,96 @@ jobs:
             fi
           done
 
-      - name: Notify on failure
+      - name: Notify on backup failure
         if: failure()
         run: |
           echo "::error::Database backup failed! Check the logs."
+
+  # ══════════════════════════════════════════════════════════════
+  # 2. RESTORE DRILL — Restore into ephemeral DB and assert integrity
+  # ══════════════════════════════════════════════════════════════
+  restore-drill:
+    name: Disaster Recovery Restore Drill
+    runs-on: ubuntu-latest
+    needs: [backup]
+    if: |
+      always() && (
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch' && (inputs.task == 'drill' || inputs.task == 'both' || inputs.task == 'verify_negative_drill')
+      )
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Setup PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      # ── Negative drill assertions: Verify corrupted/missing backup fails ──
+      - name: Test negative drill cases (corrupted & missing backup must fail)
+        run: |
+          set -euo pipefail
+          echo "=== Testing negative drill cases ==="
+
+          # Case 1: Missing backup file must fail
+          echo "→ Case 1: Testing missing file..."
+          if bash scripts/restore-drill.sh ./nonexistent-backup.sql.gz; then
+            echo "::error::Drill erroneously succeeded on missing backup file"
+            exit 1
+          fi
+          echo "✓ Missing backup failed as expected"
+
+          # Case 2: 0-byte empty backup file must fail
+          echo "→ Case 2: Testing empty file..."
+          touch ./test-empty.sql.gz
+          if bash scripts/restore-drill.sh ./test-empty.sql.gz; then
+            echo "::error::Drill erroneously succeeded on empty backup file"
+            rm -f ./test-empty.sql.gz
+            exit 1
+          fi
+          rm -f ./test-empty.sql.gz
+          echo "✓ Empty backup failed as expected"
+
+          # Case 3: Corrupted garbage data backup must fail
+          echo "→ Case 3: Testing corrupted data..."
+          echo "CORRUPTED_NOT_A_VALID_GZIP_FILE_DATA_12345" > ./test-corrupt.sql.gz
+          if bash scripts/restore-drill.sh ./test-corrupt.sql.gz; then
+            echo "::error::Drill erroneously succeeded on corrupted backup file"
+            rm -f ./test-corrupt.sql.gz
+            exit 1
+          fi
+          rm -f ./test-corrupt.sql.gz
+          echo "✓ Corrupted backup failed as expected"
+
+      # ── Positive drill: Restore latest backup artifact ────────────────────
+      - name: Configure AWS credentials for backup download
+        if: inputs.task != 'verify_negative_drill' && secrets.AWS_ACCESS_KEY_ID != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Execute automated restore drill
+        if: inputs.task != 'verify_negative_drill' && secrets.AWS_ACCESS_KEY_ID != ''
+        env:
+          BACKUP_FILE: ${{ needs.backup.outputs.backup_file }}
+          BACKUP_BUCKET: ${{ env.BACKUP_BUCKET }}
+        run: |
+          bash scripts/restore-drill.sh "${BACKUP_FILE:-}"
+
+      - name: Notify on drill failure
+        if: failure()
+        run: |
+          echo "::error::Automated restore drill failed! Database backup may be unrestorable."

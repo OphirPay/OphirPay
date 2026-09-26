@@ -3,10 +3,10 @@
 //
 // OphirPay — SSE Load Test (100 concurrent clients)
 //
-// Issues: #391
+// Issues: #391, #744
 // Acceptance criteria:
-//   1. 100 concurrent SSE connections open against GET /api/events
-//   2. All clients receive `connected` and heartbeat messages within the
+//   1. 100 concurrent SSE connections open against GET /api/events (including intentionally-stalled clients)
+//   2. All active clients receive `connected` and heartbeat messages within the
 //      expected interval (server emits one heartbeat every 15s)
 //   3. No connection leak after clients disconnect — the server's
 //      `ophirpay_sse_open_connections` gauge returns to 0 and fresh
@@ -30,6 +30,7 @@ const METRICS_URL = `${BASE_URL}/api/metrics`;
 // target deployment; without it the memory/leak gauges are simply skipped.
 const METRICS_TOKEN = process.env.METRICS_TOKEN || "";
 const CONCURRENCY = Number(process.env.CONCURRENCY || 100);
+const STALLED_CLIENTS = Number(process.env.STALLED_CLIENTS ?? Math.round(CONCURRENCY * 0.2));
 const DURATION_MS = Number(process.env.DURATION_MS || 40_000);
 const HEARTBEAT_INTERVAL_MS = 15_000; // server interval (src/app/api/events/route.ts)
 const HEARTBEAT_GRACE_MS = 10_000; // tolerated scheduling jitter
@@ -56,14 +57,16 @@ const mb = (n) => `${(n / 1024 / 1024).toFixed(1)}MB`;
 //
 // Node has no browser EventSource that exposes heartbeat timing, so each
 // client reads the raw SSE bytes and parses `event:`/`data:` frames itself.
-function openSseClient(index, abortSignal, state) {
+function openSseClient(index, abortSignal, state, isStalled = false) {
   const client = {
     index,
+    isStalled,
     connectedAt: null, // ms after connect at which `connected` arrived
     heartbeatCount: 0,
     firstHeartbeatAt: null, // ms after connect at which the first heartbeat arrived
     lastHeartbeatAt: null,
     eventCount: 0,
+    dropCount: 0,
     connectResolved: false,
     error: null,
     closedAt: null,
@@ -98,7 +101,23 @@ function openSseClient(index, abortSignal, state) {
           const frame = buffer.slice(0, sep);
           buffer = buffer.slice(sep + 2);
           const eventName = (frame.match(/^event:\s*(.+)$/m) || [])[1]?.trim() || "message";
-          if (eventName === "connected") resolveConnect(client, t0, state);
+          if (eventName === "connected") {
+            resolveConnect(client, t0, state);
+            if (isStalled) {
+              // Intentionally stall: cease reading from the stream to test backpressure
+              // and ensure the server's open-connection gauge and memory remain bounded.
+              await new Promise((resolve) => {
+                if (abortSignal.aborted) return resolve();
+                abortSignal.addEventListener("abort", resolve, { once: true });
+              });
+              try {
+                await reader.cancel();
+              } catch {
+                // Ignore cancel errors
+              }
+              return client;
+            }
+          }
           if (eventName === "heartbeat") {
             client.heartbeatCount += 1;
             const at = Date.now() - t0;
@@ -106,6 +125,7 @@ function openSseClient(index, abortSignal, state) {
             client.lastHeartbeatAt = at;
           }
           if (eventName === "payment:created") client.eventCount += 1;
+          if (eventName === "drop") client.dropCount += 1;
         }
       }
     } catch (err) {
@@ -178,12 +198,13 @@ async function runLoadTest() {
   const baseline = await fetchServerMetrics();
   info(`Baseline server memory: heapUsed=${mb(baseline.heapUsed ?? 0)} rss=${mb(baseline.rss ?? 0)}`);
 
-  // 2. Open CONCURRENCY simultaneous connections
+  // 2. Open CONCURRENCY simultaneous connections (including STALLED_CLIENTS intentionally stalled)
   const state = { started: 0, connected: 0, settled: 0 };
   const abortController = new AbortController();
-  const clients = Array.from({ length: CONCURRENCY }, (_, i) =>
-    openSseClient(i, abortController.signal, state)
-  );
+  const clients = Array.from({ length: CONCURRENCY }, (_, i) => {
+    const isStalled = i < STALLED_CLIENTS;
+    return openSseClient(i, abortController.signal, state, isStalled);
+  });
   // The resolved client objects (heartbeat counts, connect/close timing).
   const results = Array.from({ length: CONCURRENCY }, () => null);
   // Track when the response stream is fully torn down server-side.
@@ -237,24 +258,30 @@ async function runLoadTest() {
   const failures = [];
   const healthyClients = results.filter((c) => c !== null);
 
-  // 7a. Heartbeat delivery within the expected interval
-  const noHeartbeat = healthyClients.filter((c) => c.heartbeatCount === 0);
+  // 7a. Heartbeat delivery within the expected interval (for active readers)
+  const activeClients = healthyClients.filter((c) => !c.isStalled);
+  const stalledClients = healthyClients.filter((c) => c.isStalled);
+  info(
+    `Client breakdown: ${activeClients.length} active reader(s), ${stalledClients.length} intentionally-stalled consumer(s)`
+  );
+
+  const noHeartbeat = activeClients.filter((c) => c.heartbeatCount === 0);
   if (noHeartbeat.length > 0) {
-    failures.push(`${noHeartbeat.length} client(s) received no heartbeat`);
+    failures.push(`${noHeartbeat.length} active client(s) received no heartbeat`);
   }
-  const slowHeartbeat = healthyClients.filter(
+  const slowHeartbeat = activeClients.filter(
     (c) => c.firstHeartbeatAt !== null && c.firstHeartbeatAt > HEARTBEAT_INTERVAL_MS + HEARTBEAT_GRACE_MS
   );
   if (slowHeartbeat.length > 0) {
     failures.push(
-      `${slowHeartbeat.length} client(s) got their first heartbeat after ${HEARTBEAT_INTERVAL_MS + HEARTBEAT_GRACE_MS}ms`
+      `${slowHeartbeat.length} active client(s) got their first heartbeat after ${HEARTBEAT_INTERVAL_MS + HEARTBEAT_GRACE_MS}ms`
     );
   }
-  const totalHeartbeats = healthyClients.reduce((sum, c) => sum + c.heartbeatCount, 0);
-  const minFirst = Math.min(...healthyClients.map((c) => c.firstHeartbeatAt ?? Infinity));
-  const maxFirst = Math.max(...healthyClients.map((c) => c.firstHeartbeatAt ?? 0));
+  const totalHeartbeats = activeClients.reduce((sum, c) => sum + c.heartbeatCount, 0);
+  const minFirst = Math.min(...activeClients.map((c) => c.firstHeartbeatAt ?? Infinity));
+  const maxFirst = Math.max(...activeClients.map((c) => c.firstHeartbeatAt ?? 0));
   info(
-    `Heartbeats: ${totalHeartbeats} delivered (${(totalHeartbeats / CONCURRENCY).toFixed(1)}/client), ` +
+    `Heartbeats: ${totalHeartbeats} delivered (${(totalHeartbeats / (activeClients.length || 1)).toFixed(1)}/active client), ` +
       `first-heartbeat range ${minFirst}ms–${maxFirst}ms`
   );
 
@@ -349,8 +376,8 @@ async function runLoadTest() {
   console.log("\n═══════════════════════════════════════════════════════════");
   console.log("                     SSE Load Test Summary");
   console.log("═══════════════════════════════════════════════════════════");
-  console.log(` Clients connected     : ${state.connected}/${CONCURRENCY}`);
-  console.log(` Heartbeats delivered  : ${totalHeartbeats} (${(totalHeartbeats / CONCURRENCY).toFixed(1)}/client)`);
+  console.log(` Clients connected     : ${state.connected}/${CONCURRENCY} (${stalledClients.length} stalled consumers, ${activeClients.length} active readers)`);
+  console.log(` Heartbeats delivered  : ${totalHeartbeats} (${(totalHeartbeats / (activeClients.length || 1)).toFixed(1)}/active client)`);
   console.log(` Peak open connections : ${peakOpen}`);
   console.log(` Open after teardown   : ${after.sseOpen ?? "unknown"}`);
   console.log(` Server heap growth    : +${mb(peakHeapDelta ?? 0)} during, +${mb(Math.max(0, (after.heapUsed ?? 0) - (baseline.heapUsed ?? 0)))} after`);

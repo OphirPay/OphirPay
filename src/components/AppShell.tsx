@@ -23,7 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Sidebar />
             <div className="flex-1 lg:ml-64">
               <Header />
-              <main id="main-content" className="p-4 md:p-6">{children}</main>
+              <main id="main-content" tabIndex={-1} className="p-4 md:p-6">{children}</main>
             </div>
           </div>
         </ToastProvider>

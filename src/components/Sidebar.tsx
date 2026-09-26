@@ -224,11 +224,11 @@ export function Sidebar() {
             <span className="text-white font-bold text-lg">O</span>
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</h1>
+            <p className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">Stellar Payments</p>
           </div>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
+        <nav aria-label="Main navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
         {footer}
       </aside>
 
@@ -241,9 +241,9 @@ export function Sidebar() {
           <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-ophir-600 to-stellar flex items-center justify-center shadow-lg shadow-ophir-500/30">
             <span className="text-white font-bold text-lg">O</span>
           </div>
-          <div><h1 className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</h1></div>
+          <div><p className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</p></div>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
+        <nav aria-label="Mobile navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
         {footer}
       </aside>
     </>

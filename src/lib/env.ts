@@ -57,7 +57,7 @@ export const AUTH_SECRET_PLACEHOLDER = "replace-with-openssl-rand-hex-32-output"
  * case-insensitive; a genuine `openssl rand -hex 32` value is pure hex and so
  * cannot collide with any of them.
  */
-const AUTH_SECRET_PLACEHOLDER_MARKERS = [
+export const AUTH_SECRET_PLACEHOLDER_MARKERS = [
   "replace-with",
   "replace_with",
   "replace-me",
@@ -74,6 +74,42 @@ const AUTH_SECRET_PLACEHOLDER_MARKERS = [
   "not-a-real",
   "dummy-secret",
 ] as const;
+
+export const DISALLOWED_AUTH_SECRET_PATTERNS = [
+  "replace-with-openssl-rand-hex-32-output",
+  "replace-with-openssl-rand-hex-32",
+  "dev-only-auth-secret-000000000000000000000000",
+  "openssl rand -hex 32",
+  "replace-with-a-secure-secret",
+  "replace-me",
+  "changeme",
+];
+
+export function isPlaceholderAuthSecret(secret: string): boolean {
+  if (!secret) return false;
+  const normalized = secret.trim().toLowerCase();
+  if (DISALLOWED_AUTH_SECRET_PATTERNS.some((p) => normalized === p.toLowerCase())) {
+    return true;
+  }
+  return AUTH_SECRET_PLACEHOLDER_MARKERS.some((m) => normalized.includes(m)) || normalized.includes("openssl rand");
+}
+
+export function validateAuthSecret(
+  secret?: string | null,
+  isProd = isProduction()
+): { valid: boolean; error?: string } {
+  if (!isProd) {
+    return { valid: true };
+  }
+  const problem = authSecretProblem(secret);
+  if (problem) {
+    return {
+      valid: false,
+      error: `AUTH_SECRET is required in production: ${problem}. Generate one with: openssl rand -hex 32`,
+    };
+  }
+  return { valid: true };
+}
 
 /**
  * Validate an AUTH_SECRET value.

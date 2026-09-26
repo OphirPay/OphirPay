@@ -5,7 +5,7 @@
 // `validateEnv`, the session-signing path, and the deploy-time guard in
 // `scripts/validate-deploy-config.sh`.
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
@@ -14,8 +14,16 @@ import {
   authSecretProblem,
   assertAuthSecret,
   validateEnv,
+  isPlaceholderAuthSecret,
+  validateAuthSecret,
+  DISALLOWED_AUTH_SECRET_PATTERNS,
 } from "@/lib/env";
 import { getAuthSecret } from "@/lib/auth-session";
+
+vi.mock("@/lib/prisma", () => ({
+  default: {},
+  prisma: {},
+}));
 
 // A real `openssl rand -hex 32` value (64 hex chars).
 const STRONG_SECRET =
@@ -41,6 +49,39 @@ afterEach(() => {
     if (!(key in originalEnv)) delete process.env[key];
   }
   Object.assign(process.env, originalEnv);
+});
+
+describe("isPlaceholderAuthSecret", () => {
+  it("identifies known default and placeholder patterns", () => {
+    for (const pattern of DISALLOWED_AUTH_SECRET_PATTERNS) {
+      expect(isPlaceholderAuthSecret(pattern)).toBe(true);
+    }
+    expect(isPlaceholderAuthSecret("REPLACE-WITH-OPENSSL-RAND-HEX-32-OUTPUT")).toBe(true);
+    expect(isPlaceholderAuthSecret("my-placeholder-secret-that-is-long-enough-32-chars")).toBe(true);
+    expect(isPlaceholderAuthSecret("please-changeme-before-deploying-to-production")).toBe(true);
+  });
+
+  it("returns false for legitimate cryptographic secrets", () => {
+    expect(isPlaceholderAuthSecret(STRONG_SECRET)).toBe(false);
+    expect(isPlaceholderAuthSecret("9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08")).toBe(false);
+  });
+});
+
+describe("validateAuthSecret helper", () => {
+  it("rejects invalid secrets in production", () => {
+    expect(validateAuthSecret(undefined, true).valid).toBe(false);
+    expect(validateAuthSecret("short", true).valid).toBe(false);
+    expect(validateAuthSecret(AUTH_SECRET_PLACEHOLDER, true).valid).toBe(false);
+  });
+
+  it("accepts valid secrets in production", () => {
+    expect(validateAuthSecret(STRONG_SECRET, true).valid).toBe(true);
+  });
+
+  it("passes in non-production", () => {
+    expect(validateAuthSecret(undefined, false).valid).toBe(true);
+    expect(validateAuthSecret(AUTH_SECRET_PLACEHOLDER, false).valid).toBe(true);
+  });
 });
 
 describe("authSecretProblem", () => {

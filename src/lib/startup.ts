@@ -26,8 +26,16 @@ export async function bootstrap(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error("Environment validation failed", { error: message });
-    // In production, fail fast — do not start with invalid configuration.
-    // In development, throw as well since contract IDs are now required.
+    console.error(`\n❌ [OphirPay Fatal Error] Environment validation failed:\n${message}\n`);
+    // In production, fail fast and exit non-zero so invalid deployments fail loudly
+    if (
+      process.env.NODE_ENV === "production" &&
+      typeof process !== "undefined" &&
+      typeof process.exit === "function"
+    ) {
+      process.exit(1);
+    }
+    // In development and test, throw as well
     throw new Error(
       `Fatal: environment validation failed. Check your .env.local file.\n${message}`
     );

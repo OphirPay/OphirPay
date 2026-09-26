@@ -40,6 +40,8 @@ export function getAuthSecret(): string {
     // sessions with a publicly known string (issue #705).
     return assertAuthSecret(secret);
   }
+
+
   // Dev-only fallback — never valid in production (the branch above throws).
   if (secret && secret.length >= 32) return secret;
   return "dev-only-auth-secret-000000000000000000000000";

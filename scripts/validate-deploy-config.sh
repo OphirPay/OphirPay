@@ -80,8 +80,8 @@ fi
 
 echo ""
 if [ "$FAIL" -eq 1 ]; then
-  echo "❌ Deploy script PUBLIC config validation FAILED"
+  echo "❌ Deploy script and environment validation FAILED"
   exit 1
 fi
 
-echo "✅ Deploy script PUBLIC config is valid and targets Stellar Mainnet"
+echo "✅ Deploy script PUBLIC config and security settings are valid"

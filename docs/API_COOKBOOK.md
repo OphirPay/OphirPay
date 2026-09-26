@@ -88,6 +88,7 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/multisig/execute` | POST |
 | `/api/multisig/requests` | GET |
 | `/api/governance/proposals` | GET, POST |
+| `/api/governance/proposals/{id}` | GET |
 | `/api/governance/vote` | POST |
 | `/api/governance/execute` | POST |
 | `/api/analytics` | GET |
@@ -513,6 +514,27 @@ curl -X POST "https://api.ophirpay.com/api/multisig/propose" \
   "status": "PENDING_APPROVAL",
   "proposer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
   "createdAt": "2026-08-26T19:00:00.000Z"
+}
+```
+
+### Fetch a Governance Proposal
+```bash
+curl -X GET "https://api.ophirpay.com/api/governance/proposals/12" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+```
+**Response (`200 OK`):**
+```json
+{
+  "proposal": { "id": 12, "title": "Raise the protocol fee cap", "status": "ACTIVE", "yes_votes": 42, "no_votes": 7 },
+  "config": { "quorum": 10, "approval_threshold_bps": 6000 },
+  "voteHistory": [
+    {
+      "voter": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "support": true,
+      "transactionHash": "3f9821a0b4e5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1",
+      "recordedAt": "2026-08-26T19:04:11.000Z"
+    }
+  ]
 }
 ```
 

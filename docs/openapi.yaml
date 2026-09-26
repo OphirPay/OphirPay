@@ -1521,6 +1521,53 @@ paths:
         "201":
           description: Proposal created
 
+  /api/governance/proposals/{id}:
+    get:
+      tags: [Governance]
+      summary: Fetch one governance proposal with its vote history
+      description: |
+        Reads a single proposal from the chain together with the governance
+        config and the recorded vote events, so the proposal detail page can
+        render in one round trip.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+          description: On-chain proposal id
+      responses:
+        "200":
+          description: Proposal detail with config and vote history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    properties:
+                      proposal:
+                        description: Raw return value of the contract's get_proposal
+                      config:
+                        description: Governance config, null when its simulation failed
+                      voteHistory:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            voter: { type: [string, "null"] }
+                            support: { type: [boolean, "null"] }
+                            transactionHash: { type: [string, "null"] }
+                            recordedAt: { type: string, format: date-time }
+        "400":
+          description: Proposal id is not a positive integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/governance/vote:
     post:
       tags: [Governance]

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Account, Keypair, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Account, Keypair, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 
 const loadAccount = vi.fn();
 
@@ -23,24 +23,34 @@ describe("trustline setup transaction", () => {
 
   it("builds a memo-free ChangeTrust for the selected issuer and standard maximum limit", async () => {
     const { xdr } = await buildTrustlineTransaction(publicKey, "USDC", issuer);
-    const transaction = TransactionBuilder.fromXDR(xdr, "Test SDF Network ; September 2015");
-    const operation = transaction.operations[0] as {
+    const transaction = TransactionBuilder.fromXDR(
+      xdr,
+      "Test SDF Network ; September 2015"
+    ) as Transaction;
+    // A parsed changeTrust carries the asset on `line`, not `asset`.
+    const operation = transaction.operations[0] as unknown as {
       type: string;
-      asset: { code: string; issuer: string };
+      line: { code: string; issuer: string };
       limit: string;
     };
 
     expect(operation.type).toBe("changeTrust");
-    expect(operation.asset.code).toBe("USDC");
-    expect(operation.asset.issuer).toBe(issuer);
+    expect(operation.line.code).toBe("USDC");
+    expect(operation.line.issuer).toBe(issuer);
     expect(operation.limit).toBe("922337203685.4775807");
     expect(transaction.memo.type).toBe("none");
   });
 
   it("uses an explicitly supplied trustline limit", async () => {
     const { xdr } = await buildTrustlineTransaction(publicKey, "USDC", issuer, "1000");
-    const transaction = TransactionBuilder.fromXDR(xdr, "Test SDF Network ; September 2015");
-    expect((transaction.operations[0] as { limit: string }).limit).toBe("1000");
+    const transaction = TransactionBuilder.fromXDR(
+      xdr,
+      "Test SDF Network ; September 2015"
+    ) as Transaction;
+    const operation = transaction.operations[0] as unknown as { limit: string };
+    // The protocol stores limits with 7 decimals, so "1000" round-trips as
+    // "1000.0000000" — compare the value, not the formatting.
+    expect(Number(operation.limit)).toBe(1000);
   });
 });
 

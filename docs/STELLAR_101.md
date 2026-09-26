@@ -394,6 +394,7 @@ example by signing with a Ledger through Stellar Laboratory or the Stellar CLI
 
 ---
 
+## Glossary
 
 | Term | Definition |
 |---|---|

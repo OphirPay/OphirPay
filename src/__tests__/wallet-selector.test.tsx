@@ -28,6 +28,7 @@ describe("WalletSelector", () => {
     expect(screen.getByText("xBull")).toBeInTheDocument();
   });
 
+
   it("marks available wallets as Installed and others as Not found", () => {
     renderSelector({ availableWallets: ["freighter"] });
     expect(screen.getByText("Installed")).toBeInTheDocument();

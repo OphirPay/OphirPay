@@ -14,11 +14,14 @@ interface WalletSelectorProps {
   connectingWallet?: WalletId | null;
   error?: string | null;
   onClose: () => void;
+  includeUnsupported?: boolean;
 }
 
 /**
  * Wallet selection modal.
- * Shows all registered wallets, highlighting those that are installed.
+ * Shows supported registered wallets, highlighting those that are installed.
+ * Wallets marked as unsupported/pending in WALLET_REGISTRY are excluded by default
+ * so the selector never offers a connector that cannot sign or throws on connect.
  *
  * Rendered through the shared `Modal` component so it inherits the standard
  * dialog behavior: Escape-to-close, focus trap, body scroll lock, and focus
@@ -31,6 +34,7 @@ export function WalletSelector({
   connectingWallet,
   error,
   onClose,
+  includeUnsupported = false,
 }: WalletSelectorProps) {
   const [hovered, setHovered] = useState<WalletId | null>(null);
 
@@ -58,7 +62,7 @@ export function WalletSelector({
       {/* Wallet list */}
       <div className="space-y-1">
         {WALLET_REGISTRY.sort((a, b) => a.priority - b.priority).map((wallet) => {
-          const isPending = wallet.status === "pending";
+          const isPending = wallet.status === "pending" || wallet.supported === false;
           const isAvailable = !isPending && availableWallets.includes(wallet.id);
           const isConnectingWallet = connectingWallet === wallet.id;
 

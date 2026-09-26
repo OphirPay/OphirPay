@@ -34,17 +34,23 @@ let ledgerConnected = false;
  * implement. Exported so the UI and docs can explain the hardware/browser
  * requirement even while the connector is pending.
  */
-export function isWebUsbSupported(): boolean {
+export function hasWebUsb(): boolean {
   if (typeof navigator === "undefined") return false;
   return "usb" in navigator;
 }
 
+export const isWebUsbSupported = hasWebUsb;
+
 export const ledgerConnector: WalletConnector = {
   id: "ledger",
   name: "Ledger",
-  description: "Hardware wallet — pending WebUSB integration",
+  description: "Hardware wallet — Pending WebUSB integration",
   icon: "🔐",
 
+  /**
+   * Ledger hardware wallet support is pending integration with @ledgerhq packages.
+   * Returns false so the wallet selector does not present a non-functional connector.
+   */
   isAvailable(): boolean {
     // Intentionally unsupported until the transport packages ship. Returning
     // `false` means the wallet selector never presents a connector that throws
@@ -52,16 +58,18 @@ export const ledgerConnector: WalletConnector = {
     return false;
   },
 
-  async connect() {
+  async connect(): Promise<{ publicKey: string; network: string }> {
+    if (!hasWebUsb()) {
+      throw new Error(
+        "WebUSB is not available in this browser. " +
+          "Ledger hardware wallet requires a Chromium-based browser (Chrome, Edge, Brave, Opera) with WebUSB support.",
+      );
+    }
+
     throw new Error(
-      "Ledger support is pending. OphirPay has not shipped the WebUSB " +
-        "transport yet, so this connector cannot sign transactions. " +
-        "Connect with Freighter, xBull, Rabet, Albedo or Lobstr instead. " +
-        (isWebUsbSupported()
-          ? "This browser supports WebUSB, so Ledger will be available here " +
-            "once the integration lands."
-          : "Note: Ledger will also require a Chromium-based browser " +
-            "(Chrome, Edge, Brave, Opera) because WebUSB is unavailable in this one."),
+      "Ledger hardware wallet connector is currently pending full integration. " +
+        "It requires @ledgerhq/hw-transport-webusb and @ledgerhq/hw-app-str packages. " +
+        "Please use an active wallet (Freighter, Albedo, xBull, Rabet, or Lobstr).",
     );
   },
 
@@ -74,8 +82,11 @@ export const ledgerConnector: WalletConnector = {
   },
 
   async signTransaction(_xdr: string, _opts?: SignOptions) {
-    // Unreachable in practice: connect() throws first. Kept as a typed guard
-    // so callers that reach the signer directly get an honest error.
+    if (!ledgerConnected) {
+      throw new Error(
+        "Ledger not connected. Connect your device and open the Stellar app.",
+      );
+    }
     throw new Error(
       "Ledger support is pending — this connector cannot sign transactions yet.",
     );

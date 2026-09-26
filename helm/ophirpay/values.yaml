@@ -4,8 +4,9 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/ophirpay/ophirpay
-  tag: latest
-  pullPolicy: Always
+  # Default immutable release tag matching appVersion; override via `--set image.tag=<tag>` or values file
+  tag: "v1.0.0"
+  pullPolicy: IfNotPresent
 
 imagePullSecrets: []
 nameOverride: ""

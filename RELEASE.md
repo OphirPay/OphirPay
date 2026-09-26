@@ -53,18 +53,55 @@ git tag -a v0.X.0 -m "Release v0.X.0"
 git push origin v0.X.0
 ```
 
-### 5. GitHub Release
+### 5. GitHub Release & Container Image Publishing
 
 1. Go to [GitHub Releases](https://github.com/OphirPay/OphirPay/releases)
 2. Click "Draft a new release"
 3. Choose the tag `v0.X.0`
 4. Copy the relevant section from `CHANGELOG.md` as the release notes
-5. Attach WASM artifacts if applicable
+5. Attach WASM artifacts (`ophirpay_contract.wasm`, `ophirpay_emitter.wasm`)
 6. Publish
+7. The **Release Docker Image to GHCR** workflow (`.github/workflows/release-docker-ghcr.yml`) triggers automatically to:
+   - Build multi-architecture container images (`linux/amd64`, `linux/arm64`)
+   - Tag with semantic version (`v0.X.0`), major/minor (`v0.X`), commit SHA (`sha-<commit>`), and moving `latest` tag
+   - Push to GitHub Container Registry (`ghcr.io/ophirpay/ophirpay`) with built-in `GITHUB_TOKEN`
+   - Generate embedded SBOM and Sigstore build provenance attestations
 
-### 6. Post-Release
+### 6. Manual Dry-Run Workflow Dispatch
+
+To verify the Docker build without pushing to GHCR:
+
+1. Go to **Actions** → **Release Docker Image to GHCR**
+2. Click **Run workflow**
+3. Select branch/tag, enter the desired tag (e.g. `v0.X.0`), and uncheck **Push image to GHCR**
+4. Inspect the workflow logs to verify build completion, SBOM, and provenance generation
+
+### 7. Deployment Manifests & Tag Overrides
+
+OphirPay Kubernetes and Helm manifests reference immutable version tags by default rather than mutable `latest`:
+
+- **Kubernetes** (`k8s/deployment.yaml`):
+  Defaults to `ghcr.io/ophirpay/ophirpay:v1.0.0` with `imagePullPolicy: IfNotPresent`.
+  Override for deployment updates:
+  ```bash
+  kubectl set image deployment/ophirpay ophirpay=ghcr.io/ophirpay/ophirpay:v0.X.0 -n ophirpay
+  # Or via commit SHA:
+  kubectl set image deployment/ophirpay ophirpay=ghcr.io/ophirpay/ophirpay:sha-abc1234 -n ophirpay
+  ```
+
+- **Helm** (`helm/ophirpay/values.yaml`):
+  Defaults to `image.tag: "v1.0.0"` and `image.pullPolicy: IfNotPresent`.
+  Override via CLI flag or values file:
+  ```bash
+  helm upgrade --install ophirpay ./helm/ophirpay \
+    --namespace ophirpay \
+    --set image.tag=v0.X.0
+  ```
+
+### 8. Post-Release
 
 - [ ] Verify the release appears on the [Releases page](https://github.com/OphirPay/OphirPay/releases)
+- [ ] Verify image packages on [GitHub Packages (GHCR)](https://github.com/orgs/OphirPay/packages)
 - [ ] Announce in community channels
 - [ ] Update demo deployment if applicable
 

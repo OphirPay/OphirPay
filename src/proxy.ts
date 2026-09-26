@@ -2,7 +2,7 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { InMemoryRateLimitStore } from "@/lib/rate-limit";
+import { getRateLimitStore } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
@@ -12,11 +12,15 @@ const RATE_LIMIT_MAX = Math.max(
   parseInt(process.env.RATE_LIMIT_RPM || "120", 10) || 120
 );
 
-// Single shared in-memory rate limit store (Edge Runtime safe)
-// NOTE: per-instance by design. For multi-instance production rate
-// limiting, terminate TLS at a load balancer / gateway that enforces
-// limits, or route through a Redis-backed limiter at the platform layer.
-const rateLimitStore = new InMemoryRateLimitStore();
+// Global rate-limit store, resolved once per instance.
+//
+// This file runs on the Edge runtime, where `ioredis` cannot run. The store
+// therefore selects its backend from the *shape* of REDIS_URL: an `https://`
+// endpoint (Upstash-compatible REST) is shared across every replica, while a
+// `redis://` URL falls back to in-memory here (the Node runtime uses ioredis
+// for route-level buckets — see src/lib/rate-limit.ts). With no Redis
+// configured the limit is per-instance, exactly as before.
+const rateLimitStore = getRateLimitStore();
 
 const isProd = process.env.NODE_ENV === "production";
 

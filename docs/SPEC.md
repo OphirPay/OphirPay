@@ -103,12 +103,27 @@ claimable = min(total_amount, (now - start) / (end - start) * total_amount) - cl
 
 After the stream end time, the full remaining amount is claimable.
 
-**Code evidence:** `compute_vested()` uses checked multiplication with overflow
-protection. `claim_stream()` computes `claimable = vested - stream.claimed_amount`
-and returns `StreamFullyClaimed` if `claimable == 0`.
+**Code evidence:** `compute_vested()` evaluates `total_amount * elapsed` at
+256-bit precision: `i128::checked_mul` on the fast path, and the quotient/
+remainder decomposition `(a / d) * b + ((a % d) * b) / d` when the 128-bit
+product would overflow. The result is therefore always the exact linear vesting
+value and is bounded by `total_amount`.
 
-**Test:** `test_stream_vesting_math` — verifies partial claims at 25%, 50%, 75%
-and that full amount is claimable after end time.
+Overflow MUST NOT collapse the vested amount to `0` (which silently under-vests
+a large stream) and MUST NOT cap it at `total_amount` (which would over-vest a
+stream that is only partially elapsed).
+
+`claim_stream()` computes `claimable = vested.checked_sub(stream.claimed_amount)`,
+returning `StreamInvariantViolated` (307) if the subtraction would be negative
+and `StreamFullyClaimed` if `claimable == 0`.
+
+**Test:** `test_create_and_claim_stream` — verifies partial claims at 50% and
+that the full amount is claimable after end time. Overflow behaviour is covered
+by `test_compute_vested_overflow_is_exact_and_not_zero`,
+`test_compute_vested_overflow_is_bounded_and_monotonic`,
+`test_compute_vested_overflow_fully_vests_at_end`,
+`test_claim_stream_with_overflowing_vesting_pays_correct_balance` and the
+end-to-end `test_stream_vesting_overflow_pays_correct_balance_end_to_end`.
 
 ---
 
@@ -192,7 +207,47 @@ changes, only the latest 100 are returned.
 
 ---
 
-### INV-11: Timelocked Admin Action Execution and Dispatch
+### INV-11: Enumeration is Bounded and Reports Truncation
+
+**Statement:** Every read-only function that enumerates a stored collection
+SHALL return at most `MAX_READER_ENTRIES` (100) entries and SHALL expose
+whether the result was truncated. A reader MUST NOT walk an arbitrarily long
+stored vector inside a single invocation.
+
+The bounded readers are:
+
+| Reader | Result type | Cap | Order | Truncation field |
+|---|---|---|---|---|
+| `get_audit_log_range(start_id, end_id)` | `Vec<AuditEntry>` | 100 | most recent first | *(inherent in the requested range)* |
+| `get_payments_range(start_id, end_id)` | `Vec<Payment>` | 100 | most recent first | *(inherent in the requested range)* |
+| `get_reason_code_analytics()` | `Vec<(u32, u64)>` | 100 most recent refunds | n/a | *(aggregate)* |
+| `get_fee_config_history()` / `get_multisig_config_history()` | `Vec<…Version>` | 100 | most recent first | *(inherent in the requested range)* |
+| `get_payments_by_batch(batch_id)` | `PaymentList` | 100 | most recent first | `truncated` |
+| `get_subscriber_hooks(subscriber)` | `HookList` | 100 | most recent first | `truncated` |
+
+`PaymentList` and `HookList` carry `items`, `total` (how many entries the
+underlying collection actually holds) and `truncated` (true only when the
+reader stopped before exhausting the collection). Callers MUST treat
+`truncated == true` as partial data: page, or ask for a narrower query.
+
+The upstream collections are **not** self-bounding. `register_hook` places no
+limit on how many hooks a subscriber accumulates, and a batch record written
+before the `BatchTooLarge` guard existed can hold more payment ids than
+`create_batch` accepts today. The cap therefore lives in the reader, not in the
+writer's current validation.
+
+**Rationale:** docs/AUDIT.md MEDIUM-2 — unbounded enumeration makes an
+endpoint unreliable (instruction-budget exhaustion) rather than returning a
+clean error.
+
+**Tests:** `test_get_subscriber_hooks_caps_and_flags_truncation`,
+`test_get_subscriber_hooks_at_cap_is_not_truncated`,
+`test_get_payments_by_batch_caps_and_flags_truncation`,
+`test_get_payments_by_batch_within_cap_is_not_truncated`
+
+---
+
+### INV-12: Timelocked Admin Action Execution and Dispatch
 
 **Statement:** Timelocked admin operations proposed via `propose_timelocked_action()` SHALL:
 1. Bind their full typed payload (`AdminAction`) at proposal time in persistent storage under `(TIMELOCK_KEY, id)`.
@@ -230,6 +285,7 @@ OphirPay classifies administrative operations into two categories based on key c
 | **Linked Emitter Contract** | Immediate via `set_emitter` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Event emitter orchestration link (`EMITTER`) |
 | **Emergency Pause All** | Immediate via `emergency_pause_all` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Global freeze across OphirPay + Emitter (`PAUSED`) |
 | **Emergency Unpause All** | Immediate via `emergency_unpause_all` | ✅ `propose_timelocked_action` → `execute_timelocked_action` | Resume contract operations (`PAUSED`) |
+
 
 ---
 
@@ -277,5 +333,8 @@ cd contracts/emitter && cargo test                              # emitter unit t
 
 - [x] Property testing with `proptest` for token-moving paths & reentrancy sequences (`LOCKED_BALANCE` conservation)
 - [ ] Bounded model checking with `kani` for the 5 highest-risk invariants
-- [ ] Formal verification of the `compute_vested()` function (overflow safety)
+- [ ] Formal verification of the `compute_vested()` function (overflow safety).
+      The boundary branches are modelled in `contracts/ophirpay/spec/src/invariants.rs`,
+      but the widened multiply path is not yet machine-checked — see the Kani
+      findings in [AUDIT.md](./AUDIT.md).
 - [ ] Third-party security audit before mainnet deployment

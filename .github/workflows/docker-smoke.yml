@@ -1,0 +1,95 @@
+name: "🐳 Docker Smoke Test"
+
+# Issue #731 — the Dockerfile is one of the supported self-hosted deployment
+# paths (docs/DEPLOYMENT.md, docker-compose.yml), but no workflow built it. It
+# is also unusually sensitive: it must use Debian rather than Alpine because
+# Tailwind v4's native binaries crash on musl, and it disables the Puppeteer
+# download to stay hermetic. A dependency, base-image or Next output-mode
+# change could therefore ship a broken image and only be found by a user.
+#
+# This job builds the image on PRs that can affect it (without pushing) and
+# proves the running container answers GET /api/health with 200. The BuildKit
+# GHA cache keeps it from dominating CI runtime.
+
+on:
+  pull_request:
+    branches: [main, integration/staging]
+    paths:
+      - "Dockerfile"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.ts"
+      - "docker-compose.yml"
+      - "scripts/check-node.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-smoke:
+    name: "🐳 Docker build & smoke test"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        # Needed on the host to run `prisma db push` against the compose
+        # database; `.nvmrc` also satisfies the repo's preinstall check.
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ophirpay:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start backing services
+        run: docker compose -f docker-compose.yml up -d db redis
+
+      - name: Create the schema in the compose database
+        run: |
+          npm ci
+          npx --yes wait-on tcp:5432 --timeout 60000
+          DATABASE_URL=postgresql://ophirpay:ophirpay@127.0.0.1:5432/ophirpay \
+            npx prisma db push --skip-generate
+
+      - name: Smoke test the container
+        run: |
+          docker run -d --rm --name app-smoke \
+            --network host \
+            -e DATABASE_URL=postgresql://ophirpay:ophirpay@127.0.0.1:5432/ophirpay \
+            -e REDIS_URL=redis://127.0.0.1:6379 \
+            -e HOSTNAME=0.0.0.0 \
+            -e AUTH_SECRET=ci-docker-smoke-secret-not-for-production \
+            -e NEXT_PUBLIC_CONTRACT_ID=CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET \
+            -e NEXT_PUBLIC_EMITTER_CONTRACT_ID=CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN \
+            ophirpay:smoke
+
+          status=""
+          for _ in $(seq 1 60); do
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/health || true)
+            if [ "$status" = "200" ]; then
+              echo "✅ /api/health returned 200"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::/api/health did not return 200 (last status: ${status:-<none>})"
+          docker logs app-smoke
+          exit 1

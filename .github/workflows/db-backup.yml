@@ -1,18 +1,48 @@
 name: Database Backup
 
+# Nightly Postgres backup + backup-health monitoring.
+#
+# Issues #751 / #752 — an untested or silently-stopped backup is an assumption.
+# This workflow therefore does three things:
+#
+#   1. `backup`  — nightly `pg_dump | gzip` upload to S3 (03:00 UTC). The
+#      pipefail/empty-file guards below were added earlier so a failed pg_dump
+#      can no longer upload an empty archive.
+#   2. `monitor` — an *independent* scheduled job (09:00 UTC) that asserts the
+#      newest backup is younger than BACKUP_MAX_AGE_HOURS. If the backup job
+#      stops running, the backup stops being fresh, and this job fails — the
+#      absence of a backup becomes an alert rather than something nobody sees.
+#   3. `notify`  — runs only when either job failed and opens (or comments on)
+#      a tracking issue, so a failure is visible outside the Actions tab.
+#
+# Retention policy: daily copies are kept for BACKUP_RETENTION_DAYS (30);
+# Sunday copies are additionally kept for BACKUP_WEEKLY_RETENTION_DAYS (90).
+# See docs/DISASTER_RECOVERY.md → "Backup monitoring & retention".
+
 on:
   schedule:
-    - cron: "0 3 * * *"  # Daily at 3 AM UTC
-  workflow_dispatch:      # Manual trigger
+    - cron: "0 3 * * *" # nightly backup
+    - cron: "0 9 * * *" # independent freshness monitor
+  workflow_dispatch:
 
 env:
   BACKUP_BUCKET: ophirpay-backups
   BACKUP_RETENTION_DAYS: 30
+  BACKUP_WEEKLY_RETENTION_DAYS: 90
+  # RPO is 24h (docs/DISASTER_RECOVERY.md); allow a 2h grace for upload time
+  # and clock skew before declaring the backup stale.
+  BACKUP_MAX_AGE_HOURS: 26
+
+permissions:
+  contents: read
 
 jobs:
   backup:
     name: Backup Postgres
+    # Run for the 03:00 schedule, or for an explicit workflow_dispatch.
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       DB_HOST: ${{ secrets.DB_HOST }}
       DB_USER: ${{ secrets.DB_USER }}
@@ -60,7 +90,7 @@ jobs:
           : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY secret not set}"
           : "${AWS_REGION:?AWS_REGION secret not set}"
 
-      - name: Upload to S3
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -69,23 +99,182 @@ jobs:
 
       - name: Push to S3
         run: |
+          set -euo pipefail
           : "${BACKUP_FILE:?Create backup step did not run}"
           aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/${BACKUP_FILE}" \
             --storage-class STANDARD_IA
 
-      - name: Cleanup old backups
+      - name: Assert the backup landed and is fresh
         run: |
-          CUTOFF=$(date -d "-${BACKUP_RETENTION_DAYS} days" -u +"%Y-%m-%d")
+          set -euo pipefail
+          : "${BACKUP_FILE:?Create backup step did not run}"
+          aws s3 ls "s3://${BACKUP_BUCKET}/${BACKUP_FILE}" > /dev/null \
+            || { echo "::error::uploaded backup ${BACKUP_FILE} is not readable in S3"; exit 1; }
+          echo "✓ ${BACKUP_FILE} present in s3://${BACKUP_BUCKET}/"
+
+      - name: Apply retention policy
+        run: |
+          set -euo pipefail
+          NOW=$(date -u +%s)
+          DAILY_CUTOFF=$(( NOW - BACKUP_RETENTION_DAYS * 86400 ))
+          WEEKLY_CUTOFF=$(( NOW - BACKUP_WEEKLY_RETENTION_DAYS * 86400 ))
+
           aws s3 ls "s3://${BACKUP_BUCKET}/" | while read -r line; do
             FILE_DATE=$(echo "$line" | awk '{print $1}')
             FILE_NAME=$(echo "$line" | awk '{print $4}')
-            if [[ "$FILE_DATE" < "$CUTOFF" ]] && [[ -n "$FILE_NAME" ]]; then
-              echo "Removing expired backup: $FILE_NAME"
+            [[ -n "$FILE_NAME" ]] || continue
+
+            FILE_EPOCH=$(date -u -d "${FILE_DATE}" +%s 2>/dev/null || echo "")
+            [[ -n "$FILE_EPOCH" ]] || continue
+
+            # 1 = Monday … 7 = Sunday.
+            DOW=$(date -u -d "${FILE_DATE}" +%u 2>/dev/null || echo "1")
+
+            REMOVE=false
+            if [[ "$FILE_EPOCH" -lt "$DAILY_CUTOFF" ]]; then
+              if [[ "$DOW" == "7" ]]; then
+                # Weekly copy: keep until the weekly cutoff.
+                [[ "$FILE_EPOCH" -lt "$WEEKLY_CUTOFF" ]] && REMOVE=true
+              else
+                REMOVE=true
+              fi
+            fi
+
+            if [[ "$REMOVE" == "true" ]]; then
+              echo "Removing expired backup: ${FILE_NAME}"
               aws s3 rm "s3://${BACKUP_BUCKET}/${FILE_NAME}"
             fi
           done
 
-      - name: Notify on failure
-        if: failure()
+  monitor:
+    name: Backup freshness monitor
+    # Run for the 09:00 schedule, or for an explicit workflow_dispatch.
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+    steps:
+      - name: Validate AWS credentials
         run: |
-          echo "::error::Database backup failed! Check the logs."
+          : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID secret not set — add it to GitHub Actions secrets}"
+          : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY secret not set}"
+          : "${AWS_REGION:?AWS_REGION secret not set}"
+
+      - name: Assert the newest backup is fresh
+        run: |
+          set -euo pipefail
+
+          LATEST_LINE=$(aws s3 ls "s3://${BACKUP_BUCKET}/" \
+            | grep '\.sql\.gz$' \
+            | sort -k1,2 \
+            | tail -1)
+
+          if [[ -z "${LATEST_LINE}" ]]; then
+            echo "::error::No backups found in s3://${BACKUP_BUCKET}/ — the nightly backup has never run or the bucket is empty"
+            exit 1
+          fi
+
+          LATEST_DATE=$(echo "${LATEST_LINE}" | awk '{print $1}')
+          LATEST_TIME=$(echo "${LATEST_LINE}" | awk '{print $2}')
+          LATEST_NAME=$(echo "${LATEST_LINE}" | awk '{print $4}')
+
+          LATEST_EPOCH=$(date -u -d "${LATEST_DATE} ${LATEST_TIME}" +%s)
+          NOW_EPOCH=$(date -u +%s)
+          AGE_HOURS=$(( (NOW_EPOCH - LATEST_EPOCH) / 3600 ))
+
+          echo "Newest backup: ${LATEST_NAME} (${LATEST_DATE} ${LATEST_TIME} UTC, ~${AGE_HOURS}h old)"
+          echo "Policy: must be < ${BACKUP_MAX_AGE_HOURS}h old (24h RPO + 2h grace)"
+
+          if [[ "${AGE_HOURS}" -gt "${BACKUP_MAX_AGE_HOURS}" ]]; then
+            echo "::error::Newest backup ${LATEST_NAME} is ~${AGE_HOURS}h old, exceeding the ${BACKUP_MAX_AGE_HOURS}h freshness policy. The nightly backup may have stopped running."
+            exit 1
+          fi
+
+          echo "✓ Backup freshness assertion passed"
+
+  notify:
+    name: Notify maintainers of backup failure
+    needs: [backup, monitor]
+    # `if: always()` is required because a skipped dependency would otherwise
+    # skip this job too (only one of backup/monitor runs on a given schedule).
+    if: always() && (needs.backup.result == 'failure' || needs.monitor.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Build the failure summary
+        id: summary
+        env:
+          BACKUP_RESULT: ${{ needs.backup.result }}
+          MONITOR_RESULT: ${{ needs.monitor.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          RUN_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          {
+            echo "body<<EOF"
+            echo "The **Database Backup** workflow reported a failure."
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Run started | ${RUN_DATE} |"
+            echo "| \`backup\` job | ${BACKUP_RESULT} |"
+            echo "| \`monitor\` job (freshness) | ${MONITOR_RESULT} |"
+            echo ""
+            echo "Run log: ${RUN_URL}"
+            echo ""
+            echo "A \`monitor\` failure usually means the newest S3 backup is older than"
+            echo "\`BACKUP_MAX_AGE_HOURS\` — i.e. the nightly backup stopped running."
+            echo "See [\`docs/DISASTER_RECOVERY.md\`](../blob/main/docs/DISASTER_RECOVERY.md) → \"Backup monitoring & retention\"."
+            echo ""
+            echo "_This comment is posted automatically; close the issue once the backup is healthy again._"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the tracking issue
+        uses: actions/github-script@v7
+        env:
+          ISSUE_TITLE: "🚨 Database backup workflow failed"
+          ISSUE_BODY: ${{ steps.summary.outputs.body }}
+        with:
+          script: |
+            const title = process.env.ISSUE_TITLE;
+            const body = process.env.ISSUE_BODY;
+            const { owner, repo } = context.repo;
+
+            const existing = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: "open",
+              per_page: 100,
+            });
+            const found = existing.data.find(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
+
+            if (found) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: found.number,
+                body,
+              });
+              core.info(`Commented on existing issue #${found.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+              });
+              core.info(`Opened tracking issue #${created.data.number}`);
+            }
+
+      - name: Fail loudly
+        run: |
+          echo "::error::Database backup workflow failed — a tracking issue was opened or updated."
+          exit 1

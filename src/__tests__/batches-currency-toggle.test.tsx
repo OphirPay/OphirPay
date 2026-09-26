@@ -32,6 +32,13 @@ const mockBatch = {
   completedCount: 2,
   failedCount: 0,
   pendingCount: 0,
+  progress: {
+    percentComplete: 100,
+    pending: 0,
+    sent: 2,
+    failed: 0,
+    total: 2,
+  },
   items: [
     {
       id: "item_1",

@@ -16,7 +16,12 @@ import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery, apiFetch } from "@/hooks/useApiQuery";
 import { isOnChainId } from "@/lib/type-guards";
-import { requestRefund, approveRefund, processRefund } from "@/lib/contract-advanced";
+import {
+  requestRefund,
+  approveRefund,
+  processRefund,
+  rejectRefund,
+} from "@/lib/contract-advanced";
 import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
 import { CurrencyAmount } from "@/components/ui/CurrencyAmount";
 import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
@@ -173,6 +178,24 @@ export default function RefundsPage() {
         queryClient.invalidateQueries({ queryKey: ["refunds"] });
       } else {
         toast.error(result.error || "Approval failed");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+  };
+
+  const handleReject = async (refund: Refund) => {
+    if (!wallet.publicKey) { toast.error("Connect your wallet first"); return; }
+    const onChainId = requireOnChainRefund(refund);
+    if (onChainId === null) return;
+    try {
+      const result = await rejectRefund(wallet.publicKey, onChainId);
+      if (result.success) {
+        await syncRefundStatus(refund.id, "REJECTED");
+        toast.success("Refund rejected on-chain");
+        queryClient.invalidateQueries({ queryKey: ["refunds"] });
+      } else {
+        toast.error(result.error || "Rejection failed");
       }
     } catch {
       toast.error("Network error");
@@ -345,15 +368,23 @@ export default function RefundsPage() {
                       />
                     </span>
                     <span>Requested: {new Date(r.requestedAt).toLocaleDateString()}</span>
+                    {isOnChainId(r.onChainId) && (
+                      <span>On-chain refund #{r.onChainId}</span>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   {isOnChainId(r.onChainId) ? (
                     <>
                       {statusKey === "REQUESTED" && (
-                        <Button size="sm" variant="primary" onClick={() => handleApprove(r)}>
-                          Approve
-                        </Button>
+                        <>
+                          <Button size="sm" variant="primary" onClick={() => handleApprove(r)}>
+                            Approve
+                          </Button>
+                          <Button size="sm" variant="danger" onClick={() => handleReject(r)}>
+                            Reject
+                          </Button>
+                        </>
                       )}
                       {statusKey === "APPROVED" && (
                         <Button size="sm" variant="primary" onClick={() => handleProcess(r)}>

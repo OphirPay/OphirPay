@@ -45,6 +45,13 @@ export default function BatchDetailPage() {
   };
 
   const totalBatchAmount = batch?.items?.reduce((sum, item) => sum + item.amount, 0) ?? 0;
+  const progress = batch?.progress ?? {
+    percentComplete: 0,
+    pending: 0,
+    sent: 0,
+    failed: 0,
+    total: 0,
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -102,7 +109,7 @@ export default function BatchDetailPage() {
                 price={xlmPrice}
                 isUnavailable={isPriceUnavailable}
               />
-              {batch.progress.failed > 0 && (
+              {progress.failed > 0 && (
                 <button
                   onClick={handleRetry}
                   disabled={retryMutation.isPending}
@@ -123,7 +130,7 @@ export default function BatchDetailPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
                     </svg>
                   )}
-                  Retry Failed ({batch.progress.failed})
+                  Retry Failed ({progress.failed})
                 </button>
               )}
               <span
@@ -142,7 +149,7 @@ export default function BatchDetailPage() {
                 Progress
               </h2>
               <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
-                {batch.progress.percentComplete}%
+                {progress.percentComplete}%
               </span>
             </div>
 
@@ -151,10 +158,10 @@ export default function BatchDetailPage() {
               <div
                 className="h-full rounded-full transition-all duration-500 ease-out"
                 style={{
-                  width: `${batch.progress.percentComplete}%`,
+                  width: `${progress.percentComplete}%`,
                   backgroundColor:
-                    batch.progress.failed > 0
-                      ? batch.progress.percentComplete === 100
+                    progress.failed > 0
+                      ? progress.percentComplete === 100
                         ? "#ef4444"
                         : "#f59e0b"
                       : "#10b981",
@@ -167,23 +174,23 @@ export default function BatchDetailPage() {
               <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-blue-500" />
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {batch.progress.pending} pending
+                  {progress.pending} pending
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-green-500" />
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {batch.progress.sent} sent
+                  {progress.sent} sent
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-red-500" />
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {batch.progress.failed} failed
+                  {progress.failed} failed
                 </span>
               </div>
               <span className="text-xs text-gray-400 dark:text-gray-500">
-                {batch.progress.total} total
+                {progress.total} total
               </span>
               <div className="flex items-center gap-1.5 ml-auto text-xs text-gray-500 dark:text-gray-400">
                 <span>Total:</span>

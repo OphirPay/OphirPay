@@ -16,28 +16,28 @@ import {
 } from "@/lib/streams";
 
 describe("Payment Stream Linear Vesting Contract Parity", () => {
-  const TOTAL_AMOUNT = 1_000_000_000n; // 100 XLM (in stroops)
+  const TOTAL_AMOUNT = BigInt(1_000_000_000); // 100 XLM (in stroops)
   const START_TIME = 1_000_000;
   const DURATION = 10_000; // 10,000 seconds
   const END_TIME = START_TIME + DURATION;
 
   describe("computeVested (mirrors Rust compute_vested)", () => {
     it("returns 0 before the stream starts", () => {
-      expect(computeVested(TOTAL_AMOUNT, START_TIME, END_TIME, START_TIME - 100)).toBe(0n);
+      expect(computeVested(TOTAL_AMOUNT, START_TIME, END_TIME, START_TIME - 100)).toBe(BigInt(0));
     });
 
     it("returns 0 at the exact start timestamp", () => {
-      expect(computeVested(TOTAL_AMOUNT, START_TIME, END_TIME, START_TIME)).toBe(0n);
+      expect(computeVested(TOTAL_AMOUNT, START_TIME, END_TIME, START_TIME)).toBe(BigInt(0));
     });
 
     it("returns exactly 50% at the halfway mark", () => {
       const midpoint = START_TIME + DURATION / 2;
-      expect(computeVested(TOTAL_AMOUNT, START_TIME, END_TIME, midpoint)).toBe(500_000_000n);
+      expect(computeVested(TOTAL_AMOUNT, START_TIME, END_TIME, midpoint)).toBe(BigInt(500_000_000));
     });
 
     it("returns exactly 25% at one-quarter elapsed", () => {
       const quarter = START_TIME + DURATION / 4;
-      expect(computeVested(TOTAL_AMOUNT, START_TIME, END_TIME, quarter)).toBe(250_000_000n);
+      expect(computeVested(TOTAL_AMOUNT, START_TIME, END_TIME, quarter)).toBe(BigInt(250_000_000));
     });
 
     it("returns full total_amount at the exact end time", () => {
@@ -53,56 +53,56 @@ describe("Payment Stream Linear Vesting Contract Parity", () => {
     });
 
     it("handles huge amounts without integer overflow", () => {
-      const hugeAmount = 10_000_000_000_000_000_000n; // 10^19 stroops (1 trillion XLM)
+      const hugeAmount = BigInt("10000000000000000000"); // 10^19 stroops (1 trillion XLM)
       const halfway = START_TIME + DURATION / 2;
-      expect(computeVested(hugeAmount, START_TIME, END_TIME, halfway)).toBe(5_000_000_000_000_000_000n);
+      expect(computeVested(hugeAmount, START_TIME, END_TIME, halfway)).toBe(BigInt("5000000000000000000"));
     });
   });
 
   describe("computeClaimable (mirrors Rust claim_stream check)", () => {
     it("returns full vested amount when no claims have occurred", () => {
       const halfway = START_TIME + DURATION / 2;
-      const claimable = computeClaimable(TOTAL_AMOUNT, 0n, START_TIME, END_TIME, halfway);
-      expect(claimable).toBe(500_000_000n);
+      const claimable = computeClaimable(TOTAL_AMOUNT, BigInt(0), START_TIME, END_TIME, halfway);
+      expect(claimable).toBe(BigInt(500_000_000));
     });
 
     it("subtracts previously claimed amounts from vested", () => {
-      const halfway = START_TIME + DURATION / 2; // 500_000_000n vested
-      const alreadyClaimed = 200_000_000n;
+      const halfway = START_TIME + DURATION / 2;
+      const alreadyClaimed = BigInt(200_000_000);
       const claimable = computeClaimable(TOTAL_AMOUNT, alreadyClaimed, START_TIME, END_TIME, halfway);
-      expect(claimable).toBe(300_000_000n);
+      expect(claimable).toBe(BigInt(300_000_000));
     });
 
-    it("returns 0n when recipient has already claimed everything currently vested", () => {
+    it("returns 0 when recipient has already claimed everything currently vested", () => {
       const halfway = START_TIME + DURATION / 2;
-      const alreadyClaimed = 500_000_000n;
+      const alreadyClaimed = BigInt(500_000_000);
       const claimable = computeClaimable(TOTAL_AMOUNT, alreadyClaimed, START_TIME, END_TIME, halfway);
-      expect(claimable).toBe(0n);
+      expect(claimable).toBe(BigInt(0));
     });
 
-    it("returns 0n if the stream was cancelled (matching StreamAlreadyCancelled error)", () => {
+    it("returns 0 if the stream was cancelled (matching StreamAlreadyCancelled error)", () => {
       const halfway = START_TIME + DURATION / 2;
-      const claimable = computeClaimable(TOTAL_AMOUNT, 0n, START_TIME, END_TIME, halfway, true);
-      expect(claimable).toBe(0n);
+      const claimable = computeClaimable(TOTAL_AMOUNT, BigInt(0), START_TIME, END_TIME, halfway, true);
+      expect(claimable).toBe(BigInt(0));
     });
 
     it("returns remaining unclaimed tokens once stream is finished", () => {
-      const alreadyClaimed = 400_000_000n;
+      const alreadyClaimed = BigInt(400_000_000);
       const claimable = computeClaimable(TOTAL_AMOUNT, alreadyClaimed, START_TIME, END_TIME, END_TIME + 100);
-      expect(claimable).toBe(600_000_000n);
+      expect(claimable).toBe(BigInt(600_000_000));
     });
   });
 
   describe("computeRemaining and computeUnvested (mirrors cancel_stream refund)", () => {
     it("calculates remaining tokens correctly", () => {
-      expect(computeRemaining(TOTAL_AMOUNT, 300_000_000n)).toBe(700_000_000n);
-      expect(computeRemaining(TOTAL_AMOUNT, TOTAL_AMOUNT)).toBe(0n);
+      expect(computeRemaining(TOTAL_AMOUNT, BigInt(300_000_000))).toBe(BigInt(700_000_000));
+      expect(computeRemaining(TOTAL_AMOUNT, TOTAL_AMOUNT)).toBe(BigInt(0));
     });
 
     it("calculates unvested tokens refunded to creator upon cancellation", () => {
-      const quarter = START_TIME + DURATION / 4; // 250_000_000n vested
+      const quarter = START_TIME + DURATION / 4;
       const unvested = computeUnvested(TOTAL_AMOUNT, START_TIME, END_TIME, quarter);
-      expect(unvested).toBe(750_000_000n);
+      expect(unvested).toBe(BigInt(750_000_000));
     });
   });
 
@@ -224,9 +224,9 @@ describe("Payment Stream Linear Vesting Contract Parity", () => {
     });
 
     it("converts decimal XLM to stroops and back accurately", () => {
-      expect(decimalToStroops(50.5)).toBe(505_000_000n);
-      expect(stroopsToDecimal(505_000_000n)).toBe(50.5);
-      expect(formatStroopAmount(505_000_000n)).toBe("50.50");
+      expect(decimalToStroops(50.5)).toBe(BigInt(505_000_000));
+      expect(stroopsToDecimal(BigInt(505_000_000))).toBe(50.5);
+      expect(formatStroopAmount(BigInt(505_000_000))).toBe("50.50");
     });
   });
 });

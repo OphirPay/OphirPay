@@ -94,9 +94,8 @@ export function CreateStreamModal({ isOpen, onClose, onSuccess }: CreateStreamMo
         throw new Error(result.error || "On-chain stream creation failed.");
       }
 
-      toast.show(
-        `Payment stream created successfully! ${result.txHash ? `Tx: ${result.txHash.slice(0, 8)}...` : ""}`,
-        "success"
+      toast.success(
+        `Payment stream created successfully! ${result.txHash ? `Tx: ${result.txHash.slice(0, 8)}...` : ""}`
       );
 
       // Reset form
@@ -109,7 +108,7 @@ export function CreateStreamModal({ isOpen, onClose, onSuccess }: CreateStreamMo
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setFormError(msg);
-      toast.show(msg, "error");
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -117,10 +116,10 @@ export function CreateStreamModal({ isOpen, onClose, onSuccess }: CreateStreamMo
 
   return (
     <Modal
-      isOpen={isOpen}
+      open={isOpen}
       onClose={onClose}
       title="Create New Payment Stream"
-      className="max-w-lg"
+      size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {formError && (

@@ -24,7 +24,7 @@ export interface StreamRecord {
 
 export type StreamStatus = "PENDING" | "ACTIVE" | "COMPLETED" | "CANCELLED";
 
-export const STROOPS_PER_XLM = 10_000_000n;
+export const STROOPS_PER_XLM = BigInt(10_000_000);
 
 /**
  * Convert stroop integer (10^-7 XLM) to a human-readable decimal number.
@@ -43,7 +43,7 @@ export function stroopsToDecimal(stroops: bigint | string | number): number {
  */
 export function decimalToStroops(decimal: number | string): bigint {
   const num = typeof decimal === "string" ? parseFloat(decimal) : decimal;
-  if (isNaN(num) || num <= 0) return 0n;
+  if (isNaN(num) || num <= 0) return BigInt(0);
   return BigInt(Math.round(num * 10_000_000));
 }
 
@@ -105,19 +105,19 @@ export function computeVested(
   nowSeconds: number
 ): bigint {
   const total = BigInt(totalAmount);
-  if (total <= 0n) return 0n;
+  if (total <= BigInt(0)) return BigInt(0);
 
   if (nowSeconds >= endTime) {
     return total;
   }
   if (nowSeconds <= startTime) {
-    return 0n;
+    return BigInt(0);
   }
 
   const elapsed = BigInt(nowSeconds - startTime);
   const totalDuration = BigInt(endTime - startTime);
 
-  if (totalDuration === 0n) {
+  if (totalDuration === BigInt(0)) {
     return total;
   }
 
@@ -130,7 +130,7 @@ export function computeVested(
  * Calculate amount currently claimable by recipient.
  * Mirrors `claim_stream` logic:
  *   let claimable = vested - stream.claimed_amount;
- * Note: If stream is cancelled, claimable is 0n because `claim_stream` rejects cancelled streams.
+ * Note: If stream is cancelled, claimable is BigInt(0) because `claim_stream` rejects cancelled streams.
  */
 export function computeClaimable(
   totalAmount: bigint | number | string,
@@ -141,14 +141,14 @@ export function computeClaimable(
   cancelled?: boolean
 ): bigint {
   if (cancelled) {
-    return 0n;
+    return BigInt(0);
   }
 
   const vested = computeVested(totalAmount, startTime, endTime, nowSeconds);
   const claimed = BigInt(claimedAmount);
 
   const claimable = vested - claimed;
-  return claimable > 0n ? claimable : 0n;
+  return claimable > BigInt(0) ? claimable : BigInt(0);
 }
 
 /**
@@ -165,7 +165,7 @@ export function computeUnvested(
   const total = BigInt(totalAmount);
   const vested = computeVested(totalAmount, startTime, endTime, nowSeconds);
   const unvested = total - vested;
-  return unvested > 0n ? unvested : 0n;
+  return unvested > BigInt(0) ? unvested : BigInt(0);
 }
 
 /**
@@ -178,7 +178,7 @@ export function computeRemaining(
   const total = BigInt(totalAmount);
   const claimed = BigInt(claimedAmount);
   const remaining = total - claimed;
-  return remaining > 0n ? remaining : 0n;
+  return remaining > BigInt(0) ? remaining : BigInt(0);
 }
 
 /**
@@ -209,7 +209,7 @@ export function getStreamStatus(
 
   const total = BigInt(stream.totalAmount);
   const claimed = BigInt(stream.claimedAmount);
-  if (total > 0n && claimed >= total) return "COMPLETED";
+  if (total > BigInt(0) && claimed >= total) return "COMPLETED";
 
   if (nowSeconds < stream.startTime) return "PENDING";
   if (nowSeconds >= stream.endTime) {

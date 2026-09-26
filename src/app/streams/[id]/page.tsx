@@ -76,20 +76,20 @@ export default function StreamDetailPage({
         nowSeconds,
         stream.cancelled
       )
-    : 0n;
+    : BigInt(0);
   const vested = stream
     ? computeVested(stream.totalAmount, stream.startTime, stream.endTime, nowSeconds)
-    : 0n;
+    : BigInt(0);
   const unvested = stream
     ? computeUnvested(stream.totalAmount, stream.startTime, stream.endTime, nowSeconds)
-    : 0n;
+    : BigInt(0);
   const remaining = stream
     ? computeRemaining(stream.totalAmount, stream.claimedAmount)
-    : 0n;
+    : BigInt(0);
 
   const handleClaim = async () => {
     if (!wallet.publicKey || !isRecipient || !stream) {
-      toast.show("Only the stream recipient can claim vested funds.", "error");
+      toast.error("Only the stream recipient can claim vested funds.");
       return;
     }
 
@@ -102,17 +102,16 @@ export default function StreamDetailPage({
         throw new Error(res.error || "Claim transaction failed on-chain.");
       }
 
-      toast.show(
+      toast.success(
         `Successfully claimed tokens from Stream #${stream.id}! ${
           res.txHash ? `Tx: ${res.txHash.slice(0, 8)}...` : ""
-        }`,
-        "success"
+        }`
       );
       refetch();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setActionError(msg);
-      toast.show(msg, "error");
+      toast.error(msg);
     } finally {
       setClaiming(false);
     }
@@ -120,7 +119,7 @@ export default function StreamDetailPage({
 
   const handleCancel = async () => {
     if (!wallet.publicKey || !isCreator || !stream) {
-      toast.show("Only the stream creator can cancel this stream.", "error");
+      toast.error("Only the stream creator can cancel this stream.");
       return;
     }
 
@@ -133,15 +132,14 @@ export default function StreamDetailPage({
         throw new Error(res.error || "Stream cancellation failed on-chain.");
       }
 
-      toast.show(
-        `Stream #${stream.id} successfully cancelled. Unvested tokens refunded.`,
-        "success"
+      toast.success(
+        `Stream #${stream.id} successfully cancelled. Unvested tokens refunded.`
       );
       refetch();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setActionError(msg);
-      toast.show(msg, "error");
+      toast.error(msg);
     } finally {
       setCancelling(false);
     }
@@ -271,7 +269,7 @@ export default function StreamDetailPage({
                 variant="primary"
                 onClick={handleClaim}
                 loading={claiming}
-                disabled={claimable <= 0n || stream.cancelled}
+                disabled={claimable <= BigInt(0) || stream.cancelled}
               >
                 Claim {formatStroopAmount(claimable)} XLM
               </Button>
@@ -304,7 +302,7 @@ export default function StreamDetailPage({
             <div className="flex items-center gap-2 font-mono text-gray-900 dark:text-gray-100">
               <span>{stream.creator}</span>
               <CopyButton value={stream.creator} />
-              <ExplorerLink type="account" value={stream.creator} />
+              <ExplorerLink kind="account" value={stream.creator} />
             </div>
           </div>
 
@@ -313,7 +311,7 @@ export default function StreamDetailPage({
             <div className="flex items-center gap-2 font-mono text-gray-900 dark:text-gray-100">
               <span>{stream.recipient}</span>
               <CopyButton value={stream.recipient} />
-              <ExplorerLink type="account" value={stream.recipient} />
+              <ExplorerLink kind="account" value={stream.recipient} />
             </div>
           </div>
 

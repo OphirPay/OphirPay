@@ -51,7 +51,7 @@ export function StreamCard({ stream, currentUserAddress, onUpdated }: StreamCard
 
   const handleClaim = async () => {
     if (!currentUserAddress || !isRecipient) {
-      toast.show("Only the stream recipient can claim vested funds.", "error");
+      toast.error("Only the stream recipient can claim vested funds.");
       return;
     }
 
@@ -64,17 +64,16 @@ export function StreamCard({ stream, currentUserAddress, onUpdated }: StreamCard
         throw new Error(res.error || "Claim invocation failed on-chain.");
       }
 
-      toast.show(
+      toast.success(
         `Successfully claimed tokens from Stream #${stream.id}! ${
           res.txHash ? `Tx: ${res.txHash.slice(0, 8)}...` : ""
-        }`,
-        "success"
+        }`
       );
       onUpdated?.();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(msg);
-      toast.show(msg, "error");
+      toast.error(msg);
     } finally {
       setClaiming(false);
     }
@@ -82,7 +81,7 @@ export function StreamCard({ stream, currentUserAddress, onUpdated }: StreamCard
 
   const handleCancel = async () => {
     if (!currentUserAddress || !isCreator) {
-      toast.show("Only the stream creator can cancel this stream.", "error");
+      toast.error("Only the stream creator can cancel this stream.");
       return;
     }
 
@@ -95,15 +94,14 @@ export function StreamCard({ stream, currentUserAddress, onUpdated }: StreamCard
         throw new Error(res.error || "Stream cancellation failed on-chain.");
       }
 
-      toast.show(
-        `Stream #${stream.id} successfully cancelled. Unvested tokens refunded.`,
-        "success"
+      toast.success(
+        `Stream #${stream.id} successfully cancelled. Unvested tokens refunded.`
       );
       onUpdated?.();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(msg);
-      toast.show(msg, "error");
+      toast.error(msg);
     } finally {
       setCancelling(false);
     }
@@ -192,11 +190,11 @@ export function StreamCard({ stream, currentUserAddress, onUpdated }: StreamCard
             size="sm"
             onClick={handleClaim}
             loading={claiming}
-            disabled={claimable <= 0n || stream.cancelled}
+            disabled={claimable <= BigInt(0) || stream.cancelled}
             title={
               stream.cancelled
                 ? "Stream has been cancelled"
-                : claimable <= 0n
+                : claimable <= BigInt(0)
                 ? "No vested tokens available to claim yet"
                 : `Claim ${formatStroopAmount(claimable)} XLM`
             }

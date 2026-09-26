@@ -53,8 +53,8 @@ export default function StreamsPage() {
   const stats = useMemo(() => {
     let totalStreams = streams.length;
     let activeStreams = 0;
-    let totalLockedStroops = 0n;
-    let myClaimableStroops = 0n;
+    let totalLockedStroops = BigInt(0);
+    let myClaimableStroops = BigInt(0);
     const nowSeconds = Math.floor(Date.now() / 1000);
 
     for (const s of streams) {

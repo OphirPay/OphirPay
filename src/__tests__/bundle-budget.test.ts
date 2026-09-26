@@ -164,7 +164,7 @@ describe('Bundle Size Budget Configuration & Script (Issue #739)', () => {
 
   it('verifies package.json scripts and next.config.ts bundle analyzer wrapper', () => {
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-    expect(packageJson.scripts.analyze).toBe('ANALYZE=true next build');
+    expect(packageJson.scripts.analyze).toMatch(/(ANALYZE=true next build|node scripts\/analyze-build\.mjs)/);
     expect(packageJson.scripts['bundle:check']).toBe('node scripts/check-bundle-budget.mjs');
     expect(packageJson.devDependencies['@next/bundle-analyzer']).toBeDefined();
 

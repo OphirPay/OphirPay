@@ -4,7 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # `integration/staging` is the batch-integration branch every PR must
+    # target while it exists (.github/workflows/enforce-integration-branch.yml).
+    # Without it here, no PR would ever run this workflow in batch mode.
+    branches: [main, integration/staging]
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -18,7 +21,21 @@ concurrency:
 
 jobs:
   # ══════════════════════════════════════════════════════════════
-  # 1. TYPECHECK — TypeScript strict type-checking
+  # 1. LINT — ESLint with zero tolerance (issue #677)
+  #    The `npm run ci` gate runs this exact command; the workflow used to
+  #    skip it, so a PR that added lint errors still merged green.
+  # ══════════════════════════════════════════════════════════════
+  lint:
+    name: "1️⃣ Frontend — Lint (ESLint)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
+      - run: npm run lint -- --max-warnings 0
+
+  # ══════════════════════════════════════════════════════════════
+  # 2. TYPECHECK — TypeScript strict type-checking
   # ══════════════════════════════════════════════════════════════
   typecheck:
     name: "2️⃣ Frontend — TypeCheck (tsc)"
@@ -26,14 +43,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npx tsc --noEmit
 
   # ══════════════════════════════════════════════════════════════
-  # 2. UNIT TESTS — Vitest (800 frontend tests)
+  # 3. UNIT TESTS — Vitest (800 frontend tests)
   # ══════════════════════════════════════════════════════════════
   unit-tests:
     name: "3️⃣ Frontend — Unit Tests (Vitest)"
@@ -41,14 +55,35 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npx vitest run --reporter=verbose
 
   # ══════════════════════════════════════════════════════════════
-  # 3. CONTRACT WASM BUILD — Build both Soroban contracts
+  # 4. NEXT.JS BUILD — Production build verification (issue #677)
+  #    `npx prisma generate` first: Next 16 + Prisma cannot build without a
+  #    generated client (same order as Dockerfile and vercel.json).
+  # ══════════════════════════════════════════════════════════════
+  build:
+    name: "9️⃣ Frontend — Build (Next.js)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
+      - run: npm run build
+      - name: Verify build output
+        run: |
+          test -d .next && echo "✅ .next directory exists"
+          test -f .next/BUILD_ID && echo "✅ BUILD_ID exists"
+
+      - name: JavaScript bundle-size budget
+        # Reads the App Router client-reference manifests emitted by the build
+        # above and fails when a route exceeds its committed budget (#739).
+        # The per-route table is also appended to the job summary.
+        run: node scripts/check-bundle-budget.mjs
+
+  # ══════════════════════════════════════════════════════════════
+  # 5. CONTRACT WASM BUILD — Build both Soroban contracts
   # ══════════════════════════════════════════════════════════════
   contract-wasm:
     name: "5️⃣ Backend — Contracts (WASM + Tests)"
@@ -114,7 +149,7 @@ jobs:
           retention-days: 7
 
   # ══════════════════════════════════════════════════════════════
-  # 5. SECRETS SCAN — Gitleaks on full repo
+  # 7. SECRETS SCAN — Gitleaks on full repo
   # ══════════════════════════════════════════════════════════════
   secrets-scan:
     name: "1️⃣2️⃣ Security — Secrets (Gitleaks)"
@@ -193,4 +228,147 @@ jobs:
           path: .next/analyze/
           retention-days: 14
 
+  # ══════════════════════════════════════════════════════════════
+  # 6. DEPLOY CONFIG — public-config guards (issue #677)
+  #    `npm run ci` ends with this script; the workflow has to run it too or
+  #    the local gate and the merge gate keep disagreeing.
+  # ══════════════════════════════════════════════════════════════
+  deploy-config:
+    name: "1️⃣0️⃣ Deploy — Config Guards"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/validate-deploy-config.sh
+
+  # ══════════════════════════════════════════════════════════════
+  # 8. HELM LINT — chart lint + render assertions (issue #684)
+  #    Proves the autoscaling / pdb / networkPolicy / serviceAccount
+  #    values actually produce objects instead of being inert.
+  # ══════════════════════════════════════════════════════════════
+  helm-lint:
+    name: "1️⃣9️⃣ Infra — Helm (Lint + Render)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Helm (pinned v3.16.3)
+        run: |
+          HELM_VER=3.16.3
+          curl -fsSL "https://get.helm.sh/helm-v${HELM_VER}-linux-amd64.tar.gz" | tar xz
+          sudo mv linux-amd64/helm /usr/local/bin/helm
+      - name: Install kubeconform
+        run: |
+          KUBECONFORM_VER=0.6.7
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VER}/kubeconform-linux-amd64.tar.gz" | tar xz
+          sudo mv kubeconform /usr/local/bin/kubeconform
+      - name: Lint the chart with default values
+        run: helm lint helm/ophirpay --strict
+      - name: Lint the chart with every feature flag enabled
+        run: |
+          helm lint helm/ophirpay --strict \
+            --set autoscaling.enabled=true \
+            --set pdb.enabled=true \
+            --set networkPolicy.enabled=true \
+            --set serviceAccount.create=true
+      - name: Render and assert the flag-gated objects
+        run: |
+          set -euo pipefail
+
+          # Default values — the chart must render cleanly with nothing set.
+          helm template ophirpay helm/ophirpay > /tmp/default.yaml
+
+          helm template ophirpay helm/ophirpay \
+            --set autoscaling.enabled=true \
+            --set autoscaling.minReplicas=3 \
+            --set autoscaling.maxReplicas=9 \
+            --set pdb.enabled=true \
+            --set networkPolicy.enabled=true \
+            --set serviceAccount.create=true \
+            > /tmp/enabled.yaml
+
+          helm template ophirpay helm/ophirpay \
+            --set autoscaling.enabled=false \
+            --set pdb.enabled=false \
+            --set networkPolicy.enabled=false \
+            --set serviceAccount.create=false \
+            > /tmp/disabled.yaml
+
+          fail=0
+          expect() {
+            if grep -q -- "$1" "$2"; then
+              echo "✅ $2 contains '$1'"
+            else
+              echo "::error::$2 is missing '$1'"
+              fail=1
+            fi
+          }
+          reject() {
+            if grep -q -- "$1" "$2"; then
+              echo "::error::$2 unexpectedly contains '$1'"
+              fail=1
+            else
+              echo "✅ $2 has no '$1'"
+            fi
+          }
+
+          expect "apiVersion: autoscaling/v2" /tmp/enabled.yaml
+          expect "kind: HorizontalPodAutoscaler" /tmp/enabled.yaml
+          expect "minReplicas: 3" /tmp/enabled.yaml
+          expect "maxReplicas: 9" /tmp/enabled.yaml
+          expect "kind: PodDisruptionBudget" /tmp/enabled.yaml
+          expect "kind: NetworkPolicy" /tmp/enabled.yaml
+          expect "kind: ServiceAccount" /tmp/enabled.yaml
+          expect "policyTypes:" /tmp/enabled.yaml
+
+          reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
+          reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
+          reject "kind: NetworkPolicy" /tmp/disabled.yaml
+          reject "kind: ServiceAccount" /tmp/disabled.yaml
+
+          exit "$fail"
+
+      - name: Validate with kubeconform
+        run: |
+          kubeconform -strict -summary /tmp/default.yaml
+          kubeconform -strict -summary /tmp/enabled.yaml
+          kubeconform -strict -summary /tmp/disabled.yaml
+
+      - name: Assert rendered config keys against .env.example
+        # AC of #730: a broken template or an unknown config key must fail the
+        # job. Every key the chart renders into the ConfigMap/Secret has to be
+        # a variable the app documents in .env.example, and no documented
+        # variable may be missing, so config drift cannot recur silently.
+        run: |
+          set -euo pipefail
+
+          # Documented variables (commented-out optional ones are excluded).
+          grep -v '^#' .env.example | grep -v '^$' | cut -d= -f1 | sort -u > /tmp/env.keys
+
+          # Keys rendered by the chart (ConfigMap `data` + Secret `stringData`).
+          helm template ophirpay helm/ophirpay --show-only templates/config.yaml \
+            | grep -E '^  [A-Z][A-Z0-9_]*:' \
+            | awk -F':' '{print $1}' \
+            | sed 's/^[[:space:]]*//' \
+            | sort -u > /tmp/chart.keys
+
+          fail=0
+          while read -r key; do
+            grep -Fxq "$key" /tmp/chart.keys || {
+              echo "::error::.env.example variable '$key' is not rendered by the chart"
+              fail=1
+            }
+          done < /tmp/env.keys
+
+          while read -r key; do
+            grep -Fxq "$key" /tmp/env.keys || {
+              echo "::error::chart renders '$key', which is not documented in .env.example"
+              fail=1
+            }
+          done < /tmp/chart.keys
+
+          if [ "$fail" -eq 0 ]; then
+            echo "✅ Rendered config keys match .env.example ($(wc -l < /tmp/chart.keys | tr -d ' ') keys)"
+          fi
+          exit "$fail"
 

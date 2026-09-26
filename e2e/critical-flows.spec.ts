@@ -5,7 +5,8 @@ import { test, expect } from "@playwright/test";
 const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 
 // Security model under test:
-//   • Public endpoints (/api/health, /api/metrics) remain open.
+//   • /api/health remains public; /api/metrics requires a bearer token
+//     (METRICS_TOKEN) or an admin API key → 401 without one.
 //   • Every data route is auth-gated → 401 without a session/API key.
 //   • Mutating routes validate the CSRF token before auth → 403 without one.
 //   • Pages render client-side regardless of wallet connection.
@@ -317,9 +318,23 @@ test.describe("Public endpoints", () => {
     }
   });
 
-  test("metrics endpoint bypasses rate limiting", async ({ request }) => {
+  test("metrics endpoint requires authentication", async ({ request }) => {
+    // Issue #699: the exposition leaks process/endpoint internals, so a
+    // credential is mandatory. Unauthenticated scrapes are refused.
     const res = await request.get(`${BASE_URL}/api/metrics`);
+    expect(res.status()).toBe(401);
+    expect(await res.text()).not.toContain("ophirpay_process_resident_set_bytes");
+  });
+
+  test("metrics endpoint returns the exposition with the scrape token", async ({ request }) => {
+    const token = process.env.METRICS_TOKEN;
+    test.skip(!token, "METRICS_TOKEN is not configured for this deployment");
+    const res = await request.get(`${BASE_URL}/api/metrics`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toContain("text/plain");
+    expect(await res.text()).toContain("ophirpay_http_requests_total");
   });
 
   test("OPTIONS preflight returns CORS headers", async ({ request }) => {
@@ -343,9 +358,11 @@ test.describe("Response Content Types", () => {
     expect(res.headers()["content-type"]).toContain("application/json");
   });
 
-  test("metrics returns Prometheus text format", async ({ request }) => {
+  test("metrics refuses the exposition without a credential", async ({ request }) => {
     const res = await request.get(`${BASE_URL}/api/metrics`);
-    expect(res.headers()["content-type"]).toContain("text/plain");
+    expect(res.status()).toBe(401);
+    // The 401 is a JSON error envelope, never the Prometheus text body.
+    expect(res.headers()["content-type"]).toContain("application/json");
   });
 });
 

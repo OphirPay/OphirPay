@@ -202,14 +202,17 @@ export function computeRouteSizes(nextDir) {
  * Evaluates route sizes against committed budgets.
  */
 export function evaluateBudgets(routeSizes, budgetConfig) {
+  const defaultBudget = budgetConfig.defaultBudgetKb ?? budgetConfig.defaultRouteBudgetKb ?? 450;
   const budgets = budgetConfig.budgets || {};
-  const defaultBudget = budgetConfig.defaultRouteBudgetKb ?? 450;
+  const routes = budgetConfig.routes || {};
   const results = [];
   let hasFailures = false;
 
   for (const item of routeSizes) {
     const routeConfig = budgets[item.route];
-    const budgetKb = routeConfig?.budgetKb ?? defaultBudget;
+    const budgetKb = typeof routeConfig === 'number'
+      ? routeConfig
+      : routeConfig?.budgetKb ?? routes[item.route] ?? defaultBudget;
     const description = routeConfig?.description ?? '';
     const actualKb = item.totalGzipKb;
     const deltaKb = Number((actualKb - budgetKb).toFixed(1));
@@ -290,7 +293,7 @@ export function generateMarkdownSummary(evaluation) {
  */
 export function main() {
   const args = process.argv.slice(2);
-  const nextDir = path.resolve(process.cwd(), args[0] || '.next');
+  const nextDir = path.resolve(process.cwd(), args[0] || process.env.NEXT_BUILD_DIR || '.next');
   const budgetPath = path.resolve(process.cwd(), args[1] || 'bundle-budget.json');
 
   if (!fs.existsSync(budgetPath)) {

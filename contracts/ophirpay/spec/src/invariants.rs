@@ -1,15 +1,20 @@
-//! OphirPay Formal Verification — Kani Proof Harnesses
+//! OphirPay Modeled Invariants — Kani Proof Harnesses (Experimental / Manual Only)
+//!
+//! > ⚠️ **Honest status:** These Kani harnesses verify **hand-written models**
+//! > that share no code with the deployed `OphirPayContract`. They are
+//! > **experimental / manual only**, are **not** run in CI, and do not
+//! > constitute formal verification of the actual deployed smart contract.
 //!
 //! This file contains Kani-compatible proof harnesses for the 8 critical
 //! invariants identified in the OphirPay smart contract. Each harness uses
 //! `kani::any()` to symbolically explore all possible inputs and `kani::assume()`
 //! to constrain inputs to valid ranges.
 //!
-//! # Running
+//! # Running (Manual only)
 //!
 //! ```bash
 //! cargo kani --harness <harness_name>
-//! cargo kani --harness all              # verify all invariants
+//! cargo kani --harness all              # verify all modeled invariants
 //! cargo kani --harness locked_balance   # verify just one
 //! ```
 //!
@@ -21,7 +26,7 @@
 //! cargo kani setup
 //! ```
 //!
-//! # Invariants Verified
+//! # Modeled Invariants (Not Proof of Deployed Contract)
 //!
 //! | # | Invariant | Harness |
 //! |---|-----------|---------|
@@ -691,8 +696,13 @@ fn composite_locked_balance_and_deposit() {
 // ═══════════════════════════════════════════════════════════════
 // BONUS: No Overflow in compute_vested
 //
-// The linear vesting calculation uses checked_mul to prevent
-// overflow. On overflow, returns 0 (safe default).
+// The contract's linear vesting calculation is evaluated at 256-bit
+// precision (checked_mul fast path plus a quotient/remainder fallback),
+// so it never returns 0 for a partially vested stream and never exceeds
+// the stream total.
+//
+// The model below mirrors only the boundary branches — the widened
+// multiply path is not machine-checked here (see docs/AUDIT.md).
 // ═══════════════════════════════════════════════════════════════
 
 /// Prove that at boundary points, vesting behaves correctly.

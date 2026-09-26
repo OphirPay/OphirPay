@@ -1,6 +1,7 @@
 # OphirPay — Prometheus Alert Rules
 # These rules monitor the OphirPay API server for conditions that require
 # immediate operator attention. Designed for Alertmanager → PagerDuty/Slack.
+# For scrape configs, Grafana import, and first-response runbooks, see docs/OBSERVABILITY.md.
 
 groups:
   - name: ophirpay_critical

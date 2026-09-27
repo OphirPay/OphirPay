@@ -11,7 +11,7 @@
 
 import { ERROR_CODES, getErrorDefinition, type ErrorDefinition } from "@/lib/error-codes";
 
-const HORIZON_ERROR_MESSAGES: Record<string, string> = {
+export const HORIZON_ERROR_MESSAGES: Record<string, string> = {
   op_underfunded: "Insufficient funds to complete this transaction. Please top up your account.",
   op_low_reserve: "Account would fall below the minimum reserve. Keep at least 1 XLM in your account.",
   op_no_trust: "Trustline not established for this asset. You need to trust the asset issuer first.",

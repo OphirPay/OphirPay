@@ -183,7 +183,9 @@ Never hand-roll an error body.
   (`"An unexpected error occurred."`) while staying detailed in development
 
 Error codes are centralized in **`src/lib/error-codes.ts`** (`ERROR_CODES`) —
-reuse them instead of inventing new strings.
+reuse them instead of inventing new strings. For the full code-to-HTTP-status
+table (every code's meaning, trigger condition, and whether it's retryable
+or terminal), see [`docs/ERROR_CODES.md`](ERROR_CODES.md).
 
 ---
 

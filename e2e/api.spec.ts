@@ -5,7 +5,8 @@ import { test, expect } from "@playwright/test";
 const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 
 // Security model under test:
-//   • Public endpoints: /api/health, /api/metrics, /api/events
+//   • Public endpoints: /api/health, /api/events. /api/metrics requires a
+//     bearer token (METRICS_TOKEN) or an admin API key → 401 without one.
 //   • GET data routes are auth-gated → 401 without a session/API key
 //     (wallet session cookie, Authorization: Bearer, or X-API-Key).
 //   • Mutating routes validate the CSRF token before auth → 403 without one.
@@ -34,8 +35,24 @@ test.describe("GET /api/health", () => {
 // ── Metrics ────────────────────────────────────────────────────
 
 test.describe("GET /api/metrics", () => {
-  test("returns Prometheus text format", async ({ request }) => {
+  test("requires authentication (#699)", async ({ request }) => {
     const res = await request.get(`${BASE_URL}/api/metrics`);
+    expect(res.status()).toBe(401);
+
+    // No exposition leaks in the refusal — not even the counter names.
+    const text = await res.text();
+    expect(text).not.toContain("ophirpay_http_requests_total");
+    expect(text).not.toContain("ophirpay_payments_created_total");
+    expect(text).not.toContain("ophirpay_info");
+  });
+
+  test("returns Prometheus text format with the scrape token", async ({ request }) => {
+    const token = process.env.METRICS_TOKEN;
+    test.skip(!token, "METRICS_TOKEN is not configured for this deployment");
+
+    const res = await request.get(`${BASE_URL}/api/metrics`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     expect(res.status()).toBe(200);
 
     const text = await res.text();

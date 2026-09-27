@@ -2,6 +2,22 @@
 
 All notable changes to OphirPay will be documented in this file.
 
+## [Unreleased] — 2026-09-25
+
+### Added
+- **Scoped pause controls (#826)**: the circuit breaker is no longer all-or-nothing. `PauseScope` exposes eight feature domains (payments, escrows, streams, recurring, refunds, governance, hooks, batches) through `set_scope_paused` / `is_scope_paused` / `get_paused_scopes`; the global `emergency_pause_all` still overrides every scope, unknown scope ids return `InvalidPauseScope` (308), and `/api/pause-state` plus the pause-controls page surface the per-scope state with an explicit confirmation step.
+
+### Security
+- **Distributed rate limiting became real (#703)**: `REDIS_URL` previously had no effect on the global limiter because `src/proxy.ts` constructed its own in-memory store on the Edge runtime. The rate-limit store now selects its transport from the URL scheme — `https://` (Upstash-compatible REST) is shared by every replica on both runtimes, while `redis://` uses ioredis on Node — and the README, `.env.example` and `docker-compose.yml` describe the enforcement point and its per-instance limitation. Two replicas now share one bucket when a REST Redis endpoint is configured.
+- **CSRF registry drift guard (#704)**: `src/__tests__/csrf-coverage.test.ts` now globs every `src/app/api/**/route.ts`, extracts each exported mutating handler by method, and fails with the exact registry entry to add when one is neither registered nor allowlisted. The scheduler endpoints are allowlisted with reasons, and `docs/CSRF-AUDIT.md` was regenerated to match the registry (37 protected + 3 allowlisted).
+
+### Changed
+- **Coverage now measures the security surface (#700)**: `src/lib/api-auth.ts`, `rate-limit.ts`, `webhook-dispatcher.ts` and `webhook-deliver.ts` are no longer excluded from the coverage report; new suites cover the API-key lookup, the Redis REST store and webhook dispatch. The README coverage figure was regenerated (68.9% overall).
+- **JavaScript bundle-size budget (#739)**: added `bundle-budget.json` with committed per-route first-load budgets, `npm run bundle:check` (runs in CI after every production build and appends a per-route table to the job summary) and an opt-in `npm run analyze` treemap. `HOOK_PAGE_LIMIT` moved to `src/lib/hooks-pagination.ts` so the hooks route module exports only HTTP handlers (required by the webpack build the analyzer uses).
+
+### Added
+- **Postgres full-text search for payments and audit entries (#823)**: `prisma/migrations/20260925120000_add_full_text_search` adds a stored generated `searchVector` tsvector column plus a GIN index to `Payment` (transactionHash `A`, memo `B`, description `C`) and `AuditLog` (actor `A`, action `B`, details `C`). `src/lib/full-text-search.ts` builds the sanitised, bound `to_tsquery` match and `ts_rank` relevance expressions and keeps the #157 substring fallback for the SQLite dev path; `buildPaymentWhere` now delegates to it so the two paths cannot drift. Documented in `docs/DATABASE_SCHEMA_MIGRATIONS.md` §5.
+
 ## [Unreleased] — 2026-08-26
 
 ### Added

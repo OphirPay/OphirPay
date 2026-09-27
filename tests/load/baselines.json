@@ -1,0 +1,50 @@
+{
+  "$comment": [
+    "Thresholds enforced by the scheduled load-test workflow (issue #735).",
+    "These are DELIBERATE thresholds, not a recorded run: they are derived from",
+    "the local reference baselines in docs/PERFORMANCE.md (worst row per",
+    "endpoint) and then relaxed, because shared CI runners are slower and noisier",
+    "than a developer laptop.",
+    "",
+    "How they are applied (scripts/check-load-baselines.mjs):",
+    "  • p95Ms / p99Ms  — multiplied by LOAD_TEST_MARGIN (margin.default below,",
+    "                     overridable per workflow_dispatch run). Latency scales",
+    "                     with runner hardware, so it gets a multiplier.",
+    "  • errorPct       — absolute cap on transport errors per connection.",
+    "  • non2xxPct      — absolute cap on 4xx/5xx responses (null = n/a for SSE).",
+    "",
+    "To change a gate on purpose, edit the value here AND explain it in the PR",
+    "body. Never raise a threshold to silence a real regression — see",
+    "docs/PERFORMANCE.md → 'Updating the baselines deliberately'."
+  ],
+  "updatedAt": "2026-09-25",
+  "source": "docs/PERFORMANCE.md → Baselines (local reference run, 2026-08-27T03:48:25.922Z)",
+  "margin": {
+    "env": "LOAD_TEST_MARGIN",
+    "default": 3,
+    "rationale": "CI runner latency for the same code is 2-5x the local reference run; 3x keeps genuine 2x+ regressions visible without flaking on a slow runner."
+  },
+  "endpoints": {
+    "/api/health": {
+      "p95Ms": 503,
+      "p99Ms": 1211,
+      "errorPct": 1,
+      "non2xxPct": 1,
+      "note": "Worst documented row is 50 connections (p95 503ms / p99 1211ms). Health does a DB SELECT 1 plus RPC/Horizon/Redis pings, so it is the noisiest endpoint."
+    },
+    "/api/payments": {
+      "p95Ms": 847,
+      "p99Ms": 2103,
+      "errorPct": 1,
+      "non2xxPct": 2,
+      "note": "Worst documented row is 50 connections (p95 847ms / p99 2103ms). Authenticated: a non-zero non-2xx rate means the API key is missing or wrong."
+    },
+    "/api/events": {
+      "p95Ms": null,
+      "p99Ms": null,
+      "errorPct": 1,
+      "non2xxPct": null,
+      "note": "SSE streams never complete a request, so req/s, latency and non-2xx are n/a. Only transport errors (a failed stream open) are gated; connection leaks and heartbeat timing are asserted by scripts/sse-load-test.mjs itself."
+    }
+  }
+}

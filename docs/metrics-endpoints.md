@@ -37,6 +37,47 @@ ophirpay_endpoint_request_duration_seconds_count{method="GET",endpoint="/api/pay
 ophirpay_endpoint_errors_total{method="POST",endpoint="/api/payments",status_class="5xx"} 3
 ```
 
+## Authentication (required)
+
+`/api/metrics` exposes process memory, per-endpoint error rates and the live
+SSE connection count, so it is **no longer public**. Every scrape must present a
+credential; an unauthenticated request now returns `401` with **no metric body**:
+
+| Credential | Header | Notes |
+| --- | --- | --- |
+| Scrape token | `Authorization: Bearer <METRICS_TOKEN>` | Preferred. Constant-time comparison against the `METRICS_TOKEN` env var. |
+| API key | `Authorization: Bearer <key>` or `X-API-Key: <key>` | Must carry the `admin` scope (which implies every capability). |
+
+The endpoint **fails closed**: if `METRICS_TOKEN` is unset and the request
+carries no admin API key, the scrape gets `401`. Generate the token with
+`openssl rand -hex 32` and set it wherever the app runs. The response format is
+unchanged, so an existing scraper only needs the header:
+
+```bash
+curl -sS -H "Authorization: Bearer $METRICS_TOKEN" https://ophirpay.com/api/metrics
+```
+
+### Prometheus scrape config
+
+The Helm chart renders `METRICS_TOKEN` from `helm/ophirpay/values.yaml`
+(`secrets.METRICS_TOKEN`) into the `ophirpay-secrets` Secret. The
+`prometheus.io/*` pod annotations still advertise the path, but annotations
+cannot attach a header, so the scrape job must add the token itself:
+
+```yaml
+scrape_configs:
+  - job_name: ophirpay
+    metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/metrics-token  # value of METRICS_TOKEN
+    static_configs:
+      - targets: ["ophirpay.ophirpay.svc.cluster.local:80"]
+```
+
+For the Prometheus Operator, attach an `authorization` block (or a
+`secret`/`credentials` reference) to the `ServiceMonitor`/`PodMonitor` instead.
+
 ## Usage
 
 The metrics are in-process (reset on deploy), consistent with the existing

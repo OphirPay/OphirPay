@@ -1,0 +1,22 @@
+{
+  "text": "✅ OphirPay Event: payment.confirmed",
+  "blocks": [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "✅ PAYMENT.CONFIRMED",
+        "emoji": true
+      }
+    },
+    {
+      "type": "section",
+      "fields": [
+        { "type": "mrkdwn", "text": "*ID:* `p_987654321`" },
+        { "type": "mrkdwn", "text": "*Amount:* *250.00* USDC" },
+        { "type": "mrkdwn", "text": "*Time:* 2026-09-24T12:00:00Z" },
+        { "type": "mrkdwn", "text": "*Recipient:* `GA3DCS...`" }
+      ]
+    }
+  ]
+}

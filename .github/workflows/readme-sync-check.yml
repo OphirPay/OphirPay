@@ -1,0 +1,34 @@
+name: README Sync Check
+
+# Run whenever the English README or any translation changes, on both pushes
+# and pull-requests, so divergence is caught before it reaches the main branch.
+on:
+  push:
+    paths:
+      - 'README.md'
+      - 'README.*.md'
+      - 'scripts/check-readme-sync.mjs'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'README.*.md'
+      - 'scripts/check-readme-sync.mjs'
+
+jobs:
+  readme-sync:
+    name: Check translated READMEs are in sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Read the required Node version from .nvmrc so it stays in sync
+          # with the rest of the project toolchain.
+          node-version-file: '.nvmrc'
+
+      - name: Run README sync check
+        run: node scripts/check-readme-sync.mjs

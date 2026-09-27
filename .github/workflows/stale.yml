@@ -30,7 +30,17 @@ jobs:
             🔒 This issue has been closed due to inactivity.
 
             If you believe this is still relevant, please open a new issue referencing this one.
-          exempt-issue-labels: "pinned,security,blocked,good first issue,help wanted"
+          # Bounty / Stellar Wave issues are a contributor-facing backlog: they
+          # are *meant* to sit open until someone claims them, and a wave round
+          # can easily run past 60 days of inactivity on any individual issue.
+          # Exempting them by label stops the bot from closing work that is
+          # still up for grabs (issue #736). The policy is documented in
+          # CONTRIBUTING.md → "Issue triage & stale policy".
+          exempt-issue-labels: "pinned,security,blocked,good first issue,help wanted,bounty,Stellar Wave"
+          # Claimed work must never be closed under the contributor: any issue
+          # with an assignee is exempt from staling. Unassigned non-wave issues
+          # still go stale after 60 days of inactivity and close 14 days later.
+          exempt-all-issue-assignees: true
           exempt-all-issue-milestones: true
 
           # ── PR settings ─────────────────────────────────────

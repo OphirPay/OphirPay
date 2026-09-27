@@ -51,6 +51,8 @@ vi.mock("@/lib/metrics-counters", () => ({
 vi.mock("@/lib/contracts", () => ({
   DEFAULT_CONTRACT_ID: "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN",
   CHAIN_READ_SOURCE: "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
+  // Mirrors MAX_READER_ENTRIES in contracts/ophirpay/src/lib.rs (#742).
+  CONTRACT_READER_ENTRY_CAP: 100,
   simulateContractCall: vi.fn(),
 }));
 
@@ -67,6 +69,19 @@ import { GET as getBatches, POST as postBatches } from "@/app/api/batches/route"
 import { GET as getBatchById } from "@/app/api/batches/[id]/route";
 import { GET as getRequests, POST as postRequests } from "@/app/api/requests/route";
 import { generateCsrfToken } from "@/lib/csrf";
+import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
+import { invalidateCaches } from "@/lib/api-cache";
+
+// Keep the real cache behaviour, but observe the invalidation calls a mutation
+// makes (#741).
+vi.mock("@/lib/api-cache", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api-cache")>();
+  return {
+    ...actual,
+    invalidateCache: vi.fn(actual.invalidateCache),
+    invalidateCaches: vi.fn(actual.invalidateCaches),
+  };
+});
 
 function csrfHeaders(): Record<string, string> {
   const token = generateCsrfToken();
@@ -158,6 +173,15 @@ describe("API Routes: Payments, Batches & Requests", () => {
         })
       );
       expect(res.status).toBe(201);
+
+      // Payment creation invalidates the read caches it changes (#741):
+      // aggregate stats, this user's analytics, and the audit ledger.
+      expect(vi.mocked(invalidateCaches)).toHaveBeenCalledWith([
+        { scope: "stats" },
+        { scope: "analytics", subject: MOCK_AUTH.userId },
+        { scope: "audit-log" },
+      ]);
+
       const data = await res.json();
       expect(data.data.id).toBe("p_new_1");
       expect(webhookDispatcher.dispatchWebhookEventAsync).toHaveBeenCalled();
@@ -269,6 +293,42 @@ describe("API Routes: Payments, Batches & Requests", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.data).toHaveLength(1);
+      // Child payments stay below the shared reader cap → not truncated (#742).
+      expect(data.data[0].paymentsTruncated).toBe(false);
+      expect(data.meta.truncated).toBe(false);
+    });
+
+    it("GET caps each batch's payments and surfaces the flag (#742)", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      // The route fetches cap + 1 child payments to detect an over-cap batch.
+      const overflow = CONTRACT_READER_ENTRY_CAP + 1;
+      const mockBatches = [
+        {
+          id: "b1",
+          name: "Legacy payroll",
+          payments: Array.from({ length: overflow }, (_, i) => ({ id: `p${i}` })),
+        },
+      ];
+      vi.mocked(prisma.batch.findMany).mockResolvedValueOnce(mockBatches as never);
+      vi.mocked(prisma.batch.count).mockResolvedValueOnce(1);
+
+      const res = await getBatches(new Request("http://localhost/api/batches?page=1&limit=5"));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+
+      // The payload is capped at the same ceiling the on-chain reader uses and
+      // says so, instead of returning a partial list silently.
+      expect(data.data[0].payments).toHaveLength(CONTRACT_READER_ENTRY_CAP);
+      expect(data.data[0].paymentsTruncated).toBe(true);
+      expect(data.data[0].paymentsLimit).toBe(CONTRACT_READER_ENTRY_CAP);
+      expect(data.meta.truncated).toBe(true);
+      expect(vi.mocked(prisma.batch.findMany)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            payments: expect.objectContaining({ take: CONTRACT_READER_ENTRY_CAP + 1 }),
+          }),
+        })
+      );
     });
 
     it("POST returns 400 when batch payload is invalid", async () => {

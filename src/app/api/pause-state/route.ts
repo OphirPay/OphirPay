@@ -6,11 +6,15 @@ import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/
 
 /**
  * GET /api/pause-state — current pause state from the Soroban contract.
- * Simulates a read-only call to OphirPayContract.is_paused().
+ *
+ * Simulates two read-only calls:
+ *   - OphirPayContract.is_paused()          → the global emergency flag
+ *   - OphirPayContract.get_paused_scopes()  → ids of individually paused scopes
  *
  * Response shapes:
- *   { paused: boolean, available: true }  — known state
- *   { paused: "unknown", available: false, error?: string }  — simulation failed / unreachable
+ *   { paused: boolean, available: true, scopes: number[] }  — known state
+ *   { paused: "unknown", available: false, scopes: [], error?: string }
+ *     — simulation failed / unreachable
  */
 export async function GET(request: Request) {
   try {
@@ -27,10 +31,40 @@ export async function GET(request: Request) {
 
     if (result.status === "SIMULATION_FAILED") {
       // Contract not deployed or unreachable — explicitly report unknown state
-      return successResponse({ paused: "unknown" as const, available: false, error: result.error });
+      return successResponse({
+        paused: "unknown" as const,
+        available: false,
+        scopes: [] as number[],
+        error: result.error,
+      });
     }
 
-    return successResponse({ paused: result.returnValue === true, available: true });
+    // Scoped pause is additive information: a failure to read the scope list
+    // must never hide the global state we already have, so it degrades to [].
+    let scopes: number[] = [];
+    try {
+      const scopesResult = await simulateContractCall(
+        DEFAULT_CONTRACT_ID,
+        "get_paused_scopes",
+        CHAIN_READ_SOURCE
+      );
+      if (
+        scopesResult.status !== "SIMULATION_FAILED" &&
+        Array.isArray(scopesResult.returnValue)
+      ) {
+        scopes = scopesResult.returnValue
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0);
+      }
+    } catch {
+      scopes = [];
+    }
+
+    return successResponse({
+      paused: result.returnValue === true,
+      available: true,
+      scopes,
+    });
   } catch (err) {
     return handleApiError(err, "GET /api/pause-state");
   }

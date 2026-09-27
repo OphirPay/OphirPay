@@ -35,6 +35,16 @@ describe("WalletSelector", () => {
     expect(screen.getAllByText("Not found").length).toBeGreaterThan(0);
   });
 
+  it("shows the pending Ledger connector as Pending and does not select it", () => {
+    const onSelect = vi.fn();
+    renderSelector({ availableWallets: [...WALLET_IDS], onSelect });
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    const ledger = screen.getByRole("button", { name: /ledger/i });
+    expect(ledger).toBeDisabled();
+    fireEvent.click(ledger);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("calls onSelect when an available wallet is clicked", () => {
     const onSelect = vi.fn();
     renderSelector({ onSelect });

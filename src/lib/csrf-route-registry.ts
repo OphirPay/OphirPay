@@ -8,6 +8,13 @@
  *
  * Keep this registry in sync with docs/CSRF-AUDIT.md and the enforcement
  * tests in src/__tests__/csrf-coverage.test.ts.
+ *
+ * Two lists, and the drift guard in the test suite treats them as the union
+ * that must account for every mutating handler on disk:
+ *   • MUTATING_ROUTES      — browser-reachable handlers that call verifyCsrf.
+ *   • CSRF_EXEMPT_ROUTES   — machine-invoked handlers that authenticate with a
+ *                            shared secret instead of a CSRF token. Each one
+ *                            needs a written reason.
  */
 
 export type MutatingMethod = "POST" | "PUT" | "PATCH" | "DELETE";
@@ -21,7 +28,11 @@ export interface CsrfRouteEntry {
   description: string;
 }
 
-/** Every mutating route in the API tree (40 handlers). */
+/**
+ * Every browser-reachable mutating route (37 handlers).
+ *
+ * Machine-invoked endpoints live in CSRF_EXEMPT_ROUTES below.
+ */
 export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   // Auth
   { method: "POST", path: "/api/auth/session", routeFile: "auth/session/route.ts", description: "Login / session renewal" },
@@ -77,9 +88,56 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "POST", path: "/api/multisig/propose", routeFile: "multisig/propose/route.ts", description: "Propose multisig payment" },
   { method: "POST", path: "/api/multisig/approve", routeFile: "multisig/approve/route.ts", description: "Approve multisig payment" },
   { method: "POST", path: "/api/multisig/execute", routeFile: "multisig/execute/route.ts", description: "Execute multisig payment" },
+];
 
-  // Jobs & cron
-  { method: "POST", path: "/api/jobs/process-due-recurring", routeFile: "jobs/process-due-recurring/route.ts", description: "Recurring scheduler sweep (cron / worker)" },
-  { method: "POST", path: "/api/cron", routeFile: "cron/route.ts", description: "Scheduled payment execution sweep (cron)" },
-  { method: "POST", path: "/api/scheduled/run", routeFile: "scheduled/run/route.ts", description: "Trigger scheduled payment run (cron)" },
+export interface CsrfExemptRoute {
+  method: MutatingMethod;
+  /** API path relative to origin, e.g. /api/cron */
+  path: string;
+  /** Route module under src/app/api (used by coverage tests) */
+  routeFile: string;
+  /**
+   * Why this handler does not carry CSRF protection. Must be a real reason
+   * (a different authentication mechanism), never "forgot" — the drift test
+   * fails if the reason is empty or the route is also registered above.
+   */
+  reason: string;
+}
+
+/**
+ * Machine-invoked mutating routes that intentionally authenticate differently
+ * from browser sessions.
+ *
+ * These are triggered by a scheduler/worker (not a browser), and they require
+ * a shared secret sent as a custom header (`Authorization: Bearer $CRON_SECRET`
+ * or `x-cron-secret`). Custom headers cannot be attached cross-site without a
+ * CORS preflight, so a CSRF token would add no protection — the shared secret
+ * *is* the authentication. They still call `verifyCsrf()` as defence in depth,
+ * but they are listed here so the drift guard knows they are accounted for
+ * rather than accidentally omitted.
+ *
+ * There is deliberately no entry for an inbound Webhook receiver: OphirPay
+ * delivers webhooks outbound only. Should a receiver route be added, it must
+ * be listed here with a reason (signature verification) rather than left to
+ * silently drift.
+ */
+export const CSRF_EXEMPT_ROUTES: CsrfExemptRoute[] = [
+  {
+    method: "POST",
+    path: "/api/jobs/process-due-recurring",
+    routeFile: "jobs/process-due-recurring/route.ts",
+    reason: "Scheduler/worker sweep; authenticated by CRON_SECRET, never a browser session.",
+  },
+  {
+    method: "POST",
+    path: "/api/cron",
+    routeFile: "cron/route.ts",
+    reason: "Vercel cron entrypoint; authenticated by Authorization: Bearer $CRON_SECRET.",
+  },
+  {
+    method: "POST",
+    path: "/api/scheduled/run",
+    routeFile: "scheduled/run/route.ts",
+    reason: "Scheduled-payment runner; authenticated by CRON_SECRET, not a browser session.",
+  },
 ];

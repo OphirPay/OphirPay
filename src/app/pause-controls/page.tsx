@@ -12,6 +12,8 @@ import { useApiQuery } from "@/hooks/useApiQuery";
 import {
   emergencyPauseAll,
   emergencyUnpauseAll,
+  setScopePaused,
+  type PauseScopeValue,
 } from "@/lib/contract-advanced";
 import { getStellarExplorerUrl } from "@/lib/stellar";
 import { shortenAddress } from "@/lib/utils";
@@ -20,7 +22,25 @@ import Link from "next/link";
 interface PauseStateData {
   paused: boolean | "unknown";
   available: boolean;
+  /** Ids of the feature scopes paused individually (see `PauseScope`). */
+  scopes?: number[];
 }
+
+/**
+ * Feature scopes mirroring the `PauseScope` enum in the Soroban contract.
+ * Pausing one halts only that subsystem; the global emergency pause overrides
+ * all of them.
+ */
+const PAUSE_SCOPES: { id: number; label: string; description: string }[] = [
+  { id: 0, label: "Payments", description: "One-off payments: record_payment, atomic_spend, multisig execution" },
+  { id: 1, label: "Escrows", description: "Creating, releasing and claiming escrows" },
+  { id: 2, label: "Streams", description: "Creating, claiming and cancelling payment streams" },
+  { id: 3, label: "Recurring", description: "Creating and executing recurring payments" },
+  { id: 4, label: "Refunds", description: "Requesting, approving, rejecting and processing refunds" },
+  { id: 5, label: "Governance", description: "Creating proposals and casting votes" },
+  { id: 6, label: "Hooks", description: "Registering notification hooks" },
+  { id: 7, label: "Batches", description: "Creating batch payments" },
+];
 
 export default function PauseControlsPage() {
   const toast = useToast();
@@ -28,6 +48,9 @@ export default function PauseControlsPage() {
   const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
+  // Scope id that awaits an explicit confirmation before it is toggled.
+  const [pendingScope, setPendingScope] = useState<number | null>(null);
+  const [scopeSubmitting, setScopeSubmitting] = useState<number | null>(null);
 
   const {
     data: rawData,
@@ -40,6 +63,7 @@ export default function PauseControlsPage() {
   const isPaused = pauseState === true;
   const isUnknown = pauseState === "unknown";
   const contractAvailable = rawData?.available ?? false;
+  const pausedScopes = new Set(rawData?.scopes ?? []);
 
   const handlePause = async () => {
     if (!wallet.publicKey) {
@@ -97,6 +121,42 @@ export default function PauseControlsPage() {
     }
   };
 
+  const handleScopeToggle = async (scopeId: number, nextPaused: boolean) => {
+    if (!wallet.publicKey) {
+      toast.error("Connect your wallet first");
+      return;
+    }
+    // Confirmation already happened in the UI — clear it and submit.
+    setPendingScope(null);
+    setScopeSubmitting(scopeId);
+    setLastTxHash(null);
+    try {
+      const result = await setScopePaused(
+        wallet.publicKey,
+        scopeId as PauseScopeValue,
+        nextPaused,
+      );
+      if (result.success) {
+        toast.success(
+          nextPaused ? "Feature scope paused on-chain" : "Feature scope resumed on-chain",
+        );
+        setLastTxHash(result.txHash ?? null);
+        queryClient.invalidateQueries({ queryKey: ["pause-state"] });
+      } else if (result.txHash) {
+        // Transaction was submitted but hasn't confirmed yet — NOT a failure
+        setLastTxHash(result.txHash);
+        toast.warning("Transaction submitted — confirmation is taking longer than expected. Check back or verify on-chain.");
+        queryClient.invalidateQueries({ queryKey: ["pause-state"] });
+      } else {
+        toast.error(result.error || "Scope update failed — are you the contract owner?");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setScopeSubmitting(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="animate-fade-in space-y-6">
@@ -124,7 +184,7 @@ export default function PauseControlsPage() {
         <Link href="/" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">← Dashboard</Link>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-2">Contract Pause Controls</h1>
         <p className="text-gray-500 dark:text-gray-400 mt-1">
-          Emergency circuit breaker — pause or unpause all contract writes
+          Emergency circuit breaker plus per-feature scopes — pause all writes or a single subsystem
         </p>
       </div>
 
@@ -207,6 +267,74 @@ export default function PauseControlsPage() {
           {wallet.connected
             ? `Connected: ${wallet.publicKey ? shortenAddress(wallet.publicKey, 12) : "Unknown"}`
             : "Connect your wallet to perform admin actions"}
+        </p>
+      </Card>
+
+      {/* Scoped Pause Controls */}
+      <Card className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Feature Scopes</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Halt a single subsystem without freezing every payment. Each toggle needs an
+              explicit confirmation, and the global emergency pause above overrides all of them.
+            </p>
+          </div>
+          <Badge variant={pausedScopes.size > 0 ? "danger" : "success"}>
+            {pausedScopes.size} paused
+          </Badge>
+        </div>
+
+        <div className="mt-4 divide-y divide-gray-100 dark:divide-gray-800">
+          {PAUSE_SCOPES.map((scope) => {
+            const scopePaused = pausedScopes.has(scope.id);
+            const isConfirming = pendingScope === scope.id;
+            const scopeBusy = scopeSubmitting === scope.id;
+            return (
+              <div key={scope.id} className="flex items-center justify-between gap-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{scope.label}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{scope.description}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge variant={scopePaused ? "danger" : "success"}>
+                    {scopePaused ? "Paused" : "Running"}
+                  </Badge>
+                  {isConfirming ? (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant={scopePaused ? "primary" : "danger"}
+                        loading={scopeBusy}
+                        onClick={() => handleScopeToggle(scope.id, !scopePaused)}
+                      >
+                        Confirm
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setPendingScope(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant={scopePaused ? "primary" : "danger"}
+                      disabled={!wallet.connected || isUnknown || scopeBusy}
+                      onClick={() => setPendingScope(scope.id)}
+                    >
+                      {scopePaused ? "Resume" : "Pause"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+          A stray click can never pause a subsystem on its own: pick Pause or Resume, then Confirm.
         </p>
       </Card>
 

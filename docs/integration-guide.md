@@ -120,6 +120,7 @@ Your endpoint receives HMAC-SHA256 signed payloads:
 POST /hooks HTTP/1.1
 Content-Type: application/json
 X-OphirPay-Signature: <hmac-sha256 hex>
+X-OphirPay-Timestamp: 2026-08-06T12:00:00Z
 X-OphirPay-Event: payment_recorded
 
 {
@@ -130,11 +131,14 @@ X-OphirPay-Event: payment_recorded
 }
 ```
 
-The signature is HMAC-SHA256 (hex) over the payload with the `signature`
-field **emptied** (set to `""`, the key is kept) and re-serialized with
-stable key order — using the secret returned when you registered the
-webhook. The same value is mirrored in the `X-OphirPay-Signature` header for
-convenience. Verify by recomputing over the exact canonical form:
+The signature is HMAC-SHA256 (hex) over
+`<X-OphirPay-Timestamp>.<payload with the signature field emptied>` — the
+`signature` field is set to `""` (the key is kept) and re-serialized with
+stable key order, using the secret returned when you registered the webhook.
+Binding the timestamp into the signed input is what makes the
+`X-OphirPay-Timestamp` header trustworthy for replay protection. The same
+signature is mirrored in the `X-OphirPay-Signature` header for convenience.
+Verify by recomputing over the exact canonical form:
 
 ```typescript
 import { createHmac, timingSafeEqual } from "crypto";
@@ -143,8 +147,10 @@ const received = await request.json();
 // Canonicalize: empty the signature field (keep the key, set it to "") and
 // re-serialize with the received key order — matches buildSignedPayload.
 const canonical = JSON.stringify({ ...received, signature: "" });
+// The timestamp is part of the signed input.
+const timestamp = request.headers.get("x-ophirpay-timestamp") ?? received.timestamp ?? "";
 const expected = createHmac("sha256", yourSecret)
-  .update(canonical)
+  .update(`${timestamp}.${canonical}`)
   .digest("hex");
 const provided = request.headers.get("x-ophirpay-signature") ?? "";
 const ok = provided.length === expected.length &&
@@ -152,7 +158,8 @@ const ok = provided.length === expected.length &&
 ```
 
 Always compare with a constant-time comparison (`timingSafeEqual`), verify
-against the **header** value, and reject requests missing a valid signature.
+against the **header** value, enforce the timestamp freshness window, and
+reject requests missing a valid signature.
 See [Webhook Signature Verification](webhook-verification.md) for the exact
 canonical form, replay protection, and runnable Node/Python reference
 implementations.
@@ -292,7 +299,9 @@ The 429 response uses the standard error envelope:
 
 The limit is configurable via the `RATE_LIMIT_RPM` environment variable
 (default: 120 requests per minute per IP). Health (`/api/health`) and metrics
-(`/api/metrics`) endpoints are excluded from rate limiting.
+(`/api/metrics`) endpoints are excluded from rate limiting. The metrics
+endpoint additionally requires `Authorization: Bearer $METRICS_TOKEN` — see
+[Per-Endpoint Metrics](./metrics-endpoints.md).
 
 ### Backing Off
 

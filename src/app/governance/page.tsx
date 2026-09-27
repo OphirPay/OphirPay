@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useState } from "react";
+import Link from "next/link";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { EmptyState } from "@/components/EmptyState";
@@ -226,9 +227,9 @@ export default function GovernancePage() {
                       <div className="flex items-start justify-between">
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">
+                            <Link href={`/governance/${p.id}`} className="font-semibold text-gray-900 dark:text-white hover:text-ophir-700 dark:hover:text-ophir-300">
                               {p.title}
-                            </h3>
+                            </Link>
                             <Badge
                               variant={
                                 p.executed
@@ -255,6 +256,9 @@ export default function GovernancePage() {
                           <span className="text-xs text-gray-400 mt-1 block">
                             Action: {p.action_type} · By: {p.proposer?.slice?.(0, 8)}...
                           </span>
+                          <Link href={`/governance/${p.id}`} className="text-xs text-ophir-700 dark:text-ophir-300 hover:underline mt-2 inline-block">
+                            Proposal details and execution state →
+                          </Link>
                         </div>
                       </div>
 

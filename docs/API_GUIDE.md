@@ -277,13 +277,24 @@ How it works:
 - **Per-IP sliding window**: `X` requests per minute per client IP
   (`RATE_LIMIT_RPM` env var, default `120`).
 - **Exempt paths**: `/api/health` and `/api/metrics` are never throttled
-  (monitoring endpoints are hit frequently by orchestrators).
+  (monitoring endpoints are hit frequently by orchestrators). `/api/metrics`
+  is still **authenticated** — it requires `Authorization: Bearer
+  $METRICS_TOKEN` (see [Per-Endpoint Metrics](./metrics-endpoints.md)).
 - **Headers** on every API response:
   `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
 - **On exceed**: `429` with `Retry-After` and body
   `{ success: false, error: { code: "RATE_LIMITED", ... } }`.
-- **Backends**: in-memory by default (per-instance); set `REDIS_URL` for a
-  distributed Redis-backed store (see `src/lib/rate-limit.ts`).
+- **Backends**: in-memory by default (per-instance). `REDIS_URL` selects a
+  distributed store, and its **scheme** selects the transport (see
+  `src/lib/rate-limit.ts`):
+  - `redis://` / `rediss://` → `ioredis`, **Node runtime only**. The global
+    limit in `src/proxy.ts` runs on the Edge runtime and cannot use it, so it
+    stays per-instance; the route-level buckets (auth, lookup) do share state.
+  - `https://` (Upstash-compatible REST) → shared by **every** replica on both
+    runtimes, including the global edge limit. Set `REDIS_TOKEN` for hosted
+    providers.
+
+  With `REDIS_URL` unset, every limit is per-instance in memory.
 
 ### When to add route-level limits
 

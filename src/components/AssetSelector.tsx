@@ -3,6 +3,7 @@
 
 
 import { useState, useEffect, useCallback } from "react";
+import { TransactionBuilder } from "@stellar/stellar-sdk";
 import { cn } from "@/lib/utils";
 import {
   XLM_ASSET,
@@ -10,9 +11,9 @@ import {
   USDC_MAINNET,
   type AssetInfo,
 } from "@/lib/assets";
-import { fetchAllBalances, type AssetBalance } from "@/lib/stellar";
-import { checkTrustline } from "@/lib/trustline";
-import { STELLAR_NETWORK } from "@/lib/stellar";
+import { fetchAllBalances, getHorizonServer, NETWORK_PASSPHRASE, STELLAR_NETWORK, type AssetBalance } from "@/lib/stellar";
+import { buildTrustlineTransaction, checkTrustline, getTrustlineMessage, type TrustlineState } from "@/lib/trustline";
+import { getActiveWalletConnector } from "@/lib/wallets";
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -54,8 +55,10 @@ export function AssetSelector({
 }: AssetSelectorProps) {
   const [balances, setBalances] = useState<AssetBalance[]>([]);
   const [trustlineStatus, setTrustlineStatus] = useState<
-    Record<string, { hasTrustline: boolean; checking: boolean }>
+    Record<string, { hasTrustline: boolean; checking: boolean; state?: TrustlineState }>
   >({});
+  const [settingUpTrustline, setSettingUpTrustline] = useState(false);
+  const [trustlineError, setTrustlineError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -76,6 +79,26 @@ export function AssetSelector({
     fetchBalances();
   }, [fetchBalances]);
 
+  useEffect(() => {
+    if (!publicKey || selectedAsset.type === "native" || !selectedAsset.issuer) return;
+    const key = `${selectedAsset.code}:${selectedAsset.issuer}`;
+    let cancelled = false;
+    setTrustlineStatus((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], checking: true },
+    }));
+    checkTrustline(publicKey, selectedAsset.code, selectedAsset.issuer).then((info) => {
+      if (cancelled) return;
+      setTrustlineStatus((prev) => ({
+        ...prev,
+        [key]: { hasTrustline: info.hasTrustline, checking: false, state: info.state },
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [publicKey, selectedAsset.code, selectedAsset.issuer, selectedAsset.type]);
+
   const handleSelect = async (asset: AssetInfo) => {
     // For non-native assets, check trustline before selecting
     if (asset.type !== "native" && asset.issuer && publicKey) {
@@ -89,12 +112,50 @@ export function AssetSelector({
 
       setTrustlineStatus((prev) => ({
         ...prev,
-        [key]: { hasTrustline: info.hasTrustline, checking: false },
+        [key]: { hasTrustline: info.hasTrustline, checking: false, state: info.state },
       }));
+      if (info.state !== "authorized") {
+        onSelect(asset);
+        return;
+      }
     }
 
     onSelect(asset);
     setOpen(false);
+  };
+
+  const handleSetupTrustline = async (asset: AssetInfo) => {
+    if (!publicKey || !asset.issuer) return;
+    setSettingUpTrustline(true);
+    setTrustlineError(null);
+    try {
+      const connector = getActiveWalletConnector();
+      if (!connector) throw new Error("Reconnect your wallet to create this trustline.");
+      const { xdr } = await buildTrustlineTransaction(publicKey, asset.code, asset.issuer);
+      const signedXdr = await connector.signTransaction(xdr, {
+        network: STELLAR_NETWORK,
+        networkPassphrase: NETWORK_PASSPHRASE,
+      });
+      const transaction = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
+      await getHorizonServer().submitTransaction(transaction);
+      const verifiedTrustline = await checkTrustline(publicKey, asset.code, asset.issuer);
+      const key = `${asset.code}:${asset.issuer}`;
+      setTrustlineStatus((prev) => ({
+        ...prev,
+        [key]: {
+          hasTrustline: verifiedTrustline.hasTrustline,
+          checking: false,
+          state: verifiedTrustline.state,
+        },
+      }));
+      onSelect(asset);
+      await fetchBalances();
+      setOpen(false);
+    } catch (error) {
+      setTrustlineError(error instanceof Error ? error.message : "Trustline setup failed.");
+    } finally {
+      setSettingUpTrustline(false);
+    }
   };
 
   const balance = findAssetBalance(balances, selectedAsset);
@@ -189,22 +250,56 @@ export function AssetSelector({
                           "block text-xs",
                           tl?.checking
                             ? "text-gray-400"
-                            : tl?.hasTrustline
+                            : tl?.state === "authorized"
                               ? "text-green-500"
-                              : "text-amber-500",
+                              : tl?.state === "frozen" || tl?.state === "unauthorized"
+                                ? "text-red-500"
+                                : tl?.state === "unavailable"
+                                  ? "text-gray-400"
+                                : "text-amber-500",
                         )}
                       >
                         {tl?.checking
                           ? "checking..."
-                          : tl?.hasTrustline
-                            ? "✓ trustline"
-                            : "no trustline"}
+                          : tl?.state === "authorized"
+                            ? "✓ authorized"
+                            : tl?.state === "frozen"
+                              ? "frozen"
+                              : tl?.state === "unauthorized"
+                                ? "not authorized"
+                                : tl?.state === "unavailable"
+                                  ? "status unavailable"
+                                : "no trustline"}
                       </span>
                     )}
                   </div>
                 </button>
               );
             })}
+
+            {selectedAsset.type !== "native" && selectedAsset.issuer && trustlineStatus[`${selectedAsset.code}:${selectedAsset.issuer}`]?.state && (
+              <div className="border-t border-gray-100 dark:border-gray-700 mt-1 px-4 py-3">
+                <p className="text-xs text-gray-600 dark:text-gray-300">
+                  {getTrustlineMessage(trustlineStatus[`${selectedAsset.code}:${selectedAsset.issuer}`].state!, selectedAsset.code)}
+                </p>
+                {trustlineStatus[`${selectedAsset.code}:${selectedAsset.issuer}`].state === "missing" && (
+                  <>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Creating a trustline lets this account hold the asset and requires additional XLM for the network reserve (currently 0.5 XLM), plus a small transaction fee.
+                    </p>
+                    {trustlineError && <p role="alert" className="text-xs text-red-600 mt-2">{trustlineError}</p>}
+                    <button
+                      type="button"
+                      onClick={() => handleSetupTrustline(selectedAsset)}
+                      disabled={settingUpTrustline || !publicKey}
+                      className="mt-3 px-3 py-2 rounded-lg bg-ophir-600 text-white text-xs font-semibold disabled:opacity-50"
+                    >
+                      {settingUpTrustline ? "Waiting for wallet…" : "Set up trustline"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Custom token input */}
             <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-1 px-3 pb-2">

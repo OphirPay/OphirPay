@@ -13,6 +13,7 @@ import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, createHookSchema } from "@/lib/validation-schemas";
 import { isSafeWebhookUrl } from "@/lib/webhook-url-guard";
 import { withRequestLogging } from "@/lib/request-logging";
+import { HOOK_PAGE_LIMIT } from "@/lib/hooks-pagination";
 
 export const GET = withMetrics("GET /api/hooks", withRequestLogging(async function GET(request: Request) {
   try {
@@ -29,10 +30,13 @@ export const GET = withMetrics("GET /api/hooks", withRequestLogging(async functi
     const where: Record<string, unknown> = { userId: auth.userId, active: true };
     if (eventType) where.eventType = eventType;
 
-    const hooks = await prisma.notificationHook.findMany({
+    // Fetch one extra row to learn whether the cap cut the list short (#742),
+    // so the response can flag truncation instead of silently returning a
+    // partial set that callers would treat as the user's complete hooks.
+    const rows = await prisma.notificationHook.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: HOOK_PAGE_LIMIT + 1,
       select: {
         id: true,
         userId: true,
@@ -43,7 +47,14 @@ export const GET = withMetrics("GET /api/hooks", withRequestLogging(async functi
       },
     });
 
-    return successResponse(hooks);
+    const truncated = rows.length > HOOK_PAGE_LIMIT;
+    const hooks = truncated ? rows.slice(0, HOOK_PAGE_LIMIT) : rows;
+
+    return successResponse(hooks, {
+      limit: HOOK_PAGE_LIMIT,
+      truncated,
+      timestamp: new Date().toISOString(),
+    });
   } catch (err) {
     return handleApiError(err, "GET /api/hooks");
   }

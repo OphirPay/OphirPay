@@ -17,6 +17,7 @@
 - [Horizon — Stellar's REST API](#-horizon--stellars-rest-api)
 - [Soroban — Smart Contracts on Stellar](#-soroban--smart-contracts-on-stellar)
 - [Minimal Working Example: Send XLM](#-minimal-working-example-send-xlm)
+- [Wallet Connectors & Ledger Status](#wallet-connectors--ledger-status)
 - [Glossary](#-glossary)
 - [Further Reading](#-further-reading)
 
@@ -349,7 +350,50 @@ try {
 
 ---
 
-## Glossary
+## Wallet Connectors & Ledger Status
+
+OphirPay ships one unified connector per wallet. Five of the six registry
+entries actually sign; **Ledger is pending**.
+
+| Wallet | Type | Status |
+|---|---|---|
+| Freighter | Browser extension | ✅ Supported |
+| xBull | Browser extension | ✅ Supported |
+| Rabet | Browser extension | ✅ Supported |
+| Albedo | Web-based (no extension) | ✅ Supported |
+| Lobstr | Web-based (SEP-7) | ✅ Supported |
+| Ledger | Hardware (WebUSB) | ⏳ Pending — connector is a stub |
+
+### Why Ledger is pending
+
+`src/lib/wallets/ledger.ts` only checks whether `navigator.usb` exists. The
+real integration (`@ledgerhq/hw-transport-webusb` + `@ledgerhq/hw-app-str`) is
+not in `package.json`, and the connector's `connect()` / `signTransaction()`
+paths deliberately throw. To avoid offering a wallet that fails on connect, the
+connector reports `isAvailable() === false` and the wallet registry marks it
+`status: "pending"` — the selector shows it disabled with a **Pending** badge
+rather than an "Installed" badge it cannot honour.
+
+### Browser and device requirements (for when it ships)
+
+- **WebUSB** is required, and only **Chromium-based** browsers implement it:
+  Chrome, Edge, Brave and Opera. Firefox and Safari cannot talk to a Ledger
+  from a web page at all.
+- The page must be served over **HTTPS** (or `localhost`) — WebUSB is a
+  secure-context API.
+- The device must be connected over USB with the **Stellar app open**.
+- The browser prompts for permission to access the device; a denied prompt has
+  to be reset in the browser's USB settings before retrying.
+
+### Fallback
+
+Until the Ledger connector lands, sign with **Freighter, xBull, Rabet, Albedo
+or Lobstr**. Hardware-key custody is still possible outside OphirPay — for
+example by signing with a Ledger through Stellar Laboratory or the Stellar CLI
+— but it is not wired into OphirPay's connect flow yet.
+
+---
+
 
 | Term | Definition |
 |---|---|

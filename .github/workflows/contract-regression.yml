@@ -1,15 +1,34 @@
 name: Contract regression guard
 
+# Reports WASM size and fee deltas for every contract change (issue #743):
+#   - a size table (baseline / new / Δ bytes / Δ %) in the job summary
+#   - a fee table diffed against contracts/fee-baseline.json
+#   - a PR comment so the numbers are visible during review
+# Fails only when a contract grows past WASM_SIZE_THRESHOLD_PERCENT (default
+# 3 %, or `sizeThresholdPercent` in contracts/wasm-baseline.json) or when a fee
+# assertion changes.
+#
+# Details and the baseline-update procedure: docs/GAS.md
+
 on:
   pull_request:
     paths:
       - 'contracts/**'
       - 'scripts/check-contract-regressions.mjs'
       - '.github/workflows/contract-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   contract-regression:
     runs-on: ubuntu-latest
+    # Default 3 %; override per-PR/per-repo with the WASM_SIZE_THRESHOLD_PERCENT
+    # repository variable, or by running the script with the env var set.
+    env:
+      WASM_SIZE_THRESHOLD_PERCENT: ${{ vars.WASM_SIZE_THRESHOLD_PERCENT }}
     defaults:
       run:
         working-directory: contracts
@@ -21,6 +40,48 @@ jobs:
           target: wasm32v1-none
       - run: cargo build --manifest-path ophirpay/Cargo.toml --target wasm32v1-none --release
       - run: cargo build --manifest-path emitter/Cargo.toml --target wasm32v1-none --release
-      - name: Check WASM size guardrails
+      - name: Run fee assertions and emit the fee report
+        run: cargo test --manifest-path ophirpay/Cargo.toml --test fee_report -- --nocapture
+        env:
+          OPHIRPAY_FEE_REPORT_PATH: ${{ github.workspace }}/fee-report.json
+      - name: Check WASM size and fee deltas
         working-directory: .
         run: node scripts/check-contract-regressions.mjs
+        env:
+          FEE_REPORT_PATH: fee-report.json
+          REGRESSION_REPORT_PATH: contract-regression-report.md
+      - name: Upload the regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-regression-report
+          path: contract-regression-report.md
+          if-no-files-found: warn
+      - name: Comment the report on the pull request
+        # Fork PRs get a read-only token, so a failed comment must not fail the
+        # job — the job summary always carries the same report.
+        if: always() && github.event_name == 'pull_request' && hashFiles('contract-regression-report.md') != ''
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- contract-regression-report -->';
+            const body = `${marker}\n${fs.readFileSync('contract-regression-report.md', 'utf8')}`;
+            const issue_number = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+
+            const existing = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+            });
+            const previous = existing.find((c) => c.body?.includes(marker));
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: previous.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }

@@ -275,8 +275,10 @@ Optional extras:
 - **Testnet integration** — `npm run test:testnet` runs live RPC checks against
   Soroban Testnet (uses the Friendbot, see §5).
 - **Redis-backed rate limiting** — set `REDIS_URL=redis://localhost:6379` and
-  the rate-limit store switches from in-memory to distributed
-  (`docker-compose.yml` has a Redis service).
+  the route-level buckets switch from in-memory to shared
+  (`docker-compose.yml` has a Redis service). The global edge limit in
+  `src/proxy.ts` only becomes distributed with an `https://` REST Redis URL
+  (Upstash-compatible); see `.env.example` for why.
 
 ---
 

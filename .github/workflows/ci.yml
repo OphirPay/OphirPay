@@ -31,9 +31,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npm run lint -- --max-warnings 0
 
   # ══════════════════════════════════════════════════════════════
@@ -45,10 +43,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npx tsc --noEmit
 
   # ══════════════════════════════════════════════════════════════
@@ -60,10 +55,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npx vitest run --reporter=verbose
 
   # ══════════════════════════════════════════════════════════════
@@ -77,15 +69,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npm run build
       - name: Verify build output
         run: |
           test -d .next && echo "✅ .next directory exists"
           test -f .next/BUILD_ID && echo "✅ BUILD_ID exists"
+
+      - name: JavaScript bundle-size budget
+        # Reads the App Router client-reference manifests emitted by the build
+        # above and fails when a route exceeds its committed budget (#739).
+        # The per-route table is also appended to the job summary.
+        run: node scripts/check-bundle-budget.mjs
 
   # ══════════════════════════════════════════════════════════════
   # 5. CONTRACT WASM BUILD — Build both Soroban contracts
@@ -232,6 +227,11 @@ jobs:
           HELM_VER=3.16.3
           curl -fsSL "https://get.helm.sh/helm-v${HELM_VER}-linux-amd64.tar.gz" | tar xz
           sudo mv linux-amd64/helm /usr/local/bin/helm
+      - name: Install kubeconform
+        run: |
+          KUBECONFORM_VER=0.6.7
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VER}/kubeconform-linux-amd64.tar.gz" | tar xz
+          sudo mv kubeconform /usr/local/bin/kubeconform
       - name: Lint the chart with default values
         run: helm lint helm/ophirpay --strict
       - name: Lint the chart with every feature flag enabled
@@ -244,6 +244,9 @@ jobs:
       - name: Render and assert the flag-gated objects
         run: |
           set -euo pipefail
+
+          # Default values — the chart must render cleanly with nothing set.
+          helm template ophirpay helm/ophirpay > /tmp/default.yaml
 
           helm template ophirpay helm/ophirpay \
             --set autoscaling.enabled=true \
@@ -293,5 +296,49 @@ jobs:
           reject "kind: NetworkPolicy" /tmp/disabled.yaml
           reject "kind: ServiceAccount" /tmp/disabled.yaml
 
+          exit "$fail"
+      
+      - name: Validate with kubeconform
+        run: |
+          kubeconform -strict -summary /tmp/default.yaml
+          kubeconform -strict -summary /tmp/enabled.yaml
+          kubeconform -strict -summary /tmp/disabled.yaml
+
+      - name: Assert rendered config keys against .env.example
+        # AC of #730: a broken template or an unknown config key must fail the
+        # job. Every key the chart renders into the ConfigMap/Secret has to be
+        # a variable the app documents in .env.example, and no documented
+        # variable may be missing, so config drift cannot recur silently.
+        run: |
+          set -euo pipefail
+
+          # Documented variables (commented-out optional ones are excluded).
+          grep -v '^#' .env.example | grep -v '^$' | cut -d= -f1 | sort -u > /tmp/env.keys
+
+          # Keys rendered by the chart (ConfigMap `data` + Secret `stringData`).
+          helm template ophirpay helm/ophirpay --show-only templates/config.yaml \
+            | grep -E '^  [A-Z][A-Z0-9_]*:' \
+            | awk -F':' '{print $1}' \
+            | sed 's/^[[:space:]]*//' \
+            | sort -u > /tmp/chart.keys
+
+          fail=0
+          while read -r key; do
+            grep -Fxq "$key" /tmp/chart.keys || {
+              echo "::error::.env.example variable '$key' is not rendered by the chart"
+              fail=1
+            }
+          done < /tmp/env.keys
+
+          while read -r key; do
+            grep -Fxq "$key" /tmp/env.keys || {
+              echo "::error::chart renders '$key', which is not documented in .env.example"
+              fail=1
+            }
+          done < /tmp/chart.keys
+
+          if [ "$fail" -eq 0 ]; then
+            echo "✅ Rendered config keys match .env.example ($(wc -l < /tmp/chart.keys | tr -d ' ') keys)"
+          fi
           exit "$fail"
 

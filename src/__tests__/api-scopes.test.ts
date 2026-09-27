@@ -36,9 +36,13 @@ function makeKey(scopes: string[]) {
   };
 }
 
+// A valid-format key (32 CSPRNG bytes as hex) so the request reaches the
+// mocked lookup — malformed material is rejected before the DB (issue #701).
+const VALID_LOOKUP_KEY = `oph_${"a".repeat(64)}`;
+
 function makeRequest() {
   return new Request("http://localhost/api/test", {
-    headers: { "x-api-key": "oph_testkey" },
+    headers: { "x-api-key": VALID_LOOKUP_KEY },
   });
 }
 

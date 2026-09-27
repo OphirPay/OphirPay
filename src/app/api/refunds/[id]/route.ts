@@ -12,6 +12,7 @@ import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, updateRefundStatusSchema } from "@/lib/validation-schemas";
 import { withRequestLogging } from "@/lib/request-logging";
+import { invalidateCache } from "@/lib/api-cache";
 
 // ── PATCH /api/refunds/[id] ───────────────────────────────────
 
@@ -54,6 +55,9 @@ export const PATCH = withMetrics("PATCH /api/refunds/[id]", withRequestLogging(a
         details: { status: parsed.data.status },
       },
     });
+
+    // The audit trail changed (#741) — flush the cached audit pages.
+    await invalidateCache("audit-log");
 
     return successResponse({ updated: true });
   } catch (err) {

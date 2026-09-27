@@ -1,0 +1,188 @@
+name: "🌙 E2E Nightly & Dispatch"
+
+# Issue #729 — commit 2b2173d removed the Playwright shard jobs from ci.yml, so
+# the e2e/ suite lost its CI signal entirely. This workflow restores the signal
+# without paying the PR-time cost: it runs nightly and on demand
+# (workflow_dispatch, e.g. to check a release candidate before shipping).
+#
+# playwright.config.ts deliberately has no `webServer` block, so this workflow
+# has to start a server itself. Next.js is built with `output: "standalone"`,
+# for which `next start` is explicitly unsupported ("⚠ next start does not work
+# with output: standalone") — the supported entry point is
+# `node .next/standalone/server.js`, with `public/` and `.next/static/` staged
+# into it the same way the Dockerfile does. Everything runs against localhost,
+# so the suite no longer depends on a live Vercel deployment.
+
+on:
+  schedule:
+    # 02:00 UTC every day.
+    - cron: "0 2 * * *"
+  # Manual dispatch so a release candidate can be checked on demand.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A nightly run and a manual dispatch must not overlap; the newer run wins.
+concurrency:
+  group: e2e-nightly
+  cancel-in-progress: false
+
+# Runtime configuration for the build and the server. NEXT_PUBLIC_* variables
+# are inlined into the bundle by Next.js at **build** time, so they must be set
+# for `npm run build` as well as when the server starts.
+#
+# NODE_ENV is intentionally NOT set here: `npm ci` treats NODE_ENV=production
+# as "omit devDependencies", which would strip the very tools (TypeScript,
+# Prisma CLI, Playwright) the build needs. It is set on the steps that require
+# production behaviour instead.
+env:
+  CI: true
+  E2E_BASE_URL: http://localhost:3000
+  DATABASE_URL: postgresql://ophirpay:ophirpay@localhost:5432/ophirpay
+  DATABASE_PROVIDER: postgresql
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  NEXT_PUBLIC_STELLAR_NETWORK: TESTNET
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+  NEXT_PUBLIC_STELLAR_RPC_URL: https://soroban-testnet.stellar.org
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  NEXT_PUBLIC_CONTRACT_ID: CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET
+  NEXT_PUBLIC_EMITTER_CONTRACT_ID: CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
+  # E2E-only value; never used for a real deployment (>= 32 chars for env.ts).
+  AUTH_SECRET: ci-e2e-auth-secret-not-for-production
+
+jobs:
+  playwright-tests:
+    name: "🧪 E2E — shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3]
+        shardTotal: [3]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ophirpay
+          POSTGRES_PASSWORD: ophirpay
+          POSTGRES_DB: ophirpay
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ophirpay"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      - name: Create the schema in the CI database
+        run: npx prisma db push --skip-generate
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Build the app
+        run: npm run build
+
+      - name: Stage the standalone server
+        # A standalone build does not serve `public/` or `.next/static/` on its
+        # own; copy them into the standalone tree exactly like the Dockerfile.
+        run: |
+          cp -r public .next/standalone/
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/
+
+      - name: Start the server
+        run: |
+          NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000 \
+            node .next/standalone/server.js > /tmp/next-server.log 2>&1 &
+
+          # /api/health returns 200 (healthy) or 503 (degraded — a Stellar or
+          # Redis dependency is unreachable). Either one proves the server is up
+          # and past environment validation.
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$E2E_BASE_URL/api/health" || true)
+            if [ "$code" = "200" ] || [ "$code" = "503" ]; then
+              echo "✅ Server ready (HTTP $code)"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::Server did not become ready within 60s"
+          cat /tmp/next-server.log
+          exit 1
+
+      - name: Run Playwright (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+        run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.shardIndex }}
+          path: blob-report
+          retention-days: 1
+
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-server-log-${{ matrix.shardIndex }}
+          path: /tmp/next-server.log
+          retention-days: 3
+
+  merge-reports:
+    name: "📊 Merge reports"
+    if: always()
+    needs: playwright-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - run: npm ci
+
+      - name: Download all blob reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge reports
+        run: npx playwright merge-reports --reporter=html ./all-blob-reports
+
+      - name: Upload merged report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-html-report
+          path: playwright-report
+          retention-days: 14

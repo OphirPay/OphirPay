@@ -1,0 +1,16 @@
+{
+  "embeds": [
+    {
+      "title": "OphirPay Notification: payment.confirmed",
+      "description": "Lifecycle event triggered for transaction `p_987654321`",
+      "color": 3066993,
+      "timestamp": "2026-09-24T12:00:00Z",
+      "fields": [
+        { "name": "Amount", "value": "250.00 USDC", "inline": true },
+        { "name": "Recipient", "value": "`GA3DCS55Z...`", "inline": true },
+        { "name": "Batch / Memo", "value": "Invoice #402", "inline": true }
+      ],
+      "footer": { "text": "OphirPay Payment Orchestration" }
+    }
+  ]
+}

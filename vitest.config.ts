@@ -65,11 +65,13 @@ export default defineConfig({
         // Sharded database support is exercised by the Playwright E2E suite;
         // excluding its in-memory fixtures keeps unit coverage meaningful.
         "src/lib/db/sharded-test-fixture.ts", // E2E-only
-        "src/lib/api-auth.ts", // E2E-only
+        // NOTE (#700): api-auth.ts, rate-limit.ts, webhook-dispatcher.ts and
+        // webhook-deliver.ts are deliberately NOT excluded — they authenticate
+        // API calls, enforce rate limits and sign/deliver webhooks, so they are
+        // exactly what the coverage figure must speak to. They are wired to
+        // src/__tests__/{auth,api-scopes,rate-limit-redis,webhook-deliver,
+        // webhook-dispatcher}.test.ts instead.
         "src/lib/api-client.ts", // E2E-only
-        "src/lib/rate-limit.ts", // E2E-only
-        "src/lib/webhook-dispatcher.ts", // E2E-only
-        "src/lib/webhook-deliver.ts", // E2E-only
         "src/lib/demo-mode.ts", // E2E-only
         "src/instrumentation.ts", // Next.js entrypoint
         "src/lib/startup.ts", // Next.js entrypoint

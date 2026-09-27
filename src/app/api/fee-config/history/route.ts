@@ -5,6 +5,8 @@ import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-re
 import { getAuthContext } from "@/lib/auth-session";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { withRequestLogging } from "@/lib/request-logging";
+import { cachedRead, readCacheKey, READ_TTL_MS } from "@/lib/api-cache";
+import { readCacheHeaders } from "@/lib/cache";
 
 /**
  * GET /api/fee-config/history — fee config version history from the Soroban contract.
@@ -18,17 +20,23 @@ export const GET = withMetrics("GET /api/fee-config/history", withRequestLogging
       return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
     }
 
-    const result = await simulateContractCall(
-      DEFAULT_CONTRACT_ID,
-      "get_fee_config_history",
-      CHAIN_READ_SOURCE
+    const { value: result, status } = await cachedRead(
+      readCacheKey("fee-config", `history:${DEFAULT_CONTRACT_ID || "default"}`),
+      () =>
+        simulateContractCall(DEFAULT_CONTRACT_ID, "get_fee_config_history", CHAIN_READ_SOURCE),
+      READ_TTL_MS["fee-config"]
     );
 
     if (result.status === "SIMULATION_FAILED") {
-      return successResponse({ versions: [], available: false, error: result.error });
+      return successResponse(
+        { versions: [], available: false, error: result.error },
+        undefined,
+        200,
+        readCacheHeaders("MISS")
+      );
     }
 
-    return successResponse(result.returnValue ?? []);
+    return successResponse(result.returnValue ?? [], undefined, 200, readCacheHeaders(status));
   } catch (err) {
     return handleApiError(err, "GET /api/fee-config/history");
   }

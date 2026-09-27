@@ -58,7 +58,8 @@ export function WalletSelector({
       {/* Wallet list */}
       <div className="space-y-1">
         {WALLET_REGISTRY.sort((a, b) => a.priority - b.priority).map((wallet) => {
-          const isAvailable = availableWallets.includes(wallet.id);
+          const isPending = wallet.status === "pending";
+          const isAvailable = !isPending && availableWallets.includes(wallet.id);
           const isConnectingWallet = connectingWallet === wallet.id;
 
           return (
@@ -114,6 +115,10 @@ export function WalletSelector({
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
+                ) : isPending ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                    Pending
+                  </span>
                 ) : isAvailable ? (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
                     Installed
@@ -128,6 +133,18 @@ export function WalletSelector({
           );
         })}
       </div>
+
+      {/* Pending connectors */}
+      {WALLET_REGISTRY.some((w) => w.status === "pending") && (
+        <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+          <span className="font-medium text-gray-700 dark:text-gray-300">
+            Ledger is pending:
+          </span>{" "}
+          the hardware connector is not shipped yet and needs WebUSB, which only
+          Chromium-based browsers (Chrome, Edge, Brave, Opera) support. Use
+          Freighter, xBull, Rabet, Albedo or Lobstr for now.
+        </p>
+      )}
 
       {/* Error */}
       {error && (

@@ -277,8 +277,8 @@ curl https://ophirpay.com/api/health
 ### 5.1 Verify Prometheus scraping
 
 ```bash
-# Metrics should be available at:
-curl https://ophirpay.com/api/metrics
+# Metrics require the scrape token (see docs/metrics-endpoints.md):
+curl -H "Authorization: Bearer $METRICS_TOKEN" https://ophirpay.com/api/metrics
 ```
 
 ### 5.2 Import Grafana dashboard

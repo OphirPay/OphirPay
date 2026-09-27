@@ -1,0 +1,97 @@
+name: "🔔 Prompt Promotion PR"
+
+# Whenever a PR is merged into the batch-integration branch, the integration
+# branch gains commits that are not yet in `main`. This workflow posts a
+# reminder on that merged PR pointing maintainers at the promotion PR
+# (`integration/staging` -> `main`) — either the one that is already open, or
+# a one-click "open a new pull request" link when none exists.
+#
+# It deliberately does NOT open the promotion PR itself: a PR created with the
+# workflow's default `GITHUB_TOKEN` does not trigger further workflow runs, so
+# its CI checks would never run. Opening it as a human/authenticated actor keeps
+# the merge gate honest.
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: prompt-promotion-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prompt:
+    name: "🔔 Prompt Promotion PR"
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'integration/staging') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      INTEGRATION_BRANCH: integration/staging
+      TARGET_BRANCH: main
+    steps:
+      - name: Compare integration branch to target and post the prompt
+        env:
+          MERGED_PR: ${{ github.event.pull_request.number }}
+          MERGED_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          compare=$(gh api "repos/${REPO}/compare/${TARGET_BRANCH}...${INTEGRATION_BRANCH}" \
+            --jq '{ahead:.ahead_by,behind:.behind_by}')
+          ahead=$(printf '%s' "$compare" | jq -r .ahead)
+          behind=$(printf '%s' "$compare" | jq -r .behind)
+
+          if [ "$ahead" -eq 0 ]; then
+            echo "Nothing to promote: ${INTEGRATION_BRANCH} has no commits ahead of ${TARGET_BRANCH}."
+            exit 0
+          fi
+
+          if [ "$behind" -gt 0 ]; then
+            state_note="⚠️ It is ${behind} commit(s) behind \`${TARGET_BRANCH}\` — merge \`${TARGET_BRANCH}\` into it before promoting."
+          else
+            state_note="✅ It is a clean fast-forward (0 commits behind \`${TARGET_BRANCH}\`)."
+          fi
+
+          # Reuse an already-open promotion PR (GitHub rejects a second open PR
+          # with the same head/base, so this must be idempotent rather than
+          # creating a duplicate).
+          existing=$(gh pr list --repo "$REPO" --state open \
+            --base "$TARGET_BRANCH" --head "$INTEGRATION_BRANCH" \
+            --json number --jq '.[0].number // empty')
+
+          compare_url="https://github.com/${REPO}/compare/${TARGET_BRANCH}...${INTEGRATION_BRANCH}?expand=1"
+
+          if [ -n "$existing" ]; then
+            body=$(printf '%s\n' \
+              "### 🔔 Promotion PR reminder" \
+              "" \
+              "\`${INTEGRATION_BRANCH}\` is now **${ahead} commit(s) ahead** of \`${TARGET_BRANCH}\`. ${state_note}" \
+              "" \
+              "A promotion PR is already open and automatically includes these commits: **#${existing}**. Re-run its checks and merge it to release this batch into \`${TARGET_BRANCH}\`." \
+              "" \
+              "<sub>Automated by <code>.github/workflows/prompt-promotion-pr.yml</code>.</sub>")
+          else
+            body=$(printf '%s\n' \
+              "### 🔔 Open a promotion PR" \
+              "" \
+              "\`${INTEGRATION_BRANCH}\` is now **${ahead} commit(s) ahead** of \`${TARGET_BRANCH}\`. ${state_note}" \
+              "" \
+              "👉 **[Open a pull request: \`${INTEGRATION_BRANCH}\` → \`${TARGET_BRANCH}\`](${compare_url})**" \
+              "" \
+              "<sub>Automated by <code>.github/workflows/prompt-promotion-pr.yml</code>. Opened by a maintainer rather than this workflow so CI runs on it.</sub>")
+          fi
+
+          if [ -n "${MERGED_PR:-}" ]; then
+            prefix="Merged PR #${MERGED_PR} (\`${MERGED_TITLE}\`) advanced \`${INTEGRATION_BRANCH}\`."
+            gh pr comment "$MERGED_PR" --repo "$REPO" --body "$(printf '%s\n\n%s' "$prefix" "$body")"
+            echo "Posted promotion prompt on PR #${MERGED_PR} (existing promotion PR: ${existing:-none})."
+          else
+            echo "Manual run — promotion status: ${ahead} ahead / ${behind} behind (existing promotion PR: ${existing:-none})."
+            printf '%s\n' "$body"
+          fi

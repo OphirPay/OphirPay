@@ -1,0 +1,262 @@
+name: "⚡ Load Tests (Scheduled Baseline Gate)"
+
+# Issue #735 — the performance tooling already existed and was documented
+# (scripts/load-test.js, scripts/sse-load-test.mjs, autocannon, and the
+# baselines in docs/PERFORMANCE.md), but nothing ran it, so the documented
+# numbers silently rotted and a change that doubled p95 on the payments list was
+# only noticed in production.
+#
+# This workflow runs the existing scripts UNMODIFIED against a freshly built
+# instance, reports their output in the job summary + artifacts, and fails when
+# the measured latency or error rate exceeds the deliberate thresholds in
+# tests/load/baselines.json by the configurable margin.
+#
+# It is intentionally NOT a PR gate: the numbers need a live server + test DB,
+# and shared-runner timing is noisy. Nightly-weekly cadence + manual dispatch.
+# See docs/PERFORMANCE.md → "Scheduled CI gate" and "Updating the baselines
+# deliberately".
+
+on:
+  schedule:
+    # 03:00 UTC every Monday — after the 02:00 E2E nightly, so the two do not
+    # compete for runner capacity.
+    - cron: "0 3 * * 1"
+  # Manual dispatch so a release candidate (or a suspected regression) can be
+  # measured on demand.
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Seconds per autocannon pass"
+        required: false
+        default: "10"
+      connections:
+        description: "Comma-separated concurrency levels"
+        required: false
+        default: "1,5,10,25,50"
+      margin:
+        description: "Latency margin applied to the documented baselines"
+        required: false
+        default: "3"
+      sse_concurrency:
+        description: "Concurrent SSE clients for the SSE load test"
+        required: false
+        default: "100"
+      seed_payments:
+        description: "Payments to seed for the authenticated list query"
+        required: false
+        default: "2000"
+
+permissions:
+  contents: read
+
+# A scheduled run and a manual dispatch must not overlap; the newer run wins.
+concurrency:
+  group: load-test
+  cancel-in-progress: false
+
+# Runtime configuration for the build, the server and the load scripts.
+# NEXT_PUBLIC_* variables are inlined by Next.js at BUILD time, so they must be
+# set for `npm run build` as well as for the server.
+#
+# NODE_ENV is deliberately NOT set here: `npm ci` treats NODE_ENV=production as
+# "omit devDependencies", which would strip the very tooling the build needs
+# (TypeScript, Prisma CLI, autocannon). It is set on the server step instead.
+env:
+  CI: true
+  DATABASE_URL: postgresql://ophirpay:ophirpay@localhost:5432/ophirpay
+  DATABASE_PROVIDER: postgresql
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  NEXT_PUBLIC_STELLAR_NETWORK: TESTNET
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+  NEXT_PUBLIC_STELLAR_RPC_URL: https://soroban-testnet.stellar.org
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  NEXT_PUBLIC_CONTRACT_ID: CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET
+  NEXT_PUBLIC_EMITTER_CONTRACT_ID: CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
+  # CI-only value — never used for a real deployment. Deliberately not a
+  # high-entropy string (so secret scanners do not flag it) and free of the
+  # placeholder markers rejected by src/lib/env.ts; same shape as the E2E and
+  # Docker-smoke workflows. >= 32 bytes as required.
+  AUTH_SECRET: ci-load-test-auth-secret-not-for-production
+  # The load scripts read the SSE/memory gauges from /api/metrics, which denies
+  # by default (issue #699) — without this the leak/heartbeat assertions are
+  # skipped and the SSE run cannot prove anything.
+  METRICS_TOKEN: ci-load-test-metrics-token-0123456789abcdef
+  # A shared runner is small and the API key is the only credential the test
+  # uses, so keep the global limiter out of the measurements (documented
+  # methodology requirement).
+  RATE_LIMIT_RPM: "100000"
+  # ── Test profile ─────────────────────────────────────────────
+  LOAD_TEST_BASE_URL: http://localhost:3000
+  LOAD_TEST_DURATION: ${{ github.event.inputs.duration || '10' }}
+  LOAD_TEST_CONNECTIONS: ${{ github.event.inputs.connections || '1,5,10,25,50' }}
+  LOAD_TEST_MARGIN: ${{ github.event.inputs.margin || '3' }}
+  LOAD_TEST_SEED_PAYMENTS: ${{ github.event.inputs.seed_payments || '2000' }}
+  LOAD_TEST_OUTPUT_DIR: tests/load/results
+  LOAD_TEST_RESULTS: tests/load/results/latest.json
+  # scripts/sse-load-test.mjs reads these two directly.
+  CONCURRENCY: ${{ github.event.inputs.sse_concurrency || '100' }}
+  DURATION_MS: "40000"
+
+jobs:
+  load-test:
+    name: "⚡ Load test + baseline gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ophirpay
+          POSTGRES_PASSWORD: ophirpay
+          POSTGRES_DB: ophirpay
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ophirpay"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      - name: Create the schema in the CI database
+        run: npx prisma db push --skip-generate
+
+      - name: Mint an API key and seed realistic rows
+        # scripts/load-test.js authenticates GET /api/payments with
+        # LOAD_TEST_API_KEY and documents seeding >= 2,000 payments so the list
+        # query does real work instead of scanning an empty table.
+        run: node scripts/create-load-test-key.mjs --github-env
+
+      - name: Build the app
+        run: npm run build
+
+      - name: Stage the standalone server
+        # A standalone build does not serve `public/` or `.next/static/` on its
+        # own; copy them into the standalone tree exactly like the Dockerfile.
+        run: |
+          cp -r public .next/standalone/
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/
+
+      - name: Start the server
+        run: |
+          mkdir -p tests/load/results
+          NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000 \
+            node .next/standalone/server.js > tests/load/results/next-server.log 2>&1 &
+
+          # Wait on the liveness probe: it proves the process is serving
+          # (issue #738) without waiting for a dependency.
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$LOAD_TEST_BASE_URL/api/health/live" || true)
+            if [ "$code" = "200" ]; then
+              echo "✅ Server alive (HTTP $code)"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::Server did not become live within 60s"
+          cat tests/load/results/next-server.log
+          exit 1
+
+      - name: Confirm readiness before measuring
+        # /api/health returns 200 (healthy/degraded) or 503 (database down).
+        # Measuring against a 503 instance would benchmark the error path.
+        run: |
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$LOAD_TEST_BASE_URL/api/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "✅ Readiness OK (HTTP $code)"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::/api/health did not return 200 — refusing to measure a degraded instance"
+          curl -s "$LOAD_TEST_BASE_URL/api/health" || true
+          exit 1
+
+      - name: Run scripts/load-test.js (unmodified)
+        run: |
+          node scripts/load-test.js --json="$LOAD_TEST_RESULTS" 2>&1 \
+            | tee tests/load/results/load-test.log
+
+      - name: Enforce the documented baselines
+        # Thresholds live in tests/load/baselines.json; latency is compared with
+        # the LOAD_TEST_MARGIN multiplier, error rates against absolute caps.
+        # The measured-vs-allowed table lands in the job summary.
+        run: |
+          node scripts/check-load-baselines.mjs "$LOAD_TEST_RESULTS" 2>&1 \
+            | tee tests/load/results/baseline-gate.log
+
+      - name: Run scripts/sse-load-test.mjs (unmodified)
+        # Runs even when the baseline gate failed so one run reports both
+        # signals; the script fails the job on its own acceptance checks
+        # (heartbeats on time, no connection leak, bounded memory).
+        if: always()
+        run: |
+          node scripts/sse-load-test.mjs 2>&1 \
+            | tee tests/load/results/sse-load-test.log
+
+      - name: Publish numbers in the job summary
+        if: always()
+        run: |
+          {
+            echo "## ⚡ Load test — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "| Setting | Value |"
+            echo "|---|---|"
+            echo "| Base URL | \`$LOAD_TEST_BASE_URL\` |"
+            echo "| Duration per pass | ${LOAD_TEST_DURATION}s |"
+            echo "| Concurrency levels | \`$LOAD_TEST_CONNECTIONS\` |"
+            echo "| Latency margin | ×${LOAD_TEST_MARGIN} |"
+            echo "| SSE clients | ${CONCURRENCY} |"
+            echo "| Seeded payments | ${LOAD_TEST_SEED_PAYMENTS} |"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo ""
+            for section in "scripts/load-test.js:load-test" "scripts/sse-load-test.mjs:sse-load-test"; do
+              title="${section%%:*}"
+              file="tests/load/results/${section##*:}.log"
+              echo "### ${title}"
+              echo ""
+              echo '```'
+              cat "$file" 2>/dev/null || echo "(no output — step did not run)"
+              echo '```'
+              echo ""
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: tests/load/results/
+          retention-days: 14
+
+      - name: Upload the server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-server-log
+          path: tests/load/results/next-server.log
+          retention-days: 7

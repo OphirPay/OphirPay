@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
-import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import {
   successResponse,
@@ -11,7 +10,12 @@ import {
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
-import { deriveKeyPrefix, API_SCOPES } from "@/lib/api-auth";
+import {
+  deriveKeyPrefix,
+  generateApiKey,
+  hashApiKeyV1,
+  API_SCOPES,
+} from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
 import { verifyCsrf } from "@/lib/csrf";
 
@@ -93,8 +97,10 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
       return badRequestError(parsed.error ?? "Invalid scopes");
     }
 
-    const rawKey = `oph_${crypto.randomBytes(24).toString("hex")}`;
-    const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+    // `generateApiKey` mints 32 CSPRNG bytes (issue #701) and fails closed if
+    // the result ever drifts from the documented `oph_` + 64-hex format.
+    const rawKey = generateApiKey();
+    const keyHash = hashApiKeyV1(rawKey);
     const prefix = deriveKeyPrefix(rawKey);
 
     const apiKey = await prisma.apiKey.create({

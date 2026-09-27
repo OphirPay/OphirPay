@@ -6,7 +6,7 @@ import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { validateBody, executeProposalSchema } from "@/lib/validation-schemas";
 import { executeGovernanceProposal } from "@/lib/contract-advanced";
-import { cacheDelete } from "@/lib/api-cache";
+import { cacheDelete, invalidateCaches } from "@/lib/api-cache";
 import { withRequestLogging } from "@/lib/request-logging";
 
 /**
@@ -40,6 +40,16 @@ export const POST = withMetrics("POST /api/governance/execute", withRequestLoggi
 
     cacheDelete("gov:proposal_count");
     cacheDelete(`gov:proposal:${proposalId}`);
+
+    // Executing a proposal can change fee configuration and always moves
+    // contract state, so the cached read-only views of both are now stale
+    // (#741). The audit ledger gains an entry from the state change too.
+    await invalidateCaches([
+      { scope: "fee-config" },
+      { scope: "stats" },
+      { scope: "audit-log" },
+    ]);
+
     return successResponse({ executed: true, proposalId, txHash: result.txHash });
   } catch (error) {
     return handleApiError(error);

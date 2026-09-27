@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import http from "http";
 
-vi.mock("@/lib/webhook-url-guard", () => ({
+// Canonical SSRF guard module (#758); @/lib/webhook-url-guard is a shim.
+vi.mock("@/lib/webhooks/url-safety", () => ({
   isSafeWebhookUrlAtDelivery: vi.fn(async () => true),
 }));
 

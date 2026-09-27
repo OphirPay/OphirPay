@@ -3,7 +3,13 @@
 /**
  * Stellar Horizon error codes and user-friendly messages.
  * Maps Horizon transaction result codes to human-readable explanations.
+ *
+ * The messages are mapped into the shared taxonomy (`error-codes.ts`, issue
+ * #760) by `classifyStellarError`, so callers receive a classified error
+ * (machine code + HTTP status + message) instead of a raw string.
  */
+
+import { ERROR_CODES, getErrorDefinition, type ErrorDefinition } from "@/lib/error-codes";
 
 const HORIZON_ERROR_MESSAGES: Record<string, string> = {
   op_underfunded: "Insufficient funds to complete this transaction. Please top up your account.",
@@ -47,4 +53,26 @@ export function isRecoverableStellarError(message: string): boolean {
     "insufficient",
   ];
   return recoverable.some((r) => message.toLowerCase().includes(r));
+}
+
+/**
+ * Classify a Horizon result code into a taxonomy entry. The message is the
+ * Horizon-specific explanation; the code and status come from the shared
+ * taxonomy (`HORIZON_ERROR`, 500).
+ */
+export function classifyStellarError(resultCode: string): ErrorDefinition {
+  return {
+    ...getErrorDefinition(ERROR_CODES.HORIZON_ERROR),
+    message: getStellarErrorMessage(resultCode),
+  };
+}
+
+/**
+ * Classify a generic Stellar/Soroban failure message into a taxonomy entry.
+ */
+export function classifyStellarErrorFromMessage(message: string): ErrorDefinition {
+  return {
+    ...getErrorDefinition(ERROR_CODES.STELLAR_ERROR),
+    message,
+  };
 }

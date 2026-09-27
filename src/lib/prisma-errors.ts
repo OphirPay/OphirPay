@@ -1,39 +1,67 @@
 // SPDX-License-Identifier: MIT
+//
+// Prisma failure classifier.
+//
+// This module parses Prisma client errors, but it no longer decides the HTTP
+// status or the default copy — it maps each failure into the shared taxonomy
+// (`error-codes.ts`, issue #760). `api-response.ts` is the only place that
+// serializes the envelope.
 
 import { Prisma } from "@prisma/client";
+import {
+  ERROR_CODES,
+  getErrorDefinition,
+  type ErrorCode,
+} from "@/lib/error-codes";
+
+export interface ClassifiedError {
+  code: string;
+  message: string;
+  status: number;
+}
+
+function fromTaxonomy(code: ErrorCode, message?: string): ClassifiedError {
+  const definition = getErrorDefinition(code);
+  return {
+    code: definition.code,
+    status: definition.status,
+    message: message ?? definition.message,
+  };
+}
 
 /**
  * Human-readable Prisma error mapper.
- * Converts Prisma client errors into user-friendly messages for API responses.
+ * Converts Prisma client errors into classified errors for API responses.
  */
-
-export function handlePrismaError(err: unknown): { code: string; message: string; status: number } {
+export function handlePrismaError(err: unknown): ClassifiedError {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     switch (err.code) {
       case "P2002":
-        return {
-          code: "UNIQUE_CONSTRAINT",
-          message: `A record with this ${(err.meta?.target as string[])?.join(", ") || "field"} already exists.`,
-          status: 409,
-        };
+        return fromTaxonomy(
+          ERROR_CODES.UNIQUE_CONSTRAINT,
+          `A record with this ${(err.meta?.target as string[])?.join(", ") || "field"} already exists.`,
+        );
       case "P2025":
-        return { code: "NOT_FOUND", message: "Record not found.", status: 404 };
+        return fromTaxonomy(ERROR_CODES.NOT_FOUND, "Record not found.");
       case "P2003":
-        return { code: "FOREIGN_KEY", message: "Related record not found.", status: 400 };
+        return fromTaxonomy(ERROR_CODES.FOREIGN_KEY, "Related record not found.");
       case "P2014":
-        return { code: "RELATION_VIOLATION", message: "Cannot delete — related records exist.", status: 409 };
+        return fromTaxonomy(
+          ERROR_CODES.RELATION_VIOLATION,
+          "Cannot delete — related records exist.",
+        );
       default:
-        return { code: "DATABASE_ERROR", message: "A database error occurred.", status: 500 };
+        return fromTaxonomy(ERROR_CODES.DATABASE_ERROR);
     }
   }
 
   if (err instanceof Prisma.PrismaClientValidationError) {
-    return { code: "VALIDATION_ERROR", message: "Invalid data provided.", status: 400 };
+    return fromTaxonomy(ERROR_CODES.VALIDATION_ERROR, "Invalid data provided.");
   }
 
   if (err instanceof Prisma.PrismaClientInitializationError) {
-    return { code: "DB_CONNECTION", message: "Database connection failed.", status: 503 };
+    return fromTaxonomy(ERROR_CODES.DB_CONNECTION, "Database connection failed.");
   }
 
-  return { code: "INTERNAL_ERROR", message: "An unexpected error occurred.", status: 500 };
+  return fromTaxonomy(ERROR_CODES.INTERNAL_ERROR);
 }

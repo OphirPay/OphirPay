@@ -34,7 +34,8 @@ X-OphirPay-Event: payment.created
 ## The exact canonical form
 
 OphirPay signs the payload with `buildSignedPayload` (see
-`src/lib/webhook-deliver.ts`), and the receiver must reproduce the **exact
+`src/lib/webhooks/signing.ts`; `src/lib/webhooks/index.ts` documents the whole
+delivery pipeline end to end), and the receiver must reproduce the **exact
 same byte string** before recomputing the HMAC:
 
 1. **Take the timestamp** — the `X-OphirPay-Timestamp` header value. (When the
@@ -335,4 +336,6 @@ publicly when you register it but privately later, that attempt is refused.
 
 - [Integration guide](integration-guide.md) — end-to-end setup
 - [Architecture](architecture.md) — where webhooks fit in the system
-- `src/lib/webhook-deliver.ts` — sender-side signing (`buildSignedPayload`)
+- `src/lib/webhooks/signing.ts` — sender-side signing (`buildSignedPayload`)
+- `src/lib/webhooks/index.ts` — the single documented delivery pipeline entry point
+  (dispatch → filter → persist → sign → SSRF check → deliver → record → replay)

@@ -15,6 +15,9 @@ All notable changes to OphirPay will be documented in this file.
 - **Coverage now measures the security surface (#700)**: `src/lib/api-auth.ts`, `rate-limit.ts`, `webhook-dispatcher.ts` and `webhook-deliver.ts` are no longer excluded from the coverage report; new suites cover the API-key lookup, the Redis REST store and webhook dispatch. The README coverage figure was regenerated (68.9% overall).
 - **JavaScript bundle-size budget (#739)**: added `bundle-budget.json` with committed per-route first-load budgets, `npm run bundle:check` (runs in CI after every production build and appends a per-route table to the job summary) and an opt-in `npm run analyze` treemap. `HOOK_PAGE_LIMIT` moved to `src/lib/hooks-pagination.ts` so the hooks route module exports only HTTP handlers (required by the webpack build the analyzer uses).
 
+### Added
+- **Postgres full-text search for payments and audit entries (#823)**: `prisma/migrations/20260925120000_add_full_text_search` adds a stored generated `searchVector` tsvector column plus a GIN index to `Payment` (transactionHash `A`, memo `B`, description `C`) and `AuditLog` (actor `A`, action `B`, details `C`). `src/lib/full-text-search.ts` builds the sanitised, bound `to_tsquery` match and `ts_rank` relevance expressions and keeps the #157 substring fallback for the SQLite dev path; `buildPaymentWhere` now delegates to it so the two paths cannot drift. Documented in `docs/DATABASE_SCHEMA_MIGRATIONS.md` §5.
+
 ## [Unreleased] — 2026-08-26
 
 ### Added

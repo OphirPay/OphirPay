@@ -1,0 +1,85 @@
+name: Database Restore Drill
+
+# Issue #751 — db-backup.yml archives a nightly dump and scripts/restore-drill.sh
+# exists, but nothing ever ran the drill. An untested backup is an assumption:
+# an encryption change, a missing pg_dump flag, or a migration that makes the
+# dump unrestorable would only surface during an incident.
+#
+# This workflow provisions a disposable Postgres, restores the newest backup
+# through scripts/restore-drill.sh, and runs a verification query set (core
+# table row counts + `prisma migrate status`). It fails loudly, so a broken
+# drill is visible instead of silent.
+#
+# Deliberately exercising the failure path: dispatch with a `backup_key` that
+# points at a corrupt or non-existent object — the drill must fail.
+
+on:
+  schedule:
+    # Weekly, Mondays 05:00 UTC (off-peak; after the nightly 03:00 backup).
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      backup_key:
+        description: "Explicit backup object key to restore (default: newest). Use a corrupt key to prove the drill fails."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-restore-drill
+  cancel-in-progress: false
+
+jobs:
+  restore-drill:
+    name: "🧪 Restore the newest backup into a disposable Postgres"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET || 'ophirpay-backups' }}
+      BACKUP_KEY: ${{ github.event.inputs.backup_key }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate backup credentials
+        run: |
+          set -euo pipefail
+          : "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID secret not set — add it to GitHub Actions secrets}"
+          : "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY secret not set}"
+          : "${AWS_REGION:?AWS_REGION secret not set}"
+          echo "Bucket: ${BACKUP_BUCKET}"
+
+      # Node + dependencies are needed for the `prisma migrate status`
+      # verification step inside the drill script.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run the restore drill
+        run: |
+          set -o pipefail
+          bash scripts/restore-drill.sh 2>&1 | tee restore-drill.log
+
+      - name: Upload drill log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-drill-log
+          path: restore-drill.log
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Fail loudly
+        if: failure()
+        run: |
+          echo "::error::Database restore drill FAILED — the backup could not be restored or failed verification. See docs/DISASTER_RECOVERY.md."

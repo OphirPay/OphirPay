@@ -5,7 +5,7 @@ import { z } from "zod";
 import { handlePrismaError } from "@/lib/prisma-errors";
 import { logger } from "@/lib/logger";
 import { getCurrentRequestId } from "@/lib/request-logging";
-import { ERROR_CODES } from "@/lib/error-codes";
+import { ERROR_CODES, errorEnvelope } from "@/lib/error-codes";
 
 // ── Standard Response Types ────────────────────────────────────
 
@@ -35,15 +35,6 @@ interface ApiSuccess<T> {
   };
 }
 
-interface ApiError {
-  success: false;
-  error: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-  timestamp: string;
-}
 
 // ── BigInt-safe JSON ───────────────────────────────────────────
 
@@ -111,6 +102,8 @@ export function successResponse<T>(
   return response;
 }
 
+// The envelope is built by the single serializer in `error-codes.ts`
+// (`errorEnvelope`) so the shape cannot drift from the taxonomy (issue #760).
 export function errorResponse(
   code: string,
   message: string,
@@ -118,11 +111,7 @@ export function errorResponse(
   details?: unknown
 ) {
   return NextResponse.json(
-    {
-      success: false,
-      error: { code, message, details: details ? jsonSafe(details) : undefined },
-      timestamp: new Date().toISOString(),
-    } satisfies ApiError,
+    errorEnvelope(code, message, details ? jsonSafe(details) : undefined),
     { status }
   );
 }
@@ -158,14 +147,10 @@ export function rateLimitError(
   if (retryAfterSeconds !== undefined) {
     headers["Retry-After"] = String(Math.max(0, Math.floor(retryAfterSeconds)));
   }
-  return NextResponse.json(
-    {
-      success: false,
-      error: { code: ERROR_CODES.RATE_LIMITED, message },
-      timestamp: new Date().toISOString(),
-    } satisfies ApiError,
-    { status: 429, headers }
-  );
+  return NextResponse.json(errorEnvelope(ERROR_CODES.RATE_LIMITED, message), {
+    status: 429,
+    headers,
+  });
 }
 
 export function forbiddenError(

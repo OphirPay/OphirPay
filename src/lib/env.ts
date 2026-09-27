@@ -34,6 +34,9 @@ const envSchema = z.object({
   NEXT_PUBLIC_FEATURE_MULTI_ASSET: z.string().optional(),
   NEXT_PUBLIC_FEATURE_WEBHOOKS: z.string().optional(),
   NEXT_PUBLIC_APP_VERSION: z.string().optional(),
+  // Resend transactional email (issue #800)
+  RESEND_API_KEY: z.string().min(8, "RESEND_API_KEY must be at least 8 characters").optional(),
+  EMAIL_FROM: z.string().min(1, "EMAIL_FROM cannot be empty").default("OphirPay <payments@ophirpay.com>"),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -119,6 +122,42 @@ export function assertAuthSecret(secret: string | undefined | null): string {
   return (secret as string).trim();
 }
 
+// ── RESEND_API_KEY validation (issue #800) ────────────────────
+export const RESEND_API_KEY_MIN_LENGTH = 8;
+export const DEFAULT_EMAIL_FROM = "OphirPay <payments@ophirpay.com>";
+
+export function resendApiKeyProblem(
+  key: string | undefined | null
+): string | null {
+  const value = typeof key === "string" ? key.trim() : "";
+  if (!value) return "RESEND_API_KEY is not set";
+  if (value.toLowerCase().includes("placeholder") || value.toLowerCase().includes("replace-with")) {
+    return "RESEND_API_KEY looks like a placeholder";
+  }
+  if (value.length < RESEND_API_KEY_MIN_LENGTH) {
+    return `RESEND_API_KEY must be at least ${RESEND_API_KEY_MIN_LENGTH} characters`;
+  }
+  return null;
+}
+
+export function assertResendApiKey(key: string | undefined | null): string {
+  const problem = resendApiKeyProblem(key);
+  if (problem) {
+    throw new Error(
+      `RESEND_API_KEY is required in production: ${problem}. ` +
+        "Configure a valid key from https://resend.com/api-keys"
+    );
+  }
+  return (key as string).trim();
+}
+
+export function getEmailConfig(): { apiKey?: string; from: string } {
+  return {
+    apiKey: process.env.RESEND_API_KEY?.trim() || undefined,
+    from: process.env.EMAIL_FROM?.trim() || DEFAULT_EMAIL_FROM,
+  };
+}
+
 export function validateEnv(): Env {
   try {
     const env = envSchema.parse({
@@ -149,6 +188,8 @@ export function validateEnv(): Env {
       NEXT_PUBLIC_FEATURE_MULTI_ASSET: process.env.NEXT_PUBLIC_FEATURE_MULTI_ASSET,
       NEXT_PUBLIC_FEATURE_WEBHOOKS: process.env.NEXT_PUBLIC_FEATURE_WEBHOOKS,
       NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION,
+      RESEND_API_KEY: process.env.RESEND_API_KEY?.trim() || undefined,
+      EMAIL_FROM: process.env.EMAIL_FROM?.trim() || undefined,
     });
 
     // Production must never sign sessions with a placeholder or short value.

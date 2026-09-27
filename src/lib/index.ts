@@ -11,7 +11,16 @@ export {
   createBatchSchema,
   createRecurrenceSchema,
 } from "./validation-schemas";
-export { validateEnv, isProduction, getAppUrl } from "./env";
+export {
+  validateEnv,
+  isProduction,
+  getAppUrl,
+  assertResendApiKey,
+  resendApiKeyProblem,
+  getEmailConfig,
+} from "./env";
+export { sendEmail, EMAIL_TEMPLATES } from "./email";
+export type { EmailPayload, EmailTemplateResult, SendEmailOptions } from "./email";
 
 // API Helpers
 export {

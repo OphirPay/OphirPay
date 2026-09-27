@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, renderHook, act } from "@testing-library/react";
 import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { CurrencyAmount } from "@/components/ui/CurrencyAmount";
 import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
 import { useXlmPrice } from "@/hooks/usePrice";
 import * as priceModule from "@/lib/price";
@@ -61,6 +62,50 @@ describe("CurrencyToggle Component", () => {
   it("displays unavailable indicator when showPrice is true and price is unavailable", () => {
     render(<CurrencyToggle value="USD" onChange={vi.fn()} showPrice={true} isUnavailable={true} />);
     expect(screen.getByTitle("Price feed unavailable")).toBeInTheDocument();
+  });
+});
+
+describe("CurrencyAmount Component (shared across views)", () => {
+  it("renders the asset unit in XLM mode", () => {
+    render(<CurrencyAmount amount={10} currency="XLM" price={0.15} />);
+    expect(screen.getByText("10.00 XLM")).toBeInTheDocument();
+  });
+
+  it("renders fiat with the XLM subtitle in USD mode when a price is available", () => {
+    render(<CurrencyAmount amount={10} currency="USD" price={0.15} />);
+    expect(screen.getByText("~$1.50")).toBeInTheDocument();
+    expect(screen.getByText("10.00 XLM")).toBeInTheDocument();
+  });
+
+  it("falls back visibly to the asset unit when the price is unavailable in USD mode", () => {
+    render(<CurrencyAmount amount={10} currency="USD" price={null} />);
+    expect(screen.getByText("10.00 XLM")).toBeInTheDocument();
+    expect(screen.getByText("(USD unavailable)")).toBeInTheDocument();
+    // Never a stale or zero fiat value.
+    expect(screen.queryByText(/\$/)).toBeNull();
+  });
+
+  it("falls back to the asset unit for non-XLM assets in USD mode", () => {
+    render(<CurrencyAmount amount={25} assetCode="USDC" currency="USD" price={0.15} />);
+    expect(screen.getByText("25.00 USDC")).toBeInTheDocument();
+    expect(screen.queryByText("(USD unavailable)")).toBeNull();
+    expect(screen.queryByText(/\$/)).toBeNull();
+  });
+
+  it("parses string amounts and guards non-finite input", () => {
+    const { rerender } = render(
+      <CurrencyAmount amount="50" currency="USD" price={0.15} />
+    );
+    expect(screen.getByText("~$7.50")).toBeInTheDocument();
+
+    rerender(<CurrencyAmount amount="not-a-number" currency="USD" price={0.15} />);
+    expect(screen.getByText("~$0.00")).toBeInTheDocument();
+    expect(screen.getByText("0.00 XLM")).toBeInTheDocument();
+  });
+
+  it("treats the native asset code as XLM for conversion", () => {
+    render(<CurrencyAmount amount={4} assetCode="native" currency="USD" price={0.25} />);
+    expect(screen.getByText("~$1.00")).toBeInTheDocument();
   });
 });
 

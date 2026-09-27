@@ -12,9 +12,14 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { CurrencyAmount } from "@/components/ui/CurrencyAmount";
 import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery, apiFetch } from "@/hooks/useApiQuery";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
+import { XLM_STROOPS } from "@/lib/stellar";
 import { isOnChainId } from "@/lib/type-guards";
 import {
   requestRefund,
@@ -60,11 +65,20 @@ interface RefundAnalytics {
   count: number;
 }
 
+/** Native XLM refunds are USD-convertible; custom asset addresses are not. */
+function isNativeAsset(asset: string | null | undefined): boolean {
+  return !asset || asset === "native" || asset === "XLM";
+}
+
 export default function RefundsPage() {
   usePageTitle(PAGE_TITLES.REFUNDS);
   const { wallet } = useWallet();
   const toast = useToast();
   const queryClient = useQueryClient();
+
+  // Persisted XLM ↔ USD display preference, shared with every other view.
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
   const [showRequest, setShowRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<"list" | "analytics">("list");
@@ -256,6 +270,13 @@ export default function RefundsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            showPrice={currency === "USD"}
+            price={xlmPrice}
+            isUnavailable={isPriceUnavailable}
+          />
           <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden" role="tablist" aria-label="Refund views">
             <button
               onClick={() => setActiveTab("list")}
@@ -380,7 +401,21 @@ export default function RefundsPage() {
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{r.reason}</p>
                   <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                    <span>Amount: {r.amount} {r.asset || "native"}</span>
+                    <span>
+                      Amount:{" "}
+                      {currency === "USD" && isNativeAsset(r.asset) ? (
+                        // Ledger amounts for native refunds are recorded in
+                        // stroops — convert to XLM before applying the rate.
+                        <CurrencyAmount
+                          amount={(parseFloat(r.amount) || 0) / XLM_STROOPS}
+                          assetCode="XLM"
+                          currency={currency}
+                          price={xlmPrice}
+                        />
+                      ) : (
+                        <>{r.amount} {r.asset || "native"}</>
+                      )}
+                    </span>
                     <span>Requested: {new Date(r.requestedAt).toLocaleDateString()}</span>
                     {isOnChainId(r.onChainId) && (
                       <span>On-chain refund #{r.onChainId}</span>

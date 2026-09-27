@@ -14,7 +14,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { formatAmount, shortenAddress, timeAgo, cn } from "@/lib/utils";
+import { shortenAddress, timeAgo, cn } from "@/lib/utils";
 import { fetchOnChainPayments, type OnChainPayment } from "@/lib/contracts";
 import { useToast } from "@/components/ui/Toast";
 import { getStellarExplorerUrl, XLM_STROOPS } from "@/lib/stellar";
@@ -26,11 +26,11 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Pagination } from "@/components/ui/Pagination";
 import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { CurrencyAmount } from "@/components/ui/CurrencyAmount";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
 import { useXlmPrice } from "@/hooks/usePrice";
-import { convertXlmToUsd, formatFiatAmount } from "@/lib/price";
 import {
   parsePaymentSort,
   applyPaymentSort,
@@ -283,33 +283,6 @@ function PaymentsClient() {
 
   const { currency, setCurrency } = useCurrencyDisplay();
   const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
-
-  const renderPaymentAmount = (payment: OnChainPayment) => {
-    const xlmAmount = payment.amountStroops / XLM_STROOPS;
-    if (currency !== "USD") {
-      return formatAmount(xlmAmount, "XLM");
-    }
-    if (xlmPrice !== null) {
-      return (
-        <div>
-          <span className="font-medium text-gray-900 dark:text-white">
-            {formatFiatAmount(convertXlmToUsd(xlmAmount, xlmPrice), { showApprox: true })}
-          </span>
-          <span className="block text-[11px] text-gray-400 dark:text-gray-500">
-            {formatAmount(xlmAmount, "XLM")}
-          </span>
-        </div>
-      );
-    }
-    return (
-      <div>
-        <span>{formatAmount(xlmAmount, "XLM")}</span>
-        <span className="block text-[11px] text-amber-600 dark:text-amber-400 font-sans">
-          (USD unavailable)
-        </span>
-      </div>
-    );
-  };
 
   const handleExport = async () => {
     // Prefer the server-side export (GET /api/payments/export): it applies the
@@ -593,7 +566,11 @@ function PaymentsClient() {
                       </Link>
                     </td>
                     <td className="py-3 px-4 text-gray-700 dark:text-gray-300 font-mono">
-                      {renderPaymentAmount(payment)}
+                      <CurrencyAmount
+                        amount={payment.amountStroops / XLM_STROOPS}
+                        currency={currency}
+                        price={xlmPrice}
+                      />
                     </td>
                     <td className="py-3 px-4">
                       {(() => {

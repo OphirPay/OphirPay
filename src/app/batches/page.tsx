@@ -13,7 +13,10 @@ import { EmptyState } from "@/components/EmptyState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
 import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useQueryClient } from "@tanstack/react-query";
@@ -70,6 +73,11 @@ export default function BatchesPage() {
   const [confirmBatch, setConfirmBatch] = useState<Batch | null>(null);
   // Keeps the offending row's button in a loading state while cancelling.
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  // Persisted XLM ↔ USD display preference — one toggle position per view so
+  // the choice made here is honored on the batch detail and every other view.
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
 
   // ── Summary (status counts + per-batch drill-down) ─────────────
   const {
@@ -186,15 +194,24 @@ export default function BatchesPage() {
             Process multiple payments in a single transaction
           </p>
         </div>
-        <Link
-          href="/batches/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors shadow-lg shadow-ophir-500/25 active:scale-95"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          New Batch
-        </Link>
+        <div className="flex items-center gap-3">
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            showPrice={currency === "USD"}
+            price={xlmPrice}
+            isUnavailable={isPriceUnavailable}
+          />
+          <Link
+            href="/batches/new"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors shadow-lg shadow-ophir-500/25 active:scale-95"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            New Batch
+          </Link>
+        </div>
       </div>
 
       {/* ── Summary view ────────────────────────────────────────── */}

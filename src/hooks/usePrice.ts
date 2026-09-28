@@ -2,16 +2,30 @@
 // SPDX-License-Identifier: MIT
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { fetchXlmPrice, type PriceResult } from "@/lib/price";
+import {
+  fetchXlmPrice,
+  getPriceStaleAfterMs,
+  isPriceStale,
+  type PriceResult,
+} from "@/lib/price";
 
 export interface UseXlmPriceOptions {
   enabled?: boolean;
   pollInterval?: number; // in ms (0 = disabled)
   ttlMs?: number;
+  /** Age (ms) beyond which the price is stale and hidden. Defaults to `PRICE_STALE_AFTER_MS`. */
+  staleAfterMs?: number;
 }
 
 export interface UseXlmPriceReturn {
+  /** Fresh price only: `null` when unavailable or older than the stale threshold. */
   price: number | null;
+  /** Last known price even if stale — for diagnostics, never for display as a current value. */
+  lastKnownPrice: number | null;
+  /** True when a price was observed but is older than the stale threshold. */
+  isStale: boolean;
+  /** Observation timestamp (epoch ms) of the last known price. */
+  observedAt: number | null;
   source: PriceResult["source"];
   isLoading: boolean;
   isError: boolean;
@@ -28,8 +42,11 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
   const enabled = options?.enabled ?? true;
   const pollInterval = options?.pollInterval ?? 0;
   const ttlMs = options?.ttlMs;
+  const staleAfterMs = options?.staleAfterMs ?? getPriceStaleAfterMs();
 
-  const [price, setPrice] = useState<number | null>(null);
+  const [lastKnownPrice, setPrice] = useState<number | null>(null);
+  const [observedAt, setObservedAt] = useState<number | null>(null);
+  const [, setStaleTick] = useState(0);
   const [source, setSource] = useState<PriceResult["source"]>(null);
   const [isLoading, setIsLoading] = useState<boolean>(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -41,13 +58,17 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
     async (forceRefresh = false): Promise<PriceResult> => {
       setIsLoading(true);
       try {
-        const result = await fetchXlmPrice({ forceRefresh, ttlMs });
+        const result = await fetchXlmPrice({ forceRefresh, ttlMs, staleAfterMs });
         if (isMountedRef.current) {
           setPrice(result.price);
           setSource(result.source);
           setError(result.error ?? null);
           if (result.price !== null) {
-            setLastUpdated(result.timestamp ? new Date(result.timestamp) : new Date());
+            const observed = result.timestamp ?? Date.now();
+            setObservedAt(observed);
+            setLastUpdated(new Date(observed));
+          } else {
+            setObservedAt(null);
           }
           setIsLoading(false);
         }
@@ -61,7 +82,7 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
         return { price: null, source: null, error: errMsg };
       }
     },
-    [ttlMs]
+    [ttlMs, staleAfterMs]
   );
 
   useEffect(() => {
@@ -76,14 +97,32 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
 
   useEffect(() => {
     if (!enabled || !pollInterval || pollInterval <= 0) return;
+    // Cache-respecting: a poll inside the TTL is a cache hit, not an upstream call.
     const interval = setInterval(() => {
-      loadPrice(true);
+      loadPrice(false);
     }, pollInterval);
     return () => clearInterval(interval);
   }, [enabled, pollInterval, loadPrice]);
 
+  // Re-render the moment the observation crosses the threshold, so a value
+  // that was fresh on arrival is hidden without waiting for another fetch.
+  useEffect(() => {
+    if (observedAt === null) return;
+    const remaining = observedAt + staleAfterMs - Date.now();
+    if (remaining < 0) return;
+    const timer = setTimeout(() => setStaleTick((n) => n + 1), remaining + 1);
+    return () => clearTimeout(timer);
+  }, [observedAt, staleAfterMs]);
+
+  const isStale =
+    lastKnownPrice !== null && observedAt !== null && isPriceStale(observedAt, staleAfterMs);
+  const price = isStale ? null : lastKnownPrice;
+
   return {
     price,
+    lastKnownPrice,
+    isStale,
+    observedAt,
     source,
     isLoading,
     isError: error !== null && price === null,

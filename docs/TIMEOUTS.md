@@ -44,7 +44,7 @@ default (see `.env.example`).
 | `STELLAR_REQUEST_TIMEOUT_MS` | `10000` | Umbrella Stellar budget and the SDK default |
 | `HORIZON_REQUEST_TIMEOUT_MS` | `STELLAR_REQUEST_TIMEOUT_MS` | Horizon REST calls |
 | `SOROBAN_RPC_TIMEOUT_MS` | `STELLAR_REQUEST_TIMEOUT_MS` | Soroban RPC calls |
-| `PRICE_REQUEST_TIMEOUT_MS` | `5000` | CoinGecko / Coinbase price fetches |
+| `PRICE_REQUEST_TIMEOUT_MS` | `5000` | CoinGecko / Coinbase price fetches (via `fetchWithTimeout`) |
 | `WEBHOOK_TIMEOUT_MS` | `5000` | Each webhook delivery attempt |
 | `RPC_PROBE_TIMEOUT_MS` | `3000` | Failover health probes |
 

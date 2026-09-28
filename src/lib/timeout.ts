@@ -67,8 +67,8 @@ export const DEFAULT_TIMEOUTS_MS = {
   failoverProbe: 3_000,
 } as const;
 
-/** Read a positive integer millisecond budget from the environment. */
-function readTimeoutEnv(name: string, fallback: number): number {
+/** Read a positive integer (ms budget, TTL, …) from the environment. */
+export function readPositiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
   const parsed = Number(raw);
@@ -77,32 +77,32 @@ function readTimeoutEnv(name: string, fallback: number): number {
 
 /** Overall Stellar request budget (`STELLAR_REQUEST_TIMEOUT_MS`). */
 export function getStellarTimeoutMs(): number {
-  return readTimeoutEnv("STELLAR_REQUEST_TIMEOUT_MS", DEFAULT_TIMEOUTS_MS.stellar);
+  return readPositiveIntEnv("STELLAR_REQUEST_TIMEOUT_MS", DEFAULT_TIMEOUTS_MS.stellar);
 }
 
 /** Horizon REST budget (`HORIZON_REQUEST_TIMEOUT_MS`, falls back to Stellar). */
 export function getHorizonTimeoutMs(): number {
-  return readTimeoutEnv("HORIZON_REQUEST_TIMEOUT_MS", getStellarTimeoutMs());
+  return readPositiveIntEnv("HORIZON_REQUEST_TIMEOUT_MS", getStellarTimeoutMs());
 }
 
 /** Soroban RPC budget (`SOROBAN_RPC_TIMEOUT_MS`, falls back to Stellar). */
 export function getSorobanTimeoutMs(): number {
-  return readTimeoutEnv("SOROBAN_RPC_TIMEOUT_MS", getStellarTimeoutMs());
+  return readPositiveIntEnv("SOROBAN_RPC_TIMEOUT_MS", getStellarTimeoutMs());
 }
 
 /** Price-oracle budget (`PRICE_REQUEST_TIMEOUT_MS`). */
 export function getPriceTimeoutMs(): number {
-  return readTimeoutEnv("PRICE_REQUEST_TIMEOUT_MS", DEFAULT_TIMEOUTS_MS.price);
+  return readPositiveIntEnv("PRICE_REQUEST_TIMEOUT_MS", DEFAULT_TIMEOUTS_MS.price);
 }
 
 /** Webhook delivery budget (`WEBHOOK_TIMEOUT_MS`). */
 export function getWebhookTimeoutMs(): number {
-  return readTimeoutEnv("WEBHOOK_TIMEOUT_MS", DEFAULT_TIMEOUTS_MS.webhook);
+  return readPositiveIntEnv("WEBHOOK_TIMEOUT_MS", DEFAULT_TIMEOUTS_MS.webhook);
 }
 
 /** RPC health-probe budget (`RPC_PROBE_TIMEOUT_MS`). */
 export function getFailoverProbeTimeoutMs(): number {
-  return readTimeoutEnv("RPC_PROBE_TIMEOUT_MS", DEFAULT_TIMEOUTS_MS.failoverProbe);
+  return readPositiveIntEnv("RPC_PROBE_TIMEOUT_MS", DEFAULT_TIMEOUTS_MS.failoverProbe);
 }
 
 // ── Abortable timeout ──────────────────────────────────────────

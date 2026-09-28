@@ -42,6 +42,7 @@ export {
   convertXlmToUsd,
   formatFiatAmount,
   clearPriceCache,
+  isPriceStale,
   ROUNDING_RULES,
 } from "./price";
 export type { PriceResult, FormatFiatOptions } from "./price";

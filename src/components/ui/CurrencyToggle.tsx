@@ -13,6 +13,8 @@ export interface CurrencyToggleProps {
   showPrice?: boolean;
   price?: number | null;
   isUnavailable?: boolean;
+  /** The last observed price is older than the staleness threshold and is hidden. */
+  isStale?: boolean;
 }
 
 /**
@@ -27,6 +29,7 @@ export function CurrencyToggle({
   showPrice = false,
   price,
   isUnavailable = false,
+  isStale = false,
 }: CurrencyToggleProps) {
   const isSm = size === "sm";
 
@@ -82,8 +85,8 @@ export function CurrencyToggle({
         {showPrice && isUnavailable && (
           <span
             className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
-            title="Price feed unavailable"
-            aria-label="Price feed unavailable"
+            title={isStale ? "Price is stale" : "Price feed unavailable"}
+            aria-label={isStale ? "Price is stale" : "Price feed unavailable"}
           />
         )}
       </button>

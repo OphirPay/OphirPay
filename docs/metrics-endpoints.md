@@ -87,6 +87,9 @@ For the Prometheus Operator, attach an `authorization` block (or a
 
 ## Usage
 
+For dashboard import, alert routing and per-alert runbooks, see
+[`OBSERVABILITY.md`](./OBSERVABILITY.md).
+
 The metrics are in-process (reset on deploy), consistent with the existing
 `http_requests_total` counters. Point Prometheus/Grafana at `/api/metrics`
 (lifted from `monitoring/prometheus-alerts.yml`); the histogram and error

@@ -5,6 +5,7 @@ All notable changes to OphirPay will be documented in this file.
 ## [Unreleased] — 2026-09-25
 
 ### Added
+- **Observability guide (#783)**: `docs/OBSERVABILITY.md` documents the authenticated `/api/metrics` scrape config, Grafana dashboard import and provisioning (Grafana 10.x+, data source UID `prometheus`), Alertmanager routing, and a runbook entry for every rule in `monitoring/prometheus-alerts.yml` (meaning, first actions, how to pause the contract, escalation). It also records that most alert rules reference metrics the app does not export yet, so only `ApiDown`, `WebhookDeliveryFailureRateHigh` and the two RPC failover alerts can fire today. `src/__tests__/docs-observability.test.ts` fails when an alert has no runbook entry or the doc's emitted-metric claims drift from the metrics route.
 - **Scoped pause controls (#826)**: the circuit breaker is no longer all-or-nothing. `PauseScope` exposes eight feature domains (payments, escrows, streams, recurring, refunds, governance, hooks, batches) through `set_scope_paused` / `is_scope_paused` / `get_paused_scopes`; the global `emergency_pause_all` still overrides every scope, unknown scope ids return `InvalidPauseScope` (308), and `/api/pause-state` plus the pause-controls page surface the per-scope state with an explicit confirmation step.
 
 ### Security

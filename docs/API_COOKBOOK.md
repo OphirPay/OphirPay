@@ -66,6 +66,7 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/policy-versions` | GET |
 | `/api/contracts` | GET |
 | `/api/stats` | GET |
+| `/api/assets/metadata` | GET |
 | `/api/batches` | GET, POST |
 | `/api/batches/{id}` | GET, POST |
 | `/api/batches/summary` | GET |
@@ -584,6 +585,28 @@ curl -X POST "https://api.ophirpay.com/api/refunds" \
   "createdAt": "2026-08-26T19:05:00.000Z"
 }
 ```
+
+### Resolve a Custom Asset's Display Name
+```bash
+curl -X GET "https://api.ophirpay.com/api/assets/metadata?code=USDC&issuer=GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+```
+**Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "code": "USDC",
+    "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "name": "USD Coin",
+    "homeDomain": "centre.io",
+    "source": "toml",
+    "fetchedAt": "2026-09-28T12:00:00.000Z"
+  }
+}
+```
+Metadata is read from the issuer's SEP-1 `stellar.toml`; an unknown or
+unreachable issuer returns `name: null` with `source: "fallback"` so callers
+render the raw code and issuer.
 
 ---
 

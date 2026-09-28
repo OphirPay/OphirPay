@@ -312,3 +312,38 @@ If p95 or error rate worsens by >20% with no intentional change, suspect:
    on large offsets, no unconditional `COUNT(*)`).
 4. **Rate limiting** — 429s masquerade as errors; confirm `RATE_LIMIT_RPM` is
    generous during baseline runs.
+
+## Transaction fee policy (issue #825)
+
+Fees are no longer a hardcoded constant. Before building a transaction the app
+calls `getRecommendedFee()` (`src/lib/fee-stats.ts`), which reads Horizon's
+`/fee_stats` aggregate and picks a percentile of the recently **charged** fees:
+
+| `NEXT_PUBLIC_FEE_AGGRESSIVENESS` | Percentile | When to use |
+| -------------------------------- | ---------- | ----------- |
+| `low`                            | `p50`      | Cost-sensitive, tolerant of occasional inclusion delay |
+| `medium` (default)               | `p90`      | Balanced — clears ordinary congestion |
+| `high`                           | `p99`      | Latency-critical payouts during fee spikes |
+
+The recommendation is floored at `last_ledger_base_fee`, so it is never below
+the protocol minimum, and it is **per operation** — a 40-recipient batch bids
+`recommendedFee × 40`.
+
+### Caching and fallback
+
+`/fee_stats` is cached for `FEE_STATS_TTL_MS` (default 30 000 ms) so a burst of
+confirmations is quoted from one sample and the fee shown before signing
+matches the fee submitted. If Horizon is unreachable the last known good sample
+is served (`source: "cache"`, `stale: true`); a cold start with no sample ever
+falls back to `FEE_FALLBACK_BASE_FEE` (default 100 stroops). The recommendation
+never throws, and the confirmation screens render the `basis` string so the
+user sees *why* a fee is higher than usual.
+
+### Related modules
+
+- `resolveTransactionFee()` (`src/lib/stellar.ts`) — used by the single,
+  batch, path-payment and scheduled-payment builders.
+- `simulatePayment()` (`src/lib/transaction-simulator.ts`) — quotes the same
+  fee, so the pre-sign preview matches what is signed.
+- `estimateTransactionFee()` / `estimateBatchFee()` (`src/lib/fee-estimator.ts`)
+  — the UI-facing wrappers.

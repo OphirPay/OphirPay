@@ -1,0 +1,37 @@
+{
+  "name": "@ophirpay/client",
+  "version": "0.1.0",
+  "description": "Typed JavaScript/TypeScript client for the OphirPay payments API, generated from the committed OpenAPI specification.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./operations": {
+      "types": "./operations.generated.d.ts",
+      "default": "./operations.generated.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "operations.generated.js",
+    "operations.generated.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ophirpay",
+    "stellar",
+    "payments",
+    "sdk",
+    "client",
+    "openapi"
+  ]
+}

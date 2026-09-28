@@ -39,7 +39,16 @@ vi.mock("@/components/ui/Toast", () => ({
 vi.mock("@/lib/fee-estimator", () => ({
   estimateTransactionFee: vi.fn().mockResolvedValue({
     baseFee: "100",
+    recommendedFee: "100",
+    estimatedFee: "100",
+    totalFee: "100",
+    operations: 1,
     networkCongestion: "low",
+    percentile: "p90",
+    aggressiveness: "medium",
+    source: "horizon",
+    stale: false,
+    basis: "p90 of recently charged fees",
   }),
 }));
 

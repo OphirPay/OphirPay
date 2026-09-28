@@ -373,6 +373,20 @@ export async function findStrictSendPath(params: {
 export interface BuildTxResult {
   xdr: string;
   sourceAccount: Horizon.AccountResponse;
+  /** Total fee (stroops) baked into the transaction: per-op fee × operations. */
+  fee: string;
+}
+
+/**
+ * Per-operation fee for a new transaction. Callers that showed the user a
+ * recommendation (see fee-estimator.ts) pass it explicitly so the signed fee is
+ * exactly the displayed one; otherwise fall back to Horizon's current base fee.
+ */
+async function resolveFeePerOperation(
+  server: Horizon.Server,
+  fee?: string
+): Promise<string> {
+  return fee ?? (await server.fetchBaseFee()).toString();
 }
 
 /**
@@ -399,6 +413,8 @@ export async function buildPaymentTx(params: {
   destAssetIssuer?: string;
   destMin?: string;
   path?: Asset[];
+  /** Per-operation fee in stroops; defaults to Horizon's base fee. */
+  fee?: string;
 }): Promise<BuildTxResult> {
   const {
     sourcePublicKey,
@@ -413,6 +429,7 @@ export async function buildPaymentTx(params: {
     destAssetIssuer,
     destMin,
     path,
+    fee,
   } = params;
 
   const isCrossAsset =
@@ -431,6 +448,7 @@ export async function buildPaymentTx(params: {
       destAssetIssuer,
       path,
       memo,
+      fee,
     });
   }
 
@@ -441,7 +459,7 @@ export async function buildPaymentTx(params: {
   const paymentAsset = createAsset(assetCode, assetIssuer);
 
   let builder = new TransactionBuilder(sourceAccount, {
-    fee: (await server.fetchBaseFee()).toString(),
+    fee: await resolveFeePerOperation(server, fee),
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,
@@ -474,7 +492,7 @@ export async function buildPaymentTx(params: {
   }
 
   const tx = builder.build();
-  return { xdr: tx.toXDR(), sourceAccount };
+  return { xdr: tx.toXDR(), sourceAccount, fee: tx.fee };
 }
 
 /**
@@ -493,6 +511,8 @@ export async function buildPathPaymentStrictSendTx(params: {
   destAssetIssuer?: string;
   path?: Asset[];
   memo?: string;
+  /** Per-operation fee in stroops; defaults to Horizon's base fee. */
+  fee?: string;
 }): Promise<BuildTxResult> {
   const {
     sourcePublicKey,
@@ -505,6 +525,7 @@ export async function buildPathPaymentStrictSendTx(params: {
     destAssetIssuer,
     path = [],
     memo,
+    fee,
   } = params;
 
   const server = getHorizonServer();
@@ -515,7 +536,7 @@ export async function buildPathPaymentStrictSendTx(params: {
   const destAsset = createAsset(destAssetCode, destAssetIssuer);
 
   let builder = new TransactionBuilder(sourceAccount, {
-    fee: (await server.fetchBaseFee()).toString(),
+    fee: await resolveFeePerOperation(server, fee),
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,
@@ -537,7 +558,7 @@ export async function buildPathPaymentStrictSendTx(params: {
   }
 
   const tx = builder.build();
-  return { xdr: tx.toXDR(), sourceAccount };
+  return { xdr: tx.toXDR(), sourceAccount, fee: tx.fee };
 }
 
 /**
@@ -547,14 +568,16 @@ export async function buildPathPaymentStrictSendTx(params: {
 export async function buildBatchPaymentTx(params: {
   sourcePublicKey: string;
   recipients: BatchRecipientInput[];
+  /** Per-operation fee in stroops; defaults to Horizon's base fee. */
+  fee?: string;
 }): Promise<BuildTxResult> {
-  const { sourcePublicKey, recipients } = params;
+  const { sourcePublicKey, recipients, fee } = params;
   const server = getHorizonServer();
 
   const sourceAccount = await server.loadAccount(sourcePublicKey);
 
   const now = Math.floor(Date.now() / 1000);
-  const baseFee = (await server.fetchBaseFee()).toString();
+  const baseFee = await resolveFeePerOperation(server, fee);
 
   let builder = new TransactionBuilder(sourceAccount, {
     fee: baseFee,
@@ -576,7 +599,7 @@ export async function buildBatchPaymentTx(params: {
   }
 
   const tx = builder.build();
-  return { xdr: tx.toXDR(), sourceAccount };
+  return { xdr: tx.toXDR(), sourceAccount, fee: tx.fee };
 }
 
 /**

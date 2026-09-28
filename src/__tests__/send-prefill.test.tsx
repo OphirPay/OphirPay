@@ -47,10 +47,23 @@ vi.mock("@/lib/contracts", () => ({
   recordPaymentOnChain: vi.fn(),
 }));
 
-vi.mock("@/lib/fee-estimator", () => ({
+vi.mock("@/lib/fee-estimator", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/fee-estimator")>()),
   estimateTransactionFee: vi.fn().mockResolvedValue({
     baseFee: "100",
+    recommendedFee: "100",
+    estimatedFee: "100",
+    operations: 1,
     networkCongestion: "low",
+    policy: "normal",
+    source: "horizon",
+    stale: false,
+    fetchedAt: Date.now(),
+    ledgerCapacityUsage: 0.2,
+    percentile: "p70",
+    percentileFee: "100",
+    capped: false,
+    refreshIntervalMs: 30000,
   }),
 }));
 

@@ -24,7 +24,9 @@ import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
 import { recordPaymentOnChain } from "@/lib/contracts";
 import { downloadReceiptPdf } from "@/lib/receipt-pdf";
-import { estimateTransactionFee } from "@/lib/fee-estimator";
+import { assertFeeMatchesEstimate } from "@/lib/fee-estimator";
+import { useFeeRecommendation } from "@/hooks/useFeeRecommendation";
+import { FeeRecommendation } from "@/components/FeeRecommendation";
 import { useToast } from "@/components/ui/Toast";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useApiMutation } from "@/hooks/useApiQuery";
@@ -92,7 +94,6 @@ function SendPageClient() {
 
   const [destination, setDestination] = useState("");
   const [amount, setAmount] = useState("");
-  const [feeEstimate, setFeeEstimate] = useState<{ baseFee: string; congestion: string } | null>(null);
   const [memo, setMemo] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<AssetInfo>(XLM_ASSET);
   const [destAsset, setDestAsset] = useState<AssetInfo>(XLM_ASSET);
@@ -124,6 +125,15 @@ function SendPageClient() {
 
   const isCrossAsset =
     selectedAsset.code !== destAsset.code || selectedAsset.issuer !== destAsset.issuer;
+
+  // Horizon-driven fee. A sponsored recipient adds a Create Account operation.
+  // Paused while a transaction is in flight so the approved fee cannot change.
+  const {
+    estimate: feeEstimate,
+    setPolicy: setFeePolicy,
+  } = useFeeRecommendation(!isCrossAsset && sponsorCreate ? 2 : 1, {
+    paused: step !== "idle" && step !== "done",
+  });
 
   // Best-effort DB record — invalidates dashboard/payments caches on success
   const recordPaymentMutation = useApiMutation<
@@ -171,13 +181,6 @@ function SendPageClient() {
   >("/api/recurring", {
     invalidateKeys: [["recurring"]],
   });
-
-  // Fetch live fee estimate on mount
-  useEffect(() => {
-    estimateTransactionFee(1)
-      .then((fee) => setFeeEstimate({ baseFee: fee.baseFee, congestion: fee.networkCongestion }))
-      .catch(() => {});
-  }, []);
 
   // Pre-fill the form from a shareable payment link (?dest=...&amount=...&memo=...&asset=...)
   useEffect(() => {
@@ -456,7 +459,9 @@ function SendPageClient() {
           destAssetIssuer: destAsset.issuer,
           path: pathEstimate.path,
           memo: memo.trim() || undefined,
+          fee: feeEstimate?.recommendedFee,
         });
+        if (feeEstimate) assertFeeMatchesEstimate(res.fee, feeEstimate);
         xdr = res.xdr;
       } else {
         // Standard Direct Payment
@@ -468,7 +473,9 @@ function SendPageClient() {
           assetCode: selectedAsset.code,
           assetIssuer: selectedAsset.issuer,
           sponsorCreate,
+          fee: feeEstimate?.recommendedFee,
         });
+        if (feeEstimate) assertFeeMatchesEstimate(res.fee, feeEstimate);
         xdr = res.xdr;
       }
 
@@ -1128,20 +1135,13 @@ function SendPageClient() {
             </span>
           </div>
 
-          {feeEstimate && (
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="text-gray-500 dark:text-gray-400">
-                Network fee: ~{feeEstimate.baseFee} stroops
-              </span>
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                feeEstimate.congestion === "low" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                feeEstimate.congestion === "medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-              }`}>
-                {feeEstimate.congestion}
-              </span>
-            </div>
-          )}
+          <div className="mt-2">
+            <FeeRecommendation
+              estimate={feeEstimate}
+              onPolicyChange={setFeePolicy}
+              disabled={isSubmitting}
+            />
+          </div>
         </div>
 
         {/* Cross-Asset Rate Preview Card */}

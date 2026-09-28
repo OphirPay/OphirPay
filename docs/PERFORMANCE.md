@@ -300,6 +300,69 @@ unset — or unset-but-unreachable — every read falls back to the per-process 
 cache and the request is served normally. The app must run correctly with
 `REDIS_URL` unset, and `src/__tests__/api-cache.test.ts` asserts exactly that.
 
+## Network fee recommendation (#825)
+
+Stellar charges `fee × operations`, where `fee` is a per-operation bid in
+stroops (1 XLM = 10,000,000 stroops). The send page and the batch confirmation
+dialog recommend that bid from Horizon's `/fee_stats` instead of a static
+value (`src/lib/fee-estimator.ts`, `src/hooks/useFeeRecommendation.ts`).
+
+**Inputs read from `/fee_stats`:** `last_ledger_base_fee`,
+`ledger_capacity_usage` and the `fee_charged` distribution (`mode`, `p70`,
+`p95`).
+
+**Aggressiveness policy** (default `normal`, changeable per transaction from the
+selector next to the fee):
+
+| Policy | UI label | Fee targeted | Use when |
+|---|---|---|---|
+| `low` | Low | most common fee charged (`mode`) | cost matters more than speed |
+| `normal` | Normal | `p70` of fees charged | default |
+| `high` | Priority | `p95` of fees charged | you need inclusion in a busy ledger |
+
+The recommendation is never below the ledger base fee or the 100-stroop
+network minimum, and never above `NEXT_PUBLIC_FEE_MAX_STROOPS`; when the cap
+applies the basis line says so. Congestion (`low` < 50 %, `medium` < 80 %,
+`high` ≥ 80 % ledger capacity) is shown as a badge.
+
+**Refresh interval.** Statistics are cached in memory and refetched at most
+every `NEXT_PUBLIC_FEE_REFRESH_MS` (default 30 s, minimum 5 s); concurrent
+callers share one request. Changing the policy or the operation count re-derives
+the fee from the cache without another request. Refresh is paused while a
+transaction is being built, signed or submitted so the fee cannot move under a
+signature.
+
+**When Horizon is unreachable** (network error, timeout, non-2xx or a payload
+that fails parsing) the estimator returns, in order:
+
+1. the last known good statistics (`source: "cache"`), then
+2. `NEXT_PUBLIC_FEE_FALLBACK_STROOPS` (default 100, `source: "fallback"`).
+
+Both are flagged `stale` and the UI shows an amber "Horizon is unreachable …"
+notice (with the age of the cached value) next to the fee. It recovers on the
+next successful refresh.
+
+**Shown fee = submitted fee.** The page passes `estimate.recommendedFee` to
+`buildPaymentTx` / `buildPathPaymentStrictSendTx` / `buildBatchPaymentTx`
+(which no longer re-query the base fee when given one). They return the built
+transaction's total `fee`, and the page calls `assertFeeMatchesEstimate` before
+opening the wallet, aborting with an error if the two ever differ. The
+server-side scheduler (`submitPaymentFromSecret`) has no UI and keeps using
+Horizon's current base fee.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `NEXT_PUBLIC_FEE_POLICY` | `normal` | default policy: `low`, `normal`, `high` |
+| `NEXT_PUBLIC_FEE_REFRESH_MS` | `30000` | statistics refresh interval (min 5000) |
+| `NEXT_PUBLIC_FEE_FALLBACK_STROOPS` | `100` | per-op fee with no Horizon data and no cache |
+| `NEXT_PUBLIC_FEE_MAX_STROOPS` | `10000` | per-op ceiling (0.001 XLM) |
+
+Invalid values fall back to the default. Tests: `fee-estimator.test.ts`
+(parsing, policy, cache/refresh, fallback), `fee-recommendation-ui.test.tsx`
+(displayed basis and stale notice), `stellar-fee.test.ts` (builders sign the
+given fee), `send-fee-recommendation.test.tsx` and
+`batch-fee-recommendation.test.tsx` (shown fee = submitted fee).
+
 ## Interpreting regressions
 
 If p95 or error rate worsens by >20% with no intentional change, suspect:

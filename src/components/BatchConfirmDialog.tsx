@@ -4,6 +4,8 @@
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatAmount, shortenAddress } from "@/lib/utils";
+import { FeeRecommendation } from "@/components/FeeRecommendation";
+import type { FeeEstimate, FeePolicy } from "@/lib/fee-estimator";
 
 interface BatchRecipient {
   address: string;
@@ -15,6 +17,12 @@ interface BatchConfirmDialogProps {
   recipients: BatchRecipient[];
   totalAmount: number;
   estimatedFee: string;
+  /**
+   * Horizon-driven recommendation. When present it supersedes `estimatedFee`
+   * and its basis is shown so the user sees why the fee may be above normal.
+   */
+  feeEstimate?: FeeEstimate | null;
+  onFeePolicyChange?: (policy: FeePolicy) => void;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -26,12 +34,17 @@ export function BatchConfirmDialog({
   recipients,
   totalAmount,
   estimatedFee,
+  feeEstimate,
+  onFeePolicyChange,
   onConfirm,
   onCancel,
 }: BatchConfirmDialogProps) {
   const visibleRecipients = recipients.slice(0, MAX_VISIBLE);
   const remainingCount = recipients.length - MAX_VISIBLE;
-  const feeXlm = formatAmount(parseFloat(estimatedFee) / 10000000, "XLM");
+  const feeXlm = formatAmount(
+    parseFloat(feeEstimate?.estimatedFee ?? estimatedFee) / 10000000,
+    "XLM"
+  );
 
   return (
     <Modal open={open} onClose={onCancel} title="Confirm Batch Payment" size="md">
@@ -50,6 +63,7 @@ export function BatchConfirmDialog({
             <span className="text-gray-500 dark:text-gray-400">Estimated Fee</span>
             <span className="font-medium text-gray-900 dark:text-white">{feeXlm}</span>
           </div>
+          <FeeRecommendation estimate={feeEstimate ?? null} onPolicyChange={onFeePolicyChange} />
         </div>
 
         {/* Recipient list */}

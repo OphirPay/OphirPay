@@ -36,10 +36,23 @@ vi.mock("@/components/ui/Toast", () => ({
 }));
 
 // Mock fee-estimator
-vi.mock("@/lib/fee-estimator", () => ({
+vi.mock("@/lib/fee-estimator", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/fee-estimator")>()),
   estimateTransactionFee: vi.fn().mockResolvedValue({
     baseFee: "100",
+    recommendedFee: "100",
+    estimatedFee: "100",
+    operations: 1,
     networkCongestion: "low",
+    policy: "normal",
+    source: "horizon",
+    stale: false,
+    fetchedAt: Date.now(),
+    ledgerCapacityUsage: 0.2,
+    percentile: "p70",
+    percentileFee: "100",
+    capped: false,
+    refreshIntervalMs: 30000,
   }),
 }));
 
@@ -192,6 +205,7 @@ describe("SendPage - Path Payment Cross-Asset UI", () => {
     vi.spyOn(stellarLib, "buildPathPaymentStrictSendTx").mockResolvedValue({
       xdr: "MOCK_PATH_PAYMENT_XDR",
       sourceAccount: {} as unknown as Horizon.AccountResponse,
+      fee: "100",
     });
     vi.spyOn(stellarLib, "submitSignedTx").mockResolvedValue({
       hash: "7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b",

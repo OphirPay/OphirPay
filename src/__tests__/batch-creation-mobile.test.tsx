@@ -38,8 +38,24 @@ vi.mock("@/lib/utils", () => ({
 }));
 
 // Mock the fee estimator
-vi.mock("@/lib/fee-estimator", () => ({
-  estimateBatchFee: (count: number) => String(count * 100),
+vi.mock("@/lib/fee-estimator", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/fee-estimator")>()),
+  estimateTransactionFee: vi.fn().mockImplementation(async (ops: number) => ({
+    baseFee: "100",
+    recommendedFee: "100",
+    estimatedFee: String(ops * 100),
+    operations: ops,
+    networkCongestion: "low",
+    policy: "normal",
+    source: "horizon",
+    stale: false,
+    fetchedAt: Date.now(),
+    ledgerCapacityUsage: 0.2,
+    percentile: "p70",
+    percentileFee: "100",
+    capped: false,
+    refreshIntervalMs: 30000,
+  })),
 }));
 
 // Mock the CSV import

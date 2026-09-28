@@ -18,7 +18,8 @@ import {
 } from "@/lib/stellar";
 import { formatAmount, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
-import { estimateBatchFee } from "@/lib/fee-estimator";
+import { assertFeeMatchesEstimate } from "@/lib/fee-estimator";
+import { useFeeRecommendation } from "@/hooks/useFeeRecommendation";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { AddressBookMultiSelect } from "@/components/batches/AddressBookMultiSelect";
 import { mergeAddressBookSelections } from "@/lib/address-book";
@@ -79,6 +80,12 @@ export default function NewBatchPage() {
   const [result, setResult] = useState<TxResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  // One payment operation per recipient. Paused mid-flight so the fee the user
+  // confirmed is the fee that gets signed.
+  const { estimate: feeEstimate, setPolicy: setFeePolicy } = useFeeRecommendation(
+    Math.max(1, recipients.length),
+    { paused: step !== "idle" && step !== "done" }
+  );
   const [mode, setMode] = useState<EntryMode>("manual");
   const [csvValid, setCsvValid] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -300,10 +307,12 @@ export default function NewBatchPage() {
         memo: r.memo.trim() || undefined,
       }));
 
-      const { xdr } = await buildBatchPaymentTx({
+      const { xdr, fee } = await buildBatchPaymentTx({
         sourcePublicKey: wallet.publicKey,
         recipients: batchRecipients,
+        fee: feeEstimate?.recommendedFee,
       });
+      if (feeEstimate) assertFeeMatchesEstimate(fee, feeEstimate);
 
       setStep("signing");
 
@@ -899,7 +908,9 @@ export default function NewBatchPage() {
           amount: r.amount,
         }))}
         totalAmount={totalAmount}
-        estimatedFee={estimateBatchFee(recipients.length)}
+        estimatedFee={feeEstimate?.estimatedFee ?? "0"}
+        feeEstimate={feeEstimate}
+        onFeePolicyChange={setFeePolicy}
         onConfirm={handleConfirmSend}
         onCancel={() => setShowConfirm(false)}
       />

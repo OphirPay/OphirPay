@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import React from "react";
 import { render, screen, renderHook } from "@testing-library/react";
 import { Amount } from "@/components/ui/Amount";
 import { trapFocus } from "@/lib/focus-trap";
-import { estimateTransactionFee, estimateBatchFee } from "@/lib/fee-estimator";
+import { estimateTransactionFee, estimateBatchFee, resetFeeCache } from "@/lib/fee-estimator";
 import {
   isPermissionRequested,
   requestNotificationPermission,
@@ -144,48 +144,53 @@ describe("focus-trap Utility", () => {
 // 3. fee-estimator.ts Branches
 // ═══════════════════════════════════════════════════════════
 describe("fee-estimator Utility", () => {
+  const stats = (usage: string, mode = "100") => ({
+    last_ledger: "1",
+    last_ledger_base_fee: "100",
+    ledger_capacity_usage: usage,
+    fee_charged: { mode, p70: mode, p95: mode },
+  });
+  const mockStats = (raw: unknown) =>
+    vi.spyOn(stellarLib, "getHorizonServer").mockReturnValue({
+      feeStats: vi.fn().mockResolvedValue(raw),
+    } as never);
+
+  beforeEach(() => {
+    resetFeeCache();
+  });
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it("calculates low congestion fee", async () => {
-    vi.spyOn(stellarLib, "getHorizonServer").mockReturnValue({
-      fetchBaseFee: vi.fn().mockResolvedValue("100"),
-    } as never);
-
+    mockStats(stats("0.2"));
     const estimate = await estimateTransactionFee(2);
     expect(estimate.baseFee).toBe("100");
     expect(estimate.estimatedFee).toBe("200");
     expect(estimate.networkCongestion).toBe("low");
   });
 
-  it("calculates medium congestion fee (>100)", async () => {
-    vi.spyOn(stellarLib, "getHorizonServer").mockReturnValue({
-      fetchBaseFee: vi.fn().mockResolvedValue("150"),
-    } as never);
-
-    const estimate = await estimateTransactionFee(1);
-    expect(estimate.networkCongestion).toBe("medium");
+  it("calculates medium congestion from ledger capacity", async () => {
+    mockStats(stats("0.6"));
+    expect((await estimateTransactionFee(1)).networkCongestion).toBe("medium");
   });
 
-  it("calculates high congestion fee (>200)", async () => {
-    vi.spyOn(stellarLib, "getHorizonServer").mockReturnValue({
-      fetchBaseFee: vi.fn().mockResolvedValue("250"),
-    } as never);
-
-    const estimate = await estimateTransactionFee(1);
-    expect(estimate.networkCongestion).toBe("high");
+  it("calculates high congestion from ledger capacity", async () => {
+    mockStats(stats("0.95"));
+    expect((await estimateTransactionFee(1)).networkCongestion).toBe("high");
   });
 
-  it("falls back to standard fee on fetch error", async () => {
+  it("falls back to the configured fee on fetch error", async () => {
     vi.spyOn(stellarLib, "getHorizonServer").mockReturnValue({
-      fetchBaseFee: vi.fn().mockRejectedValue(new Error("RPC timeout")),
+      feeStats: vi.fn().mockRejectedValue(new Error("RPC timeout")),
     } as never);
 
     const estimate = await estimateTransactionFee(3);
-    expect(estimate.baseFee).toBe("100");
+    expect(estimate.recommendedFee).toBe("100");
     expect(estimate.estimatedFee).toBe("300");
-    expect(estimate.networkCongestion).toBe("low");
+    expect(estimate.networkCongestion).toBe("unknown");
+    expect(estimate.source).toBe("fallback");
+    expect(estimate.stale).toBe(true);
   });
 
   it("estimates batch fee", () => {

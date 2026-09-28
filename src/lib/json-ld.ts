@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import { baseUrl } from "@/lib/seo";
+
 /**
  * JSON-LD structured data generator for better SEO.
  * Adds schema.org markup for WebApplication, Organization, etc.
@@ -31,7 +33,7 @@ export function getStructuredData(): OphirPayStructuredData {
     name: "OphirPay",
     description:
       "The Open-Source Payment Orchestration Layer for Stellar — send, batch, schedule, and track blockchain payments.",
-    url: process.env.NEXT_PUBLIC_APP_URL || "https://ophirpay.vercel.app",
+    url: baseUrl(),
     applicationCategory: "FinanceApplication",
     operatingSystem: "All",
     offers: {

@@ -12,12 +12,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { getStructuredData } from "@/lib/json-ld";
-import {
-  canonicalUrl,
-  baseUrl,
-  breadcrumbJsonLd,
-  DEFAULT_BASE_URL,
-} from "@/lib/seo";
+import { canonicalUrl, baseUrl, breadcrumbJsonLd, DEFAULT_BASE_URL } from "@/lib/seo";
 import {
   generateMetadata,
   DEFAULT_PAGE_TITLE,
@@ -97,6 +92,26 @@ describe("getStructuredData (JSON-LD)", () => {
 
     expect(getStructuredData().url).toBe("https://payments.example.org");
   });
+
+  it("uses the same normalised origin as canonicalUrl", () => {
+    // Regression: json-ld read the raw env var, so a trailing slash or a
+    // blank value produced a url that disagreed with the canonical origin.
+    for (const configured of [
+      "https://payments.example.org/",
+      "https://payments.example.org//",
+      "  https://payments.example.org  ",
+      "",
+      "   ",
+      "payments.example.org",
+    ]) {
+      process.env.NEXT_PUBLIC_APP_URL = configured;
+      const { url } = getStructuredData();
+      expect(url).toBe(baseUrl());
+      expect(url).toBe(canonicalUrl(""));
+      expect(url.endsWith("/")).toBe(false);
+      expectAbsoluteUrl(url);
+    }
+  });
 });
 
 describe("canonicalUrl", () => {
@@ -138,9 +153,7 @@ describe("canonicalUrl", () => {
     expect(baseUrl()).toBe("https://payments.example.org");
     expect(canonicalUrl("")).toBe("https://payments.example.org");
     expect(canonicalUrl("/")).toBe("https://payments.example.org/");
-    expect(canonicalUrl("/payments/123")).toBe(
-      "https://payments.example.org/payments/123"
-    );
+    expect(canonicalUrl("/payments/123")).toBe("https://payments.example.org/payments/123");
     // The path is appended to the origin, never to a trailing slash.
     expect(new URL(canonicalUrl("/payments/123")).pathname).toBe("/payments/123");
     expect(canonicalUrl("/payments/123").replace("https://", "")).not.toContain("//");
@@ -152,6 +165,47 @@ describe("canonicalUrl", () => {
       expect(baseUrl()).toBe(DEFAULT_BASE_URL);
       expect(canonicalUrl("/send")).toBe(`${DEFAULT_BASE_URL}/send`);
     }
+  });
+});
+
+describe("baseUrl edge cases", () => {
+  it("falls back to the default for a value that is not an absolute http(s) URL", () => {
+    for (const bad of [
+      "payments.example.org",
+      "ftp://example.org",
+      "//example.org",
+      "https://",
+      "/relative",
+    ]) {
+      process.env.NEXT_PUBLIC_APP_URL = bad;
+      expect(baseUrl()).toBe(DEFAULT_BASE_URL);
+    }
+  });
+
+  it("keeps a configured http origin, port and base path", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+    expect(canonicalUrl("/send")).toBe("http://localhost:3000/send");
+
+    process.env.NEXT_PUBLIC_APP_URL = "https://example.org/app/";
+    expect(canonicalUrl("/send")).toBe("https://example.org/app/send");
+  });
+});
+
+describe("canonicalUrl edge cases", () => {
+  it("treats a whitespace-only path as the site root", () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    expect(canonicalUrl("   ")).toBe(DEFAULT_BASE_URL);
+  });
+
+  it("keeps a trailing slash and query string on the path", () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    expect(canonicalUrl("/payments/")).toBe(`${DEFAULT_BASE_URL}/payments/`);
+    expect(canonicalUrl("/payments?page=2")).toBe(`${DEFAULT_BASE_URL}/payments?page=2`);
+  });
+
+  it("cannot be redirected to another host by a protocol-relative path", () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    expect(new URL(canonicalUrl("//evil.example/x")).origin).toBe(DEFAULT_BASE_URL);
   });
 });
 

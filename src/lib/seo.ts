@@ -9,7 +9,10 @@ export const DEFAULT_BASE_URL = "https://ophirpay.vercel.app";
 
 /**
  * Site origin with the configured value honoured and any trailing slash
- * removed, so joining a path can never produce a double slash.
+ * removed, so joining a path can never produce a double slash. A configured
+ * value that is not an absolute http(s) URL (e.g. a bare hostname) would
+ * yield relative canonical URLs and invalid JSON-LD, so it falls back to
+ * the default instead.
  *
  * Read lazily rather than at module load: a module-level constant freezes
  * whatever the environment happened to be at import time, which makes the
@@ -17,7 +20,8 @@ export const DEFAULT_BASE_URL = "https://ophirpay.vercel.app";
  */
 export function baseUrl(): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const origin = configured && configured.length > 0 ? configured : DEFAULT_BASE_URL;
+  const origin =
+    configured && /^https?:\/\/[^/\s]/i.test(configured) ? configured : DEFAULT_BASE_URL;
   return origin.replace(/\/+$/, "");
 }
 

@@ -3,6 +3,7 @@
 import {
   Asset,
   Contract,
+  hash,
   scValToNative,
   nativeToScVal,
   TransactionBuilder,
@@ -350,6 +351,25 @@ export interface RecordOnChainResult {
 }
 
 /**
+ * Normalise an idempotency key into the 32 bytes `record_payment` expects
+ * (`Option<BytesN<32>>`). Strings of any length (e.g. an app-level key or a
+ * Horizon tx hash) are SHA-256 hashed so the same string always maps to the
+ * same on-chain key; a `Uint8Array` must already be exactly 32 bytes.
+ */
+export function idempotencyKeyToBytes(key: string | Uint8Array): Buffer {
+  if (typeof key === "string") {
+    if (key.length === 0) {
+      throw new Error("Idempotency key must not be empty.");
+    }
+    return hash(Buffer.from(key, "utf8"));
+  }
+  if (key.length !== 32) {
+    throw new Error("Idempotency key bytes must be exactly 32 bytes.");
+  }
+  return Buffer.from(key);
+}
+
+/**
  * Record a completed XLM payment on-chain via `OphirPayContract.record_payment`.
  *
  * Best-effort by design: a failure here does NOT throw — the Horizon payment is
@@ -358,6 +378,10 @@ export interface RecordOnChainResult {
  *
  * Amount is expressed in stroops (1 XLM = 10,000,000 stroops) to match the
  * contract's i128 representation.
+ *
+ * When `idempotencyKey` is given, resubmitting with the same key (from the same
+ * payer) returns the original on-chain record instead of creating a duplicate.
+ * Omit it to keep the contract's unkeyed behaviour.
  */
 export async function recordPaymentOnChain(params: {
   payer: string;
@@ -365,6 +389,7 @@ export async function recordPaymentOnChain(params: {
   amountStroops: number;
   txHash: string;
   metadata?: string;
+  idempotencyKey?: string | Uint8Array;
   signTransaction: (
     xdr: string,
     opts?: { network?: string; networkPassphrase?: string }
@@ -378,6 +403,7 @@ export async function recordPaymentOnChain(params: {
     amountStroops,
     txHash,
     metadata = "",
+    idempotencyKey,
     signTransaction,
     network = "TESTNET",
     networkPassphrase,
@@ -385,7 +411,7 @@ export async function recordPaymentOnChain(params: {
 
   try {
     // Matches the contract's `record_payment(payer, payee, amount, asset,
-    // tx_hash, metadata)` signature — payer is the auth'd caller.
+    // tx_hash, metadata, idempotency_key)` signature — payer is the auth'd caller.
     const args: xdr.ScVal[] = [
       nativeToScVal(payer, { type: "address" }), // payer (require_auth)
       nativeToScVal(payee, { type: "address" }), // payee
@@ -393,6 +419,10 @@ export async function recordPaymentOnChain(params: {
       nativeToScVal(Asset.native().contractId(NETWORK_PASSPHRASE), { type: "address" }), // asset
       nativeToScVal(txHash, { type: "string" }), // tx_hash
       nativeToScVal(metadata, { type: "string" }), // metadata
+      // idempotency_key: Option<BytesN<32>> — Void encodes None
+      idempotencyKey === undefined
+        ? xdr.ScVal.scvVoid()
+        : xdr.ScVal.scvBytes(idempotencyKeyToBytes(idempotencyKey)),
     ];
 
     const txInfo = await invokeContractFunction(

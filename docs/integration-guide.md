@@ -220,7 +220,7 @@ Each replay attempt is recorded as a delivery. View history at
 ### Payments
 | Function | Description |
 |---|---|
-| `record_payment` | Record an off-chain payment on the Soroban ledger |
+| `record_payment` | Record an off-chain payment on the Soroban ledger; an optional 32-byte idempotency key makes retries return the original ID |
 | `get_payment` | Get a payment by ID |
 | `get_payment_count` | Total payment count |
 | `cancel_payment` | Cancel a payment record (owner only) |

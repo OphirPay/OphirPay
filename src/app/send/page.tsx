@@ -496,6 +496,9 @@ function SendPageClient() {
         payee: destination.trim(),
         amountStroops: Math.round(parseFloat(amount) * XLM_STROOPS),
         txHash: response.hash,
+        // One settled Horizon tx maps to one on-chain record, even if the
+        // recording step is retried.
+        idempotencyKey: response.hash,
         signTransaction: (xdrToSign, opts) => connector.signTransaction(xdrToSign, opts),
         network: STELLAR_NETWORK,
         networkPassphrase: NETWORK_PASSPHRASE,

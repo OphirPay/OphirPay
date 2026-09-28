@@ -6,8 +6,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, String,
-    Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env,
+    String, Symbol, Vec,
 };
 
 // ── Storage Keys ───────────────────────────────────────────────
@@ -34,6 +34,8 @@ const AUDIT_CNT: Symbol = symbol_short!("AUDIT");
 // each other).
 const AUDIT_LOG_KEY: Symbol = symbol_short!("A_LOG");
 const PAYMENT_KEY: Symbol = symbol_short!("P_REC");
+// (PAY_IDEM, payer, key) -> payment id, for `record_payment` idempotency (#804).
+const PAYMENT_IDEM_KEY: Symbol = symbol_short!("PAY_IDEM");
 const ESCROW_KEY: Symbol = symbol_short!("E_REC");
 const STREAM_KEY: Symbol = symbol_short!("S_REC");
 const RECURRING_KEY: Symbol = symbol_short!("R_REC");
@@ -1154,6 +1156,16 @@ fn emit_payment_event(env: &Env, payer: &Address, payee: &Address, amount: &i128
     env.events().publish(
         (Symbol::new(env, "payment"), payer.clone(), payee.clone()),
         *amount,
+    );
+}
+
+/// Companion to `emit_payment_event`, published only for keyed payments so
+/// indexers can dedupe on `(payer, key)`. Kept separate so the shape of the
+/// existing `payment` event is unchanged for current consumers.
+fn emit_payment_idempotency_event(env: &Env, payer: &Address, key: &BytesN<32>, id: u64) {
+    env.events().publish(
+        (Symbol::new(env, "payment_idem"), payer.clone(), key.clone()),
+        id,
     );
 }
 
@@ -3395,6 +3407,13 @@ impl OphirPayContract {
 
     /// Record an off-chain payment on the Soroban ledger.
     /// Anyone can call — this just stores a record, no tokens move.
+    ///
+    /// `idempotency_key` makes retries safe (#804). When `Some`, the key is
+    /// scoped to `payer` and mapped to the payment id it created; presenting
+    /// the same `(payer, key)` again returns that id without charging the
+    /// protocol fee or writing a second record. Scoping by payer (who must
+    /// authorize the call) stops a third party from squatting a key another
+    /// payer intends to use. `None` keeps the previous unkeyed behaviour.
     pub fn record_payment(
         env: Env,
         payer: Address,
@@ -3403,11 +3422,28 @@ impl OphirPayContract {
         asset: Address,
         tx_hash: String,
         metadata: String,
+        idempotency_key: Option<BytesN<32>>,
     ) -> Result<u64, PaymentError> {
         payer.require_auth();
         require_not_paused(&env, PauseScope::Payments)?;
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
+        }
+
+        if let Some(key) = &idempotency_key {
+            let idem_storage_key = (PAYMENT_IDEM_KEY, payer.clone(), key.clone());
+            if let Some(existing) = env
+                .storage()
+                .persistent()
+                .get::<_, u64>(&idem_storage_key)
+            {
+                env.storage().persistent().extend_ttl(
+                    &idem_storage_key,
+                    BUMP_MIN_TTL,
+                    BUMP_MAX_TTL,
+                );
+                return Ok(existing);
+            }
         }
 
         // Collect protocol fee before recording.  If fee transfer fails
@@ -3439,8 +3475,19 @@ impl OphirPayContract {
         env.storage().instance().set(&PAYMENT_COUNT, &count);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
 
+        if let Some(key) = &idempotency_key {
+            let idem_storage_key = (PAYMENT_IDEM_KEY, payer.clone(), key.clone());
+            env.storage().persistent().set(&idem_storage_key, &count);
+            env.storage()
+                .persistent()
+                .extend_ttl(&idem_storage_key, BUMP_MIN_TTL, BUMP_MAX_TTL);
+        }
+
         // Native event
         emit_payment_event(&env, &payer, &payee, &amount);
+        if let Some(key) = &idempotency_key {
+            emit_payment_idempotency_event(&env, &payer, key, count);
+        }
 
         inc_counter(&env, &STAT_PAYMENTS);
 
@@ -4932,6 +4979,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_hash_abc"),
             &String::from_str(&env, "test payment"),
+            &None,
         );
         assert_eq!(id, 1);
         assert_eq!(client.get_payment_count(), 1);
@@ -4964,6 +5012,7 @@ mod tests {
                 &sac,
                 &String::from_str(&env, "tx"),
                 &String::from_str(&env, ""),
+                &None,
             ),
             Err(Ok(PaymentError::InvalidAmount))
         );
@@ -4988,6 +5037,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, ""),
+            &None,
         );
 
         client.cancel_payment(&owner, &1);
@@ -5436,6 +5486,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, ""),
+            &None,
         );
         assert!(result.is_err());
 
@@ -5450,6 +5501,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx2"),
             &String::from_str(&env, ""),
+            &None,
         );
         assert_eq!(id, 1);
     }
@@ -5533,6 +5585,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, ""),
+            &None,
         );
 
         client.cancel_payment(&owner, &1);
@@ -5719,6 +5772,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, "audit"),
+            &None,
         );
 
         let count = client.get_audit_log_count();
@@ -5967,6 +6021,7 @@ mod tests {
             &asset,
             &String::from_str(&env, "tx_refund_test"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         let rid = client.request_refund(
@@ -6005,6 +6060,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_approve"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         let rid = client.request_refund(
@@ -6053,6 +6109,7 @@ mod tests {
             &asset,
             &String::from_str(&env, "tx_unauth_refund"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         // A stranger (neither payer nor payee) must not be able to request a refund
@@ -6121,6 +6178,7 @@ mod tests {
             &asset,
             &String::from_str(&env, "tx_analytics"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         client.request_refund(
@@ -6531,6 +6589,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_hash"),
             &String::from_str(&env, "refundable payment"),
+            &None,
         );
 
         // Request refund
@@ -6584,6 +6643,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx"),
             &String::from_str(&env, "test"),
+            &None,
         );
 
         client.request_refund(
@@ -7069,6 +7129,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx1"),
             &String::from_str(&env, "meta1"),
+            &None,
         );
 
         // Bump the payment range.
@@ -7149,6 +7210,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_a"),
             &String::from_str(&env, "m_a"),
+            &None,
         );
         client.record_payment(
             &payer,
@@ -7157,6 +7219,7 @@ mod tests {
             &sac,
             &String::from_str(&env, "tx_b"),
             &String::from_str(&env, "m_b"),
+            &None,
         );
 
         let mut payees = Vec::new(&env);
@@ -7290,6 +7353,7 @@ mod tests {
                 &sac,
                 &String::from_str(&env, "tx_legacy"),
                 &String::from_str(&env, "legacy batch entry"),
+                &None,
             );
         }
 
@@ -7354,6 +7418,7 @@ mod tests {
                 &sac,
                 &String::from_str(&env, "tx_full"),
                 &String::from_str(&env, "full batch entry"),
+                &None,
             );
         }
 

@@ -635,10 +635,19 @@ Returns the pending owner and expiry timestamp, if any.
 
 ## Payments
 
-### `record_payment(payer: Address, payee: Address, amount: i128, asset: Address, tx_hash: String, metadata: String) -> Result<u64, PaymentError>`
+### `record_payment(payer: Address, payee: Address, amount: i128, asset: Address, tx_hash: String, metadata: String, idempotency_key: Option<BytesN<32>>) -> Result<u64, PaymentError>`
 
 Records an off-chain payment (typically called by the backend with the
 payer's auth). Returns the payment ID.
+
+When `idempotency_key` is `Some`, the key is stored against `(payer, key)`. A
+repeated call with the same payer and key returns the original payment ID and
+does nothing else: no fee is collected, no second record is written and no
+events are emitted. Keys are scoped to the payer, so one payer cannot claim
+another's key. Only successful calls consume a key. The repeated call's other
+arguments are not compared with the original. `None` disables deduplication.
+Keyed payments additionally publish `payment_idem` with topics
+`(payer, key)` and the new payment ID as data.
 
 - **Access:** actor auth (`payer.require_auth()`); `require_not_paused`.
 - **Errors:** `ContractPaused` (18), `InvalidAmount` (5), `TokenTransferFailed` (15), `InvalidTokenContract` (80).
@@ -1071,7 +1080,8 @@ stellar contract invoke --id $CONTRACT --source $PAYER \
   --amount 10000000 \
   --asset $ASSET \
   --tx_hash "deadbeef" \
-  --metadata "invoice-1234"
+  --metadata "invoice-1234" \
+  --idempotency_key "$(openssl rand -hex 32)"   # omit for no deduplication
 ```
 
 ### Multisig flow (OphirPay)

@@ -6,8 +6,9 @@ use ophirpay_contract::{
     RefundReasonCode, RefundStatus,
 };
 use ophirpay_emitter::{EmitterError, PaymentEventEmitter, PaymentEventEmitterClient};
-use soroban_sdk::testutils::{Address as _, Ledger as _};
-use soroban_sdk::{token, Address, Env, String, Vec};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
+use soroban_sdk::xdr::{ContractEventBody, ScVal};
+use soroban_sdk::{token, Address, BytesN, Env, String, TryFromVal, Vec};
 
 // ── Test Fixture ─────────────────────────────────────────────────────────────
 
@@ -89,6 +90,7 @@ fn test_payment_recording_and_retrieval_flow() {
         &fix.token_id,
         &tx_hash_1,
         &meta_1,
+        &None,
     );
     assert_eq!(id_1, 1);
 
@@ -102,6 +104,7 @@ fn test_payment_recording_and_retrieval_flow() {
         &fix.token_id,
         &tx_hash_2,
         &meta_2,
+        &None,
     );
     assert_eq!(id_2, 2);
 
@@ -131,6 +134,200 @@ fn test_payment_recording_and_retrieval_flow() {
     assert_eq!(range.len(), 2);
 }
 
+/// True if any event in the last invocation carries `key` as a topic.
+fn events_carry_key(env: &Env, key: &BytesN<32>) -> bool {
+    let key_val = ScVal::try_from_val(env, &key.to_val()).unwrap();
+    env.events().all().events().iter().any(|e| {
+        let ContractEventBody::V0(body) = &e.body;
+        body.topics.iter().any(|t| *t == key_val)
+    })
+}
+
+#[test]
+fn test_record_payment_duplicate_idempotency_key_returns_existing_id() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let key = BytesN::from_array(&fix.env, &[7u8; 32]);
+    let tx = String::from_str(&fix.env, "0xretry");
+    let meta = String::from_str(&fix.env, "invoice_#804");
+
+    let first = fix.client.record_payment(
+        &payer,
+        &payee,
+        &5_000_000i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key.clone()),
+    );
+    assert_eq!(first, 1);
+    assert!(events_carry_key(&fix.env, &key));
+    let stats = fix.client.get_stats();
+
+    // A retried submission with the same key is a no-op that hands back the
+    // original id — no second record, no counter bump, no new events.
+    let retry = fix.client.record_payment(
+        &payer,
+        &payee,
+        &5_000_000i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key.clone()),
+    );
+    assert_eq!(retry, first);
+    assert_eq!(fix.client.get_payment_count(), 1);
+    assert_eq!(
+        fix.client.get_stats().total_payments_recorded,
+        stats.total_payments_recorded
+    );
+    assert!(fix.env.events().all().events().is_empty());
+    assert_eq!(
+        fix.client.try_get_payment(&2).err(),
+        Some(Ok(PaymentError::PaymentNotFound))
+    );
+}
+
+#[test]
+fn test_record_payment_distinct_idempotency_keys_create_distinct_records() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let key_a = BytesN::from_array(&fix.env, &[1u8; 32]);
+    let key_b = BytesN::from_array(&fix.env, &[2u8; 32]);
+    let tx = String::from_str(&fix.env, "0xdistinct");
+    let meta = String::from_str(&fix.env, "");
+
+    let id_a = fix.client.record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key_a.clone()),
+    );
+    let id_b = fix.client.record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key_b.clone()),
+    );
+    assert_eq!((id_a, id_b), (1, 2));
+    assert!(events_carry_key(&fix.env, &key_b));
+    assert_eq!(fix.client.get_payment_count(), 2);
+
+    // Each key still resolves to its own record on retry.
+    let retry_a = fix.client.record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key_a),
+    );
+    let retry_b = fix.client.record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key_b),
+    );
+    assert_eq!((retry_a, retry_b), (1, 2));
+    assert_eq!(fix.client.get_payment_count(), 2);
+}
+
+#[test]
+fn test_record_payment_without_key_is_never_deduplicated() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let tx = String::from_str(&fix.env, "0xunkeyed");
+    let meta = String::from_str(&fix.env, "");
+
+    let a = fix
+        .client
+        .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta, &None);
+    let b = fix
+        .client
+        .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta, &None);
+    assert_eq!((a, b), (1, 2));
+}
+
+#[test]
+fn test_record_payment_idempotency_key_is_scoped_per_payer() {
+    let fix = TestFixture::new();
+    let payer_a = Address::generate(&fix.env);
+    let payer_b = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let key = BytesN::from_array(&fix.env, &[9u8; 32]);
+    let tx = String::from_str(&fix.env, "0xscoped");
+    let meta = String::from_str(&fix.env, "");
+
+    // Another payer using the same key must not collide with (or be handed)
+    // payer A's record.
+    let id_a = fix.client.record_payment(
+        &payer_a,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key.clone()),
+    );
+    let id_b = fix.client.record_payment(
+        &payer_b,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key),
+    );
+    assert_eq!((id_a, id_b), (1, 2));
+    assert_eq!(fix.client.get_payment(&2).payer, payer_b);
+}
+
+#[test]
+fn test_record_payment_failed_call_does_not_consume_idempotency_key() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let key = BytesN::from_array(&fix.env, &[5u8; 32]);
+    let tx = String::from_str(&fix.env, "0xfailed");
+    let meta = String::from_str(&fix.env, "");
+
+    let bad = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &0i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key.clone()),
+    );
+    assert!(bad.is_err());
+
+    // The rejected attempt must not have burned the key.
+    let id = fix.client.record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx,
+        &meta,
+        &Some(key),
+    );
+    assert_eq!(id, 1);
+}
+
 #[test]
 fn test_payment_cancellation_lifecycle() {
     let fix = TestFixture::new();
@@ -147,6 +344,7 @@ fn test_payment_cancellation_lifecycle() {
         &fix.token_id,
         &tx_hash,
         &meta,
+        &None,
     );
 
     // Stranger cannot cancel payment
@@ -222,9 +420,9 @@ fn test_paused_contract_blocks_payments() {
 
     let tx = String::from_str(&fix.env, "0xpaused");
     let meta = String::from_str(&fix.env, "meta");
-    let res = fix
-        .client
-        .try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    let res =
+        fix.client
+            .try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta, &None);
     assert!(res.is_err());
 
     // Unpause contract
@@ -233,7 +431,7 @@ fn test_paused_contract_blocks_payments() {
 
     let pid = fix
         .client
-        .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+        .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta, &None);
     assert_eq!(pid, 1);
 }
 
@@ -389,6 +587,7 @@ fn test_refund_lifecycle_approval_and_processing() {
         &fix.token_id,
         &tx_hash,
         &meta,
+        &None,
     );
 
     // Requester (payer) requests refund
@@ -452,6 +651,7 @@ fn test_refund_rejection_and_guards() {
         &fix.token_id,
         &tx_hash,
         &meta,
+        &None,
     );
 
     // Stranger cannot request refund
@@ -513,6 +713,7 @@ fn test_refund_reason_code_analytics() {
         &fix.token_id,
         &tx_hash,
         &meta,
+        &None,
     );
 
     // Create refunds with various reason codes
@@ -844,7 +1045,7 @@ fn test_scoped_pause_blocks_only_that_scope() {
     let meta = String::from_str(&fix.env, "scope test");
     let blocked =
         fix.client
-            .try_record_payment(&payer, &payee, &1_000i128, &fix.token_id, &tx, &meta);
+            .try_record_payment(&payer, &payee, &1_000i128, &fix.token_id, &tx, &meta, &None);
     assert_eq!(blocked, Err(Ok(PaymentError::ContractPaused)));
 
     // ...but escrows (a different scope) still move funds.
@@ -869,7 +1070,7 @@ fn test_scoped_pause_blocks_only_that_scope() {
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
     let payment_id =
         fix.client
-            .record_payment(&payer, &payee, &1_000i128, &fix.token_id, &tx, &meta);
+            .record_payment(&payer, &payee, &1_000i128, &fix.token_id, &tx, &meta, &None);
     assert_eq!(payment_id, 1);
 }
 
@@ -892,7 +1093,7 @@ fn test_global_pause_overrides_scopes() {
     let meta = String::from_str(&fix.env, "global");
     let payments =
         fix.client
-            .try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+            .try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta, &None);
     assert_eq!(payments, Err(Ok(PaymentError::ContractPaused)));
 
     let escrow = fix.client.try_create_escrow(
@@ -915,7 +1116,7 @@ fn test_global_pause_overrides_scopes() {
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
     let payment_id =
         fix.client
-            .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+            .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta, &None);
     assert_eq!(payment_id, 1);
 }
 

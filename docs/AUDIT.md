@@ -335,6 +335,8 @@ and re-run the IP/hostname check against the final resolved address after follow
   content-bound, which is true for upgrade but **not** for refund).
 - `record_payment` and the emitter's `emit_payment` are permissionless recorders; ensure
   downstream consumers treat on-chain records as *untrusted* for fund movement.
+  (`record_payment` now accepts an optional per-payer idempotency key (#804), so retried
+  submissions no longer create duplicate records; it does not make the record trusted.)
 - `src/lib/auth-session.ts` still describes proof-of-ownership as a *future* hardening step, but
   the issuing route (`src/app/api/auth/session/route.ts`) already enforces the challenge +
   Ed25519-signature flow. Stale comment only — the protection is present.

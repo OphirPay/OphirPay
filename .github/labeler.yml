@@ -2,7 +2,7 @@
 # Automatically labels pull requests based on changed file paths.
 # Uses: https://github.com/actions/labeler
 
-"📦 contracts":
+"📜 contracts":
   - changed-files:
       - any-glob-to-any-file: "contracts/**"
 
@@ -22,11 +22,11 @@
   - changed-files:
       - any-glob-to-any-file: "src/lib/**"
 
-"🪝 hooks":
+"🛠️ hooks":
   - changed-files:
       - any-glob-to-any-file: "src/hooks/**"
 
-"📐 types":
+"📄 types":
   - changed-files:
       - any-glob-to-any-file: "src/types/**"
 
@@ -59,7 +59,7 @@
           - "vitest.config.ts"
           - "playwright.config.ts"
 
-"🗄️ database":
+"📤 database":
   - changed-files:
       - any-glob-to-any-file:
           - "prisma/**"
@@ -76,7 +76,7 @@
           - "src/proxy.ts"
           - "SECURITY.md"
 
-"📦 dependencies":
+"📜 dependencies":
   - changed-files:
       - any-glob-to-any-file:
           - "package.json"

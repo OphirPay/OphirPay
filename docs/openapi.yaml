@@ -15,6 +15,9 @@ info:
     **Conventions** — see [docs/API_GUIDE.md](./API_GUIDE.md) for the
     endpoint conventions: file structure, Zod validation, error handling,
     auth usage, the response envelope, and rate limiting.
+
+    **Error codes** — see [docs/API_ERRORS.md](./API_ERRORS.md) for the
+    declared status and typical condition for each catalog code.
   version: 0.1.0
   contact:
     name: OphirPay Team

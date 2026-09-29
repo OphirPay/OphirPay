@@ -82,7 +82,7 @@ describe("persistDeliveryResult", () => {
       data: expect.objectContaining({
         webhookId: "wh_1",
         eventId: "evt_1",
-        status: "FAILED",
+        status: "DEAD_LETTER",
         responseCode: 500,
         latencyMs: 1200,
         attempts: 3,
@@ -97,7 +97,7 @@ describe("delivery list shape", () => {
     const delivery = {
       id: "del_1",
       eventId: "evt_1",
-      status: "FAILED",
+      status: "DEAD_LETTER",
       responseCode: 502,
       latencyMs: 840,
       attempts: 3,
@@ -125,7 +125,7 @@ describe("delivery list shape", () => {
     expect(formatted).toEqual({
       id: "del_1",
       eventType: "payment.created",
-      status: "FAILED",
+      status: "DEAD_LETTER",
       latencyMs: 840,
       attempts: 3,
       responseCode: 502,

@@ -94,8 +94,11 @@ export async function POST(
       const payload = toWebhookPayload(stored);
       const result = await deliverWebhook(webhook.url, webhook.secret, payload);
 
-      await recordWebhookDelivery(webhook.id, stored.id, result.success ? "SUCCESS" : "FAILED", {
+      await recordWebhookDelivery(webhook.id, stored.id, result.success ? "SUCCESS" : "DEAD_LETTER", {
         responseCode: result.statusCode,
+        latencyMs: result.latencyMs,
+        attempts: result.attempts,
+        errorMessage: result.errorMessage,
         isReplay: true,
         replayBatchId,
       });

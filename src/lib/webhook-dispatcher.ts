@@ -61,8 +61,11 @@ export async function dispatchWebhookEvent(
       webhooks.map(async (wh) => {
         const result = await deliverWebhook(wh.url, wh.secret, payload);
         if (storedEventId) {
-          await recordWebhookDelivery(wh.id, storedEventId, result.success ? "SUCCESS" : "FAILED", {
+          await recordWebhookDelivery(wh.id, storedEventId, result.success ? "SUCCESS" : "DEAD_LETTER", {
             responseCode: result.statusCode,
+            latencyMs: result.latencyMs,
+            attempts: result.attempts,
+            errorMessage: result.errorMessage,
             isReplay: false,
           });
         }

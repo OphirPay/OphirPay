@@ -92,10 +92,14 @@ future:
 - **In the future** (beyond a small clock-skew allowance, e.g. 5 minutes) —
   a sign of a fabricated or manipulated payload.
 
-OphirPay retries failed deliveries up to 3 times (1s, 2s, 4s backoff) with
-the **same payload and signature**, so your window must comfortably cover the
-retry span — 5 minutes is a sensible default. A fresh delivery has a
-timestamp within a second or two of receipt.
+OphirPay retries failed deliveries up to 3 attempts using configurable
+exponential backoff (1s, then 2s by default) with the **same payload and
+signature**. Each attempt has an explicit 5-second timeout by default; the
+`WEBHOOK_TIMEOUT_MS` environment variable can tune it. Once all attempts fail,
+the delivery is retained as a **dead letter** in the webhook dashboard, where
+it can be inspected and manually redelivered. Your freshness window must
+comfortably cover the retry span — 5 minutes is a sensible default. A fresh
+delivery has a timestamp within a second or two of receipt.
 
 ### 2. Idempotent processing (dedupe)
 

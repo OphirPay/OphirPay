@@ -561,6 +561,7 @@ model WebhookDelivery {
 enum DeliveryStatus {
   SUCCESS
   FAILED
+  DEAD_LETTER
 }
 
 
@@ -780,4 +781,3 @@ model PaymentSyncRun {
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
 }
-

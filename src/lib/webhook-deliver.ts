@@ -3,6 +3,7 @@
 import { logger } from "@/lib/logger";
 import { incMetric } from "@/lib/metrics-counters";
 import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
+import { RETRY_CONFIG } from "@/lib/retry-config";
 import {
   fetchWithTimeout,
   getWebhookTimeoutMs,
@@ -103,7 +104,7 @@ export async function deliverWebhook(
   url: string,
   secret: string,
   payload: WebhookPayload,
-  maxRetries = 3
+  maxRetries: number = RETRY_CONFIG.webhook.maxAttempts
 ): Promise<WebhookDeliveryDetails> {
   const startedAt = Date.now();
   const request = buildWebhookRequestPreview(payload, secret);
@@ -185,7 +186,11 @@ export async function deliverWebhook(
     }
 
     if (attempt < maxRetries) {
-      await new Promise((r) => setTimeout(r, Math.pow(2, attempt - 1) * 1000));
+      const delayMs = Math.min(
+        RETRY_CONFIG.webhook.maxDelayMs,
+        RETRY_CONFIG.webhook.baseDelayMs * 2 ** (attempt - 1),
+      );
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 
@@ -212,7 +217,7 @@ export async function deliverWebhookWithDetails(
   url: string,
   secret: string,
   payload: WebhookPayload,
-  maxRetries = 3
+  maxRetries: number = RETRY_CONFIG.webhook.maxAttempts
 ): Promise<WebhookDeliveryDetails> {
   return deliverWebhook(url, secret, payload, maxRetries);
 }

@@ -609,6 +609,9 @@ policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md#coverage-ratchet).
 
 ### E2E Tests (Playwright) — 97 cases
 
+See [docs/E2E_TESTING.md](docs/E2E_TESTING.md) for the required running
+server, database, contract configuration, and mocked boundaries.
+
 | Spec | Focus |
 |---|---|
 | `critical-flows.spec.ts` | Core user journeys (connect → send → record) |

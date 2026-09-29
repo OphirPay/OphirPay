@@ -8,6 +8,7 @@ import {
   saveAddress,
   removeAddress,
   searchAddressBook,
+  downloadAddressBookCsv,
   type AddressEntry,
 } from "@/lib/address-book";
 import { isValidStellarAddress } from "@/lib/stellar";
@@ -20,6 +21,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useToast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/EmptyState";
+import { AddressBookCsvImport } from "@/components/AddressBookCsvImport";
 
 interface ContactForm {
   label: string;
@@ -51,6 +53,7 @@ export default function AddressBookPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<AddressEntry | null>(null);
   const [editingOriginalKey, setEditingOriginalKey] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const filtered = useMemo(() => {
     return search.trim() ? searchAddressBook(search.trim()) : contacts;
@@ -108,6 +111,14 @@ export default function AddressBookPage() {
     );
   };
 
+  const handleImported = (count: number) => {
+    refresh();
+    toast.success(
+      `Imported ${count} contact${count !== 1 ? "s" : ""}`,
+      "From CSV"
+    );
+  };
+
   const handleDelete = () => {
     if (!deleting) return;
     removeAddress(deleting.publicKey);
@@ -130,9 +141,21 @@ export default function AddressBookPage() {
             Frequently used Stellar addresses — stored locally in your browser
           </p>
         </div>
-        <Button onClick={openAdd} leftIcon={<PlusIcon />}>
-          Add Contact
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => downloadAddressBookCsv(contacts)}
+            disabled={contacts.length === 0}
+          >
+            Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            Import CSV
+          </Button>
+          <Button onClick={openAdd} leftIcon={<PlusIcon />}>
+            Add Contact
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -292,6 +315,17 @@ export default function AddressBookPage() {
             </div>
           )}
         </div>
+      </Modal>
+
+      {/* Import from CSV */}
+      <Modal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="Import Contacts from CSV"
+        description="Columns: label, address, memo (optional). Valid rows are saved immediately; invalid rows are listed below with the reason."
+        footer={<Button onClick={() => setImportOpen(false)}>Done</Button>}
+      >
+        <AddressBookCsvImport onImported={handleImported} />
       </Modal>
 
       {/* Delete confirmation */}

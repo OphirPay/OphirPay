@@ -41,7 +41,7 @@ export function exportToCsv<T extends Record<string, any>>(
   URL.revokeObjectURL(url);
 }
 
-function escapeCsvField(value: string, delimiter: string): string {
+export function escapeCsvField(value: string, delimiter: string): string {
   if (value.includes(delimiter) || value.includes('"') || value.includes("\n")) {
     return `"${value.replace(/"/g, '""')}"`;
   }

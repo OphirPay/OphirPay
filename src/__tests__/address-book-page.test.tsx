@@ -125,4 +125,32 @@ describe("AddressBookPage", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
   });
+
+  it("disables Export CSV when the address book is empty", () => {
+    setup();
+    expect(screen.getByRole("button", { name: /export csv/i })).toBeDisabled();
+  });
+
+  it("imports contacts via the Import CSV modal", async () => {
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(screen.getByRole("button", { name: /import csv/i }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent(/import contacts from csv/i);
+
+    const input = within(dialog).getByTestId("address-book-csv-file-input");
+    const file = new File(
+      [`label,address,memo\nAlice,${ADDR_A},\n`],
+      "contacts.csv",
+      { type: "text/csv" }
+    );
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await within(dialog).findByText(/imported/i)).toBeInTheDocument();
+    expect(getAddressBook()).toHaveLength(1);
+
+    await user.click(within(dialog).getByRole("button", { name: /^done$/i }));
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
 });

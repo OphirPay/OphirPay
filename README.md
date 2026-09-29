@@ -105,6 +105,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | Capability | OphirPay | Typical dApp |
 |---|---|---|
 | Single payments | ✅ | ✅ |
+| **Escrows** (dashboard creation, claim, owner and arbiter release) | ✅ | ❌ |
 | **Batch payments** (multi-recipient in 1 tx) | ✅ | ❌ |
 | **Recurring payment schedules** | ✅ | ❌ |
 | **Payment requests** (invoice-style, QR codes) | ✅ | ❌ |
@@ -833,6 +834,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 | ✅ Recurring payment scheduler — contract + API + dashboard UI | **Done** |
 | ✅ Fee configuration per operation — full-stack + version history | **Done** |
 | ✅ Timelocked admin actions (24h delay) — full-stack | **Done** |
+| ✅ Escrow management — contract-backed dashboard UI | **Done** |
 | ✅ DAO governance (propose→vote→execute) — full-stack | **Done** |
 | ✅ Structured refund system (6 reason codes) — full-stack | **Done** |
 | ✅ On-chain notification hooks — contract + relayer + UI | **Done** |

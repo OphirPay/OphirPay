@@ -4,13 +4,16 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getRateLimitStore } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import {
+  buildCsp,
+  CSP_POLICY,
+  generateRequestId,
+  getClientIp,
+  getRateLimitMax,
+  RATE_LIMIT_WINDOW_MS,
+} from "@/lib/proxy-config";
 
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-// Configurable via RATE_LIMIT_RPM env (defaults to 120 requests/min/IP)
-const RATE_LIMIT_MAX = Math.max(
-  1,
-  parseInt(process.env.RATE_LIMIT_RPM || "120", 10) || 120
-);
+const RATE_LIMIT_MAX = getRateLimitMax();
 
 // Global rate-limit store, resolved once per instance.
 //
@@ -21,90 +24,6 @@ const RATE_LIMIT_MAX = Math.max(
 // for route-level buckets — see src/lib/rate-limit.ts). With no Redis
 // configured the limit is per-instance, exactly as before.
 const rateLimitStore = getRateLimitStore();
-
-const isProd = process.env.NODE_ENV === "production";
-
-function getClientIp(request: NextRequest): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown"
-  );
-}
-
-function generateRequestId(): string {
-  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/**
- * Content-Security-Policy for HTML pages.
- *
- * ### Why 'unsafe-inline' is still present in script-src (issue #697)
- *
- * Next.js App Router injects several inline scripts that are not authored by
- * us and cannot be removed:
- *
- *   1. The RSC / streaming bootstrap script (rendered server-side into the
- *      initial HTML response at request time).
- *   2. The hydration chunk-manifest script (`__NEXT_DATA__` / flight payload).
- *
- * The recommended mitigation is a *per-request nonce*: Next generates a fresh
- * nonce for each request, embeds it in those inline scripts via `nonce="…"`,
- * and the proxy propagates the same value in the `script-src 'nonce-…'`
- * directive so browsers accept the scripts while rejecting injected ones.
- *
- * **Current status:** This Next 16 build does NOT reliably propagate the nonce
- * from the middleware layer into the App Router renderer.  The nonce value set
- * in `x-nonce` / the CSP header by the proxy does NOT reach the inline scripts
- * Next renders for hydration, so removing `'unsafe-inline'` breaks hydration
- * in production.  Re-testing is required against each Next.js minor release;
- * the behaviour is tracked in next.js issue #74803.
- *
- * Until the nonce propagation path is confirmed working end-to-end (browser
- * DevTools showing `nonce="…"` on the framework inline scripts AND the page
- * hydrating without CSP violations), we keep `'unsafe-inline'` and document
- * the limitation explicitly in SECURITY.md and docs/AUDIT.md rather than
- * advertising a control that does not function.
- *
- * Development additionally needs 'unsafe-eval' for HMR / Fast Refresh.
- *
- * ### CSP violation reporting (issue #698)
- *
- * `report-to` points at the OphirPay-side collector (POST /api/csp-report).
- * The collector validates and size-limits the body, logs a redacted structured
- * line via logger.ts, and increments the csp_violation_reports_total metric.
- * `report-uri` is the legacy fallback for browsers that do not support the
- * Reporting API header yet (Safari < 17, Firefox without the flag).
- */
-function buildCsp(): string {
-  const scriptSrc = isProd
-    ? "'self' 'unsafe-inline' 'wasm-unsafe-eval'"
-    : "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'";
-
-  // The Reporting API group name must match the Report-To / Reporting-Endpoints
-  // header value set just below in the HTML-page response branch.
-  const reportingGroup = "csp-endpoint";
-  const reportUri = "/api/csp-report";
-
-  return [
-    "default-src 'self'",
-    `script-src ${scriptSrc}`,
-    "style-src 'self' 'unsafe-inline'",
-    // Horizon + Soroban RPC + Stellar Expert
-    "connect-src 'self' https://horizon-testnet.stellar.org https://horizon.stellar.org https://soroban-testnet.stellar.org https://soroban.stellar.org https://rpc-futurenet.stellar.org https://mainnet.soroban.rpc.pulse.so",
-    "img-src 'self' data: https://stellar.expert https://raw.githubusercontent.com",
-    "font-src 'self'",
-    "frame-src 'self' https://*.freighter.app chrome-extension: moz-extension:",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    // Reporting API (RFC 7469 successor) — supported by Chrome 70+, Edge 79+.
-    `report-to ${reportingGroup}`,
-    // Legacy fallback for Safari, older Firefox, and any browser that does not
-    // implement the Reporting API yet.  The collector accepts both formats.
-    `report-uri ${reportUri}`,
-  ].join("; ");
-}
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -127,7 +46,7 @@ export async function proxy(request: NextRequest) {
     let resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;
 
     if (!skipRateLimit) {
-      const ip = getClientIp(request);
+      const ip = getClientIp(request.headers);
       const result = await rateLimitStore.increment(
         ip,
         RATE_LIMIT_WINDOW_MS,
@@ -217,9 +136,9 @@ export async function proxy(request: NextRequest) {
   // reports.  `Report-To` is the older format (Chrome 70+ / Edge 79+);
   // `Reporting-Endpoints` is the newer NEL-aligned format (Chrome 96+).
   // We set both so all Chromium-based browsers are covered.
-  const cspReportEndpoint = "/api/csp-report";
+  const cspReportEndpoint = CSP_POLICY.reportUri;
   const reportToValue = JSON.stringify({
-    group: "csp-endpoint",
+    group: CSP_POLICY.reportingGroup,
     max_age: 10886400, // 126 days
     endpoints: [{ url: cspReportEndpoint }],
     include_subdomains: false,
@@ -228,7 +147,7 @@ export async function proxy(request: NextRequest) {
   // The modern Reporting-Endpoints header (a simple name=url pair).
   response.headers.set(
     "Reporting-Endpoints",
-    `csp-endpoint="${cspReportEndpoint}"`
+    `${CSP_POLICY.reportingGroup}="${cspReportEndpoint}"`
   );
 
   return response;

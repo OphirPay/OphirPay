@@ -7,7 +7,7 @@ const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 
 // Static assets to precache on install
-const PRECACHE_URLS = ["/", "/manifest.json"];
+const PRECACHE_URLS = ["/", "/manifest.json", "/offline.html"];
 
 // ── Install — precache static assets ────────────────────────
 
@@ -97,52 +97,10 @@ self.addEventListener("fetch", (event) => {
           caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, clone));
           return response;
         })
-        .catch(() =>
-          caches.match(request).then(
-            (cached) =>
-              cached ||
-              new Response(
-                `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OphirPay — Offline</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #0a0a1a; color: #e2e8f0;
-      display: flex; align-items: center; justify-content: center;
-      min-height: 100vh; text-align: center; padding: 2rem;
-    }
-    .card {
-      background: #1e1e3a; border-radius: 1rem; padding: 2.5rem;
-      max-width: 400px; border: 1px solid #2d2d5e;
-    }
-    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #7B68EE; }
-    p { font-size: 0.875rem; color: #94a3b8; margin-bottom: 1.5rem; line-height: 1.5; }
-    button {
-      background: #7B68EE; color: white; border: none; padding: 0.75rem 1.5rem;
-      border-radius: 0.5rem; font-size: 0.875rem; cursor: pointer;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>You're Offline</h1>
-    <p>OphirPay requires an internet connection to process payments and sync blockchain data.</p>
-    <button onclick="location.reload()">Try Again</button>
-  </div>
-</body>
-</html>`,
-                {
-                  status: 503,
-                  headers: { "Content-Type": "text/html" },
-                }
-              )
-          )
-        )
+        .catch(async () => {
+          const cached = await caches.match(request);
+          return cached || (await caches.match("/offline.html"));
+        })
     );
     return;
   }

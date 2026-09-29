@@ -13,24 +13,11 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { createEscrow, claimEscrow, getContractOwner, releaseEscrow, releaseEscrowByArbiter } from "@/lib/contract-advanced";
 import { fetchRecentContractRecords } from "@/lib/on-chain-records";
+import { formatXlmStroops, parseXlmAmount } from "@/lib/stellar-amount";
 import type { EscrowData } from "@/types/contract-abi";
 import { shortenAddress } from "@/lib/utils";
 
-const XLM_STROOPS = BigInt(10_000_000);
 const XLM_ASSET = "native";
-
-function parseXlmAmount(value: string): bigint | null {
-  const match = /^(\d+)(?:\.(\d{0,7}))?$/.exec(value.trim());
-  if (!match) return null;
-  return BigInt(match[1]) * XLM_STROOPS + BigInt((match[2] ?? "").padEnd(7, "0") || "0");
-}
-
-function formatStroops(value: number | string | bigint): string {
-  const stroops = BigInt(value);
-  const whole = stroops / XLM_STROOPS;
-  const fractional = (stroops % XLM_STROOPS).toString().padStart(7, "0").replace(/0+$/, "");
-  return `${new Intl.NumberFormat().format(whole)}.${fractional.padEnd(2, "0")} XLM`;
-}
 
 export default function EscrowsPage() {
   usePageTitle(PAGE_TITLES.ESCROWS);
@@ -177,7 +164,7 @@ export default function EscrowsPage() {
                   <h2 className="font-semibold text-gray-900 dark:text-white">Escrow #{id}</h2>
                   <Badge variant={isSettled ? "success" : "info"}>{isSettled ? "Settled" : "Locked"}</Badge>
                   <span className="ml-auto text-lg font-semibold text-gray-900 dark:text-white">
-                    {formatStroops(escrow.amount)}
+                    {formatXlmStroops(escrow.amount)}
                   </span>
                 </div>
                 <dl className="grid gap-2 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">

@@ -2518,7 +2518,8 @@ impl OphirPayContract {
         Ok(claimable)
     }
 
-    /// Creator cancels a stream. All tokens not yet claimed are returned to creator.
+    /// Creator cancels a stream. Vested-but-unclaimed tokens go to the recipient;
+    /// the unvested remainder is returned to the creator.
     pub fn cancel_stream(env: Env, creator: Address, stream_id: u64) -> Result<i128, PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         creator.require_auth();
@@ -2539,10 +2540,13 @@ impl OphirPayContract {
 
         let now = env.ledger().timestamp();
         let vested = compute_vested(stream.total_amount, stream.start_time, stream.end_time, now);
-
+        let earned_unclaimed = vested
+            .checked_sub(stream.claimed_amount)
+            .ok_or(PaymentError::StreamInvariantViolated)?;
         let unvested = stream.total_amount.saturating_sub(vested);
 
         stream.cancelled = true;
+        stream.claimed_amount = vested;
         env.storage()
             .persistent()
             .set(&(STREAM_KEY, stream_id), &stream);
@@ -2550,10 +2554,13 @@ impl OphirPayContract {
             .persistent()
             .extend_ttl(&(STREAM_KEY, stream_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
 
+        let token_client = token::Client::new(&env, &stream.asset);
+        let contract_addr = env.current_contract_address();
+        if earned_unclaimed > 0 {
+            token_client.transfer(&contract_addr, &stream.recipient, &earned_unclaimed);
+            add_locked(&env, -earned_unclaimed);
+        }
         if unvested > 0 {
-            // Reentrancy-guarded transfer (MEDIUM-4)
-            let token_client = token::Client::new(&env, &stream.asset);
-            let contract_addr = env.current_contract_address();
             token_client.transfer(&contract_addr, &creator, &unvested);
             add_locked(&env, -unvested);
         }

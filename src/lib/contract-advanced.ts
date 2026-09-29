@@ -168,6 +168,49 @@ export async function getContractOwner(): Promise<string> {
   return result.returnValue;
 }
 
+export async function createStream(
+  creator: string,
+  recipient: string,
+  totalAmount: bigint,
+  asset: "native" | string,
+  startTime: number,
+  endTime: number,
+  metadata: string,
+): Promise<ContractCallResult> {
+  const assetAddress = asset === "native"
+    ? Asset.native().contractId(NETWORK_PASSPHRASE)
+    : asset;
+  return signAndSubmit(creator, CONTRACT_ID, "create_stream", [
+    nativeToScVal(creator, { type: "address" }),
+    nativeToScVal(recipient, { type: "address" }),
+    nativeToScVal(totalAmount, { type: "i128" }),
+    nativeToScVal(assetAddress, { type: "address" }),
+    nativeToScVal(startTime, { type: "u64" }),
+    nativeToScVal(endTime, { type: "u64" }),
+    nativeToScVal(metadata, { type: "string" }),
+  ]);
+}
+
+export async function claimStream(
+  recipient: string,
+  streamId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(recipient, CONTRACT_ID, "claim_stream", [
+    nativeToScVal(recipient, { type: "address" }),
+    nativeToScVal(streamId, { type: "u64" }),
+  ]);
+}
+
+export async function cancelStream(
+  creator: string,
+  streamId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(creator, CONTRACT_ID, "cancel_stream", [
+    nativeToScVal(creator, { type: "address" }),
+    nativeToScVal(streamId, { type: "u64" }),
+  ]);
+}
+
 // ── Multisig Functions ─────────────────────────────────────────
 
 export async function setMultisigConfig(

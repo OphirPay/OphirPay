@@ -405,12 +405,20 @@ mod tests {
             &String::from_str(&env, "cancel test"),
         );
 
+        env.ledger().set_timestamp(now + 100);
+        assert_eq!(client.claim_stream(&recipient, &1), 100);
+
         env.ledger().set_timestamp(now + 200);
         let returned = client.cancel_stream(&creator, &1);
         assert_eq!(returned, 800);
 
         let stream = client.get_stream(&1);
         assert!(stream.cancelled);
+        assert_eq!(stream.claimed_amount, 200);
+        assert_eq!(token::Client::new(&env, &sac).balance(&recipient), 200);
+        assert_eq!(token::Client::new(&env, &sac).balance(&creator), 9_800);
+        assert_eq!(client.get_locked_balance(), 0);
+        assert!(client.try_claim_stream(&recipient, &1).is_err());
     }
 
     // ── Vesting Overflow (AUDIT LOW-1 / issue #691) ─────────
@@ -2560,4 +2568,3 @@ mod tests {
         assert!(!missing.truncated);
     }
 }
-

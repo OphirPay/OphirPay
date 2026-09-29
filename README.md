@@ -111,7 +111,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **Real-time event streaming** (SSE) | ✅ | ❌ |
 | **Webhook delivery** (HMAC signed, retries) | ✅ | ❌ |
 | **Cross-contract communication** | ✅ | ❌ |
-| **Multi-wallet support** (5 wallets: Freighter, xBull, Rabet, Albedo, Lobstr; Ledger pending) | ✅ | ❌ |
+| **Multi-wallet support** (6 wallets: Freighter, xBull, Rabet, Albedo, Lobstr, Ledger) | ✅ | ❌ |
 | **Multi-asset support** (USDC, custom tokens) | ✅ | ❌ |
 | **Path payments** (cross-asset sends, rate preview, slippage protection) | ✅ | ❌ |
 | **PWA with offline support** | ✅ | ❌ |
@@ -302,7 +302,7 @@ OphirPay supports multiple Stellar wallets through a unified connector abstracti
 
 | Feature | Implementation |
 |---|---|
-| **Multi-wallet** | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr (the Ledger connector is pending) |
+| **Multi-wallet** | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr and Ledger hardware wallets |
 | **Connect** | Wallet selector modal → `connector.connect()` |
 | **Disconnect** | Full state reset + connector-specific cleanup |
 | **Session persistence** | Auto-detects existing connections on page load |
@@ -321,18 +321,13 @@ OphirPay supports multiple Stellar wallets through a unified connector abstracti
 | Rabet | Browser extension | ✅ Supported |
 | Albedo | Web-based (no extension) | ✅ Supported |
 | Lobstr | Web-based (SEP-7) | ✅ Supported |
-| Ledger | Hardware (WebUSB) | ⏳ Pending — connector is a stub, not offered in the selector |
+| Ledger | Hardware (WebUSB) | ✅ Supported |
 
-> ⏳ **Ledger is pending.** `src/lib/wallets/ledger.ts` is a stub: it detects
-> WebUSB but the `@ledgerhq/hw-transport-webusb` and `@ledgerhq/hw-app-str`
-> packages are not dependencies, so it cannot sign a transaction. It is marked
-> `pending` in the wallet registry and is therefore not offered in the wallet
-> selector (no "Unable to connect" dead end). Even once implemented, Ledger
-> browser signing requires **WebUSB**, which only Chromium-based browsers
-> (Chrome, Edge, Brave, Opera) expose, over HTTPS or `localhost`, with the
-> Stellar app open on the device. See
+> **Ledger requirements:** connect a Ledger device over USB with its Stellar app
+> open. Browser signing uses WebUSB and is available in Chromium-based browsers
+> (Chrome, Edge, Brave, Opera) over HTTPS or `localhost`. Transactions are
+> signed on-device using the standard `44'/148'/0'` account path. See
 > [docs/STELLAR_101.md](docs/STELLAR_101.md#wallet-connectors--ledger-status).
-> Until then, use Freighter, xBull, Rabet, Albedo or Lobstr.
 
 ```tsx
 // Consuming the wallet anywhere in your app
@@ -755,7 +750,7 @@ the nightly E2E suite (`e2e-nightly.yml`), the Docker image smoke test
 | **Styling** | [Tailwind CSS v4](https://tailwindcss.com) | Utility-first, dark mode, custom theme |
 | **Blockchain** | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org) | Horizon, Soroban RPC, TX building |
 | **Contracts** | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27 | WASM compilation, cross-contract invocation |
-| **Wallet** | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) (pending) | 5-wallet connector abstraction + pending Ledger connector |
+| **Wallet** | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) | 6-wallet connector abstraction, including Ledger hardware signing |
 | **Database** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite | Type-safe ORM, provider switching |
 | **Testing** | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | Unit, integration & E2E coverage |
 | **CI/CD** | [GitHub Actions](https://github.com/features/actions) | Gating pipeline on every PR |
@@ -820,7 +815,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 | ✅ Mobile responsive UI | **Done** |
 | ✅ CI/CD pipeline + 806 app tests + 67 contract tests + 97 e2e | **Done** |
 | ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr) | **Done** |
-| ⏳ Ledger hardware wallet connector | **Pending** — WebUSB integration not shipped |
+| ✅ Ledger hardware wallet connector | **Done** — WebUSB Stellar app signing |
 | ✅ Stellar assets (USDC, custom tokens, trustline checks) | **Done** |
 | ✅ Payment request links (shareable invoices, QR codes) | **Done** |
 | ✅ Webhook delivery (HMAC signed, retries) | **Done** |

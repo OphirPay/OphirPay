@@ -118,7 +118,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **Path payments** (cross-asset sends, rate preview, slippage protection) | ✅ | ❌ |
 | **PWA with offline support** | ✅ | ❌ |
 | **Classified error handling** (3 types, 300 contract variants) | ✅ | ❌ |
-| **Production error boundaries** | ✅ | ❌ |
+| **Sentry error reporting** (client boundaries, hooks, and API errors) | ✅ | ❌ |
 | **PostgreSQL + SQLite** (provider switching) | ✅ | ⚠️ |
 | **Multisig approvals** (N-of-M signers) | ✅ | ❌ |
 | **Spending limits + escalation tiers** | ✅ | ❌ |

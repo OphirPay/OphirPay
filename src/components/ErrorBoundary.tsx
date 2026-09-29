@@ -3,6 +3,7 @@
 
 
 import { Component, type ReactNode } from "react";
+import { captureError } from "@/lib/sentry";
 
 interface Props {
   children: ReactNode;
@@ -25,6 +26,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    captureError(error, {
+      component: "ErrorBoundary",
+      extra: { componentStack: errorInfo.componentStack },
+    });
     console.error("[OphirPay ErrorBoundary]", error.message, errorInfo.componentStack);
   }
 

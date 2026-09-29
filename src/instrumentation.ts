@@ -11,6 +11,21 @@
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/instrumentation
  */
 export async function register() {
+  if (
+    (process.env.NEXT_RUNTIME === "nodejs" || process.env.NEXT_RUNTIME === "edge") &&
+    process.env.NEXT_PHASE !== "phase-production-build"
+  ) {
+    try {
+      const { initializeSentry } = await import("@/lib/sentry");
+      initializeSentry();
+    } catch (error) {
+      console.error(
+        "[OphirPay] Sentry failed to initialize:",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
   // Only run on server startup, not during build or client-side
   if (
     process.env.NEXT_RUNTIME === "nodejs" &&

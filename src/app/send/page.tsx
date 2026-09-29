@@ -495,7 +495,7 @@ function SendPageClient() {
       // 3. Submit to Horizon
       setStep("submitting");
       const response = await submitSignedTx(signedXdr);
-      const requestId = searchParams.get("requestId");
+      const requestId = searchParams?.get("requestId");
 
       // 4. Record the payment on-chain via Soroban contract
       setStep("recording");

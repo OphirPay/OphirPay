@@ -79,6 +79,8 @@ tags:
     description: Contract deployment info and version
   - name: Stats
     description: Aggregate on-chain contract statistics
+  - name: Assets
+    description: Asset metadata resolved from the issuer's SEP-1 TOML
   - name: Session
     description: Wallet session issuance and revocation
 
@@ -562,6 +564,45 @@ paths:
           description: Payment/escrow/stream/batch counters and total amounts
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  # ── Assets ────────────────────────────────────────────────
+  /api/assets/metadata:
+    get:
+      tags: [Assets]
+      summary: Resolve asset metadata from the issuer's SEP-1 TOML
+      description: |
+        Looks up the issuer account's `home_domain` on Horizon, fetches and
+        validates that domain's `stellar.toml` (shared timeout + 100 KiB size
+        limit, DNS/URL safety guard), and returns the matching `[[CURRENCIES]]`
+        entry so custom assets can display a ticker and issuer name.
+
+        Results are cached per issuer domain for `ASSET_METADATA_TTL_MS`.
+        Unknown or unreachable metadata degrades to `code` plus `issuer` with
+        `name: null` and `source: fallback` — never an error (issue #824).
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string, maxLength: 12 }
+          description: Asset code (e.g. USDC)
+        - name: issuer
+          in: query
+          required: true
+          schema: { type: string, pattern: "^G[A-Z0-9]{55}$" }
+          description: Stellar account that issues the asset
+      responses:
+        "200":
+          description: Resolved asset metadata (or a fallback code + issuer)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    $ref: "#/components/schemas/AssetMetadata"
+        "400":
+          $ref: "#/components/responses/ValidationError"
 
   # ── Batches ────────────────────────────────────────────────
   /api/batches:
@@ -2162,6 +2203,23 @@ components:
       description: Same API key, passed as Bearer token
 
   schemas:
+    AssetMetadata:
+      type: object
+      description: Display metadata resolved from the issuer's SEP-1 stellar.toml
+      properties:
+        code: { type: string }
+        issuer: { type: string }
+        name: { type: [string, 'null'], description: 'Human display name from the [[CURRENCIES]] table' }
+        description: { type: [string, 'null'] }
+        image: { type: [string, 'null'] }
+        decimals: { type: [integer, 'null'] }
+        orgName: { type: [string, 'null'] }
+        homeDomain: { type: [string, 'null'], description: Issuer's home domain, when resolved }
+        source:
+          type: string
+          enum: [toml, cache, fallback]
+        fetchedAt: { type: string, format: date-time }
+
     PaymentResponse:
       type: object
       properties:

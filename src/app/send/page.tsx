@@ -92,7 +92,13 @@ function SendPageClient() {
 
   const [destination, setDestination] = useState("");
   const [amount, setAmount] = useState("");
-  const [feeEstimate, setFeeEstimate] = useState<{ baseFee: string; congestion: string } | null>(null);
+  const [feeEstimate, setFeeEstimate] = useState<{
+    baseFee: string;
+    recommendedFee: string;
+    congestion: string;
+    basis: string;
+    stale: boolean;
+  } | null>(null);
   const [memo, setMemo] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<AssetInfo>(XLM_ASSET);
   const [destAsset, setDestAsset] = useState<AssetInfo>(XLM_ASSET);
@@ -175,7 +181,15 @@ function SendPageClient() {
   // Fetch live fee estimate on mount
   useEffect(() => {
     estimateTransactionFee(1)
-      .then((fee) => setFeeEstimate({ baseFee: fee.baseFee, congestion: fee.networkCongestion }))
+      .then((fee) =>
+        setFeeEstimate({
+          baseFee: fee.baseFee,
+          recommendedFee: fee.recommendedFee,
+          congestion: fee.networkCongestion,
+          basis: fee.basis,
+          stale: fee.stale,
+        })
+      )
       .catch(() => {});
   }, []);
 
@@ -1129,17 +1143,28 @@ function SendPageClient() {
           </div>
 
           {feeEstimate && (
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="text-gray-500 dark:text-gray-400">
-                Network fee: ~{feeEstimate.baseFee} stroops
-              </span>
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                feeEstimate.congestion === "low" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                feeEstimate.congestion === "medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-              }`}>
-                {feeEstimate.congestion}
-              </span>
+            <div className="mt-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 dark:text-gray-400">
+                  Network fee: ~{feeEstimate.recommendedFee} stroops
+                </span>
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                  feeEstimate.congestion === "low" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+                  feeEstimate.congestion === "medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
+                  "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                }`}>
+                  {feeEstimate.congestion}
+                </span>
+              </div>
+              {feeEstimate.basis && (
+                <p
+                  data-testid="send-fee-basis"
+                  className="mt-1 text-gray-400 dark:text-gray-500"
+                >
+                  {feeEstimate.stale ? "⚠ " : ""}Based on {feeEstimate.basis}
+                  {feeEstimate.stale ? " (may be stale)" : ""}
+                </p>
+              )}
             </div>
           )}
         </div>

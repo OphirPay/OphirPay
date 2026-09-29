@@ -153,6 +153,19 @@ Configure these in **Settings → Branches → Branch protection rules** for `ma
 
 ## Testing
 
+### Soroban contract tests
+
+Both contract crates use the same layout:
+
+- Put unit tests that need private implementation details in
+  `contracts/<crate>/src/test.rs`.
+- Put tests that exercise only the public contract API, including integration
+  and property tests, in `contracts/<crate>/tests/`.
+- Run a crate's complete Rust suite with `cd contracts/<crate> && cargo test`.
+
+This keeps implementation-level tests in the unit-test harness and gives
+public-contract tests the same integration-test harness in both crates.
+
 ```bash
 npm test              # Run all tests (800 frontend)
 npm run test:watch    # Watch mode

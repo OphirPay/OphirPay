@@ -1,13 +1,11 @@
-# OphirPay — Prometheus Alert Rules
-# These rules monitor the OphirPay API server for conditions that require
-# immediate operator attention. Designed for Alertmanager → PagerDuty/Slack.
+# OphirPay — Prometheus alert rules
+# Prometheus evaluates these rules; configure Alertmanager separately to route
+# alerts to PagerDuty, Slack, or another receiver.
 
 groups:
   - name: app_critical
     interval: 30s
     rules:
-      # ── Contract Balance Alerts ──────────────────────────────
-
       # ── Payment Processing Alerts ────────────────────────────
 
       - alert: PaymentProcessingLatencyHigh
@@ -28,7 +26,7 @@ groups:
       - alert: WebhookDeliveryFailureRateHigh
         expr: |
           sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook",final_outcome="failure"}[15m])) /
-          clamp_min(sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook"}[15m])), 1) > 0.25
+          sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook"}[15m])) > 0.25
         for: 10m
         labels:
           severity: warning
@@ -65,10 +63,8 @@ groups:
         annotations:
           summary: "OphirPay API is down"
           description: |
-            The OphirPay API server is not responding to health checks.
+            The OphirPay metrics endpoint is not responding to Prometheus scrapes.
             Instance: {{ $labels.instance }}.
-
-      # ── Database Alerts ──────────────────────────────────────
 
       # ── Soroban RPC Failover Alerts (issue #820) ─────────────
 
@@ -99,6 +95,4 @@ groups:
             {{ printf "%.0f" $value }} failovers in the last 30 minutes — the
             primary endpoint is unstable. Verify the primary provider and the
             probe results logged by the failover module.
-
-      # ── Rate Limiting Alerts ─────────────────────────────────
 

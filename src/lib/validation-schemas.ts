@@ -222,6 +222,15 @@ export const webhookDeliveriesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
+export const webhookDeadLettersQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  includeResolved: z.coerce.boolean().optional().default(false),
+});
+
+export const webhookDeadLetterRedeliverSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100).optional(),
+});
+
 // ── API Key Schemas ───────────────────────────────────────────
 
 export const createApiKeySchema = z.object({

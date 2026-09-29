@@ -81,6 +81,8 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/webhooks/{id}/replay` | POST |
 | `/api/webhooks/{id}/deliveries` | GET |
 | `/api/webhooks/{id}/deliveries/{deliveryId}/redeliver` | POST |
+| `/api/webhooks/{id}/dead-letters` | GET |
+| `/api/webhooks/{id}/dead-letters/redeliver` | POST |
 | `/api/keys` | GET, POST, PATCH, DELETE |
 | `/api/keys/stats` | GET |
 | `/api/multisig` | GET, POST |
@@ -487,6 +489,49 @@ curl -X POST "https://api.ophirpay.com/api/webhooks" \
   "events": ["payment.completed", "payment.failed", "escrow.released"],
   "active": true,
   "createdAt": "2026-08-26T18:55:00.000Z"
+}
+```
+
+### List Dead-Lettered Webhook Deliveries
+```bash
+curl -X GET "https://api.ophirpay.com/api/webhooks/wh_019a99824c/dead-letters" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+```
+**Response (`200 OK`):** deliveries that exhausted their retry budget, with the payload, last response, and classified failure reason retained.
+```json
+{
+  "data": [
+    {
+      "id": "dlv_019a9a1120",
+      "eventId": "evt_019a99e441",
+      "eventType": "payment.completed",
+      "attempts": 5,
+      "responseCode": 503,
+      "failureReason": "TIMEOUT",
+      "errorMessage": "Webhook delivery timed out after 5000ms",
+      "targetUrl": "https://backend.example.com/api/webhooks/ophirpay",
+      "deadLetteredAt": "2026-08-26T19:20:00.000Z",
+      "resolvedAt": null
+    }
+  ],
+  "meta": { "limit": 50, "total": 1 }
+}
+```
+
+### Bulk Redeliver Dead-Lettered Webhook Deliveries
+```bash
+curl -X POST "https://api.ophirpay.com/api/webhooks/wh_019a99824c/dead-letters/redeliver" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+**Response (`200 OK`):** every unresolved dead letter is redelivered; deliveries that now succeed are marked resolved and the batch is written to the audit log.
+```json
+{
+  "redeliveryBatchId": "b6b6f1b0-6b2e-4c3f-9a3f-1f2f3e4d5c6b",
+  "attempted": 4,
+  "succeeded": 3,
+  "failed": 1
 }
 ```
 

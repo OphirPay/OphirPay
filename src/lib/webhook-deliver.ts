@@ -18,12 +18,36 @@ export interface WebhookPayload {
   test?: boolean;
 }
 
+/**
+ * Classified failure reason for a delivery attempt (issue #806) — lets
+ * callers distinguish a bounded per-attempt timeout from an HTTP-level or
+ * connection-level failure without string-matching `errorMessage`. Mirrors
+ * the `WebhookFailureReason` Prisma enum.
+ */
+export type WebhookFailureReason =
+  | "TIMEOUT"
+  | "HTTP_ERROR"
+  | "CONNECTION_ERROR"
+  | "BLOCKED"
+  | "UNKNOWN";
+
+/** True for errors thrown by a failed network-level connection attempt. */
+function isConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code && /^E(CONNREFUSED|CONNRESET|NOTFOUND|HOSTUNREACH|NETUNREACH|PIPE)$/.test(code)) {
+    return true;
+  }
+  return /fetch failed|network|ECONNREFUSED|ECONNRESET|ENOTFOUND/i.test(err.message);
+}
+
 export interface WebhookDeliveryResult {
   success: boolean;
   statusCode?: number;
   latencyMs: number;
   attempts: number;
   errorMessage?: string;
+  failureReason?: WebhookFailureReason;
 }
 
 export const WEBHOOK_TIMESTAMP_HEADER = "X-OphirPay-Timestamp";
@@ -110,6 +134,7 @@ export async function deliverWebhook(
   let lastStatusCode: number | undefined;
   let lastResponseBody = "";
   let lastError: string | undefined;
+  let lastFailureReason: WebhookFailureReason = "UNKNOWN";
   let attempts = 0;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -126,6 +151,7 @@ export async function deliverWebhook(
         latencyMs,
         attempts,
         errorMessage: BLOCKED_WEBHOOK_TARGET_ERROR,
+        failureReason: "BLOCKED",
         delivered: false,
         status: lastStatusCode ?? null,
         responseBody: lastResponseBody,
@@ -174,14 +200,25 @@ export async function deliverWebhook(
       }
 
       lastError = `HTTP ${response.status}`;
+      lastFailureReason = "HTTP_ERROR";
       logger.warn("Webhook delivery failed", { url, status: response.status, attempt });
     } catch (err) {
-      lastError = isTimeoutError(err)
-        ? `Webhook delivery timed out after ${getWebhookTimeoutMs()}ms`
-        : err instanceof Error
-          ? err.message
-          : String(err);
-      logger.warn("Webhook delivery error", { url, error: lastError, attempt });
+      if (isTimeoutError(err)) {
+        lastError = `Webhook delivery timed out after ${getWebhookTimeoutMs()}ms`;
+        lastFailureReason = "TIMEOUT";
+      } else if (isConnectionError(err)) {
+        lastError = err instanceof Error ? err.message : String(err);
+        lastFailureReason = "CONNECTION_ERROR";
+      } else {
+        lastError = err instanceof Error ? err.message : String(err);
+        lastFailureReason = "UNKNOWN";
+      }
+      logger.warn("Webhook delivery error", {
+        url,
+        error: lastError,
+        failureReason: lastFailureReason,
+        attempt,
+      });
     }
 
     if (attempt < maxRetries) {
@@ -189,7 +226,11 @@ export async function deliverWebhook(
     }
   }
 
-  logger.error("Webhook delivery exhausted retries", { url, event: payload.event });
+  logger.error("Webhook delivery exhausted retries", {
+    url,
+    event: payload.event,
+    failureReason: lastFailureReason,
+  });
   incMetric("webhooks_failed_total");
   const latencyMs = Date.now() - startedAt;
   return {
@@ -198,6 +239,7 @@ export async function deliverWebhook(
     latencyMs,
     attempts: maxRetries,
     errorMessage: lastError ?? "Delivery exhausted retries",
+    failureReason: lastFailureReason,
     delivered: false,
     status: lastStatusCode ?? null,
     responseBody: lastResponseBody,

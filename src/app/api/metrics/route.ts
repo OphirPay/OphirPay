@@ -128,6 +128,25 @@ function buildMetrics(): string {
         })}} ${metric.count}`
     ),
     "",
+    "# HELP ophirpay_webhooks_dead_lettered_total Total webhook deliveries that exhausted retries and moved to the dead-letter state",
+    "# TYPE ophirpay_webhooks_dead_lettered_total counter",
+    `ophirpay_webhooks_dead_lettered_total ${c.webhooks_dead_lettered_total}`,
+    "",
+    "# HELP ophirpay_webhook_dead_letter_reasons_total Dead-lettered webhook deliveries by classified failure reason",
+    "# TYPE ophirpay_webhook_dead_letter_reasons_total counter",
+    ...c.webhook_dead_letter_reasons.map(
+      (metric) =>
+        `ophirpay_webhook_dead_letter_reasons_total{${labels({ reason: metric.reason })}} ${metric.count}`
+    ),
+    "",
+    "# HELP ophirpay_webhooks_dead_letter_redeliveries_total Total bulk redelivery attempts issued from the dead-letter queue",
+    "# TYPE ophirpay_webhooks_dead_letter_redeliveries_total counter",
+    `ophirpay_webhooks_dead_letter_redeliveries_total ${c.webhooks_dead_letter_redeliveries_total}`,
+    "",
+    "# HELP ophirpay_webhooks_dead_letter_redeliveries_succeeded_total Total bulk redelivery attempts from the dead-letter queue that succeeded",
+    "# TYPE ophirpay_webhooks_dead_letter_redeliveries_succeeded_total counter",
+    `ophirpay_webhooks_dead_letter_redeliveries_succeeded_total ${c.webhooks_dead_letter_redeliveries_succeeded_total}`,
+    "",
     "# HELP ophirpay_db_query_duration_seconds Database query duration",
     "# TYPE ophirpay_db_query_duration_seconds summary",
     `ophirpay_db_query_duration_seconds_sum ${c.db_query_duration_seconds_sum}`,

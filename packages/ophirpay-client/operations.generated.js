@@ -2,7 +2,7 @@
 // GENERATED FROM docs/openapi.yaml — DO NOT EDIT BY HAND.
 // Regenerate with: npm run client:generate
 //
-// 91 operations extracted from the committed OpenAPI spec.
+// 93 operations extracted from the committed OpenAPI spec.
 
 /** @typedef {{ name: string, method: string, path: string, summary: string, tags: string[], requestBody: boolean }} ApiOperation */
 
@@ -529,6 +529,16 @@ export const API_OPERATIONS = [
     "requestBody": false
   },
   {
+    "name": "getApiWebhooksIdDeadLetters",
+    "method": "GET",
+    "path": "/api/webhooks/{id}/dead-letters",
+    "summary": "List dead-lettered deliveries for a webhook",
+    "tags": [
+      "Webhooks"
+    ],
+    "requestBody": false
+  },
+  {
     "name": "getApiWebhooksIdDeliveries",
     "method": "GET",
     "path": "/api/webhooks/{id}/deliveries",
@@ -883,6 +893,16 @@ export const API_OPERATIONS = [
     "method": "POST",
     "path": "/api/webhooks",
     "summary": "Register a new webhook",
+    "tags": [
+      "Webhooks"
+    ],
+    "requestBody": true
+  },
+  {
+    "name": "postApiWebhooksIdDeadLettersRedeliver",
+    "method": "POST",
+    "path": "/api/webhooks/{id}/dead-letters/redeliver",
+    "summary": "Bulk redeliver dead-lettered deliveries",
     "tags": [
       "Webhooks"
     ],

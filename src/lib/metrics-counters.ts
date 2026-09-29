@@ -36,6 +36,15 @@ const counters = {
    * malformed requests are rejected before reaching this counter.
    */
   csp_violation_reports_total: 0,
+  /**
+   * Counter: webhook deliveries that exhausted their retry budget and moved
+   * to the dead-letter state (issue #806).
+   */
+  webhooks_dead_lettered_total: 0,
+  /** Counter: bulk redelivery attempts issued from the dead-letter queue. */
+  webhooks_dead_letter_redeliveries_total: 0,
+  /** Counter: bulk redelivery attempts from the dead-letter queue that succeeded. */
+  webhooks_dead_letter_redeliveries_succeeded_total: 0,
 };
 
 /** Last failover snapshot read by a scrape, for diffing gauge/counter gauges. */
@@ -77,6 +86,30 @@ export interface DeliveryFinalOutcomeMetric extends DeliveryAttemptMetric {
 
 const deliveryAttempts = new Map<string, DeliveryAttemptMetric>();
 const deliveryFinalOutcomes = new Map<string, DeliveryFinalOutcomeMetric>();
+
+/** Classified reason a webhook delivery was dead-lettered (issue #806). */
+export type WebhookFailureReasonLabel =
+  | "TIMEOUT"
+  | "HTTP_ERROR"
+  | "CONNECTION_ERROR"
+  | "BLOCKED"
+  | "UNKNOWN";
+
+export interface WebhookDeadLetterReasonMetric {
+  reason: WebhookFailureReasonLabel;
+  count: number;
+}
+
+const webhookDeadLetterReasons = new Map<string, WebhookDeadLetterReasonMetric>();
+
+/** Count one dead-lettered delivery, labelled by its classified failure reason. */
+export function incWebhookDeadLetterReason(reason: WebhookFailureReasonLabel): void {
+  const current = webhookDeadLetterReasons.get(reason);
+  webhookDeadLetterReasons.set(reason, {
+    reason,
+    count: (current?.count ?? 0) + 1,
+  });
+}
 
 function assertAttemptNumber(attemptNumber: number): void {
   if (!Number.isInteger(attemptNumber) || attemptNumber < 1) {
@@ -145,6 +178,7 @@ export function observeDbQuery(durationSeconds: number): void {
 export function getMetricsSnapshot(): typeof counters & {
   delivery_attempts: DeliveryAttemptMetric[];
   delivery_final_outcomes: DeliveryFinalOutcomeMetric[];
+  webhook_dead_letter_reasons: WebhookDeadLetterReasonMetric[];
 } {
   return {
     ...counters,
@@ -159,6 +193,9 @@ export function getMetricsSnapshot(): typeof counters & {
         a.attempt_number - b.attempt_number ||
         a.final_outcome.localeCompare(b.final_outcome)
     ),
+    webhook_dead_letter_reasons: [...webhookDeadLetterReasons.values()].sort((a, b) =>
+      a.reason.localeCompare(b.reason)
+    ),
   };
 }
 
@@ -168,6 +205,7 @@ export function resetMetricsForTest(): void {
   }
   deliveryAttempts.clear();
   deliveryFinalOutcomes.clear();
+  webhookDeadLetterReasons.clear();
   lastRpcFailover = null;
 }
 

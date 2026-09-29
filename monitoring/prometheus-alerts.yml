@@ -40,6 +40,25 @@ groups:
             in failure for at least 10 minutes. Check subscriber endpoints and
             retry attempt distribution.
 
+      # ── Webhook Dead Letter Alerts (issue #806) ──────────────
+
+      - alert: WebhookDeadLetterQueueGrowing
+        expr: |
+          increase(ophirpay_webhooks_dead_lettered_total[15m]) >= 5
+        for: 5m
+        labels:
+          severity: warning
+          component: webhooks
+        annotations:
+          summary: "Webhook deliveries are piling up in the dead-letter queue"
+          description: |
+            {{ printf "%.0f" $value }} webhook deliveries exhausted their
+            retry budget and were dead-lettered in the last 15 minutes.
+            Inspect GET /api/webhooks/{id}/dead-letters for the affected
+            subscribers and the classified failure reason (timeout,
+            HTTP error, connection error, or blocked target), then bulk
+            redeliver once the root cause is resolved.
+
       # ── API Health Alerts ────────────────────────────────────
 
       - alert: ApiHighErrorRate

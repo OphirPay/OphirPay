@@ -548,6 +548,23 @@ model WebhookDelivery {
   responseBody  String?
   durationMs    Int?
   error         String?
+  /// Classified reason the delivery failed (issue #806) — distinguishes a
+  /// bounded per-attempt timeout from an HTTP-level or connection-level
+  /// failure without string-matching `errorMessage`.
+  failureReason WebhookFailureReason?
+  /// Set once this delivery has exhausted its retry budget and moved to the
+  /// dead-letter state. Null while retries are still in progress or on
+  /// success.
+  deadLetteredAt DateTime?
+  /// Set when a dead-lettered delivery is later redelivered successfully —
+  /// marks the row as resolved so the dead-letter queue only surfaces
+  /// deliveries that still need attention.
+  resolvedAt    DateTime?
+  /// Correlates every delivery created by one bulk dead-letter redelivery
+  /// request (see AuditLog for the accompanying audit entry).
+  redeliveryBatchId String?
+  /// The id of the dead-lettered delivery this row was redelivered from.
+  redeliveredFromId String?
   deliveredAt   DateTime       @default(now())
   createdAt     DateTime       @default(now())
 
@@ -556,11 +573,30 @@ model WebhookDelivery {
 
   @@index([webhookId, deliveredAt])
   @@index([replayBatchId])
+  @@index([webhookId, status, deadLetteredAt])
+  @@index([redeliveryBatchId])
 }
 
 enum DeliveryStatus {
   SUCCESS
   FAILED
+  /// Retry budget exhausted — retained for inspection and bulk redelivery
+  /// (issue #806).
+  DEAD_LETTER
+}
+
+/// Classified webhook delivery failure reasons (issue #806).
+enum WebhookFailureReason {
+  /// The per-attempt delivery budget (`WEBHOOK_TIMEOUT_MS`) elapsed.
+  TIMEOUT
+  /// The endpoint responded with a non-2xx status.
+  HTTP_ERROR
+  /// The request could not reach the endpoint (DNS/connection refused/reset).
+  CONNECTION_ERROR
+  /// The target was rejected by the SSRF guard before any request was sent.
+  BLOCKED
+  /// Any other thrown error not covered by the reasons above.
+  UNKNOWN
 }
 
 

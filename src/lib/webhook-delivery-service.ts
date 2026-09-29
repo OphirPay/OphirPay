@@ -28,6 +28,7 @@ export async function persistDeliveryResult(
       latencyMs: result.latencyMs,
       attempts: result.attempts,
       errorMessage: result.errorMessage,
+      failureReason: result.success ? undefined : result.failureReason,
       ...options,
     },
   );

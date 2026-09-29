@@ -28,6 +28,21 @@ ophirpay_webhooks_failed_total 0
 # HELP ophirpay_delivery_final_outcomes_total Total terminal delivery outcomes by delivery type, final attempt number, and outcome
 # TYPE ophirpay_delivery_final_outcomes_total counter
 
+# HELP ophirpay_webhooks_dead_lettered_total Total webhook deliveries that exhausted retries and moved to the dead-letter state
+# TYPE ophirpay_webhooks_dead_lettered_total counter
+ophirpay_webhooks_dead_lettered_total 0
+
+# HELP ophirpay_webhook_dead_letter_reasons_total Dead-lettered webhook deliveries by classified failure reason
+# TYPE ophirpay_webhook_dead_letter_reasons_total counter
+
+# HELP ophirpay_webhooks_dead_letter_redeliveries_total Total bulk redelivery attempts issued from the dead-letter queue
+# TYPE ophirpay_webhooks_dead_letter_redeliveries_total counter
+ophirpay_webhooks_dead_letter_redeliveries_total 0
+
+# HELP ophirpay_webhooks_dead_letter_redeliveries_succeeded_total Total bulk redelivery attempts from the dead-letter queue that succeeded
+# TYPE ophirpay_webhooks_dead_letter_redeliveries_succeeded_total counter
+ophirpay_webhooks_dead_letter_redeliveries_succeeded_total 0
+
 # HELP ophirpay_db_query_duration_seconds Database query duration
 # TYPE ophirpay_db_query_duration_seconds summary
 ophirpay_db_query_duration_seconds_sum 0

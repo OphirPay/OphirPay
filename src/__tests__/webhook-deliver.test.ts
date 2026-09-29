@@ -228,6 +228,7 @@ describe("deliverWebhook", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(ok.attempts).toBe(1);
     expect(ok.errorMessage).toBe("HTTP 302");
+    expect(ok.failureReason).toBe("HTTP_ERROR");
   });
 
   it("returns a clear error when the destination fails the delivery-time guard", async () => {
@@ -240,6 +241,7 @@ describe("deliverWebhook", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(ok.attempts).toBe(0);
     expect(ok.errorMessage).toBe(BLOCKED_WEBHOOK_TARGET_ERROR);
+    expect(ok.failureReason).toBe("BLOCKED");
   });
 
   it("re-validates before every attempt and blocks a rebinding host mid-retry", async () => {
@@ -273,5 +275,29 @@ describe("deliverWebhook", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(ok.attempts).toBe(2);
     expect(ok.statusCode).toBe(500);
+    expect(ok.failureReason).toBe("HTTP_ERROR");
+  });
+
+  it("records a bounded-timeout attempt as a distinct TIMEOUT failure reason", async () => {
+    const timeoutError = new Error("Webhook delivery timed out after 5000ms");
+    timeoutError.name = "TimeoutError";
+    const fetchMock = vi.fn().mockRejectedValue(timeoutError);
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 1);
+    expect(ok.success).toBe(false);
+    expect(ok.failureReason).toBe("TIMEOUT");
+    expect(ok.errorMessage).toMatch(/timed out/i);
+  });
+
+  it("classifies a connection-level failure distinctly from a timeout", async () => {
+    const connError = new Error("fetch failed") as NodeJS.ErrnoException;
+    connError.code = "ECONNREFUSED";
+    const fetchMock = vi.fn().mockRejectedValue(connError);
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const ok = await deliverWebhook("https://example.com/hook", SECRET, samplePayload, 1);
+    expect(ok.success).toBe(false);
+    expect(ok.failureReason).toBe("CONNECTION_ERROR");
   });
 });

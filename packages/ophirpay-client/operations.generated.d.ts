@@ -64,6 +64,7 @@ export type ApiOperationName =
   | "getApiTimelock"
   | "getApiWebhooks"
   | "getApiWebhooksId"
+  | "getApiWebhooksIdDeadLetters"
   | "getApiWebhooksIdDeliveries"
   | "getApiWebhooksIdDeliveriesDeliveryId"
   | "getApiWebhooksIdTest"
@@ -100,6 +101,7 @@ export type ApiOperationName =
   | "postApiScheduledRun"
   | "postApiStreams"
   | "postApiWebhooks"
+  | "postApiWebhooksIdDeadLettersRedeliver"
   | "postApiWebhooksIdDeliveriesDeliveryIdRedeliver"
   | "postApiWebhooksIdReplay"
   | "postApiWebhooksIdTest";

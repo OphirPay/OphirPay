@@ -114,13 +114,24 @@ describe("dispatchWebhookEvent", () => {
     expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled();
   });
 
-  it("records a FAILED delivery when the endpoint rejects the payload", async () => {
+  it("dead-letters the delivery when the endpoint rejects the payload after exhausting retries", async () => {
     mocks.findMany.mockResolvedValue([webhook("w1", "[]")]);
     mocks.deliverWebhook.mockResolvedValue({
       success: false,
       statusCode: 500,
       latencyMs: 12,
       attempts: 3,
+      errorMessage: "HTTP 500",
+      failureReason: "HTTP_ERROR",
+      responseBody: "server error",
+      durationMs: 12,
+      error: "HTTP 500",
+      request: {
+        canonicalBody: "canonical",
+        body: "body",
+        signature: "sig",
+        headers: { "Content-Type": "application/json" },
+      },
     });
 
     await dispatchWebhookEvent(EVENT, { id: "p_1" }, "user_1");
@@ -128,9 +139,53 @@ describe("dispatchWebhookEvent", () => {
     expect(mocks.recordWebhookDelivery).toHaveBeenCalledWith(
       "w1",
       "evt_1",
-      "FAILED",
-      { responseCode: 500, isReplay: false }
+      "DEAD_LETTER",
+      expect.objectContaining({
+        responseCode: 500,
+        latencyMs: 12,
+        attempts: 3,
+        errorMessage: "HTTP 500",
+        failureReason: "HTTP_ERROR",
+        isReplay: false,
+        targetUrl: "https://hook.example.com/w1",
+        responseBody: "server error",
+        durationMs: 12,
+      })
     );
+  });
+
+  it("increments dead-letter metrics when a delivery is dead-lettered", async () => {
+    mocks.findMany.mockResolvedValue([webhook("w1", "[]")]);
+    mocks.deliverWebhook.mockResolvedValue({
+      success: false,
+      statusCode: 503,
+      latencyMs: 8,
+      attempts: 3,
+      errorMessage: "Webhook delivery timed out after 5000ms",
+      failureReason: "TIMEOUT",
+      responseBody: "",
+      durationMs: 8,
+      error: "Webhook delivery timed out after 5000ms",
+      request: {
+        canonicalBody: "canonical",
+        body: "body",
+        signature: "sig",
+        headers: {},
+      },
+    });
+
+    const { getMetricsSnapshot, resetMetricsForTest } = await import(
+      "@/lib/metrics-counters"
+    );
+    resetMetricsForTest();
+    await dispatchWebhookEvent(EVENT, { id: "p_1" }, "user_1");
+
+    const snapshot = getMetricsSnapshot();
+    expect(snapshot.webhooks_dead_lettered_total).toBe(1);
+    expect(snapshot.webhook_dead_letter_reasons).toContainEqual({
+      reason: "TIMEOUT",
+      count: 1,
+    });
   });
 
   it("swallows lookup failures instead of throwing to the caller", async () => {

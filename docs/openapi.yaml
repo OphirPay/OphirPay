@@ -1192,6 +1192,69 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/webhooks/{id}/dead-letters:
+    get:
+      tags: [Webhooks]
+      summary: List dead-lettered deliveries for a webhook
+      description: |
+        Deliveries that exhausted their retry budget (issue #806). Retains
+        the payload, the last response, and the classified failure reason.
+        Only unresolved dead letters are returned unless includeResolved=true.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: includeResolved
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Dead-lettered deliveries
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/webhooks/{id}/dead-letters/redeliver:
+    post:
+      tags: [Webhooks]
+      summary: Bulk redeliver dead-lettered deliveries
+      description: |
+        Redelivers every currently unresolved dead letter for the webhook
+        (or a specific set via `ids`), up to 100 per request. Deliveries
+        that succeed are marked resolved; the whole batch is recorded in
+        the audit log.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items: { type: string }
+                  maxItems: 100
+                  description: Specific dead-lettered delivery ids to redeliver (defaults to all unresolved)
+      responses:
+        "200":
+          description: Redelivery batch summary (attempted/succeeded/failed)
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   # ── API Keys ──────────────────────────────────────────────
   /api/keys:
     get:

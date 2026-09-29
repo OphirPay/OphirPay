@@ -7,7 +7,7 @@ import {
   REPLAY_MAX_COUNT,
   REPLAY_MAX_DAYS,
 } from "@/lib/webhook-replay-config";
-import type { DeliveryStatus } from "@prisma/client";
+import type { DeliveryStatus, WebhookFailureReason } from "@prisma/client";
 
 export interface StoredWebhookPayload {
   event: string;
@@ -56,19 +56,38 @@ export async function storeWebhookEvent(
   return row.id;
 }
 
-/** Record a delivery attempt (original or replay) for dashboard visibility. */
+export interface RecordWebhookDeliveryOptions {
+  responseCode?: number;
+  latencyMs?: number;
+  attempts?: number;
+  errorMessage?: string;
+  isReplay?: boolean;
+  replayBatchId?: string;
+  /** Classified failure reason (issue #806) — set on non-SUCCESS deliveries. */
+  failureReason?: WebhookFailureReason;
+  /** Target URL the payload was sent to, retained alongside the dead letter. */
+  targetUrl?: string;
+  canonicalBody?: string;
+  requestBody?: string;
+  signature?: string;
+  requestHeaders?: string;
+  responseBody?: string;
+  durationMs?: number;
+  error?: string;
+  /** Set when this delivery exhausted its retry budget and was dead-lettered. */
+  deadLetteredAt?: Date;
+  /** Correlates every delivery created by one bulk dead-letter redelivery request. */
+  redeliveryBatchId?: string;
+  /** The id of the dead-lettered delivery this row was redelivered from. */
+  redeliveredFromId?: string;
+}
+
+/** Record a delivery attempt (original, replay, or dead-letter redelivery). */
 export async function recordWebhookDelivery(
   webhookId: string,
   eventId: string,
   status: DeliveryStatus,
-  options?: {
-    responseCode?: number;
-    latencyMs?: number;
-    attempts?: number;
-    errorMessage?: string;
-    isReplay?: boolean;
-    replayBatchId?: string;
-  },
+  options?: RecordWebhookDeliveryOptions,
 ): Promise<string> {
   const row = await prisma.webhookDelivery.create({
     data: {
@@ -81,9 +100,29 @@ export async function recordWebhookDelivery(
       errorMessage: options?.errorMessage,
       isReplay: options?.isReplay ?? false,
       replayBatchId: options?.replayBatchId,
+      failureReason: options?.failureReason,
+      targetUrl: options?.targetUrl,
+      canonicalBody: options?.canonicalBody,
+      requestBody: options?.requestBody,
+      signature: options?.signature,
+      requestHeaders: options?.requestHeaders,
+      responseBody: options?.responseBody,
+      durationMs: options?.durationMs,
+      error: options?.error,
+      deadLetteredAt: options?.deadLetteredAt,
+      redeliveryBatchId: options?.redeliveryBatchId,
+      redeliveredFromId: options?.redeliveredFromId,
     },
   });
   return row.id;
+}
+
+/** Mark a dead-lettered delivery resolved after it has been redelivered successfully. */
+export async function resolveDeadLetteredDelivery(deliveryId: string): Promise<void> {
+  await prisma.webhookDelivery.update({
+    where: { id: deliveryId },
+    data: { resolvedAt: new Date() },
+  });
 }
 
 /** Resolve and clamp replay window + limit to safe bounds. */

@@ -3,6 +3,7 @@
 import prisma from "@/lib/prisma";
 import { deliverWebhook } from "@/lib/webhook-deliver";
 import { logger } from "@/lib/logger";
+import { incMetric, incWebhookDeadLetterReason } from "@/lib/metrics-counters";
 import type { WebhookEventType } from "@/app/api/webhooks/event-types";
 import {
   recordWebhookDelivery,
@@ -56,15 +57,42 @@ export async function dispatchWebhookEvent(
       );
     }
 
-    // Fire all webhook deliveries in parallel (non-blocking)
+    // Fire all webhook deliveries in parallel (non-blocking). A delivery
+    // that fails here has already exhausted deliverWebhook's own retry
+    // budget, so it moves straight to the dead-letter state (issue #806)
+    // instead of a plain FAILED row — the payload and last response are
+    // retained so it can be inspected and bulk-redelivered later.
     const results = await Promise.allSettled(
       webhooks.map(async (wh) => {
         const result = await deliverWebhook(wh.url, wh.secret, payload);
         if (storedEventId) {
-          await recordWebhookDelivery(wh.id, storedEventId, result.success ? "SUCCESS" : "FAILED", {
-            responseCode: result.statusCode,
-            isReplay: false,
-          });
+          if (result.success) {
+            await recordWebhookDelivery(wh.id, storedEventId, "SUCCESS", {
+              responseCode: result.statusCode,
+              isReplay: false,
+            });
+          } else {
+            const failureReason = result.failureReason ?? "UNKNOWN";
+            incMetric("webhooks_dead_lettered_total");
+            incWebhookDeadLetterReason(failureReason);
+            await recordWebhookDelivery(wh.id, storedEventId, "DEAD_LETTER", {
+              responseCode: result.statusCode,
+              latencyMs: result.latencyMs,
+              attempts: result.attempts,
+              errorMessage: result.errorMessage,
+              failureReason,
+              isReplay: false,
+              targetUrl: wh.url,
+              canonicalBody: result.request.canonicalBody,
+              requestBody: result.request.body,
+              signature: result.request.signature,
+              requestHeaders: JSON.stringify(result.request.headers),
+              responseBody: result.responseBody,
+              durationMs: result.durationMs,
+              error: result.error ?? undefined,
+              deadLetteredAt: new Date(),
+            });
+          }
         }
         return result.success;
       }),

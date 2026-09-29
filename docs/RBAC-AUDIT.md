@@ -1,7 +1,8 @@
-# RBAC Audit — State-Changing API Routes
-
+> Generated for [Issue #392](https://github.com/OphirPay/OphirPay/issues/392).
 > Audit of state-changing routes (POST / PUT / PATCH / DELETE), listed with its
 > required authentication and any role-based access control enforcement.
+
+# RBAC Audit — State-Changing API Routes
 
 ## Legend
 

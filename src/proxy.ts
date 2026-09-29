@@ -124,6 +124,8 @@ export async function proxy(request: NextRequest) {
   }
 
   // ── HTML pages: CSP + security headers ──────────────────────
+  // `src/proxy.ts` keeps `'unsafe-inline'` because the App Router still emits
+  // hydration scripts that do not receive proxy nonces reliably.
   const response = NextResponse.next();
   response.headers.set("Content-Security-Policy", buildCsp());
   response.headers.set("X-Request-Id", requestId);

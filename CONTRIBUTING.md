@@ -59,6 +59,13 @@ lockfile), but please install with the pinned manager to avoid lockfile churn.
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org)
 - **Before submitting**: Run `npm run ci` (typecheck → lint → test → build)
 
+### Type safety and lint suppressions
+
+Use `unknown` with a type guard or a narrower domain type instead of `any`.
+Type-safety ESLint suppressions should be avoided; when a targeted suppression
+is necessary, keep it to one line and explain why on that line. The zero-warning
+ESLint check runs in CI.
+
 ### Dependency Updates
 
 [Dependabot](.github/dependabot.yml) checks the `npm` (root `package-lock.json`),

@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { fetchXlmPrice, type PriceResult } from "@/lib/price";
+import {
+  fetchXlmPrice,
+  PRICE_CACHE_MAX_AGE_MS,
+  MAX_XLM_USD_PRICE,
+  MIN_XLM_USD_PRICE,
+  type PriceResult,
+} from "@/lib/price";
 
 export interface UseXlmPriceOptions {
   enabled?: boolean;
@@ -16,6 +22,7 @@ export interface UseXlmPriceReturn {
   isLoading: boolean;
   isError: boolean;
   isUnavailable: boolean;
+  isStale: boolean;
   error: string | null;
   lastUpdated: Date | null;
   refetch: (forceRefresh?: boolean) => Promise<PriceResult>;
@@ -34,6 +41,7 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
   const [isLoading, setIsLoading] = useState<boolean>(enabled);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const lastUpdatedRef = useRef<number | null>(null);
 
   const isMountedRef = useRef(true);
 
@@ -42,19 +50,41 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
       setIsLoading(true);
       try {
         const result = await fetchXlmPrice({ forceRefresh, ttlMs });
+        const priceIsValid =
+          result.price === null ||
+          (Number.isFinite(result.price) &&
+            result.price >= MIN_XLM_USD_PRICE &&
+            result.price <= MAX_XLM_USD_PRICE);
+        const safeResult = priceIsValid
+          ? result
+          : {
+              ...result,
+              price: null,
+              source: null,
+              error: "XLM/USD price sources unavailable",
+            };
         if (isMountedRef.current) {
-          setPrice(result.price);
-          setSource(result.source);
-          setError(result.error ?? null);
-          if (result.price !== null) {
-            setLastUpdated(result.timestamp ? new Date(result.timestamp) : new Date());
+          setPrice(safeResult.price);
+          setSource(safeResult.source);
+          setError(safeResult.error ?? null);
+          if (safeResult.price !== null) {
+            const updatedAt = safeResult.timestamp ?? Date.now();
+            lastUpdatedRef.current = updatedAt;
+            setLastUpdated(new Date(updatedAt));
           }
           setIsLoading(false);
         }
-        return result;
+        return safeResult;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : "Failed to fetch price";
         if (isMountedRef.current) {
+          if (
+            lastUpdatedRef.current === null ||
+            Date.now() - lastUpdatedRef.current > PRICE_CACHE_MAX_AGE_MS
+          ) {
+            setPrice(null);
+            setSource(null);
+          }
           setError(errMsg);
           setIsLoading(false);
         }
@@ -88,6 +118,7 @@ export function useXlmPrice(options?: UseXlmPriceOptions): UseXlmPriceReturn {
     isLoading,
     isError: error !== null && price === null,
     isUnavailable: price === null && !isLoading,
+    isStale: price !== null && error !== null,
     error,
     lastUpdated,
     refetch: loadPrice,

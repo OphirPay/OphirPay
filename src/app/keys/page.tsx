@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Card } from "@/components/ui/Card";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { useApiQuery } from "@/hooks/useApiQuery";
+import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
 import {
   API_SCOPES,
   type ApiScope,
@@ -21,6 +21,8 @@ interface ApiKeyRecord {
   lastUsed: string | null;
   createdAt: string;
   expiresAt: string | null;
+  rotatedAt: string | null;
+  rotatedToId: string | null;
 }
 
 interface KeyUsage {
@@ -61,6 +63,7 @@ export default function ApiKeysPage() {
   const [selectedScopes, setSelectedScopes] = useState<ApiScope[]>([]);
   const [creating, setCreating] = useState(false);
   const [newRawKey, setNewRawKey] = useState<string | null>(null);
+  const [rotatingId, setRotatingId] = useState<string | null>(null);
 
   // Edit panel
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -72,6 +75,13 @@ export default function ApiKeysPage() {
   const { data: usage, isLoading: usageLoading, error: usageError } = useApiQuery<KeyStatsResponse>(
     ["api-keys", "stats", window],
     `/api/keys/stats?window=${window}`
+  );
+  const rotateMutation = useApiMutation<
+    { id: string },
+    { key: string; previousKeyValidUntil: string }
+  >(
+    ({ id }) => `/api/keys/${encodeURIComponent(id)}/rotate`,
+    { invalidateKeys: [["api-keys", "stats", window]] },
   );
 
   const loadKeys = useCallback(async () => {
@@ -170,6 +180,27 @@ export default function ApiKeysPage() {
       loadKeys();
     } catch {
       toast.error("Delete failed", "Please try again.");
+    }
+  };
+
+  const handleRotate = async (key: ApiKeyRecord) => {
+    if (!globalThis.confirm(`Rotate "${key.name}"? The old key will remain valid for up to 24 hours.`)) {
+      return;
+    }
+    setRotatingId(key.id);
+    try {
+      const result = await rotateMutation.mutateAsync({ id: key.id });
+      setNewRawKey(result.key);
+      toast.success(
+        "API key rotated",
+        `The old key remains valid until ${formatDate(result.previousKeyValidUntil)}.`,
+      );
+      await loadKeys();
+    } catch (err) {
+      const apiErr = err as ApiError;
+      toast.error("Rotation failed", apiErr.message || "Please try again.");
+    } finally {
+      setRotatingId(null);
     }
   };
 
@@ -289,7 +320,7 @@ export default function ApiKeysPage() {
         {newRawKey && (
           <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
             <p className="text-sm text-green-700 dark:text-green-400 font-medium mb-2">
-              Key created — copy it now:
+              New key — copy it now:
             </p>
             <div className="flex items-center gap-2">
               <code className="flex-1 break-all text-xs font-mono text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-900 p-2 rounded">
@@ -332,6 +363,11 @@ export default function ApiKeysPage() {
                         ? ` · last used ${new Date(key.lastUsed).toLocaleDateString()}`
                         : ""}
                     </p>
+                    {key.rotatedAt && (
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                        Rotated; old key valid until {formatDate(key.expiresAt)}.
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {key.scopes.length === 0 ? (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
@@ -350,12 +386,23 @@ export default function ApiKeysPage() {
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    <button
-                      onClick={() => openEdit(key)}
-                      className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
-                    >
-                      Edit scopes
-                    </button>
+                    {!key.rotatedAt && (
+                      <>
+                        <button
+                          onClick={() => openEdit(key)}
+                          className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
+                        >
+                          Edit scopes
+                        </button>
+                        <button
+                          onClick={() => handleRotate(key)}
+                          disabled={rotatingId === key.id}
+                          className="px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-medium hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:opacity-50"
+                        >
+                          {rotatingId === key.id ? "Rotating..." : "Rotate"}
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={() => handleDelete(key.id)}
                       className="px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/30"

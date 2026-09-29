@@ -52,7 +52,7 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
     if (!auth) return unauthorizedError("Authentication required.");
 
     const keys = await prisma.apiKey.findMany({
-      where: { userId: auth.userId },
+      where: { userId: auth.userId, revokedAt: null },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -62,6 +62,9 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
         lastUsed: true,
         createdAt: true,
         expiresAt: true,
+        revokedAt: true,
+        rotatedAt: true,
+        rotatedToId: true,
       },
     });
     return successResponse(keys);
@@ -164,7 +167,7 @@ async function __ophir_PATCH(request: Request) {
 
     // Scoped update — a user can only modify their own key
     const result = await prisma.apiKey.updateMany({
-      where: { id: body.id, userId: auth.userId },
+      where: { id: body.id, userId: auth.userId, revokedAt: null },
       data: { scopes: parsed.scopes },
     });
     if (result.count === 0) return badRequestError("Key not found");
@@ -191,8 +194,9 @@ export const DELETE = withMetrics("DELETE /api/keys", withRequestLogging(async f
     if (!id) return badRequestError("Key ID is required");
 
     // Scoped delete — a user can only revoke their own key
-    const result = await prisma.apiKey.deleteMany({
-      where: { id, userId: auth.userId },
+    const result = await prisma.apiKey.updateMany({
+      where: { id, userId: auth.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
     });
     if (result.count === 0) return badRequestError("Key not found");
 

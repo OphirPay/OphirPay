@@ -409,15 +409,18 @@ non-breaking.
 
 ### 7.3 Rotation
 
-API keys are rotated per user, not per deployment:
+API keys are rotated per user, not per deployment. Use **Rotate** in the API
+Keys page or call `POST /api/keys/<keyId>/rotate`. The replacement inherits
+the existing key's name, scopes, and expiry and is returned once. The old key
+remains valid for up to 24 hours so callers can deploy the replacement; if the
+old key was due to expire sooner, that earlier expiry is preserved. The old
+key's rotation link and audit event are retained, and its request logs are not
+deleted.
 
-1. Mint a replacement with `POST /api/keys` (the raw key is returned once).
-2. Switch the caller to the new key.
-3. Revoke the old key with `DELETE /api/keys?id=<keyId>`.
-
-Revocation is immediate — the key row is deleted, so auth fails closed on the
-next request. Use `lastUsed` (GET `/api/keys`) to confirm a key is no longer
-in use before revoking it.
+After deployment, use **Revoke** (or
+`DELETE /api/keys?id=<keyId>`) to disable the old key immediately. For
+suspected compromise, revoke immediately instead of using the overlap period.
+`lastUsed` remains available on the key record while the overlap is active.
 
 ---
 

@@ -9,6 +9,7 @@ use crate::types::*;
 use crate::errors::*;
 use crate::events::*;
 use crate::helpers::*;
+use crate::spending_limit::is_spending_limit_expired;
 // ── Contract Version ───────────────────────────────────────────
 pub const CONTRACT_VERSION: u32 = 2;
 
@@ -1030,6 +1031,17 @@ impl OphirPayContract {
     /// Check if a spend is within limits and escalation rules.
     /// Returns Approved, Escalated, or Rejected.
     pub fn check_spending(env: Env, user: Address, amount: i128) -> SpendCheckResult {
+        let now = env.ledger().timestamp();
+        let spending_limit = env
+            .storage()
+            .persistent()
+            .get::<_, SpendingLimit>(&(SPEND_LIMIT_KEY, user.clone()));
+        if let Some(limit) = &spending_limit {
+            if !limit.is_active || is_spending_limit_expired(limit.expires_at, now) {
+                return SpendCheckResult::Rejected;
+            }
+        }
+
         // Check escalation rules
         if let Some(rules) = env
             .storage()
@@ -1047,13 +1059,7 @@ impl OphirPayContract {
         }
 
         // Check per-user spending limits
-        let key = (SPEND_LIMIT_KEY, user.clone());
-        if let Some(limit) = env.storage().persistent().get::<_, SpendingLimit>(&key) {
-            if !limit.is_active {
-                return SpendCheckResult::Rejected;
-            }
-
-            let now = env.ledger().timestamp();
+        if let Some(limit) = spending_limit {
             let day_seconds: u64 = 86400;
             let month_seconds: u64 = 30 * 86400;
 
@@ -1111,7 +1117,7 @@ impl OphirPayContract {
 
             // Check expiry
             let now = env.ledger().timestamp();
-            if limit.expires_at > 0 && now >= limit.expires_at {
+            if is_spending_limit_expired(limit.expires_at, now) {
                 limit.is_active = false;
                 env.storage().persistent().set(&key, &limit);
                 env.storage().persistent().extend_ttl(&key, BUMP_MIN_TTL, BUMP_MAX_TTL);

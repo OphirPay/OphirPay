@@ -1,16 +1,16 @@
-//! OphirPay Modeled Invariants — Kani Proof Harnesses (Experimental / Manual Only)
+//! OphirPay Kani proofs: modeled invariants plus a shared production predicate.
 //!
-//! > ⚠️ **Honest status:** These Kani harnesses verify **hand-written models**
-//! > that share no code with the deployed `OphirPayContract`. They are
-//! > **experimental / manual only**, are **not** run in CI, and do not
-//! > constitute formal verification of the actual deployed smart contract.
+//! > ⚠️ **Honest status:** Most harnesses verify hand-written models and do not
+//! > prove deployed-contract behavior. The spending-limit expiry harness also
+//! > verifies the pure predicate used by `check_spending` and `atomic_spend`;
+//! > it does not prove either entrypoint end to end. The harnesses run in CI.
 //!
 //! This file contains Kani-compatible proof harnesses for the 8 critical
 //! invariants identified in the OphirPay smart contract. Each harness uses
 //! `kani::any()` to symbolically explore all possible inputs and `kani::assume()`
 //! to constrain inputs to valid ranges.
 //!
-//! # Running (Manual only)
+//! # Running
 //!
 //! ```bash
 //! cargo kani --harness <harness_name>
@@ -39,7 +39,11 @@
 //! | 7 | Timelock delay of 24h is enforced | `timelock_delay_invariant` |
 //! | 8 | Spending limits enforce expiry | `spending_limit_expiry_invariant` |
 
+#[path = "../../src/spending_limit.rs"]
+mod spending_limit;
+
 use kani::proof;
+use spending_limit::is_spending_limit_expired;
 
 // ═══════════════════════════════════════════════════════════════
 // INVARIANT 1: LOCKED_BALANCE Protection
@@ -544,8 +548,8 @@ fn model_spending_limit_check(
         return false;
     }
 
-    // Expiry check: if expires_at > 0 and now >= expires_at → reject
-    if expires_at > 0 && now >= expires_at {
+    // This is the same expiry predicate called by the contract entrypoints.
+    if is_spending_limit_expired(expires_at, now) {
         return false;
     }
 
@@ -593,7 +597,11 @@ fn spending_limit_expiry_invariant() {
     }
 
     // Property 8b: expired limit always rejects
-    if is_active && expires_at > 0 && now >= expires_at {
+    assert_eq!(
+        is_spending_limit_expired(expires_at, now),
+        expires_at != 0 && now >= expires_at
+    );
+    if is_active && is_spending_limit_expired(expires_at, now) {
         assert!(!allowed);
     }
 

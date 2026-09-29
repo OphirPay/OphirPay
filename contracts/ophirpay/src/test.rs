@@ -1889,6 +1889,10 @@ mod tests {
         let limit = client.get_spending_limit(&payer);
         assert!(limit.is_some());
         assert!(limit.unwrap().is_active);
+        assert!(matches!(
+            client.check_spending(&payer, &500i128),
+            SpendCheckResult::Approved
+        ));
 
         // Spend within expiry — should succeed
         let id = client.atomic_spend(
@@ -1903,6 +1907,13 @@ mod tests {
 
         // Advance past expiry
         env.ledger().set_timestamp(now + 200);
+
+        // Read-only checks reject an expired limit without mutating it.
+        assert!(matches!(
+            client.check_spending(&payer, &500i128),
+            SpendCheckResult::Rejected
+        ));
+        assert!(client.get_spending_limit(&payer).unwrap().is_active);
 
         // Spend after expiry — should fail
         let result = client.try_atomic_spend(

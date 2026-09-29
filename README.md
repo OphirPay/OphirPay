@@ -390,9 +390,9 @@ OphirPay deploys **two Soroban contracts**. The main `OphirPayContract` handles 
 ```
 OphirPayContract.record_payment(payer, payee, amount, asset, tx_hash, metadata)
   │
-  ├─ 1. Increments payment counter
-  ├─ 2. Stores Payment struct in persistent storage
-  └─ 3. Publishes native Soroban event
+  ├─ 1. Returns the existing payment ID for an identical payer + tx_hash retry
+  ├─ 2. Otherwise increments payment counter and stores the payment
+  └─ 3. Publishes native Soroban event once for the new record
         env.events().publish(("payment", payer, payee), amount)
 
 Browser ←── SSE stream (GET /api/events) ──polls──→ PaymentEventEmitter
@@ -418,7 +418,7 @@ OphirPayContract.emergency_pause_all() / emergency_unpause_all()
 | Function | Access | Description |
 |---|---|---|
 | `init(owner)` | Admin | Initialize contract with owner address |
-| `record_payment(payer, payee, amount, asset, tx_hash, metadata)` | Public | Store payment + publish native Soroban event |
+| `record_payment(payer, payee, amount, asset, tx_hash, metadata)` | Payer-authenticated | Store payment + publish native Soroban event; deduplicate identical retries by payer + `tx_hash` |
 | `cancel_payment(id)` | Public | Cancel a recorded payment |
 | `propose_payment(...)` | Multisig | Propose a multisig payment request |
 | `approve_payment(id)` | Multisig | Approve a multisig payment request |

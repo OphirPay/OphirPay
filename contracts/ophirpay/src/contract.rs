@@ -1101,6 +1101,31 @@ impl OphirPayContract {
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
+        if tx_hash.len() == 0 {
+            return Err(PaymentError::InvalidAmount);
+        }
+
+        let idempotency_key = (PAYMENT_IDEMPOTENCY_KEY, payer.clone(), tx_hash.clone());
+        if let Some(existing_id) = env
+            .storage()
+            .persistent()
+            .get::<_, u64>(&idempotency_key)
+        {
+            let existing: Payment = env
+                .storage()
+                .persistent()
+                .get(&(PAYMENT_KEY, existing_id))
+                .ok_or(PaymentError::StateSyncMismatch)?;
+            if existing.payer != payer
+                || existing.payee != payee
+                || existing.amount != amount
+                || existing.asset != asset
+                || existing.metadata != metadata
+            {
+                return Err(PaymentError::PaymentIdempotencyConflict);
+            }
+            return Ok(existing_id);
+        }
 
         // Check spending limits with expiry enforcement
         let key = (SPEND_LIMIT_KEY, payer.clone());
@@ -1166,6 +1191,12 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .extend_ttl(&(PAYMENT_KEY, count), BUMP_MIN_TTL, BUMP_MAX_TTL);
+        env.storage()
+            .persistent()
+            .set(&idempotency_key, &count);
+        env.storage()
+            .persistent()
+            .extend_ttl(&idempotency_key, BUMP_MIN_TTL, BUMP_MAX_TTL);
         env.storage().instance().set(&PAYMENT_COUNT, &count);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
 

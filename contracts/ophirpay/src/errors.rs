@@ -658,5 +658,7 @@ pub enum PaymentError {
     // ── Scoped Pause (308) ──────────────────────────────
     /// Pause scope not recognized: unknown scope identifier
     InvalidPauseScope = 308,
+    /// Idempotency key was reused for a different payment payload
+    PaymentIdempotencyConflict = 309,
 }
 

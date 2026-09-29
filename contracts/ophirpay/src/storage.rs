@@ -27,6 +27,7 @@ pub const AUDIT_CNT: Symbol = symbol_short!("AUDIT");
 // each other).
 pub const AUDIT_LOG_KEY: Symbol = symbol_short!("A_LOG");
 pub const PAYMENT_KEY: Symbol = symbol_short!("P_REC");
+pub const PAYMENT_IDEMPOTENCY_KEY: Symbol = symbol_short!("PAY_IDEMP");
 pub const ESCROW_KEY: Symbol = symbol_short!("E_REC");
 pub const STREAM_KEY: Symbol = symbol_short!("S_REC");
 pub const RECURRING_KEY: Symbol = symbol_short!("R_REC");

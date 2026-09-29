@@ -2,10 +2,12 @@
 
 import { notFound } from "next/navigation";
 import { isValidStellarAddress } from "@/lib/stellar";
+import { buildSep7PayUri } from "@/lib/stellar-uri";
 import prisma from "@/lib/prisma";
 import { expireDuePaymentRequests } from "@/lib/payment-request-lifecycle";
 import { formatAmount } from "@/lib/utils";
 import { RequestPaymentConfirmation } from "./RequestPaymentConfirmation";
+import { PayHandoff } from "./PayHandoff";
 
 interface PayPageProps {
   params: Promise<{ address: string }>;
@@ -21,13 +23,12 @@ interface PayPageProps {
 
 /**
  * Shareable payment link route.
- * Redirects to the send form pre-filled with the recipient address and
- * any optional amount/memo/asset query params. Invalid addresses show a
- * clear error instead of crashing.
+ * Offers SEP-7 wallet handoff and a browser-wallet fallback. When a request
+ * id is provided, renders the public invoice with its current lifecycle state.
  */
 export default async function PayPage({ params, searchParams }: PayPageProps) {
   const { address } = await params;
-  const { amount, memo, asset, requestId } = await searchParams;
+  const { amount, memo, asset, assetIssuer, issuer, requestId } = await searchParams;
 
   if (!isValidStellarAddress(address)) {
     return (
@@ -89,6 +90,13 @@ export default async function PayPage({ params, searchParams }: PayPageProps) {
           : paymentRequest.status === "CANCELLED"
             ? "This invoice was cancelled."
             : null;
+    const paymentUri = buildSep7PayUri({
+      destination: address,
+      amount: requestAmount,
+      assetCode: paymentRequest.assetCode,
+      assetIssuer: paymentRequest.assetIssuer ?? undefined,
+      msg: paymentRequest.description ?? undefined,
+    });
 
     return (
       <main className="max-w-lg mx-auto mt-12 px-4">
@@ -115,12 +123,10 @@ export default async function PayPage({ params, searchParams }: PayPageProps) {
             </p>
           ) : (
             <>
-              <a
-                href={`/send?${sendSearch.toString()}`}
-                className="mt-6 block text-center px-5 py-3 rounded-lg bg-ophir-600 text-white text-sm font-semibold hover:bg-ophir-700"
-              >
-                Pay with browser wallet
-              </a>
+              <PayHandoff
+                paymentUri={paymentUri}
+                sendHref={`/send?${sendSearch.toString()}`}
+              />
               <RequestPaymentConfirmation requestId={paymentRequest.id} />
             </>
           )}
@@ -129,10 +135,17 @@ export default async function PayPage({ params, searchParams }: PayPageProps) {
     );
   }
 
+  const paymentUri = buildSep7PayUri({
+    destination: address,
+    amount,
+    memo,
+    assetCode: asset,
+    assetIssuer: assetIssuer ?? issuer,
+  });
   const search = new URLSearchParams({ dest: address });
   if (amount) search.set("amount", amount);
   if (memo) search.set("memo", memo);
   if (asset) search.set("asset", asset);
 
-  redirect(`/send?${search.toString()}`);
+  return <PayHandoff paymentUri={paymentUri} sendHref={`/send?${search.toString()}`} />;
 }

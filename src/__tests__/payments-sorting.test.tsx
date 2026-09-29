@@ -14,15 +14,15 @@ import { ToastProvider } from "@/components/ui/Toast";
 import PaymentsPage from "@/app/payments/page";
 import type { OnChainPayment } from "@/lib/contracts";
 
-const replaceMock = vi.fn();
+const pushMock = vi.fn();
 const fetchOnChainPaymentsMock = vi.fn();
 
 let searchParams: URLSearchParams;
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    replace: replaceMock,
-    push: vi.fn(),
+    replace: vi.fn(),
+    push: pushMock,
     prefetch: vi.fn(),
   }),
   usePathname: () => "/payments",
@@ -96,14 +96,14 @@ function rerender(view: RenderResult) {
 /**
  * Click a sort header and simulate the resulting navigation: the real app
  * re-renders with the new URL search params, so we sync the mock params from
- * the `router.replace` call and re-render the tree.
+ * the `router.push` call and re-render the tree.
  */
 async function clickAndNavigate(view: RenderResult, button: HTMLElement) {
   fireEvent.click(button);
-  const url = replaceMock.mock.calls.at(-1)?.[0] as string;
+  const url = pushMock.mock.calls.at(-1)?.[0] as string;
   searchParams = new URLSearchParams(url.split("?")[1] ?? "");
   rerender(view);
-  await waitFor(() => expect(replaceMock.mock.calls.length).toBeGreaterThan(0));
+  await waitFor(() => expect(pushMock.mock.calls.length).toBeGreaterThan(0));
 }
 
 async function rowIds(): Promise<string[]> {
@@ -124,7 +124,7 @@ async function rowIds(): Promise<string[]> {
 }
 
 beforeEach(() => {
-  replaceMock.mockClear();
+  pushMock.mockClear();
   fetchOnChainPaymentsMock.mockClear();
   fetchOnChainPaymentsMock.mockResolvedValue(mockPayments);
   searchParams = new URLSearchParams("");
@@ -148,7 +148,7 @@ describe("PaymentsPage sorting", () => {
 
     await clickAndNavigate(view, screen.getByRole("button", { name: /sort by amount/i }));
 
-    expect(replaceMock).toHaveBeenCalledWith("/payments?sort=amount&dir=asc", {
+    expect(pushMock).toHaveBeenCalledWith("/payments?sort=amount&dir=asc", {
       scroll: false,
     });
     // Sorted asc: 1 XLM (id 2), 2 XLM (id 3), 3 XLM (id 1)
@@ -163,7 +163,7 @@ describe("PaymentsPage sorting", () => {
     await clickAndNavigate(view, button);
     await clickAndNavigate(view, button);
 
-    expect(replaceMock).toHaveBeenLastCalledWith(
+    expect(pushMock).toHaveBeenLastCalledWith(
       "/payments?sort=amount&dir=desc",
       { scroll: false }
     );
@@ -179,7 +179,7 @@ describe("PaymentsPage sorting", () => {
     await clickAndNavigate(view, button);
     await clickAndNavigate(view, button);
 
-    expect(replaceMock).toHaveBeenLastCalledWith("/payments", { scroll: false });
+    expect(pushMock).toHaveBeenLastCalledWith("/payments", { scroll: false });
   });
 
   it("switching columns starts at ascending", async () => {
@@ -191,7 +191,7 @@ describe("PaymentsPage sorting", () => {
     await clickAndNavigate(view, amount); // amount desc
 
     await clickAndNavigate(view, screen.getByRole("button", { name: /sort by date/i }));
-    expect(replaceMock).toHaveBeenLastCalledWith("/payments?sort=date&dir=asc", {
+    expect(pushMock).toHaveBeenLastCalledWith("/payments?sort=date&dir=asc", {
       scroll: false,
     });
   });
@@ -226,7 +226,7 @@ describe("PaymentsPage sorting", () => {
 
     await clickAndNavigate(view, screen.getByRole("button", { name: /sort by date/i }));
 
-    expect(replaceMock).toHaveBeenCalledWith("/payments?sort=date&dir=asc", {
+    expect(pushMock).toHaveBeenCalledWith("/payments?sort=date&dir=asc", {
       scroll: false,
     });
   });
@@ -237,5 +237,49 @@ describe("PaymentsPage sorting", () => {
 
     // Falls back to the original insertion order
     expect(await rowIds()).toEqual(["#1", "#2", "#3"]);
+  });
+
+  it("restores search and status filters from the URL", async () => {
+    searchParams = new URLSearchParams("q=aaaa&status=CANCELLED");
+    renderPage();
+
+    expect(await rowIds()).toEqual(["#2"]);
+    expect(screen.getByPlaceholderText(/search by address/i)).toHaveValue("aaaa");
+    expect(screen.getByRole("combobox", { name: "Status filter" })).toHaveValue(
+      "CANCELLED"
+    );
+  });
+
+  it("writes debounced search changes to a navigable URL", async () => {
+    renderPage();
+    await screen.findAllByRole("row");
+    fireEvent.change(screen.getByPlaceholderText(/search by address/i), {
+      target: { value: "bbbb" },
+    });
+
+    await waitFor(
+      () =>
+        expect(pushMock).toHaveBeenCalledWith("/payments?q=bbbb", {
+          scroll: false,
+        }),
+      { timeout: 1000 }
+    );
+  });
+
+  it("updates filter controls from browser history navigation", async () => {
+    const view = renderPage();
+    await screen.findAllByRole("row");
+    searchParams = new URLSearchParams("q=bbbb&status=RECORDED&page=2");
+    rerender(view);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/search by address/i)).toHaveValue(
+        "bbbb"
+      );
+      expect(screen.getByRole("combobox", { name: "Status filter" })).toHaveValue(
+        "RECORDED"
+      );
+    });
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,7 @@
 
 import { WalletButton } from "./WalletButton";
 import { NotificationCenter } from "./NotificationCenter";
+import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
 import { useTheme } from "@/hooks/useTheme";
 
 export function Header() {
@@ -22,6 +23,7 @@ export function Header() {
 
         {/* Right: Notifications + Theme toggle + Wallet button */}
         <div className="flex items-center gap-2 md:gap-3">
+          <KeyboardShortcutsHelp />
           <NotificationCenter />
           {/* Dark mode toggle */}
           <button

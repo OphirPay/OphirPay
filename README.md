@@ -159,6 +159,9 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 
 **▶️ Watch on [Loom](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)** · [Watch on Vercel](https://ophirpay.vercel.app/demo.mp4)
 
+For local seeded walkthrough setup and the exact scope of `NEXT_PUBLIC_DEMO_MODE`,
+see [docs/DEMO_MODE.md](docs/DEMO_MODE.md).
+
 </div>
 
 ---

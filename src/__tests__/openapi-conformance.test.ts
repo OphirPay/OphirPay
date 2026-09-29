@@ -261,4 +261,58 @@ describe("OpenAPI schema-conformance", () => {
     }
     expect(failures).toEqual([]);
   });
+
+  it("provides usable request and response examples for payment and batch creation", () => {
+    const payment = spec.paths["/api/payments"].post;
+    const paymentRequest =
+      payment.requestBody.content["application/json"].examples.validPayment.value;
+    const paymentResponse =
+      payment.responses["201"].content["application/json"].examples.createdPayment.value;
+
+    expect(paymentRequest).toMatchObject({
+      amount: expect.any(Number),
+      sourceAccountId: expect.any(String),
+      destAddress: expect.any(String),
+    });
+    expect(paymentResponse).toMatchObject({
+      success: true,
+      data: {
+        amount: paymentRequest.amount,
+        sourceAccountId: paymentRequest.sourceAccountId,
+        status: "CREATED",
+      },
+      meta: { timestamp: expect.any(String) },
+    });
+
+    const batch = spec.paths["/api/batches"].post;
+    const batchRequest =
+      batch.requestBody.content["application/json"].examples.validBatch.value;
+    const batchResponse =
+      batch.responses["201"].content["application/json"].examples.createdBatch.value;
+
+    expect(batchRequest).toMatchObject({
+      name: expect.any(String),
+      sourceAccountId: expect.any(String),
+      recipients: expect.arrayContaining([
+        expect.objectContaining({
+          address: expect.any(String),
+          amount: expect.any(Number),
+        }),
+      ]),
+    });
+    expect(batchResponse).toMatchObject({
+      success: true,
+      data: {
+        name: batchRequest.name,
+        status: "CREATED",
+        payments: expect.arrayContaining([
+          expect.objectContaining({
+            amount: batchRequest.recipients[0].amount,
+            memo: batchRequest.recipients[0].memo,
+          }),
+        ]),
+      },
+      meta: { timestamp: expect.any(String) },
+    });
+  });
 });

@@ -59,6 +59,8 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "PATCH", path: "/api/recurring", routeFile: "recurring/route.ts", description: "Update recurrence settings" },
   { method: "PATCH", path: "/api/recurring/[id]", routeFile: "recurring/[id]/route.ts", description: "Update recurring schedule" },
   { method: "POST", path: "/api/requests", routeFile: "requests/route.ts", description: "Create payment request" },
+  { method: "POST", path: "/api/requests/[id]/paid", routeFile: "requests/[id]/paid/route.ts", description: "Confirm a request payment from its Stellar transaction" },
+  { method: "POST", path: "/api/requests/[id]/remind", routeFile: "requests/[id]/remind/route.ts", description: "Email a payment reminder to the payer" },
 
   // Scheduled payments
   { method: "POST", path: "/api/scheduled", routeFile: "scheduled/route.ts", description: "Create scheduled payment" },

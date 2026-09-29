@@ -139,6 +139,13 @@ function SendPageClient() {
   >("/api/payments", {
     invalidateKeys: [["dashboard", "payments"], ["payments", "onchain"], ["events", "onchain"]],
   });
+  const confirmPaymentRequestMutation = useApiMutation<
+    { requestId: string; transactionHash: string },
+    { status: string }
+  >(
+    ({ requestId }) => `/api/requests/${encodeURIComponent(requestId)}/paid`,
+    { invalidateKeys: [["requests"]] },
+  );
 
   // Scheduled payments — created via the API (no wallet signing needed);
   // the cron endpoint executes them when the date arrives.
@@ -488,6 +495,7 @@ function SendPageClient() {
       // 3. Submit to Horizon
       setStep("submitting");
       const response = await submitSignedTx(signedXdr);
+      const requestId = searchParams.get("requestId");
 
       // 4. Record the payment on-chain via Soroban contract
       setStep("recording");
@@ -513,6 +521,19 @@ function SendPageClient() {
         });
       } catch {
         // Best-effort: payment already settled on-chain
+      }
+      if (requestId) {
+        try {
+          await confirmPaymentRequestMutation.mutateAsync({
+            requestId,
+            transactionHash: response.hash,
+          });
+        } catch {
+          toast.error(
+            "Payment sent",
+            "The payment request status could not be updated. The requester may need to check the transaction.",
+          );
+        }
       }
 
       // 6. Success!

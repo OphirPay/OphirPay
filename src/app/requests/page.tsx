@@ -23,6 +23,10 @@ interface RequestData {
   status: string;
   description?: string;
   recipientAddress?: string;
+  recipientEmail?: string;
+  notificationEmail?: string | null;
+  dueDate?: string | null;
+  lastReminderAt?: string | null;
   transactionHash?: string;
   createdAt: string;
   updatedAt: string;
@@ -33,6 +37,9 @@ interface CreateRequestBody {
   assetCode: string;
   description?: string;
   recipientAddress?: string;
+  recipientEmail?: string;
+  notificationEmail?: string;
+  dueDate?: string;
 }
 
 const QR_API = "https://api.qrserver.com/v1/create-qr-code";
@@ -49,18 +56,27 @@ export default function RequestsPage() {
   const [formAsset, setFormAsset] = useState("XLM");
   const [formDescription, setFormDescription] = useState("");
   const [formAddress, setFormAddress] = useState("");
+  const [formEmail, setFormEmail] = useState("");
+  const [formNotificationEmail, setFormNotificationEmail] = useState("");
+  const [formDueDate, setFormDueDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const {
     data: rawRequests,
     isLoading: loading,
-  } = useApiQuery<RequestData[]>(["requests"], "/api/requests");
+  } = useApiQuery<RequestData[]>(["requests"], "/api/requests", {
+    refetchInterval: 60_000,
+  });
   const requests = Array.isArray(rawRequests) ? rawRequests : [];
 
   const createMutation = useApiMutation<CreateRequestBody, RequestData>(
     "/api/requests",
     { invalidateKeys: [["requests"]] }
+  );
+  const reminderMutation = useApiMutation<{ id: string }, { sent: boolean }>(
+    ({ id }) => `/api/requests/${encodeURIComponent(id)}/remind`,
+    { invalidateKeys: [["requests"]] },
   );
 
   const handleCreate = async () => {
@@ -78,6 +94,11 @@ export default function RequestsPage() {
         assetCode: formAsset,
         description: formDescription || undefined,
         recipientAddress: formAddress || wallet.publicKey || undefined,
+        recipientEmail: formEmail || undefined,
+        notificationEmail: formNotificationEmail || undefined,
+        dueDate: formDueDate
+          ? new Date(`${formDueDate}T23:59:59`).toISOString()
+          : undefined,
       });
       setShowCreate(false);
       resetForm();
@@ -95,16 +116,22 @@ export default function RequestsPage() {
     setFormAsset("XLM");
     setFormDescription("");
     setFormAddress("");
+    setFormEmail("");
+    setFormNotificationEmail("");
+    setFormDueDate("");
     setFormError(null);
   };
 
   const getPaymentLink = (req: RequestData): string => {
-    return generatePaymentLink({
+    const link = generatePaymentLink({
       destination: req.recipientAddress || wallet.publicKey || "",
       amount: req.amount.toString(),
       assetCode: req.assetCode,
       message: req.description,
     });
+    const url = new URL(link);
+    url.searchParams.set("requestId", req.id);
+    return url.toString();
   };
 
   const getQRUrl = (req: RequestData): string => {
@@ -202,9 +229,23 @@ export default function RequestsPage() {
                         Paid
                       </span>
                     )}
+                    {req.dueDate && (
+                      <span>
+                        Due {new Date(req.dueDate).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </span>
+                    )}
+                    {req.lastReminderAt && (
+                      <span>
+                        Reminder sent {new Date(req.lastReminderAt).toLocaleDateString()}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
                   <button
                     onClick={() => {
                       const link = getPaymentLink(req);
@@ -224,6 +265,25 @@ export default function RequestsPage() {
                   >
                     QR Code
                   </button>
+                  {req.status === "PENDING" && req.recipientEmail && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await reminderMutation.mutateAsync({ id: req.id });
+                          toast.success("Reminder sent", `Sent to ${req.recipientEmail}.`);
+                        } catch (error) {
+                          toast.error(
+                            "Reminder not sent",
+                            error instanceof Error ? error.message : "Please try again later.",
+                          );
+                        }
+                      }}
+                      disabled={reminderMutation.isPending}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 transition-colors disabled:opacity-50"
+                    >
+                      Remind
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -322,6 +382,45 @@ export default function RequestsPage() {
               onChange={(e) => setFormAddress(e.target.value)}
               placeholder={wallet.publicKey || "G..."}
               className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Payer email <span className="text-gray-400 font-normal">(optional, for reminders)</span>
+            </label>
+            <input
+              type="email"
+              value={formEmail}
+              onChange={(e) => setFormEmail(e.target.value)}
+              placeholder="payer@example.com"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Status notification email <span className="text-gray-400 font-normal">(optional; defaults to your account email)</span>
+            </label>
+            <input
+              type="email"
+              value={formNotificationEmail}
+              onChange={(e) => setFormNotificationEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Due date <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="date"
+              min={new Date().toISOString().slice(0, 10)}
+              value={formDueDate}
+              onChange={(e) => setFormDueDate(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
             />
           </div>
 

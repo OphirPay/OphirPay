@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 
-# -- Global Concurrency — singleton group for scheduled runs --------
+# -- Global Concurrency ï¿½ singleton group for scheduled runs --------
 concurrency:
   group: ${{ github.workflow }}
 
@@ -50,4 +50,22 @@ jobs:
           echo ""
           # 2xx means the sweep ran; anything else (401 wrong secret,
           # 503 unconfigured) should surface as a failed run.
+          [ "${http_code:0:1}" = "2" ]
+      - name: Expire due payment requests
+        if: always()
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CRON_URL: https://ophirpay.vercel.app/api/requests/expire
+        run: |
+          set -euo pipefail
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::warning::CRON_SECRET is not set as a GitHub Actions secret â€” request expiry skipped"
+            exit 0
+          fi
+          http_code=$(curl -sS -o /tmp/request-expiry-response.json -w "%{http_code}" \
+            -H "x-cron-secret: ${CRON_SECRET}" \
+            "$CRON_URL")
+          echo "HTTP $http_code"
+          cat /tmp/request-expiry-response.json
+          echo ""
           [ "${http_code:0:1}" = "2" ]

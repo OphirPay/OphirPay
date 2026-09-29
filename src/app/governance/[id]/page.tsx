@@ -148,16 +148,16 @@ export default function GovernanceProposalDetailPage() {
       <Link href="/governance" className="text-sm text-ophir-700 dark:text-ophir-300 hover:underline">← Back to governance</Link>
       <Card className="p-6 space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs text-gray-500">Proposal #{proposal.id}</p>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{proposal.title}</h1>
+            <h1 className="break-all text-2xl font-bold text-gray-900 dark:text-white mt-1">{proposal.title}</h1>
           </div>
           <Badge variant={badgeVariant}>{labels[state]}</Badge>
         </div>
-        <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{proposal.description}</p>
+        <p className="break-all whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{proposal.description}</p>
         <dl className="grid gap-4 sm:grid-cols-2">
           <div><dt className="text-xs text-gray-500">Proposer</dt><dd className="mt-1 font-mono text-xs break-all">{proposal.proposer}</dd></div>
-          <div><dt className="text-xs text-gray-500">Action</dt><dd className="mt-1 text-sm">{proposal.action_type}{proposal.target ? ` · ${proposal.target}` : ""}</dd></div>
+          <div className="min-w-0"><dt className="text-xs text-gray-500">Action</dt><dd className="mt-1 break-all text-sm">{proposal.action_type}{proposal.target ? ` · ${proposal.target}` : ""}</dd></div>
           <div><dt className="text-xs text-gray-500">Deposit</dt><dd className="mt-1 text-sm">{(proposal.deposit_amount / 10_000_000).toLocaleString()} {proposal.deposit_asset ? "asset units" : "XLM"}</dd></div>
           <div><dt className="text-xs text-gray-500">Created</dt><dd className="mt-1 text-sm">{new Date(proposal.created_at * 1000).toLocaleString()}</dd></div>
           <div><dt className="text-xs text-gray-500">Voting window</dt><dd className="mt-1 text-sm">{countdown(proposal.voting_ends_at - now)} · ends {new Date(proposal.voting_ends_at * 1000).toLocaleString()}</dd></div>

@@ -200,7 +200,7 @@ export default function MultisigPage() {
   const signerCount = config?.signers?.length ?? 0;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="min-w-0 space-y-6 animate-fade-in">
       {showConnectBanner && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center gap-3 animate-fade-in">
           <span className="text-amber-500 text-lg">⚠️</span>
@@ -221,7 +221,7 @@ export default function MultisigPage() {
             N-of-M signer approval workflow for high-value payments
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button onClick={() => setShowConfig(true)} variant="secondary">
             ⚙ Configure
           </Button>
@@ -276,7 +276,7 @@ export default function MultisigPage() {
       ) : (
         <div className="space-y-3">
           {requests.map((req) => (
-            <Card key={req.id} className="p-4">
+            <Card key={req.id} className="min-w-0 p-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -309,12 +309,12 @@ export default function MultisigPage() {
                 </div>
                 <div className="flex gap-2">
                   {!req.executed && !req.threshold_met && (
-                    <Button size="sm" onClick={() => handleApprove(req.id)}>
+                    <Button size="sm" className="min-h-11" onClick={() => handleApprove(req.id)}>
                       ✓ Approve
                     </Button>
                   )}
                   {!req.executed && req.threshold_met && (
-                    <Button size="sm" variant="primary" onClick={() => handleExecute(req.id)}>
+                    <Button size="sm" className="min-h-11" variant="primary" onClick={() => handleExecute(req.id)}>
                       Execute
                     </Button>
                   )}

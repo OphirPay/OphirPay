@@ -28,6 +28,14 @@ const envSchema = z.object({
   AUTH_SECRET: z.string().optional(),
   CRON_SECRET: z.string().min(16).optional(), // required for /api/cron (see app/api/cron/route.ts)
   METRICS_TOKEN: z.string().min(16).optional(), // required to scrape /api/metrics (see app/api/metrics/route.ts)
+  // Transactional email (issue #800). Optional here so a deployment that does
+  // not send mail still boots; `sendEmail()` refuses to run without a key and
+  // throws EmailConfigurationError instead of silently dropping the message.
+  RESEND_API_KEY: z
+    .string()
+    .min(1, "RESEND_API_KEY must not be empty — set a real key or unset it")
+    .optional(),
+  EMAIL_FROM: z.string().optional(), // defaults to DEFAULT_EMAIL_FROM (see lib/email.ts)
   WEBHOOK_ALLOWED_PORTS: z.string().optional(), // comma-separated webhook target ports (default 80,443)
   SCHEDULED_PAYMENTS_SOURCE_SECRET: z.string().optional(), // Stellar secret that signs scheduled payments
   NEXT_PUBLIC_DEMO_MODE: z.string().optional(),
@@ -144,6 +152,8 @@ export function validateEnv(): Env {
       NEXT_PUBLIC_DEMO_MODE: process.env.NEXT_PUBLIC_DEMO_MODE,
       CRON_SECRET: process.env.CRON_SECRET,
       METRICS_TOKEN: process.env.METRICS_TOKEN,
+      RESEND_API_KEY: process.env.RESEND_API_KEY,
+      EMAIL_FROM: process.env.EMAIL_FROM,
       WEBHOOK_ALLOWED_PORTS: process.env.WEBHOOK_ALLOWED_PORTS,
       SCHEDULED_PAYMENTS_SOURCE_SECRET: process.env.SCHEDULED_PAYMENTS_SOURCE_SECRET,
       NEXT_PUBLIC_FEATURE_MULTI_ASSET: process.env.NEXT_PUBLIC_FEATURE_MULTI_ASSET,

@@ -234,14 +234,33 @@ The file is accessible at:
 import { verifyCsrf } from "@/lib/csrf";
 
 OphirPay implements the following security headers
-([`next.config.ts`](next.config.ts) is the single source of truth; `vercel.json`
-does not duplicate them):
+([`next.config.ts`](next.config.ts) is the single source of truth for static headers;
+`src/proxy.ts` sets the per-request `Content-Security-Policy` and violation-reporting headers):
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `X-XSS-Protection: 0` (the legacy `1; mode=block` filter is deprecated and
   must not be re-enabled)
 - `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`
+- `Content-Security-Policy` — strict `default-src 'self'`, `connect-src`
+  limited to Stellar/Soroban endpoints, `frame-src` limited to wallet
+  extensions, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
+
+  **Known limitation (issue #697):** `script-src` currently includes
+  `'unsafe-inline'` because this Next 16 build does not reliably propagate a
+  per-request nonce from the middleware layer into the App Router renderer.
+  Next injects several inline hydration/streaming scripts that cannot be
+  removed; without the nonce reaching those scripts the page fails to hydrate.
+  The recommended fix is to verify nonce propagation works end-to-end (browser
+  DevTools should show `nonce="…"` on the framework inline scripts) and then
+  remove `'unsafe-inline'` from the CSP.  Until that is confirmed, the
+  limitation is recorded here and in `docs/AUDIT.md` rather than advertising
+  a control that is not active.  See `src/proxy.ts` for the full rationale.
+
+- `Report-To` / `Reporting-Endpoints` — browsers POST CSP violation reports
+  to `POST /api/csp-report`, which validates, size-limits, and logs them via
+  the structured logger (with PII redaction) and counts them in the
+  `csp_violation_reports_total` metric (issue #698).
 
 // Method 2: Higher-order function wrapper
 import { withCsrf } from "@/lib/csrf";

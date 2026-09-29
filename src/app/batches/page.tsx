@@ -13,11 +13,14 @@ import { EmptyState } from "@/components/EmptyState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
 import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { connectLiveEvents } from "@/lib/events/event-client";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
 import type { Batch, BatchStatus } from "@/types";
 
 interface BulkCancelResult {
@@ -60,6 +63,10 @@ export default function BatchesPage() {
   usePageTitle(PAGE_TITLES.BATCHES);
   const router = useRouter();
   const queryClient = useQueryClient();
+
+  // ── Currency display preference (issue #795) ───────────────────
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: priceUnavailable } = useXlmPrice();
 
   // Keyset pagination: `cursor` is the boundary of the current page;
   // `cursorStack` remembers prior page boundaries so Previous works.
@@ -186,15 +193,26 @@ export default function BatchesPage() {
             Process multiple payments in a single transaction
           </p>
         </div>
-        <Link
-          href="/batches/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors shadow-lg shadow-ophir-500/25 active:scale-95"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          New Batch
-        </Link>
+        <div className="flex items-center gap-3">
+          {/* Issue #795 — honour the persisted currency preference */}
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            size="sm"
+            showPrice
+            price={xlmPrice}
+            isUnavailable={priceUnavailable}
+          />
+          <Link
+            href="/batches/new"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors shadow-lg shadow-ophir-500/25 active:scale-95"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            New Batch
+          </Link>
+        </div>
       </div>
 
       {/* ── Summary view ────────────────────────────────────────── */}

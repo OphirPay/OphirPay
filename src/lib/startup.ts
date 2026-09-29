@@ -22,6 +22,7 @@ export async function bootstrap(): Promise<void> {
       contractId: env.NEXT_PUBLIC_CONTRACT_ID,
       emitterContractId: env.NEXT_PUBLIC_EMITTER_CONTRACT_ID,
       redis: env.REDIS_URL ? "configured" : "not configured",
+      email: env.RESEND_API_KEY ? "configured" : "not configured",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -30,6 +31,16 @@ export async function bootstrap(): Promise<void> {
     // In development, throw as well since contract IDs are now required.
     throw new Error(
       `Fatal: environment validation failed. Check your .env.local file.\n${message}`
+    );
+  }
+
+  // Transactional email is configured from the same env validation pass. A
+  // missing key is not fatal at boot — local dev and CI intentionally run
+  // without one — but every send then fails loudly with
+  // EmailConfigurationError rather than silently dropping the message (#800).
+  if (!process.env.RESEND_API_KEY) {
+    logger.warn(
+      "Transactional email is not configured — sendEmail() will throw EmailConfigurationError until RESEND_API_KEY is set (see .env.example)"
     );
   }
 

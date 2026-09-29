@@ -21,6 +21,11 @@ on:
 permissions:
   contents: read
 
+
+# -- Global Concurrency — singleton group for scheduled runs --------
+concurrency:
+  group: ${{ github.workflow }}
+
 jobs:
   run-sweep:
     name: "Execute due scheduled payments"

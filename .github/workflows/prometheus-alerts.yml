@@ -1,0 +1,46 @@
+name: "Prometheus Alerts Validation"
+
+on:
+  pull_request:
+    branches: [main, integration/staging]
+  push:
+    branches: [main, integration/staging]
+
+permissions:
+  contents: read
+
+# ── Global Concurrency — cancel stale runs on same PR ────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: "Validate Alerts"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install promtool
+        run: |
+          PROMETHEUS_VERSION="2.45.0"
+          curl -sL https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz | tar xz
+          sudo mv prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool /usr/local/bin/
+          
+      - name: Check alert rules syntax
+        run: promtool check rules monitoring/prometheus-alerts.yml
+        
+      - name: Cross-check metrics against route.ts
+        run: |
+          MISSING=0
+          # Find all metrics starting with ophirpay_ (ignores other words)
+          METRICS=$(grep -oE 'ophirpay_[a-zA-Z0-9_]+' monitoring/prometheus-alerts.yml | sort | uniq)
+          for metric in $METRICS; do
+            # We skip 'ophirpay_critical' if it matches, or we can just rename it in alerts.yml
+            if ! grep -q "$metric" src/app/api/metrics/route.ts; then
+              echo "Error: Metric $metric is referenced in alerts but missing from route.ts"
+              MISSING=1
+            fi
+          done
+          if [ $MISSING -eq 1 ]; then exit 1; fi
+          echo "All metrics validated."

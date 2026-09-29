@@ -32,7 +32,13 @@ RUN npm run build
 
 # Stage 3: Runner
 FROM node:20-slim AS runner
-RUN apt-get update -qq && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+# `apt-get upgrade` is what keeps the image-scan step green: the node:20-slim
+# base ships snapshot versions of libcap2/libgnutls30/libpcre2 that Debian has
+# since revised, and every one of those findings has a fix in bookworm-updates.
+RUN apt-get update -qq \
+  && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 USER node
 WORKDIR /app
 
@@ -40,9 +46,26 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --chown=node:node --from=builder /app/public ./public
-COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+# .next/standalone already contains a pruned node_modules with exactly the
+# runtime dependencies Next's output tracer selected.  Copying the full
+# builder node_modules on top would double the layer size and ship every
+# devDependency (TypeScript, Prisma CLI, Tailwind, Playwright, Puppeteer …)
+# into the distroless runner image — defeating the purpose of standalone
+# output and widening the attack surface.
+#
+# The ONE subset the standalone tracer intentionally omits is the native
+# Prisma query engine binary: it is platform-specific and copied separately
+# so the correct linux-musl / linux-openssl variant ends up in the image.
+# If you switch database providers or change the Prisma binaryTargets you
+# may need to adjust the glob below.
 COPY --chown=node:node --from=builder /app/.next/standalone ./
 COPY --chown=node:node --from=builder /app/.next/static ./.next/static
+# Prisma query engine — copy only the native binary, not the whole CLI.
+# The glob matches the openssl-3.x variant produced by `prisma generate` on
+# the node:20-slim (Debian Bookworm) builder.  The destination mirrors where
+# standalone's own node_modules/.prisma/client/ expects to find the engine.
+COPY --chown=node:node --from=builder /app/node_modules/.prisma/client/*.node ./node_modules/.prisma/client/
+COPY --chown=node:node --from=builder /app/node_modules/@prisma/engines-version ./node_modules/@prisma/engines-version
 
 EXPOSE 3000
 

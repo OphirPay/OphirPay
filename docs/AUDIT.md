@@ -395,3 +395,38 @@ This is an AI-assisted manual review performed on the source as of the reference
 a formal verification, not a security guarantee, and not a replacement for a professional audit by
 a qualified firm with dynamic analysis, fuzzing, and economic review. No funds should be deployed
 to mainnet solely on the basis of this report.
+
+---
+
+## 7. Post-audit web-layer findings (2026-09-28)
+
+### WEB-1 — CSP `script-src` retains `'unsafe-inline'`; nonce propagation not confirmed (issue #697)
+
+**File:** `src/proxy.ts` (`buildCsp`), `src/app/layout.tsx`
+
+**Status:** ⚠️ Known limitation — documented, not yet fixed in code.
+
+`buildCsp()` produces `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'` in production.
+The intended mitigation is a per-request nonce: Next generates a fresh value per request and
+embeds it in its inline hydration scripts; the proxy propagates the same nonce in the CSP header
+so browsers accept the framework scripts while rejecting injected ones.  In this Next 16 build
+the nonce does **not** propagate reliably from the middleware layer to the App Router renderer,
+so removing `'unsafe-inline'` causes hydration failures.  The limitation is now documented in
+`SECURITY.md` and the inaccurate comment in `src/proxy.ts` has been corrected.  A follow-up
+task should re-test nonce propagation on each Next minor release and remove `'unsafe-inline'`
+once propagation is confirmed end-to-end.
+
+**Risk:** Without a functioning nonce or hash-based allow-list, the `script-src` directive does
+not provide XSS protection for injected inline scripts.  All other directives (`default-src
+'self'`, `connect-src` restricted to Stellar endpoints, `object-src 'none'`, etc.) remain strict.
+
+### WEB-2 — No CSP violation reporting endpoint (issue #698)
+
+**Status:** ✅ Fixed (2026-09-28).
+
+Added `report-to csp-endpoint` and `report-uri /api/csp-report` to the CSP directive in
+`buildCsp()`, plus `Report-To` and `Reporting-Endpoints` response headers.  The collector at
+`POST /api/csp-report` accepts both `application/csp-report` (legacy) and
+`application/reports+json` (Reporting API) formats, caps bodies at 16 KiB, logs a redacted
+structured line via `logger.ts` (no cookies, tokens, or PII), and increments
+`csp_violation_reports_total` in `metrics-counters.ts`.

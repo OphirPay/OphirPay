@@ -9,6 +9,11 @@ env:
   BACKUP_BUCKET: ophirpay-backups
   BACKUP_RETENTION_DAYS: 30
 
+
+# -- Global Concurrency — singleton group for scheduled runs --------
+concurrency:
+  group: ${{ github.workflow }}
+
 jobs:
   backup:
     name: Backup Postgres

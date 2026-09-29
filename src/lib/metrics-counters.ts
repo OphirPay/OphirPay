@@ -30,6 +30,12 @@ const counters = {
   rpc_failover_total: 0,
   /** Counter: cumulative RPC recoveries to the primary endpoint (issue #820). */
   rpc_failover_recoveries_total: 0,
+  /**
+   * Counter: CSP violation reports received at POST /api/csp-report (issue #698).
+   * Incremented once per accepted, parsed, and logged report.  Oversized or
+   * malformed requests are rejected before reaching this counter.
+   */
+  csp_violation_reports_total: 0,
 };
 
 /** Last failover snapshot read by a scrape, for diffing gauge/counter gauges. */

@@ -140,4 +140,15 @@ export const CSRF_EXEMPT_ROUTES: CsrfExemptRoute[] = [
     routeFile: "scheduled/run/route.ts",
     reason: "Scheduled-payment runner; authenticated by CRON_SECRET, not a browser session.",
   },
+  {
+    method: "POST",
+    path: "/api/csp-report",
+    routeFile: "csp-report/route.ts",
+    reason:
+      "Browser-generated CSP violation report. Sent by the browser itself (no user session), " +
+      "not by JavaScript on the page. CSRF tokens cannot be included in browser-generated " +
+      "reports; the browser is the authorised sender by definition. The endpoint only accepts " +
+      "structured CSP payloads, is size-capped at 16 KiB, never mutates state, and only logs " +
+      "and increments a counter.",
+  },
 ];

@@ -2104,6 +2104,49 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/csp-report:
+    post:
+      tags: [Security]
+      summary: CSP violation report collector
+      description: |
+        Receives Content-Security-Policy violation reports from browsers.
+        Accepts both the legacy `application/csp-report` envelope format and
+        the modern Reporting API `application/reports+json` array format.
+
+        This endpoint is invoked by the browser itself (not by page JavaScript)
+        when a resource violates the CSP set by `src/proxy.ts`. It is
+        intentionally CSRF-exempt: browser-generated reports carry no session
+        cookie and cannot include a CSRF token. The endpoint is size-capped
+        at 16 KiB, never mutates application state, logs a redacted structured
+        line via `logger.ts`, and increments the `csp_violation_reports_total`
+        metric.
+
+        References: issue #698, RFC 7469 (Report-URI), W3C Reporting API.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/csp-report:
+            schema:
+              type: object
+              properties:
+                csp-report:
+                  type: object
+                  description: CSP violation payload from the browser.
+          application/reports+json:
+            schema:
+              type: array
+              items:
+                type: object
+                description: Reporting API violation entry.
+      responses:
+        "204":
+          description: Report accepted (no body returned)
+        "400":
+          description: Malformed or unrecognised report body
+        "413":
+          description: Body exceeds the 16 KiB size limit
+
 # ── Components ────────────────────────────────────────────────
 components:
   securitySchemes:

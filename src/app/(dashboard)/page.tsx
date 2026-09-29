@@ -16,8 +16,12 @@ import { useApiQuery } from "@/hooks/useApiQuery";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
+import { convertXlmToUsd, formatFiatAmount } from "@/lib/price";
 import Link from "next/link";
 
 // ── Page ───────────────────────────────────────────────────────
@@ -30,6 +34,10 @@ interface OnChainData {
 export default function TreasuryDashboard() {
   usePageTitle(PAGE_TITLES.HOME);
   const { wallet, fetchBalance } = useWallet();
+
+  // ── Currency display preference (issue #795) ───────────────────
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: priceUnavailable } = useXlmPrice();
 
   const {
     data,
@@ -81,28 +89,39 @@ export default function TreasuryDashboard() {
           </div>
         </div>
         {wallet.connected && (
-          <Link href="/send">
-            <Button
-              leftIcon={
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  className="w-5 h-5"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
-                  />
-                </svg>
-              }
-            >
-              Send Payment
-            </Button>
-          </Link>
+          <div className="flex items-center gap-3">
+            {/* Issue #795 — honour the persisted currency preference */}
+            <CurrencyToggle
+              value={currency}
+              onChange={setCurrency}
+              size="sm"
+              showPrice
+              price={xlmPrice}
+              isUnavailable={priceUnavailable}
+            />
+            <Link href="/send">
+              <Button
+                leftIcon={
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className="w-5 h-5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
+                    />
+                  </svg>
+                }
+              >
+                Send Payment
+              </Button>
+            </Link>
+          </div>
         )}
       </div>
 
@@ -113,10 +132,17 @@ export default function TreasuryDashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {wallet.connected && wallet.publicKey ? (
             <StatCard
-              title="Your XLM Balance"
+              title={currency === "USD" && xlmPrice !== null ? "Your Balance (USD)" : "Your XLM Balance"}
               value={
                 wallet.balanceLoading ? (
                   "Loading..."
+                ) : currency === "USD" && xlmPrice !== null ? (
+                  <AnimatedNumber
+                    value={convertXlmToUsd(totalBalance, xlmPrice) ?? 0}
+                    format={(n) => formatFiatAmount(n)}
+                  />
+                ) : currency === "USD" && priceUnavailable ? (
+                  <><AnimatedNumber value={totalBalance} format={(n) => formatAmount(n, "XLM")} /><span className="ml-1 text-xs text-amber-500">(USD n/a)</span></>
                 ) : (
                   <AnimatedNumber
                     value={totalBalance}
@@ -154,17 +180,25 @@ export default function TreasuryDashboard() {
             trend="On-chain"
           />
           <StatCard
-            title="Recorded Volume"
+            title={currency === "USD" && xlmPrice !== null ? "Volume (USD)" : "Recorded Volume"}
             value={
-              <AnimatedNumber value={volume} format={(n) => formatAmount(n, "XLM")} />
+              currency === "USD" && xlmPrice !== null ? (
+                <AnimatedNumber value={convertXlmToUsd(volume, xlmPrice) ?? 0} format={(n) => formatFiatAmount(n)} />
+              ) : (
+                <AnimatedNumber value={volume} format={(n) => formatAmount(n, "XLM")} />
+              )
             }
             icon="📊"
             trend={`Last ${payments.length} records`}
           />
           <StatCard
-            title="Avg Payment"
+            title={currency === "USD" && xlmPrice !== null ? "Avg Payment (USD)" : "Avg Payment"}
             value={
-              <AnimatedNumber value={avgPayment} format={(n) => formatAmount(n, "XLM")} />
+              currency === "USD" && xlmPrice !== null ? (
+                <AnimatedNumber value={convertXlmToUsd(avgPayment, xlmPrice) ?? 0} format={(n) => formatFiatAmount(n)} />
+              ) : (
+                <AnimatedNumber value={avgPayment} format={(n) => formatAmount(n, "XLM")} />
+              )
             }
             icon="✅"
             trend="On-chain"
@@ -197,12 +231,14 @@ export default function TreasuryDashboard() {
                 </p>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-xs text-gray-500 dark:text-gray-400">
-                    XLM Balance
+                    {currency === "USD" && xlmPrice !== null ? "Balance (USD)" : "XLM Balance"}
                   </span>
                   <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
                     {wallet.balanceLoading
                       ? "Loading..."
-                      : formatAmount(parseFloat(wallet.balance ?? "0"), "XLM")}
+                      : currency === "USD" && xlmPrice !== null
+                        ? formatFiatAmount(convertXlmToUsd(parseFloat(wallet.balance ?? "0"), xlmPrice))
+                        : formatAmount(parseFloat(wallet.balance ?? "0"), "XLM")}
                   </span>
                 </div>
                 <a
@@ -311,7 +347,10 @@ export default function TreasuryDashboard() {
                         )}
                       </td>
                       <td className="py-3 pr-4 text-gray-700 dark:text-gray-300 font-mono">
-                        {formatAmount(payment.amountStroops / XLM_STROOPS, "XLM")}
+                        {currency === "USD" && xlmPrice !== null
+                          ? <>~{formatFiatAmount(convertXlmToUsd(payment.amountStroops / XLM_STROOPS, xlmPrice))}</>
+                          : formatAmount(payment.amountStroops / XLM_STROOPS, "XLM")
+                        }
                       </td>
                       <td className="py-3 pr-4">
                         <Badge variant={payment.metadata === "CANCELLED" ? "danger" : "success"} dot>

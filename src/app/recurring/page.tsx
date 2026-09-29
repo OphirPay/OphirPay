@@ -10,9 +10,13 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
 import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useXlmPrice } from "@/hooks/usePrice";
+import { convertXlmToUsd, formatFiatAmount } from "@/lib/price";
 import { formatAmount, shortenAddress } from "@/lib/utils";
 import { isValidStellarAddress } from "@/lib/stellar";
 import { FREQUENCY_OPTIONS, FREQUENCY_LABELS, nextRunAt, type Frequency } from "@/lib/recurrence";
@@ -44,6 +48,10 @@ export default function RecurringPage() {
   usePageTitle(PAGE_TITLES.RECURRING);
   const { wallet } = useWallet();
   const toast = useToast();
+
+  // ── Currency display preference (issue #795) ───────────────────
+  const { currency, setCurrency } = useCurrencyDisplay();
+  const { price: xlmPrice, isUnavailable: priceUnavailable } = useXlmPrice();
 
   const [showCreate, setShowCreate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -181,7 +189,18 @@ export default function RecurringPage() {
             Schedule automated Daily, Weekly, or Monthly payments
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>+ New Recurring</Button>
+        <div className="flex items-center gap-3">
+          {/* Issue #795 — honour the persisted currency preference */}
+          <CurrencyToggle
+            value={currency}
+            onChange={setCurrency}
+            size="sm"
+            showPrice
+            price={xlmPrice}
+            isUnavailable={priceUnavailable}
+          />
+          <Button onClick={() => setShowCreate(true)}>+ New Recurring</Button>
+        </div>
       </div>
 
       {recurrences.length === 0 ? (
@@ -214,7 +233,21 @@ export default function RecurringPage() {
                     To: <code className="text-xs">{shortenAddress(rp.destAddress, 12)}</code>
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {formatAmount(parseFloat(rp.amount), rp.assetCode)}
+                    {/* Issue #795 — respect persisted currency preference */}
+                    {currency === "USD" && rp.assetCode === "XLM" && xlmPrice !== null
+                      ? <>
+                          ~{formatFiatAmount(convertXlmToUsd(parseFloat(rp.amount), xlmPrice))}
+                          <span className="ml-1.5 text-xs font-normal text-gray-400 dark:text-gray-500">
+                            ({formatAmount(parseFloat(rp.amount), rp.assetCode)})
+                          </span>
+                        </>
+                      : currency === "USD" && rp.assetCode === "XLM" && priceUnavailable
+                        ? <>
+                            {formatAmount(parseFloat(rp.amount), rp.assetCode)}
+                            <span className="ml-1.5 text-xs font-normal text-amber-500">(USD unavailable)</span>
+                          </>
+                        : formatAmount(parseFloat(rp.amount), rp.assetCode)
+                    }
                   </p>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                     <span data-testid={`next-run-${rp.id}`}>

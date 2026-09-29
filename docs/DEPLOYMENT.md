@@ -77,6 +77,16 @@ cp .env.example .env.local
 | `CRON_SECRET` | — | Shared secret protecting `/api/cron`. Required to run the scheduled-payment cron — see [Scheduled Payment Cron](scheduled-payment-cron.md) |
 | `SCHEDULED_PAYMENTS_SOURCE_SECRET` | — | Stellar secret key of the funded operator account that signs due scheduled payments |
 
+### Transactional Email
+
+Required for `src/lib/email.ts` to deliver payment and webhook notification
+emails (Resend is called over its HTTPS API — no SMTP, no extra dependency).
+
+| Variable | Required | Description |
+|---|---|---|
+| `RESEND_API_KEY` | To send email | Resend API key from <https://resend.com/api-keys>. Without it `sendEmail()` throws `EmailConfigurationError` instead of silently dropping the message, and startup logs that email is not configured |
+| `EMAIL_FROM` | No | Sender identity, e.g. `OphirPay <payments@ophirpay.com>`. Must be a verified Resend domain. Defaults to `OphirPay <payments@ophirpay.com>` |
+
 ### Testnet vs Mainnet
 
 | Setting | Testnet (default) | Mainnet |
@@ -225,6 +235,14 @@ The `Dockerfile` uses a 3-stage build:
 - Final image runs as **non-root** user for security
 - Standalone output is used (configured in `next.config.ts`)
 - The runner stage declares a `HEALTHCHECK` (issue #738) — see below
+- **The runner stage does NOT copy the full `node_modules` from the builder** (issue #737).
+  Next's `output: "standalone"` creates `.next/standalone/node_modules/` with a pruned set of
+  only the runtime dependencies the server actually needs. Copying the full builder
+  `node_modules` on top would double the image size and ship every devDependency
+  (TypeScript, Prisma CLI, Tailwind, Playwright, Puppeteer) into the distroless layer —
+  defeating the purpose of standalone output.  The runner stage only copies the native
+  Prisma query-engine binary, which the standalone tracer intentionally omits because it
+  is platform-specific.
 
 ### Liveness vs readiness
 

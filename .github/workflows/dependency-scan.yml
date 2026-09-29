@@ -18,6 +18,11 @@ on:
 permissions:
   contents: read
 
+
+# -- Global Concurrency — singleton group for scheduled runs --------
+concurrency:
+  group: ${{ github.workflow }}
+
 jobs:
   dependency-scan:
     name: "Dependency Vulnerability Scan (fail on high/critical)"

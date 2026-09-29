@@ -727,3 +727,52 @@ ophirpay_http_requests_total{method="GET",route="/api/payments",status="200"} 89
 # TYPE ophirpay_active_streams_count gauge
 ophirpay_active_streams_count 84
 ```
+
+---
+
+## CSP Violation Reports
+
+### Submit a CSP Violation Report
+
+> This endpoint is invoked automatically by the browser (not by your application code) when a
+> resource is blocked by the Content-Security-Policy header. It is listed here for completeness
+> and for integration-test authors who want to verify the collector is reachable.
+>
+> **No authentication is required** — the browser itself is the authorised sender.
+> Bodies are capped at 16 KiB; oversized payloads receive `413`.
+
+**Legacy `application/csp-report` format (all browsers):**
+
+```bash
+curl -X POST https://api.ophirpay.com/api/csp-report \
+  -H "Content-Type: application/csp-report" \
+  -d '{
+    "csp-report": {
+      "document-uri": "https://ophirpay.vercel.app/dashboard",
+      "violated-directive": "script-src",
+      "effective-directive": "script-src",
+      "blocked-uri": "https://evil.example.com/malicious.js",
+      "disposition": "enforce",
+      "status-code": 200
+    }
+  }'
+```
+
+**Response (`204 No Content`):** No body — the browser expects silence.
+
+**Modern Reporting API `application/reports+json` format (Chrome 96+):**
+
+```bash
+curl -X POST https://api.ophirpay.com/api/csp-report \
+  -H "Content-Type: application/reports+json" \
+  -d '[{
+    "type": "csp-violation",
+    "age": 10,
+    "url": "https://ophirpay.vercel.app/dashboard",
+    "body": {
+      "violated-directive": "img-src",
+      "blocked-uri": "https://cdn.evil.example.com/img.png",
+      "disposition": "enforce"
+    }
+  }]'
+```

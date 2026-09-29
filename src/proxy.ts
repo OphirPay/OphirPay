@@ -39,19 +39,53 @@ function generateRequestId(): string {
 /**
  * Content-Security-Policy for HTML pages.
  *
- * Next.js (App Router) injects inline streaming/hydration scripts, and this
- * Next 16 build does not propagate a per-request nonce (via x-nonce or a
- * request-header CSP) to the app renderer, so a script-src without
- * 'unsafe-inline' blocks them and the app never hydrates. We therefore keep
- * 'unsafe-inline' in script-src while every other directive stays strict
- * (default-src 'self', connect-src whitelisted to Stellar endpoints only,
- * frame-src limited to wallet extensions, object-src 'none', ...).
+ * ### Why 'unsafe-inline' is still present in script-src (issue #697)
+ *
+ * Next.js App Router injects several inline scripts that are not authored by
+ * us and cannot be removed:
+ *
+ *   1. The RSC / streaming bootstrap script (rendered server-side into the
+ *      initial HTML response at request time).
+ *   2. The hydration chunk-manifest script (`__NEXT_DATA__` / flight payload).
+ *
+ * The recommended mitigation is a *per-request nonce*: Next generates a fresh
+ * nonce for each request, embeds it in those inline scripts via `nonce="…"`,
+ * and the proxy propagates the same value in the `script-src 'nonce-…'`
+ * directive so browsers accept the scripts while rejecting injected ones.
+ *
+ * **Current status:** This Next 16 build does NOT reliably propagate the nonce
+ * from the middleware layer into the App Router renderer.  The nonce value set
+ * in `x-nonce` / the CSP header by the proxy does NOT reach the inline scripts
+ * Next renders for hydration, so removing `'unsafe-inline'` breaks hydration
+ * in production.  Re-testing is required against each Next.js minor release;
+ * the behaviour is tracked in next.js issue #74803.
+ *
+ * Until the nonce propagation path is confirmed working end-to-end (browser
+ * DevTools showing `nonce="…"` on the framework inline scripts AND the page
+ * hydrating without CSP violations), we keep `'unsafe-inline'` and document
+ * the limitation explicitly in SECURITY.md and docs/AUDIT.md rather than
+ * advertising a control that does not function.
+ *
  * Development additionally needs 'unsafe-eval' for HMR / Fast Refresh.
+ *
+ * ### CSP violation reporting (issue #698)
+ *
+ * `report-to` points at the OphirPay-side collector (POST /api/csp-report).
+ * The collector validates and size-limits the body, logs a redacted structured
+ * line via logger.ts, and increments the csp_violation_reports_total metric.
+ * `report-uri` is the legacy fallback for browsers that do not support the
+ * Reporting API header yet (Safari < 17, Firefox without the flag).
  */
 function buildCsp(): string {
   const scriptSrc = isProd
     ? "'self' 'unsafe-inline' 'wasm-unsafe-eval'"
     : "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'";
+
+  // The Reporting API group name must match the Report-To / Reporting-Endpoints
+  // header value set just below in the HTML-page response branch.
+  const reportingGroup = "csp-endpoint";
+  const reportUri = "/api/csp-report";
+
   return [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
@@ -64,6 +98,11 @@ function buildCsp(): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
+    // Reporting API (RFC 7469 successor) — supported by Chrome 70+, Edge 79+.
+    `report-to ${reportingGroup}`,
+    // Legacy fallback for Safari, older Firefox, and any browser that does not
+    // implement the Reporting API yet.  The collector accepts both formats.
+    `report-uri ${reportUri}`,
   ].join("; ");
 }
 
@@ -173,6 +212,24 @@ export async function proxy(request: NextRequest) {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+
+  // Reporting API (issue #698) — tells the browser where to POST violation
+  // reports.  `Report-To` is the older format (Chrome 70+ / Edge 79+);
+  // `Reporting-Endpoints` is the newer NEL-aligned format (Chrome 96+).
+  // We set both so all Chromium-based browsers are covered.
+  const cspReportEndpoint = "/api/csp-report";
+  const reportToValue = JSON.stringify({
+    group: "csp-endpoint",
+    max_age: 10886400, // 126 days
+    endpoints: [{ url: cspReportEndpoint }],
+    include_subdomains: false,
+  });
+  response.headers.set("Report-To", reportToValue);
+  // The modern Reporting-Endpoints header (a simple name=url pair).
+  response.headers.set(
+    "Reporting-Endpoints",
+    `csp-endpoint="${cspReportEndpoint}"`
+  );
 
   return response;
 }

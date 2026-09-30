@@ -2,7 +2,7 @@
 // GENERATED FROM docs/openapi.yaml — DO NOT EDIT BY HAND.
 // Regenerate with: npm run client:generate
 //
-// 91 operations extracted from the committed OpenAPI spec.
+// 95 operations extracted from the committed OpenAPI spec.
 
 /** @typedef {{ name: string, method: string, path: string, summary: string, tags: string[], requestBody: boolean }} ApiOperation */
 
@@ -449,6 +449,16 @@ export const API_OPERATIONS = [
     "requestBody": false
   },
   {
+    "name": "getApiRequestsExpire",
+    "method": "GET",
+    "path": "/api/requests/expire",
+    "summary": "Expire overdue payment requests",
+    "tags": [
+      "Payment Requests"
+    ],
+    "requestBody": false
+  },
+  {
     "name": "getApiScheduled",
     "method": "GET",
     "path": "/api/scheduled",
@@ -749,6 +759,16 @@ export const API_OPERATIONS = [
     "requestBody": true
   },
   {
+    "name": "postApiKeysIdRotate",
+    "method": "POST",
+    "path": "/api/keys/{id}/rotate",
+    "summary": "Rotate an API key with a 24-hour overlap",
+    "tags": [
+      "API Keys"
+    ],
+    "requestBody": false
+  },
+  {
     "name": "postApiMultisig",
     "method": "POST",
     "path": "/api/multisig",
@@ -847,6 +867,26 @@ export const API_OPERATIONS = [
       "Payment Requests"
     ],
     "requestBody": true
+  },
+  {
+    "name": "postApiRequestsIdPaid",
+    "method": "POST",
+    "path": "/api/requests/{id}/paid",
+    "summary": "Confirm payment for a payment request",
+    "tags": [
+      "Payment Requests"
+    ],
+    "requestBody": true
+  },
+  {
+    "name": "postApiRequestsIdRemind",
+    "method": "POST",
+    "path": "/api/requests/{id}/remind",
+    "summary": "Email a reminder for a payment request",
+    "tags": [
+      "Payment Requests"
+    ],
+    "requestBody": false
   },
   {
     "name": "postApiScheduled",

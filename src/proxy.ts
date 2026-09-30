@@ -53,18 +53,17 @@ function generateRequestId(): string {
  * and the proxy propagates the same value in the `script-src 'nonce-…'`
  * directive so browsers accept the scripts while rejecting injected ones.
  *
- * **Current status:** This Next 16 build does NOT reliably propagate the nonce
- * from the middleware layer into the App Router renderer.  The nonce value set
- * in `x-nonce` / the CSP header by the proxy does NOT reach the inline scripts
- * Next renders for hydration, so removing `'unsafe-inline'` breaks hydration
- * in production.  Re-testing is required against each Next.js minor release;
- * the behaviour is tracked in next.js issue #74803.
+ * **Current status (Re-tested on Next.js 16.3.0, September 2026 — issue #1257):**
+ * Next.js 16.3.0 App Router still does not reliably propagate per-request nonces
+ * from the middleware/proxy layer into framework-generated inline hydration scripts
+ * (tracked in upstream next.js issue #74803). Removing `'unsafe-inline'` causes
+ * hydration mismatches and CSP script-src blocking on framework inline payloads.
  *
- * Until the nonce propagation path is confirmed working end-to-end (browser
- * DevTools showing `nonce="…"` on the framework inline scripts AND the page
- * hydrating without CSP violations), we keep `'unsafe-inline'` and document
- * the limitation explicitly in SECURITY.md and docs/AUDIT.md rather than
- * advertising a control that does not function.
+ * Until end-to-end nonce propagation is fully supported upstream (confirmed by
+ * browser inspection showing `nonce="…"` on all framework inline scripts without
+ * CSP violation errors), `'unsafe-inline'` is retained in production and development.
+ * This limitation is documented in `SECURITY.md` and `docs/AUDIT.md` (WEB-1) and
+ * will be re-evaluated on subsequent Next.js minor/major updates.
  *
  * Development additionally needs 'unsafe-eval' for HMR / Fast Refresh.
  *

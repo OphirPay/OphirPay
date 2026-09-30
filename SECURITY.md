@@ -246,16 +246,16 @@ OphirPay implements the following security headers
   limited to Stellar/Soroban endpoints, `frame-src` limited to wallet
   extensions, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
 
-  **Known limitation (issue #697):** `script-src` currently includes
-  `'unsafe-inline'` because this Next 16 build does not reliably propagate a
-  per-request nonce from the middleware layer into the App Router renderer.
-  Next injects several inline hydration/streaming scripts that cannot be
-  removed; without the nonce reaching those scripts the page fails to hydrate.
-  The recommended fix is to verify nonce propagation works end-to-end (browser
-  DevTools should show `nonce="…"` on the framework inline scripts) and then
-  remove `'unsafe-inline'` from the CSP.  Until that is confirmed, the
-  limitation is recorded here and in `docs/AUDIT.md` rather than advertising
-  a control that is not active.  See `src/proxy.ts` for the full rationale.
+  **Known limitation (issues #697, #1257):** `script-src` currently includes
+  `'unsafe-inline'` because Next.js 16.3.0 (re-tested 2026-09-30) does not
+  reliably propagate a per-request nonce from the proxy/middleware layer into
+  the App Router renderer (upstream issue #74803). Next injects several inline
+  hydration/streaming scripts that cannot be removed; without the nonce reaching
+  those scripts the page fails to hydrate. The recommended fix is to verify nonce
+  propagation works end-to-end (browser DevTools should show `nonce="…"` on the
+  framework inline scripts) and then remove `'unsafe-inline'` from the CSP.
+  Until that is confirmed upstream, the limitation is recorded here and in
+  `docs/AUDIT.md` (WEB-1). See `src/proxy.ts` for the full rationale.
 
 - `Report-To` / `Reporting-Endpoints` — browsers POST CSP violation reports
   to `POST /api/csp-report`, which validates, size-limits, and logs them via

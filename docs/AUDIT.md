@@ -400,21 +400,20 @@ to mainnet solely on the basis of this report.
 
 ## 7. Post-audit web-layer findings (2026-09-28)
 
-### WEB-1 — CSP `script-src` retains `'unsafe-inline'`; nonce propagation not confirmed (issue #697)
+### WEB-1 — CSP `script-src` retains `'unsafe-inline'`; nonce propagation not confirmed (issues #697, #1257)
 
 **File:** `src/proxy.ts` (`buildCsp`), `src/app/layout.tsx`
 
-**Status:** ⚠️ Known limitation — documented, not yet fixed in code.
+**Status:** ⚠️ Known limitation — Re-tested on Next.js 16.3.0 (2026-09-30, issue #1257).
 
 `buildCsp()` produces `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'` in production.
 The intended mitigation is a per-request nonce: Next generates a fresh value per request and
 embeds it in its inline hydration scripts; the proxy propagates the same nonce in the CSP header
-so browsers accept the framework scripts while rejecting injected ones.  In this Next 16 build
-the nonce does **not** propagate reliably from the middleware layer to the App Router renderer,
-so removing `'unsafe-inline'` causes hydration failures.  The limitation is now documented in
-`SECURITY.md` and the inaccurate comment in `src/proxy.ts` has been corrected.  A follow-up
-task should re-test nonce propagation on each Next minor release and remove `'unsafe-inline'`
-once propagation is confirmed end-to-end.
+so browsers accept the framework scripts while rejecting injected ones. In Next.js 16.3.0,
+the nonce does **not** propagate reliably from the proxy/middleware layer into App Router hydration
+scripts (upstream issue #74803), causing hydration failures if `'unsafe-inline'` is dropped.
+Re-tested and verified on Next.js 16.3.0 (2026-09-30). This limitation remains documented in
+`SECURITY.md` and `src/proxy.ts`, and will be re-tested on the next Next.js minor release.
 
 **Risk:** Without a functioning nonce or hash-based allow-list, the `script-src` directive does
 not provide XSS protection for injected inline scripts.  All other directives (`default-src

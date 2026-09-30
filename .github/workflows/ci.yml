@@ -357,3 +357,17 @@ jobs:
           fi
           exit "$fail"
 
+  # ══════════════════════════════════════════════════════════════
+  # 11. DOCS LINK CHECK — markdown link & anchor validator (issue #769)
+  # ══════════════════════════════════════════════════════════════
+  docs-link-check:
+    name: "1️⃣1️⃣ Docs — Link & Anchor Checker"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
+      - run: npm run docs:check-links
+      - name: Verify external links (warnings only)
+        run: node scripts/check-docs-links.mjs --check-external
+

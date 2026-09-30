@@ -80,7 +80,7 @@ import {
   handleApiError,
 } from "@/lib/api-response";
 
-export async function GET(request: Request) {
+export const GET = apiRoute({ name: "GET /api/counterparties", querySchema: counterpartyQuerySchema }, async (request, { auth, query }) => {
   try {
     // 1. Authenticate
     const auth = await getAuthContext(request);
@@ -362,7 +362,7 @@ import {
   counterpartyQuerySchema,
 } from "@/lib/validation-schemas";
 
-export async function GET(request: Request) {
+export const GET = apiRoute({ name: "GET /api/counterparties", querySchema: counterpartyQuerySchema }, async (request, { auth, query }) => {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
@@ -517,39 +517,22 @@ Use this checklist before opening (or requesting review of) a PR that adds or
 changes an API endpoint:
 
 **Structure**
-- [ ] Route file is `src/app/api/<resource>/route.ts` (plus `[id]/route.ts` only if needed)
+- [ ] Route file is `src/app/api/<resource>/route.ts`
 - [ ] File starts with `// SPDX-License-Identifier: MIT`
-- [ ] Handlers are named exports (`GET`/`POST`/`PATCH`/`DELETE`)
+- [ ] Handlers use the `apiRoute` wrapper from `src/lib/api-route.ts`
 - [ ] Business logic lives in `src/lib/`, not in the route file
 
-**Validation**
-- [ ] All inputs validated with Zod (`safeParse`, never raw trust)
-- [ ] Reusable schemas added to `src/lib/validation-schemas.ts`
-- [ ] Query params coerced with `z.coerce` and constrained (e.g. `limit` 1–100)
-- [ ] Invalid input returns `validationError(parsed.error)` (400, `VALIDATION_ERROR`)
+**Validation & Wrapper**
+- [ ] Schema validation is passed via `bodySchema` and `querySchema` to `apiRoute`
+- [ ] Exemptions for Auth or CSRF explicitly set `auth: "opt-out"` or `csrf: "opt-out"`
 
 **Auth & security**
-- [ ] `getAuthContext(request)` called; `null` → `unauthorizedError` (401)
-- [ ] Every query scoped to `auth.userId` (or `keyId`) — no cross-user reads
+- [ ] Every query scoped to `ctx.auth.userId` (or `keyId`) — no cross-user reads
 - [ ] Client-supplied `userId`/ownership fields are ignored in favor of auth context
 
-**Errors**
-- [ ] Whole handler wrapped in try/catch → `handleApiError(err, "METHOD /path")`
-- [ ] No hand-rolled error bodies; helpers from `src/lib/api-response.ts` used
-- [ ] Error codes reused from `src/lib/error-codes.ts` where applicable
+**Errors & Responses**
+- [ ] Return standard helpers from `src/lib/api-response.ts` (e.g. `successResponse`)
 
-**Response envelope**
-- [ ] Success responses use `successResponse(data, meta?, status?)`
-- [ ] Pagination metadata goes in `meta` (`limit`, `cursor`, `nextCursor`, `hasMore`, …)
-- [ ] `jsonSafe` handles BigInt/Date (automatic via `successResponse`)
-
-**Rate limiting**
-- [ ] No per-route limiter added for standard routes (global proxy limit applies)
-- [ ] Route-level limiter added only when a stricter/user-keyed limit is needed, using `getRateLimitStore()` + `rateLimitError()`
-
-**Docs & tests**
+**Rate limiting & Testing**
 - [ ] `docs/openapi.yaml` updated with the new/changed path and schemas
-- [ ] Unit tests added in `src/__tests__/` covering auth, validation, success, and error paths
-- [ ] `npm run typecheck` passes
-- [ ] `npm run lint` passes
-- [ ] `npm test` passes
+- [ ] Unit tests added in `src/__tests__/`

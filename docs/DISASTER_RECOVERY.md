@@ -17,7 +17,7 @@
 4. [Phase 1 — Isolate & Communicate](#phase-1--isolate--communicate)
 5. [Phase 2 — Restore the Database](#phase-2--restore-the-database)
 6. [Phase 3 — Verify the Restored Database](#phase-3--verify-the-restored-database)
-7. [Phase 4 — Chain-vs-Database Reconciliation](#phase-4--chainvs-database-reconciliation)
+7. [Phase 4 — Chain-vs-Database Reconciliation](#phase-4--chain-vs-database-reconciliation)
 8. [Phase 5 — Cut Traffic to the Recovered System](#phase-5--cut-traffic-to-the-recovered-system)
 9. [Phase 6 — Post-Recovery Verification](#phase-6--post-recovery-verification)
 10. [Phase 7 — Rollback (if the Restore Fails)](#phase-7--rollback-if-the-restore-fails)
@@ -30,7 +30,7 @@
 
 | Metric | Target | How it is met |
 |--------|--------|---------------|
-| **RPO** (Recovery Point Objective — maximum acceptable data loss) | **24 hours** | `.github/workflows/db-backup.yml` runs `pg_dump → gzip → S3` every day at **03:00 UTC** (`cron: "0 3 * * *"`). The worst-case scenario is a failure that occurs just before the next backup, meaning up to 24 hours of transactions must be reconciled from on-chain state (see [Phase 4](#phase-4--chainvs-database-reconciliation)). |
+| **RPO** (Recovery Point Objective — maximum acceptable data loss) | **24 hours** | `.github/workflows/db-backup.yml` runs `pg_dump → gzip → S3` every day at **03:00 UTC** (`cron: "0 3 * * *"`). The worst-case scenario is a failure that occurs just before the next backup, meaning up to 24 hours of transactions must be reconciled from on-chain state (see [Phase 4](#phase-4--chain-vs-database-reconciliation)). |
 | **RTO** (Recovery Time Objective — time to restore service) | **2 hours** | Breakdown: ~15 min to locate the backup and spin up a fresh PostgreSQL instance, ~30 min to restore + verify (depending on database size), ~45 min for chain reconciliation, ~15 min for traffic cutover and smoke testing. The 2-hour target assumes a single on-call engineer with the required credentials and tool access. |
 
 Backups are stored in **S3 bucket `ophirpay-backups`** with the `STANDARD_IA`

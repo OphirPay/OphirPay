@@ -142,12 +142,8 @@ export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(asyn
         message: "Audit log SSE stream connected",
       });
 
-      // Typed cancel hook — runs when the client disconnects.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (controller as any).signal?.addEventListener("abort", cleanup);
-
-      // Safety: auto-cleanup after 10 minutes even without an explicit
-      // disconnect (e.g. runtimes that never surface the abort signal).
+      // Safety: auto-cleanup after 10 minutes even if the stream is abandoned
+      // without a cancellation signal.
       safetyTimeout = setTimeout(cleanup, 10 * 60 * 1000);
 
       // Poll contract every 15 seconds for new entries.

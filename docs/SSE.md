@@ -8,7 +8,7 @@ OphirPay streams **live blockchain events** to browsers and integrations via
 **Server-Sent Events (SSE)** at `GET /api/events`. The endpoint polls the
 deployed `PaymentEventEmitter` Soroban contract and forwards normalized
 events. A **WebSocket channel** (`/api/events` on port `8787`, see
-[docs/WEBSOCKET.md](WEBSOCKET.md) and [Reconnection & transport](#-reconnection--transport)) delivers the *same*
+[docs/WEBSOCKET.md](WEBSOCKET.md) and [Reconnection & transport](#reconnection--transport)) delivers the *same*
 events with lower latency; the official client prefers it and falls back to
 SSE automatically.
 
@@ -82,7 +82,7 @@ time out an idle stream.
 ### 3. `error`
 
 Emitted only when a slow consumer is disconnected (see
-[Backpressure & slow consumers](#-backpressure--slow-consumers)). Clients
+[Backpressure & slow consumers](#backpressure--slow-consumers-issue-744)). Clients
 should treat it as terminal and reconnect.
 
 | Field | Type | Description |

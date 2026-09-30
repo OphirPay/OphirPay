@@ -73,6 +73,24 @@ describe('form-helpers', () => {
       await p1;
     });
 
+    it('blocks repeated submissions in the same synchronous tick', async () => {
+      let resolvePromise: (() => void) | undefined;
+      const handler = vi.fn().mockImplementation(
+        () => new Promise<void>((resolve) => {
+          resolvePromise = resolve;
+        })
+      );
+      const { result } = renderHook(() => useFormSubmit(handler));
+
+      await act(async () => {
+        result.current.submit();
+        result.current.submit();
+      });
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      resolvePromise?.();
+    });
+
     it('resets isSubmitting after completion', async () => {
       const handler = vi.fn().mockResolvedValue(undefined);
       const { result } = renderHook(() => useFormSubmit(handler));

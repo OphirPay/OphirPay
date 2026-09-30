@@ -20,6 +20,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docs-links:
+    name: "Documentation — Markdown Links"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm run check:docs-links
+
   # ══════════════════════════════════════════════════════════════
   # 1. LINT — ESLint with zero tolerance (issue #677)
   #    The `npm run ci` gate runs this exact command; the workflow used to
@@ -354,4 +365,3 @@ jobs:
             echo "✅ Rendered config keys match .env.example ($(wc -l < /tmp/chart.keys | tr -d ' ') keys)"
           fi
           exit "$fail"
-

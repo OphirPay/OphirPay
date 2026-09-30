@@ -90,7 +90,7 @@
 - [📖 Stellar Glossary](GLOSSARY.md)
 - [🗺 Roadmap](#-roadmap)
 - [🔬 Formal Verification](#-formal-verification)
-- [🛡️ Security Audit](#️-security-audit)
+- [🛡️ Security Audit](#-security-audit)
 - [🔒 Security](#-security)
 - [⚡ Performance & Gas](#-performance--gas)
 - [🌐 Community](#-community)

@@ -8,8 +8,7 @@ import config from '../../vitest.config';
 
 describe('Coverage Excludes', () => {
   it('should only contain paths that exist', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const excludes = (config as any).test?.coverage?.exclude || [];
+    const excludes = config.test?.coverage?.exclude ?? [];
     
     // Filter out wildcards that are hard to check directly
     const directFiles = excludes.filter((p: string) => !p.includes('*') && !p.includes('**'));

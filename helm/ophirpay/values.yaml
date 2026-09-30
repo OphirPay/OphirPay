@@ -116,6 +116,10 @@ config:
   RATE_LIMIT_RPM: "120"
   AUTH_RATE_LIMIT_IP_RPM: "30"
   AUTH_RATE_LIMIT_WALLET_RPM: "10"
+  # Empty by default so error reporting stays opt-in. `NEXT_PUBLIC_*` values
+  # are inlined at build time (see the note above), so pointing an existing
+  # image at a DSN requires rebuilding with it set — not just `helm upgrade`.
+  NEXT_PUBLIC_SENTRY_DSN: ""
 
 # ── Secrets (rendered into a Kubernetes Secret) ────────────────
 # Names must also exist in `.env.example` (same test as `config` above).

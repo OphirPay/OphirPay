@@ -20,6 +20,24 @@ export default defineConfig({
       "scripts/**/*.test.{ts,tsx}",
       "tests/**/*.test.{ts,tsx}",
     ],
+    //
+    // ── Runner resource guards (CI worker-exit fix) ──────────────────
+    //
+    // The full suite (~226 files / ~3000 tests) passed every assertion in
+    // CI but exited 1 with "[vitest-pool]: Worker forks emitted error /
+    // Worker exited unexpectedly" after ~10 minutes. At defaults Vitest
+    // forks one worker per CPU (2 on the CI runner) and holds every
+    // per-file jsdom environment in memory at once (163s of environment
+    // setup alone), so peak memory grows with all files in flight and the
+    // end-of-run worker teardown on a shared runner can OOM/kill forks
+    // after the last test has already passed.
+    //
+    // Bounding the pool to 2 forks caps peak memory while keeping a
+    // modest pipeline of files; assertion work is unchanged. If CI
+    // wall-clock becomes a problem, prefer tuning maxWorkers/minWorkers
+    // before re-enabling unbounded parallelism.
+    maxWorkers: 2,
+    minWorkers: 1,
     env: {
       NEXT_PUBLIC_CONTRACT_ID: "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET",
       NEXT_PUBLIC_EMITTER_CONTRACT_ID: "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN",

@@ -74,8 +74,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
-      - name: Run unit tests (single fork + heap headroom — see vitest.config.ts)
-        run: npx vitest run --reporter=verbose
+      - name: Run unit tests (4 shards — fresh process per quarter; see vitest.config.ts)
+        # One vitest process accumulates per-file state (jsdom environments,
+        # Prisma engines) across all 226 files and OOMs near the end even
+        # though every assertion passes. Sharding gives each quarter of the
+        # suite a fresh process; shards run sequentially so the check name
+        # (and branch-protection match) is unchanged.
+        run: |
+          set -e
+          for i in 1 2 3 4; do
+            echo "::group::Vitest shard $i/4"
+            npx vitest run --shard=$i/4 --reporter=verbose
+            echo "::endgroup::"
+          done
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 

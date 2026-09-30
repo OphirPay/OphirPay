@@ -25,17 +25,19 @@ export default defineConfig({
     // The full suite (~226 files / ~3000 tests) passed every assertion but
     // CI exited 1 with "[vitest-pool]: Worker forks emitted error / Worker
     // exited unexpectedly" after ~10 minutes. CI crash dumps show the real
-    // cause: "Ineffective mark-compacts near heap limit" — a forked worker
-    // accumulating per-file state (jsdom environments, Prisma engines)
-    // across 226 files until its V8 heap (~4 GB default) exhausted.
+    // cause: "Ineffective mark-compacts near heap limit" — one forked
+    // worker accumulating per-file state (jsdom environments, Prisma
+    // engines) across all 226 files until its V8 heap exhausted.
     //
-    // maxWorkers: 1 runs all files through a single fork (no parallel-heap
-    // stacking), and the CI step pairs it with NODE_OPTIONS heap headroom
-    // so the one worker has room for the whole suite. Assertion semantics
+    // Primary guard: the CI job runs the suite in 4 sequential SHARDS
+    // (npx vitest run --shard=i/4), so each vitest process — and its
+    // workers — only ever hold a quarter of the suite before exiting.
+    // Secondary guard: maxWorkers: 2 bounds intra-shard parallelism so a
+    // shard peaks at ~2 worker heaps, not one per CPU. Assertion semantics
     // are untouched — this is pure scheduling/memory. Long-term fix is
     // finding the per-file leak; revisit if wall-clock grows past the
     // 30-minute job timeout as the suite scales.
-    maxWorkers: 1,
+    maxWorkers: 2,
     env: {
       NEXT_PUBLIC_CONTRACT_ID: "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET",
       NEXT_PUBLIC_EMITTER_CONTRACT_ID: "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN",

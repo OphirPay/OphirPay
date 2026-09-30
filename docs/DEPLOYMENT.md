@@ -70,7 +70,7 @@ cp .env.example .env.local
 | `AUTH_RATE_LIMIT_IP_RPM` | `30` | Wallet-auth per-IP requests per minute (`/api/auth/challenge`, `/api/auth/session`) |
 | `AUTH_RATE_LIMIT_WALLET_RPM` | `10` | Wallet-auth per-account requests per minute (keyed by Stellar public key) |
 | `REDIS_URL` | — | Distributed rate limiting. `redis://` = ioredis (Node only); `https://` = Upstash-compatible REST and the only form that shares the *global edge* limit across replicas |
-| `NEXT_PUBLIC_SENTRY_DSN` | — | Sentry error tracking DSN |
+| `NEXT_PUBLIC_SENTRY_DSN` | — | Optional Sentry DSN for client and server error reporting |
 | `NEXT_PUBLIC_DEMO_MODE` | `false` | Enable demo mode |
 | `NEXT_PUBLIC_FEATURE_MULTI_ASSET` | `false` | Enable multi-asset support |
 | `NEXT_PUBLIC_FEATURE_WEBHOOKS` | `false` | Enable webhook features |

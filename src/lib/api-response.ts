@@ -6,6 +6,7 @@ import { handlePrismaError } from "@/lib/prisma-errors";
 import { logger } from "@/lib/logger";
 import { getCurrentRequestId } from "@/lib/request-logging";
 import { ERROR_CODES } from "@/lib/error-codes";
+import { captureError } from "@/lib/sentry";
 
 // ── Standard Response Types ────────────────────────────────────
 
@@ -201,6 +202,12 @@ export function handleApiError(err: unknown, context?: string): NextResponse {
     error: err instanceof Error ? err.message : String(err),
     stack: err instanceof Error ? err.stack : undefined,
   });
+
+  if (process.env.NEXT_PUBLIC_SENTRY_DSN && !(err instanceof z.ZodError)) {
+    captureError(err instanceof Error ? err : new Error(String(err)), {
+      component: context ?? "API",
+    });
+  }
 
   // Zod validation errors (check first — before Prisma instance checks)
   if (err instanceof z.ZodError) {

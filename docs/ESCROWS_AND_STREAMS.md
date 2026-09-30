@@ -1,9 +1,9 @@
 # Escrow and Stream HTTP APIs
 
-> **No UI yet.** There is currently no dashboard page for escrows or streams.
-> All interaction is through the HTTP API documented here. A management UI is
-> planned but has no scheduled release date. Integrators must use the API
-> directly.
+> The dashboard includes `/escrows` and `/streams` pages for managing native
+> XLM contracts. The pages submit signed transactions from the connected wallet
+> and read the latest 20 on-chain records; the APIs documented here remain
+> available for integrations and other assets.
 
 ---
 
@@ -596,8 +596,9 @@ Authorization: Bearer ophirpay_sk_live_abc123
 | ACTIVE → FULLY_CLAIMED | `claim_stream` called after full vesting period elapses |
 | ACTIVE → CANCELLED | `cancel_stream` called by the creator |
 
-When a stream is cancelled, vested-but-unclaimed funds remain claimable by the
-recipient. Unvested funds are returned to the creator.
+When a stream is cancelled, the contract immediately pays any vested-but-
+unclaimed funds to the recipient, returns the unvested balance to the creator,
+and records the settled vested amount as `claimedAmount`.
 
 ---
 
@@ -692,7 +693,7 @@ receiving a `202` response from the POST endpoints above.
 |----------|--------|-------------|
 | `create_stream(creator, recipient, totalAmount, asset, startTime, endTime, metadata)` | Creator | Creates the stream and locks `totalAmount` in `LOCKED_BALANCE`. |
 | `claim_stream(stream_id)` | Recipient | Claims the currently vested and unclaimed portion. Moves to FULLY_CLAIMED when all funds are claimed. |
-| `cancel_stream(stream_id)` | Creator | Cancels the stream. Returns unvested funds to the creator; vested funds remain claimable by the recipient. |
+| `cancel_stream(stream_id)` | Creator | Pays vested-but-unclaimed funds to the recipient and returns unvested funds to the creator. |
 
 For the full contract ABI including argument types see
 [`docs/CONTRACT_FUNCTION_REFERENCE.md`](./CONTRACT_FUNCTION_REFERENCE.md).

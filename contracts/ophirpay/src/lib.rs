@@ -8,6 +8,7 @@ pub mod errors;
 pub mod events;
 pub mod helpers;
 pub mod contract;
+mod spending_limit;
 
 #[cfg(test)]
 mod test;

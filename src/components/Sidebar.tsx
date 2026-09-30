@@ -26,6 +26,8 @@ const navItems = [
   { href: "/send", label: "Send", Icon: SendIcon },
   { href: "/address-book", label: "Address Book", Icon: AddressBookIcon },
   { href: "/payments", label: "Payments", Icon: PaymentsIcon },
+  { href: "/escrows", label: "Escrows", Icon: EscrowIcon },
+  { href: "/streams", label: "Streams", Icon: StreamIcon },
   { href: "/batches", label: "Batches", Icon: BatchesIcon },
   { href: "/recurring", label: "Recurring", Icon: RecurringIcon },
   { href: "/requests", label: "Requests", Icon: RequestsIcon },
@@ -48,6 +50,14 @@ const navItems = [
 
 function ApiKeysIcon({ className }: { className?: string }) {
   return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 19.5a7.5 7.5 0 0115 0M15 8.25l3 3m0 0l2.25-2.25M18 11.25l-2.25 2.25" /></svg>;
+}
+
+function EscrowIcon({ className }: { className?: string }) {
+  return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3l8.25 4.5v9L12 21l-8.25-4.5v-9L12 3zm0 0v9m0 9v-9m8.25-4.5L12 12 3.75 7.5" /></svg>;
+}
+
+function StreamIcon({ className }: { className?: string }) {
+  return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M3 12h12m-12 6h8m5-8l5 2-5 2v-4z" /></svg>;
 }
 
 // Inline SVG icons for new feature pages

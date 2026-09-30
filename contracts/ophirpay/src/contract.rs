@@ -9,6 +9,7 @@ use crate::types::*;
 use crate::errors::*;
 use crate::events::*;
 use crate::helpers::*;
+use crate::spending_limit::is_spending_limit_expired;
 // ── Contract Version ───────────────────────────────────────────
 pub const CONTRACT_VERSION: u32 = 2;
 
@@ -1030,6 +1031,17 @@ impl OphirPayContract {
     /// Check if a spend is within limits and escalation rules.
     /// Returns Approved, Escalated, or Rejected.
     pub fn check_spending(env: Env, user: Address, amount: i128) -> SpendCheckResult {
+        let now = env.ledger().timestamp();
+        let spending_limit = env
+            .storage()
+            .persistent()
+            .get::<_, SpendingLimit>(&(SPEND_LIMIT_KEY, user.clone()));
+        if let Some(limit) = &spending_limit {
+            if !limit.is_active || is_spending_limit_expired(limit.expires_at, now) {
+                return SpendCheckResult::Rejected;
+            }
+        }
+
         // Check escalation rules
         if let Some(rules) = env
             .storage()
@@ -1047,13 +1059,7 @@ impl OphirPayContract {
         }
 
         // Check per-user spending limits
-        let key = (SPEND_LIMIT_KEY, user.clone());
-        if let Some(limit) = env.storage().persistent().get::<_, SpendingLimit>(&key) {
-            if !limit.is_active {
-                return SpendCheckResult::Rejected;
-            }
-
-            let now = env.ledger().timestamp();
+        if let Some(limit) = spending_limit {
             let day_seconds: u64 = 86400;
             let month_seconds: u64 = 30 * 86400;
 
@@ -1136,7 +1142,7 @@ impl OphirPayContract {
 
             // Check expiry
             let now = env.ledger().timestamp();
-            if limit.expires_at > 0 && now >= limit.expires_at {
+            if is_spending_limit_expired(limit.expires_at, now) {
                 limit.is_active = false;
                 env.storage().persistent().set(&key, &limit);
                 env.storage().persistent().extend_ttl(&key, BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -2549,7 +2555,8 @@ impl OphirPayContract {
         Ok(claimable)
     }
 
-    /// Creator cancels a stream. All tokens not yet claimed are returned to creator.
+    /// Creator cancels a stream. Vested-but-unclaimed tokens go to the recipient;
+    /// the unvested remainder is returned to the creator.
     pub fn cancel_stream(env: Env, creator: Address, stream_id: u64) -> Result<i128, PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         creator.require_auth();
@@ -2570,10 +2577,13 @@ impl OphirPayContract {
 
         let now = env.ledger().timestamp();
         let vested = compute_vested(stream.total_amount, stream.start_time, stream.end_time, now);
-
+        let earned_unclaimed = vested
+            .checked_sub(stream.claimed_amount)
+            .ok_or(PaymentError::StreamInvariantViolated)?;
         let unvested = stream.total_amount.saturating_sub(vested);
 
         stream.cancelled = true;
+        stream.claimed_amount = vested;
         env.storage()
             .persistent()
             .set(&(STREAM_KEY, stream_id), &stream);
@@ -2581,10 +2591,13 @@ impl OphirPayContract {
             .persistent()
             .extend_ttl(&(STREAM_KEY, stream_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
 
+        let token_client = token::Client::new(&env, &stream.asset);
+        let contract_addr = env.current_contract_address();
+        if earned_unclaimed > 0 {
+            token_client.transfer(&contract_addr, &stream.recipient, &earned_unclaimed);
+            add_locked(&env, -earned_unclaimed);
+        }
         if unvested > 0 {
-            // Reentrancy-guarded transfer (MEDIUM-4)
-            let token_client = token::Client::new(&env, &stream.asset);
-            let contract_addr = env.current_contract_address();
             token_client.transfer(&contract_addr, &creator, &unvested);
             add_locked(&env, -unvested);
         }

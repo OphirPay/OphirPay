@@ -60,12 +60,17 @@ jobs:
         run: node scripts/generate-api-client.mjs --check
 
   # ══════════════════════════════════════════════════════════════
-  # 3. UNIT TESTS — Vitest (800 frontend tests)
+  # 3. UNIT TESTS — Vitest (3000+ frontend tests)
   # ══════════════════════════════════════════════════════════════
   unit-tests:
     name: "3️⃣ Frontend — Unit Tests (Vitest)"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # The suite is ~3000 tests across ~225 files and does not finish in five
+    # minutes; the old cap killed the runner mid-suite, which reported as a
+    # red job even with every assertion still passing. 30 leaves headroom for a
+    # cold cache without letting a genuinely hung suite burn a runner for an
+    # hour.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'

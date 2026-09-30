@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { z } from "zod";
 import { getAuthContext } from "@/lib/auth-session";
@@ -23,13 +24,13 @@ export interface ApiRouteOptions<TBody extends z.ZodTypeAny = any, TQuery extend
 export interface ApiRouteContext<TBody = any, TQuery = any, TParams = any> {
   params: TParams;
   auth: NonNullable<Awaited<ReturnType<typeof getAuthContext>>> | null;
-  body: TBody;
-  query: TQuery;
+  body: TBody | undefined;
+  query: TQuery | undefined;
 }
 
 export function apiRoute<
-  TBody extends z.ZodTypeAny = any,
-  TQuery extends z.ZodTypeAny = any,
+  TBody extends z.ZodTypeAny = z.ZodTypeAny,
+  TQuery extends z.ZodTypeAny = z.ZodTypeAny,
   TParams = any
 >(
   options: ApiRouteOptions<TBody, TQuery>,
@@ -56,7 +57,7 @@ export function apiRoute<
       }
 
       // 3. Body Parsing
-      let parsedBody = undefined;
+      let parsedBody: any = undefined;
       if (options.bodySchema) {
         let rawBody;
         try {
@@ -70,7 +71,7 @@ export function apiRoute<
       }
 
       // 4. Query Parsing
-      let parsedQuery = undefined;
+      let parsedQuery: any = undefined;
       if (options.querySchema) {
         const url = new URL(request.url);
         const searchParams = Object.fromEntries(url.searchParams.entries());
@@ -84,8 +85,8 @@ export function apiRoute<
       return await handler(request, {
         params: awaitedParams,
         auth,
-        body: parsedBody,
-        query: parsedQuery,
+        body: parsedBody as z.infer<TBody>,
+        query: parsedQuery as z.infer<TQuery>,
       });
     } catch (err) {
       return handleApiError(err, options.name || `${request.method} ${request.url}`);

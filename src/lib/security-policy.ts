@@ -1,0 +1,1 @@
+The full content of `src/lib/security-policy.ts` has been created to define the CSP directives as structured data and the rate-limit defaults and client-IP header order.

@@ -1,22 +1,34 @@
 // SPDX-License-Identifier: MIT
 
-import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { isValidStellarAddress } from "@/lib/stellar";
+import { buildSep7PayUri } from "@/lib/stellar-uri";
+import prisma from "@/lib/prisma";
+import { expireDuePaymentRequests } from "@/lib/payment-request-lifecycle";
+import { formatAmount } from "@/lib/utils";
+import { RequestPaymentConfirmation } from "./RequestPaymentConfirmation";
+import { PayHandoff } from "./PayHandoff";
 
 interface PayPageProps {
   params: Promise<{ address: string }>;
-  searchParams: Promise<{ amount?: string; memo?: string; asset?: string }>;
+  searchParams: Promise<{
+    amount?: string;
+    memo?: string;
+    asset?: string;
+    assetIssuer?: string;
+    issuer?: string;
+    requestId?: string;
+  }>;
 }
 
 /**
  * Shareable payment link route.
- * Redirects to the send form pre-filled with the recipient address and
- * any optional amount/memo/asset query params. Invalid addresses show a
- * clear error instead of crashing.
+ * Offers SEP-7 wallet handoff and a browser-wallet fallback. When a request
+ * id is provided, renders the public invoice with its current lifecycle state.
  */
 export default async function PayPage({ params, searchParams }: PayPageProps) {
   const { address } = await params;
-  const { amount, memo, asset } = await searchParams;
+  const { amount, memo, asset, assetIssuer, issuer, requestId } = await searchParams;
 
   if (!isValidStellarAddress(address)) {
     return (
@@ -56,11 +68,84 @@ export default async function PayPage({ params, searchParams }: PayPageProps) {
     );
   }
 
-  const search = new URLSearchParams();
-  search.set("dest", address);
+  if (requestId) {
+    await expireDuePaymentRequests();
+    const paymentRequest = await prisma.paymentRequest.findUnique({
+      where: { id: requestId },
+    });
+    if (!paymentRequest || paymentRequest.recipientAddress !== address) notFound();
+
+    const requestAmount = paymentRequest.amount.toString();
+    const sendSearch = new URLSearchParams({
+      dest: address,
+      amount: requestAmount,
+      asset: paymentRequest.assetCode,
+      requestId: paymentRequest.id,
+    });
+    const statusLabel =
+      paymentRequest.status === "PAID"
+        ? "This invoice has been paid."
+        : paymentRequest.status === "EXPIRED"
+          ? "This invoice has expired and can no longer be paid."
+          : paymentRequest.status === "CANCELLED"
+            ? "This invoice was cancelled."
+            : null;
+    const paymentUri = buildSep7PayUri({
+      destination: address,
+      amount: requestAmount,
+      assetCode: paymentRequest.assetCode,
+      assetIssuer: paymentRequest.assetIssuer ?? undefined,
+      msg: paymentRequest.description ?? undefined,
+    });
+
+    return (
+      <main className="max-w-lg mx-auto mt-12 px-4">
+        <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8">
+          <p className="text-sm font-medium text-ophir-600 dark:text-ophir-400">
+            OPHIRPAY INVOICE
+          </p>
+          <h1 className="mt-3 text-3xl font-bold text-gray-900 dark:text-white">
+            {formatAmount(Number(paymentRequest.amount), paymentRequest.assetCode)}
+          </h1>
+          {paymentRequest.description && (
+            <p className="mt-3 text-gray-600 dark:text-gray-300">
+              {paymentRequest.description}
+            </p>
+          )}
+          {paymentRequest.dueDate && (
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              Due {paymentRequest.dueDate.toLocaleDateString()}
+            </p>
+          )}
+          {statusLabel ? (
+            <p className="mt-6 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-sm text-gray-700 dark:text-gray-300">
+              {statusLabel}
+            </p>
+          ) : (
+            <>
+              <PayHandoff
+                paymentUri={paymentUri}
+                sendHref={`/send?${sendSearch.toString()}`}
+              />
+              <RequestPaymentConfirmation requestId={paymentRequest.id} />
+            </>
+          )}
+        </section>
+      </main>
+    );
+  }
+
+  const paymentUri = buildSep7PayUri({
+    destination: address,
+    amount,
+    memo,
+    assetCode: asset,
+    assetIssuer: assetIssuer ?? issuer,
+  });
+  const search = new URLSearchParams({ dest: address });
   if (amount) search.set("amount", amount);
   if (memo) search.set("memo", memo);
   if (asset) search.set("asset", asset);
 
-  redirect(`/send?${search.toString()}`);
+  return <PayHandoff paymentUri={paymentUri} sendHref={`/send?${search.toString()}`} />;
 }

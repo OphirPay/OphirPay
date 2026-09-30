@@ -9,6 +9,7 @@ import {
   setCachedPrice,
   ROUNDING_RULES,
   PRICE_CACHE_TTL_MS,
+  PRICE_CACHE_MAX_AGE_MS,
 } from "@/lib/price";
 
 describe("Price Utility & Precision Rules", () => {
@@ -108,6 +109,20 @@ describe("Price Utility & Precision Rules", () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
+    it("respects a zero cache TTL", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue({
+          ok: true,
+          json: async () => ({ stellar: { usd: 0.13 } }),
+        });
+      global.fetch = mockFetch;
+
+      await fetchXlmPrice();
+      await fetchXlmPrice({ ttlMs: 0 });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
     it("returns stale cached price with warning if refresh fails", async () => {
       setCachedPrice(0.12, "coingecko");
 
@@ -137,6 +152,46 @@ describe("Price Utility & Precision Rules", () => {
       const result = await fetchXlmPrice();
       expect(result.price).toBeNull();
       expect(result.error).toBeDefined();
+    });
+
+    it("rejects malformed or extreme quotes from both sources", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ stellar: { usd: 1e100 } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { amount: "0.12usd" } }),
+        });
+      global.fetch = mockFetch;
+
+      const result = await fetchXlmPrice();
+      expect(result.price).toBeNull();
+      expect(result.error).toBe("XLM/USD price sources unavailable");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not serve a cached quote beyond its maximum stale age", async () => {
+      let now = Date.now();
+      vi.spyOn(Date, "now").mockImplementation(() => now);
+      setCachedPrice(0.12);
+      now += PRICE_CACHE_MAX_AGE_MS + 1;
+      global.fetch = vi.fn().mockRejectedValue(new Error("Network offline"));
+
+      const result = await fetchXlmPrice({ forceRefresh: true });
+      expect(result.price).toBeNull();
+      expect(result.source).toBeNull();
+      expect(result.error).toBe("XLM/USD price sources unavailable");
+    });
+
+    it("does not cache an invalid manually supplied quote", async () => {
+      setCachedPrice(Infinity);
+      global.fetch = vi.fn().mockRejectedValue(new Error("Network offline"));
+
+      const result = await fetchXlmPrice({ forceRefresh: true });
+      expect(result.price).toBeNull();
     });
 
     it("cleans up timeout timers when fetch rejects immediately", async () => {
@@ -177,6 +232,10 @@ describe("Price Utility & Precision Rules", () => {
       expect(convertXlmToUsd(100, 0)).toBeNull();
       expect(convertXlmToUsd(100, -0.1)).toBeNull();
       expect(convertXlmToUsd("invalid", 0.15)).toBeNull();
+      expect(convertXlmToUsd("1x", 0.15)).toBeNull();
+      expect(convertXlmToUsd(Infinity, 0.15)).toBeNull();
+      expect(convertXlmToUsd(1, 1e100)).toBeNull();
+      expect(convertXlmToUsd(Number.MAX_VALUE, 0.15)).toBeNull();
     });
   });
 
@@ -212,6 +271,7 @@ describe("Price Utility & Precision Rules", () => {
       expect(formatFiatAmount(null)).toBe("—");
       expect(formatFiatAmount(undefined)).toBe("—");
       expect(formatFiatAmount(NaN)).toBe("—");
+      expect(formatFiatAmount(Infinity)).toBe("—");
       expect(formatFiatAmount(null, { fallback: "Unavailable" })).toBe("Unavailable");
     });
 
@@ -221,6 +281,7 @@ describe("Price Utility & Precision Rules", () => {
       expect(ROUNDING_RULES.XLM_MIN_DECIMALS).toBe(2);
       expect(ROUNDING_RULES.XLM_MAX_DECIMALS).toBe(7);
       expect(PRICE_CACHE_TTL_MS).toBe(60_000);
+      expect(PRICE_CACHE_MAX_AGE_MS).toBe(300_000);
     });
   });
 });

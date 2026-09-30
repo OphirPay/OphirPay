@@ -107,7 +107,10 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | Single payments | ✅ | ✅ |
 | **Batch payments** (multi-recipient in 1 tx) | ✅ | ❌ |
 | **Recurring payment schedules** | ✅ | ❌ |
-| **Payment requests** (invoice-style, QR codes) | ✅ | ❌ |
+| **Payment requests** (shareable invoices, deadlines, expiry notifications, email reminders) | ✅ | ❌ |
+| **Address book CSV import/export** (validated, duplicate-aware) | ✅ | ❌ |
+| **SEP-7 mobile wallet handoff** (standard Stellar payment URIs) | ✅ | ❌ |
+| **XLM fiat pricing** (source fallback, bounded cache, explicit unavailable state) | ✅ | ❌ |
 | **Real-time event streaming** (SSE) | ✅ | ❌ |
 | **Webhook delivery** (HMAC signed, retries) | ✅ | ❌ |
 | **Cross-contract communication** | ✅ | ❌ |
@@ -136,6 +139,8 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 > All features above have dashboard UI pages. See [roadmap](#-roadmap) for details.
 >
 > 📄 **Batch payments CSV import** — see [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md) for the exact CSV format, validation rules, and error messages.
+>
+> 📇 **Address book CSV import/export** — import contacts with `label,address,memo` columns; invalid rows are reported and existing entries are merged by address.
 
 | **Full CI/CD + 3,031 tests (2,867 app + 67 contracts + 97 e2e)** | ✅ | ⚠️ |
 
@@ -823,7 +828,9 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 | ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr) | **Done** |
 | ⏳ Ledger hardware wallet connector | **Pending** — WebUSB integration not shipped |
 | ✅ Stellar assets (USDC, custom tokens, trustline checks) | **Done** |
-| ✅ Payment request links (shareable invoices, QR codes) | **Done** |
+| ✅ Payment request links (shareable invoices, expiry, email notifications and reminders) | **Done** |
+| ✅ Address book CSV import/export with validation | **Done** |
+| ✅ SEP-7 mobile wallet handoff and resilient XLM/USD price display | **Done** |
 | ✅ Webhook delivery (HMAC signed, retries) | **Done** |
 | ✅ PostgreSQL support (provider switching, migrations) | **Done** |
 | ✅ PWA / mobile app (offline fallback, install prompt) | **Done** |

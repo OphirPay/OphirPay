@@ -15,6 +15,7 @@ import { verifyCsrf } from "@/lib/csrf";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { withRequestLogging } from "@/lib/request-logging";
+import { expireDuePaymentRequests } from "@/lib/payment-request-lifecycle";
 
 export const GET = withMetrics("GET /api/requests", withRequestLogging(async function GET(request: Request) {
   try {
@@ -25,6 +26,7 @@ export const GET = withMetrics("GET /api/requests", withRequestLogging(async fun
       );
     }
 
+    await expireDuePaymentRequests();
     const requests = await prisma.paymentRequest.findMany({
       where: { userId: auth.userId },
       orderBy: { createdAt: "desc" },
@@ -58,6 +60,9 @@ export const POST = withMetrics("POST /api/requests", withRequestLogging(async f
         assetIssuer: parsed.data.assetIssuer,
         description: parsed.data.description,
         recipientAddress: parsed.data.recipientAddress,
+        recipientEmail: parsed.data.recipientEmail,
+        notificationEmail: parsed.data.notificationEmail,
+        dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : undefined,
         userId: auth.userId,
       },
     });

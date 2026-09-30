@@ -913,6 +913,62 @@ paths:
           description: Payment request created
         "400":
           $ref: "#/components/responses/ValidationError"
+  /api/requests/{id}/paid:
+    post:
+      tags: [Payment Requests]
+      summary: Confirm payment for a payment request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transactionHash]
+              properties:
+                transactionHash: { type: string }
+      responses:
+        "200":
+          description: Payment request marked as paid
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/requests/{id}/remind:
+    post:
+      tags: [Payment Requests]
+      summary: Email a reminder for a payment request
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Reminder email sent
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/requests/expire:
+    get:
+      tags: [Payment Requests]
+      summary: Expire overdue payment requests
+      description: Invoked by the scheduled job with the configured cron secret.
+      responses:
+        "200":
+          description: Number of payment requests expired
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Expiry scheduler is not configured
 
   # ── Webhooks ──────────────────────────────────────────────
   /api/webhooks:

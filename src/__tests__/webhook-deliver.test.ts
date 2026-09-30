@@ -187,6 +187,7 @@ describe("deliverWebhook", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    vi.unstubAllEnvs();
   });
 
   it("sends the signed body, the timestamp header, and does not follow redirects (SSRF guard)", async () => {
@@ -273,5 +274,21 @@ describe("deliverWebhook", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(ok.attempts).toBe(2);
     expect(ok.statusCode).toBe(500);
+  });
+
+  it("times out a hanging receiver at the configured per-attempt budget", async () => {
+    vi.stubEnv("WEBHOOK_TIMEOUT_MS", "10");
+    globalThis.fetch = vi.fn(() => new Promise<Response>(() => {})) as unknown as typeof fetch;
+
+    const result = await deliverWebhook(
+      "https://example.com/hook",
+      SECRET,
+      samplePayload,
+      1,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.attempts).toBe(1);
+    expect(result.errorMessage).toBe("Webhook delivery timed out after 10ms");
   });
 });

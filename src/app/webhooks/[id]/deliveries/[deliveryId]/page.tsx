@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useApiQuery } from "@/hooks/useApiQuery";
+import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
 import { Badge } from "@/components/ui/Badge";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
+import { Button } from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
 
 interface DeliveryData {
   id: string;
@@ -17,7 +20,8 @@ interface DeliveryData {
   signature: string | null;
   requestHeaders: string | null;
   test: boolean;
-  status: number | null;
+  attempts: number;
+  status: "SUCCESS" | "FAILED" | "DEAD_LETTER";
   responseBody: string | null;
   durationMs: number | null;
   error: string | null;
@@ -27,12 +31,30 @@ interface DeliveryData {
 export default function WebhookDeliveryPage() {
   const params = useParams<{ id: string; deliveryId: string }>();
   const router = useRouter();
+  const toast = useToast();
   const id = params?.id as string;
   const deliveryId = params?.deliveryId as string;
   const { data: delivery, isLoading } = useApiQuery<DeliveryData>(
     ["webhook-delivery", id, deliveryId],
     `/api/webhooks/${id}/deliveries/${deliveryId}`,
   );
+  const [redelivering, setRedelivering] = useState(false);
+  const redeliverMutation = useApiMutation<Record<string, never>, { status: string }>(
+    `/api/webhooks/${id}/deliveries/${deliveryId}/redeliver`,
+  );
+
+  const redeliver = async () => {
+    setRedelivering(true);
+    try {
+      const result = await redeliverMutation.mutateAsync({});
+      toast.success("Redelivery complete", `Delivery status: ${result.status}.`);
+    } catch (err) {
+      const apiErr = err as ApiError;
+      toast.error("Redelivery failed", apiErr.message || "Please try again.");
+    } finally {
+      setRedelivering(false);
+    }
+  };
 
   if (isLoading) {
     return <div className="h-64 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />;
@@ -69,7 +91,13 @@ export default function WebhookDeliveryPage() {
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
           <p className="text-xs text-gray-400">Response status</p>
           <p className="text-lg font-semibold text-gray-900 dark:text-white mt-1">
-            {delivery.status ?? "No response"}
+            {delivery.status === "DEAD_LETTER" ? "Dead letter" : delivery.status}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+          <p className="text-xs text-gray-400">Attempts</p>
+          <p className="text-lg font-semibold text-gray-900 dark:text-white mt-1">
+            {delivery.attempts}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
@@ -78,6 +106,11 @@ export default function WebhookDeliveryPage() {
             {delivery.durationMs == null ? "—" : `${delivery.durationMs} ms`}
           </p>
         </div>
+        {delivery.status !== "SUCCESS" && (
+          <Button onClick={redeliver} disabled={redelivering}>
+            {redelivering ? "Redelivering..." : "Redeliver event"}
+          </Button>
+        )}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
           <p className="text-xs text-gray-400">Event</p>
           <p className="text-lg font-semibold font-mono text-gray-900 dark:text-white mt-1">

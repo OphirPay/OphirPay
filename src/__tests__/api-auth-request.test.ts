@@ -88,6 +88,7 @@ describe("authenticateRequest", () => {
       where: {
         keyHash: { in: apiKeyLookupHashes(RAW_KEY) },
         prefix: deriveKeyPrefix(RAW_KEY),
+        revokedAt: null,
       },
       select: { id: true, userId: true, name: true, expiresAt: true, scopes: true },
     });

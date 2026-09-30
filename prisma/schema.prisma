@@ -575,6 +575,7 @@ model WebhookDelivery {
 enum DeliveryStatus {
   SUCCESS
   FAILED
+  DEAD_LETTER
 }
 
 
@@ -729,6 +730,12 @@ model ApiKey {
   createdAt DateTime @default(now())
   /// Optional expiry — the key stops working after this time.
   expiresAt DateTime?
+  /// Explicit revocation timestamp. Retained for request/audit history.
+  revokedAt DateTime?
+  /// Set during rotation; the former key remains valid until its grace expiry.
+  rotatedAt DateTime?
+  /// Replacement key ID, retained as an audit link.
+  rotatedToId String?
 
   /// Owner of this key (see User).
   user      User     @relation(fields: [userId], references: [id])

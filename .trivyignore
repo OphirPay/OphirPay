@@ -16,6 +16,10 @@
 CVE-2026-13149
 CVE-2026-14257
 CVE-2026-69152
+# (2026-09-30) same npm-bundled brace-expansion 2.0.1 — DoS via crafted/nested
+# brace patterns; only reachable through the npm CLI, which never runs.
+CVE-2026-102276
+CVE-2026-102278
 # cross-spawn
 CVE-2024-21538
 # glob

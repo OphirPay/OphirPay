@@ -2513,15 +2513,17 @@ mod tests {
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
-        let payer = Address::generate(&env);
         let payee = Address::generate(&env);
         let sac = create_token_contract(&env, &owner);
         let _ = client.init(&owner);
 
         let overflow_count: u64 = (MAX_READER_ENTRIES + 5) as u64;
         for _ in 0..overflow_count {
+            // A fresh payer per entry: `record_payment` is idempotent on
+            // (payer, tx_hash) (#804), so reusing one pair for every
+            // iteration would collapse the whole fixture into one payment.
             client.record_payment(
-                &payer,
+                &Address::generate(&env),
                 &payee,
                 &100i128,
                 &sac,
@@ -2572,7 +2574,6 @@ mod tests {
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         let owner = Address::generate(&env);
-        let payer = Address::generate(&env);
         let payee = Address::generate(&env);
         let sac = create_token_contract(&env, &owner);
         let _ = client.init(&owner);
@@ -2584,8 +2585,10 @@ mod tests {
         // reader boundary under test. Each `record_payment` is its own
         // invocation, so the 100 payments themselves fit the budget.
         for _ in 0..MAX_READER_ENTRIES {
+            // See the sibling truncation test: a fresh payer per entry keeps
+            // each `record_payment` a distinct (payer, tx_hash) pair.
             client.record_payment(
-                &payer,
+                &Address::generate(&env),
                 &payee,
                 &100i128,
                 &sac,

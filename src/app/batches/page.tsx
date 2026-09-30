@@ -66,7 +66,11 @@ export default function BatchesPage() {
 
   // ── Currency display preference (issue #795) ───────────────────
   const { currency, setCurrency } = useCurrencyDisplay();
-  const { price: xlmPrice, isUnavailable: priceUnavailable } = useXlmPrice();
+  const {
+    price: xlmPrice,
+    isUnavailable: priceUnavailable,
+    isStale: priceIsStale,
+  } = useXlmPrice();
 
   // Keyset pagination: `cursor` is the boundary of the current page;
   // `cursorStack` remembers prior page boundaries so Previous works.
@@ -202,6 +206,7 @@ export default function BatchesPage() {
             showPrice
             price={xlmPrice}
             isUnavailable={priceUnavailable}
+            isStale={priceIsStale}
           />
           <Link
             href="/batches/new"

@@ -74,6 +74,9 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/scheduled` | GET, POST, DELETE |
 | `/api/scheduled/run` | GET, POST |
 | `/api/requests` | GET, POST |
+| `/api/requests/{id}/paid` | POST |
+| `/api/requests/{id}/remind` | POST |
+| `/api/requests/expire` | GET |
 | `/api/webhooks` | GET, POST, PATCH, DELETE |
 | `/api/webhooks/{id}` | GET |
 | `/api/webhooks/{id}/test` | POST |
@@ -352,23 +355,69 @@ curl -X POST "https://api.ophirpay.com/api/requests" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
   -H "Content-Type: application/json" \
   -d '{
-    "title": "Hardware Prototyping Milestone 1",
-    "requestedAmount": "1500.00",
-    "asset": "USDC",
-    "expiresInHours": 72,
-    "recipient": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+    "amount": 1500,
+    "assetCode": "USDC",
+    "description": "Hardware Prototyping Milestone 1",
+    "recipientAddress": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "recipientEmail": "payer@example.org",
+    "notificationEmail": "finance@example.org",
+    "dueDate": "2026-10-15T00:00:00.000Z"
   }'
 ```
 **Response (`201 Created`):**
 ```json
 {
-  "id": "req_88194fbc",
-  "paymentUrl": "https://ophirpay.com/pay/req_88194fbc",
-  "status": "OPEN",
-  "requestedAmount": "1500.00",
-  "asset": "USDC",
-  "expiresAt": "2026-08-29T18:40:00.000Z",
-  "createdAt": "2026-08-26T18:40:00.000Z"
+  "id": "clx_request_01",
+  "amount": "1500",
+  "assetCode": "USDC",
+  "status": "PENDING",
+  "recipientAddress": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  "recipientEmail": "payer@example.org",
+  "dueDate": "2026-10-15T00:00:00.000Z",
+  "createdAt": "2026-09-29T10:00:00.000Z"
+}
+```
+
+### Send a Payment Reminder
+Reminders require an outstanding request with a payer email address and are limited to one every 24 hours.
+```bash
+curl -X POST "https://api.ophirpay.com/api/requests/clx_request_01/remind" \
+  -H "Authorization: ******"
+```
+**Response (`200 OK`):**
+```json
+{
+  "sent": true,
+  "sentAt": "2026-09-29T10:05:00.000Z"
+}
+```
+
+### Confirm a Payment
+The transaction hash is verified on Stellar against the request recipient, amount, and asset before its status changes.
+```bash
+curl -X POST "https://api.ophirpay.com/api/requests/clx_request_01/paid" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transactionHash": "9b12a84efc713b194d3f5481d9f8e4c3a2105e6b7d8c9a0f1e2d3c4b5a6f7e8d"
+  }'
+```
+**Response (`200 OK`):**
+```json
+{
+  "status": "PAID"
+}
+```
+
+### Expire Overdue Payment Requests
+The scheduled job calls this endpoint with the configured cron secret.
+```bash
+curl "https://api.ophirpay.com/api/requests/expire" \
+  -H "x-cron-secret: $CRON_SECRET"
+```
+**Response (`200 OK`):**
+```json
+{
+  "expired": 3
 }
 ```
 

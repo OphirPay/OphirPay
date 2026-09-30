@@ -8,6 +8,7 @@ import { captureError } from "@/lib/sentry";
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  segment?: string;
 }
 
 interface State {
@@ -28,9 +29,9 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     captureError(error, {
       component: "ErrorBoundary",
+      ...(this.props.segment ? { tags: { segment: this.props.segment } } : {}),
       extra: { componentStack: errorInfo.componentStack },
     });
-    console.error("[OphirPay ErrorBoundary]", error.message, errorInfo.componentStack);
   }
 
   render() {

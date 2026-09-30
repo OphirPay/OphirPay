@@ -94,12 +94,8 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
         message: "SSE stream connected to emitter contract",
       });
 
-      // Teardown when the client disconnects: the controller's signal aborts
-      // when the stream is cancelled/errored at the consumer end (Node >= 20
-      // exposes it on ReadableStreamDefaultController). The request signal is
-      // a fallback for runtimes that surface the drop differently.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- controller.signal is not yet in the TS Streams typings (same pattern as the audit-log SSE route).
-      (controller as any).signal?.addEventListener("abort", teardown, { once: true });
+      // Teardown when the request is aborted; stream cancellation also invokes
+      // the cancel callback below.
       request.signal.addEventListener("abort", teardown, { once: true });
     },
     pull(controller) {

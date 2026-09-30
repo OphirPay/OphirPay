@@ -1,84 +1,105 @@
 // SPDX-License-Identifier: MIT
 
+import { StrKey, TransactionBuilder } from "@stellar/stellar-sdk";
+import { NETWORK_PASSPHRASE, STELLAR_NETWORK } from "@/lib/stellar";
+import type StellarApp from "@ledgerhq/hw-app-str";
 import type { WalletConnector, SignOptions } from "./types";
 
-/**
- * Ledger hardware wallet connector — **pending, not yet supported**.
- *
- * Ledger Nano S / Nano X with the Stellar app provide the highest level of
- * security for signing transactions, but the browser integration is not
- * shipped: `@ledgerhq/hw-transport-webusb` and `@ledgerhq/hw-app-str` are not
- * dependencies, so `connect()` cannot derive an account and `signTransaction()`
- * cannot sign. Rather than offering a wallet that always fails, this connector
- * reports `isAvailable() === false` (keeping it out of `getAvailableWallets()`
- * and out of the connect flow) and the wallet registry marks it `pending` so
- * the selector shows a "Pending" badge instead of "Installed".
- *
- * When the real integration lands it must:
- * - Import `@ledgerhq/hw-transport-webusb` + `@ledgerhq/hw-app-str`.
- * - Derive the account on path `44'/148'/0'` and sign via the Stellar app.
- * - Require a Chromium-based browser (Chrome, Edge, Brave, Opera) because
- *   WebUSB is not exposed by Firefox or Safari, over HTTPS or localhost.
- *
- * Docs: https://www.ledger.com/stellar-wallet
- * Stellar app: https://support.ledger.com/article/360008672033-zd
- */
+const LEDGER_DERIVATION_PATH = "44'/148'/0'";
 
+let ledgerTransport: { close: () => Promise<void> } | null = null;
+let stellarApp: StellarApp | null = null;
 let ledgerPublicKey: string | null = null;
-let ledgerConnected = false;
 
 /**
- * Whether the current browser exposes WebUSB.
- *
- * Ledger's browser transport needs WebUSB, which only Chromium-based browsers
- * implement. Exported so the UI and docs can explain the hardware/browser
- * requirement even while the connector is pending.
+ * Whether the current browser can open Ledger's WebUSB transport.
+ * WebUSB is exposed only in secure contexts and Chromium-based browsers.
  */
 export function isWebUsbSupported(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return "usb" in navigator;
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return false;
+  }
+  return window.isSecureContext && "usb" in navigator && Boolean(navigator.usb);
 }
 
 export const ledgerConnector: WalletConnector = {
   id: "ledger",
   name: "Ledger",
-  description: "Hardware wallet — pending WebUSB integration",
+  description: "Hardware wallet — USB connection with the Stellar app",
   icon: "🔐",
 
   isAvailable(): boolean {
-    // Intentionally unsupported until the transport packages ship. Returning
-    // `false` means the wallet selector never presents a connector that throws
-    // on connect (see the "Supported wallets" table in README.md).
-    return false;
+    return isWebUsbSupported();
   },
 
   async connect() {
-    throw new Error(
-      "Ledger support is pending. OphirPay has not shipped the WebUSB " +
-        "transport yet, so this connector cannot sign transactions. " +
-        "Connect with Freighter, xBull, Rabet, Albedo or Lobstr instead. " +
-        (isWebUsbSupported()
-          ? "This browser supports WebUSB, so Ledger will be available here " +
-            "once the integration lands."
-          : "Note: Ledger will also require a Chromium-based browser " +
-            "(Chrome, Edge, Brave, Opera) because WebUSB is unavailable in this one."),
-    );
-  },
+    if (!isWebUsbSupported()) {
+      throw new Error(
+        "Ledger requires WebUSB in a Chromium-based browser over HTTPS or localhost.",
+      );
+    }
 
-  async disconnect() {
+    const previousTransport = ledgerTransport;
+    ledgerTransport = null;
+    stellarApp = null;
     ledgerPublicKey = null;
-    ledgerConnected = false;
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("ophirpay-wallet-connected");
+    await previousTransport?.close();
+
+    const [{ default: TransportWebUSB }, { default: Stellar }] =
+      await Promise.all([
+        import("@ledgerhq/hw-transport-webusb"),
+        import("@ledgerhq/hw-app-str"),
+      ]);
+    const transport = await TransportWebUSB.create();
+    const app = new Stellar(transport);
+
+    try {
+      const { rawPublicKey } = await app.getPublicKey(
+        LEDGER_DERIVATION_PATH,
+        true,
+      );
+      ledgerTransport = transport;
+      stellarApp = app;
+      ledgerPublicKey = StrKey.encodeEd25519PublicKey(rawPublicKey);
+      return { publicKey: ledgerPublicKey, network: STELLAR_NETWORK };
+    } catch (error) {
+      try {
+        await transport.close();
+      } catch (closeError) {
+        throw new AggregateError(
+          [error, closeError],
+          "Ledger connection failed and the USB transport could not be closed.",
+        );
+      }
+      throw error;
     }
   },
 
-  async signTransaction(_xdr: string, _opts?: SignOptions) {
-    // Unreachable in practice: connect() throws first. Kept as a typed guard
-    // so callers that reach the signer directly get an honest error.
-    throw new Error(
-      "Ledger support is pending — this connector cannot sign transactions yet.",
+  async disconnect() {
+    const transport = ledgerTransport;
+    ledgerTransport = null;
+    stellarApp = null;
+    ledgerPublicKey = null;
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("ophirpay-wallet-connected");
+    }
+    await transport?.close();
+  },
+
+  async signTransaction(xdr: string, opts?: SignOptions) {
+    if (!stellarApp || !ledgerPublicKey) {
+      throw new Error("Ledger is not connected. Connect your device and retry.");
+    }
+    const transaction = TransactionBuilder.fromXDR(
+      xdr,
+      opts?.networkPassphrase ?? NETWORK_PASSPHRASE,
     );
+    const { signature } = await stellarApp.signTransaction(
+      LEDGER_DERIVATION_PATH,
+      transaction.signatureBase(),
+    );
+    transaction.addSignature(ledgerPublicKey, signature.toString("base64"));
+    return transaction.toXDR();
   },
 
   async getAddress() {
@@ -86,10 +107,10 @@ export const ledgerConnector: WalletConnector = {
   },
 
   async getNetwork() {
-    return process.env.NEXT_PUBLIC_STELLAR_NETWORK === "TESTNET" ? "TESTNET" : "PUBLIC";
+    return STELLAR_NETWORK;
   },
 
   async isConnected() {
-    return ledgerConnected;
+    return Boolean(ledgerTransport && stellarApp && ledgerPublicKey);
   },
 };

@@ -166,7 +166,7 @@ export default function GovernancePage() {
   const truncated = proposals?.truncated ?? false;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="min-w-0 space-y-6 animate-fade-in">
       {showConnectBanner && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center gap-3">
           <span className="text-amber-500 text-lg">⚠️</span>
@@ -218,16 +218,16 @@ export default function GovernancePage() {
               onAction={() => setShowCreate(true)}
             />
           ) : (
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               {list.map((p) => {
                 const progress = voteProgress(p);
                 return (
-                  <Card key={p.id} className="p-4">
+                  <Card key={p.id} className="min-w-0 p-4">
                     <div className="space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Link href={`/governance/${p.id}`} className="font-semibold text-gray-900 dark:text-white hover:text-ophir-700 dark:hover:text-ophir-300">
+                        <div className="flex min-w-0 items-start justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Link href={`/governance/${p.id}`} className="min-w-0 break-all font-semibold text-gray-900 dark:text-white hover:text-ophir-700 dark:hover:text-ophir-300">
                               {p.title}
                             </Link>
                             <Badge
@@ -250,7 +250,7 @@ export default function GovernancePage() {
                                   : "Closed"}
                             </Badge>
                           </div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                          <p className="break-all text-sm text-gray-500 dark:text-gray-400 mt-1">
                             {p.description}
                           </p>
                           <span className="text-xs text-gray-400 mt-1 block">
@@ -279,12 +279,13 @@ export default function GovernancePage() {
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {isVotingOpen(p) && !p.executed && (
                           <>
                             <Button
                               size="sm"
                               variant="primary"
+                              className="min-h-11"
                               onClick={() => handleVote(p.id, true)}
                               loading={voteMutation.isPending}
                             >
@@ -293,6 +294,7 @@ export default function GovernancePage() {
                             <Button
                               size="sm"
                               variant="secondary"
+                              className="min-h-11"
                               onClick={() => handleVote(p.id, false)}
                               loading={voteMutation.isPending}
                             >
@@ -303,6 +305,7 @@ export default function GovernancePage() {
                         {!isVotingOpen(p) && !p.executed && (
                           <Button
                             size="sm"
+                            className="min-h-11"
                             onClick={() => handleExecute(p.id)}
                             loading={executeMutation.isPending}
                           >

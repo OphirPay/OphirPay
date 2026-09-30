@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { ERROR_CODES, ERROR_STATUS } from "@/lib/error-codes";
+
+const API_ERRORS_DOC = readFileSync(
+  path.join(process.cwd(), "docs", "API_ERRORS.md"),
+  "utf8"
+);
 
 describe("ERROR_CODES", () => {
   it("has at least 200 error codes", () => {
@@ -23,6 +30,24 @@ describe("ERROR_CODES", () => {
     const statusKeys = Object.keys(ERROR_STATUS);
     for (const key of statusKeys) {
       expect(validCodes.has(key)).toBe(true);
+    }
+  });
+
+  it("documents every catalog code with its declared status", () => {
+    const documented = new Map<string, number>();
+    for (const line of API_ERRORS_DOC.split("\n")) {
+      const row = line.match(/^\|\s*(\d{3})\s*\|\s*(.*?)\s*\|\s*.*\|$/);
+      if (!row) continue;
+      for (const [, code] of row[2].matchAll(/`([A-Z][A-Z0-9_]*)`/g)) {
+        documented.set(code, Number(row[1]));
+      }
+    }
+
+    expect([...documented.keys()].sort()).toEqual(
+      Object.keys(ERROR_STATUS).sort()
+    );
+    for (const [code, status] of Object.entries(ERROR_STATUS)) {
+      expect(documented.get(code), `${code} documentation status`).toBe(status);
     }
   });
 

@@ -114,6 +114,52 @@ mod tests {
         assert_eq!(payment.amount, 1000);
         assert_eq!(payment.tx_hash, String::from_str(&env, "tx_hash_abc"));
         assert!(payment.timestamp > 0);
+
+        let duplicate_id = client.record_payment(
+            &payer,
+            &payee,
+            &1000i128,
+            &sac,
+            &String::from_str(&env, "tx_hash_abc"),
+            &String::from_str(&env, "test payment"),
+        );
+        assert_eq!(duplicate_id, id);
+        assert_eq!(client.get_payment_count(), 1);
+    }
+
+    #[test]
+    fn test_record_payment_rejects_idempotency_key_payload_conflict() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let _ = client.init(&owner);
+
+        client.record_payment(
+            &payer,
+            &payee,
+            &1000i128,
+            &sac,
+            &String::from_str(&env, "tx_hash_abc"),
+            &String::from_str(&env, "original"),
+        );
+
+        assert_eq!(
+            client.try_record_payment(
+                &payer,
+                &payee,
+                &2000i128,
+                &sac,
+                &String::from_str(&env, "tx_hash_abc"),
+                &String::from_str(&env, "changed"),
+            ),
+            Err(Ok(PaymentError::PaymentIdempotencyConflict))
+        );
+        assert_eq!(client.get_payment_count(), 1);
     }
 
     #[test]

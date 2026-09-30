@@ -60,7 +60,12 @@ describe("CurrencyToggle Component", () => {
 
   it("displays unavailable indicator when showPrice is true and price is unavailable", () => {
     render(<CurrencyToggle value="USD" onChange={vi.fn()} showPrice={true} isUnavailable={true} />);
-    expect(screen.getByTitle("Price feed unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Price unavailable")).toBeInTheDocument();
+  });
+
+  it("marks a cached quote as stale when the price feeds fail", () => {
+    render(<CurrencyToggle value="USD" onChange={vi.fn()} showPrice price={0.12} isStale />);
+    expect(screen.getByText("Stale price")).toBeInTheDocument();
   });
 });
 
@@ -161,6 +166,22 @@ describe("useXlmPrice Hook", () => {
     expect(result.current.error).toBe("Sources down");
   });
 
+  it("treats malformed and extreme upstream prices as unavailable", async () => {
+    vi.spyOn(priceModule, "fetchXlmPrice").mockResolvedValue({
+      price: Infinity,
+      source: "coingecko",
+    });
+
+    const { result } = renderHook(() => useXlmPrice({ enabled: false }));
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(result.current.price).toBeNull();
+    expect(result.current.isUnavailable).toBe(true);
+    expect(result.current.error).toBe("XLM/USD price sources unavailable");
+  });
+
   it("handles unexpected thrown errors gracefully", async () => {
     vi.spyOn(priceModule, "fetchXlmPrice").mockRejectedValue(new Error("Unexpected crash"));
 
@@ -173,6 +194,31 @@ describe("useXlmPrice Hook", () => {
     expect(result.current.price).toBeNull();
     expect(result.current.error).toBe("Unexpected crash");
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it("drops a stale quote after the maximum cache age on unexpected fetch failure", async () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const fetchSpy = vi.spyOn(priceModule, "fetchXlmPrice");
+    fetchSpy.mockResolvedValueOnce({
+      price: 0.15,
+      source: "coingecko",
+      timestamp: now,
+    });
+    fetchSpy.mockRejectedValueOnce(new Error("Unexpected crash"));
+
+    const { result } = renderHook(() => useXlmPrice({ enabled: false }));
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.price).toBe(0.15);
+
+    now += priceModule.PRICE_CACHE_MAX_AGE_MS + 1;
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(result.current.price).toBeNull();
+    expect(result.current.isUnavailable).toBe(true);
   });
 
   it("supports periodic polling when pollInterval is set", async () => {

@@ -26,7 +26,7 @@
       <img src="https://img.shields.io/github/actions/workflow/status/OphirPay/OphirPay/ci.yml?label=CI&logo=githubactions&logoColor=white" alt="CI" />
     </a>
     <a href="#-testing--quality">
-      <img src="https://img.shields.io/badge/tests-2738%20passed%20(2574%20app%20%2B%2067%20contracts%20%2B%2097%20e2e)-brightgreen.svg" alt="2738 Tests Passing" />
+      <img src="https://img.shields.io/badge/tests-3031%20passed%20(2867%20app%20%2B%2067%20contracts%20%2B%2097%20e2e)-brightgreen.svg" alt="3031 Tests Passing" />
     </a>
     <a href="#-testing--quality">
       <img src="https://img.shields.io/badge/coverage-68.9%25%20overall-brightgreen.svg?logo=vitest" alt="68.9% Overall Coverage" />
@@ -90,7 +90,7 @@
 - [📖 Stellar Glossary](GLOSSARY.md)
 - [🗺 Roadmap](#-roadmap)
 - [🔬 Formal Verification](#-formal-verification)
-- [🛡️ Security Audit](#️-security-audit)
+- [🛡️ Security Audit](#-security-audit)
 - [🔒 Security](#-security)
 - [⚡ Performance & Gas](#-performance--gas)
 - [🌐 Community](#-community)
@@ -109,16 +109,20 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **Payment streams** (vesting, recipient claims, creator cancellation) | ✅ | ❌ |
 | **Batch payments** (multi-recipient in 1 tx) | ✅ | ❌ |
 | **Recurring payment schedules** | ✅ | ❌ |
-| **Payment requests** (invoice-style, QR codes) | ✅ | ❌ |
+| **Payment requests** (shareable invoices, deadlines, expiry notifications, email reminders) | ✅ | ❌ |
+| **Address book CSV import/export** (validated, duplicate-aware) | ✅ | ❌ |
+| **SEP-7 mobile wallet handoff** (standard Stellar payment URIs) | ✅ | ❌ |
+| **XLM fiat pricing** (source fallback, bounded cache, explicit unavailable state) | ✅ | ❌ |
 | **Real-time event streaming** (SSE) | ✅ | ❌ |
 | **Webhook delivery** (HMAC signed, retries) | ✅ | ❌ |
 | **Cross-contract communication** | ✅ | ❌ |
-| **Multi-wallet support** (5 wallets: Freighter, xBull, Rabet, Albedo, Lobstr; Ledger pending) | ✅ | ❌ |
+| **Multi-wallet support** (6 wallets: Freighter, xBull, Rabet, Albedo, Lobstr, Ledger) | ✅ | ❌ |
 | **Multi-asset support** (USDC, custom tokens) | ✅ | ❌ |
 | **Path payments** (cross-asset sends, rate preview, slippage protection) | ✅ | ❌ |
-| **PWA with offline support** | ✅ | ❌ |
+| **PWA with an install prompt and offline fallback page** | ✅ | ❌ |
+| **Discoverable keyboard shortcuts and table navigation** | ✅ | ❌ |
 | **Classified error handling** (3 types, 300 contract variants) | ✅ | ❌ |
-| **Sentry error reporting** (client boundaries, hooks, and API errors) | ✅ | ❌ |
+| **Page error boundaries that preserve dashboard navigation** | ✅ | ❌ |
 | **PostgreSQL + SQLite** (provider switching) | ✅ | ⚠️ |
 | **Multisig approvals** (N-of-M signers) | ✅ | ❌ |
 | **Spending limits + escalation tiers** | ✅ | ❌ |
@@ -137,8 +141,10 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 > All features above have dashboard UI pages. See [roadmap](#-roadmap) for details.
 >
 > 📄 **Batch payments CSV import** — see [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md) for the exact CSV format, validation rules, and error messages.
+>
+> 📇 **Address book CSV import/export** — import contacts with `label,address,memo` columns; invalid rows are reported and existing entries are merged by address.
 
-| **Full CI/CD + 970 tests (806 app + 67 contracts + 97 e2e)** | ✅ | ⚠️ |
+| **Full CI/CD + 3,031 tests (2,867 app + 67 contracts + 97 e2e)** | ✅ | ⚠️ |
 
 ---
 
@@ -160,6 +166,9 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 *11 scenes: Problem → Live Dashboard → Vercel Deployment → Soroban Contracts → Send Payment → Real-Time Events → GitHub README → CI Pipeline → Multisig Security → Open Source → Outro*
 
 **▶️ Watch on [Loom](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)** · [Watch on Vercel](https://ophirpay.vercel.app/demo.mp4)
+
+For local seeded walkthrough setup and the exact scope of `NEXT_PUBLIC_DEMO_MODE`,
+see [docs/DEMO_MODE.md](docs/DEMO_MODE.md).
 
 </div>
 
@@ -304,7 +313,7 @@ OphirPay supports multiple Stellar wallets through a unified connector abstracti
 
 | Feature | Implementation |
 |---|---|
-| **Multi-wallet** | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr (the Ledger connector is pending) |
+| **Multi-wallet** | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr and Ledger hardware wallets |
 | **Connect** | Wallet selector modal → `connector.connect()` |
 | **Disconnect** | Full state reset + connector-specific cleanup |
 | **Session persistence** | Auto-detects existing connections on page load |
@@ -323,18 +332,13 @@ OphirPay supports multiple Stellar wallets through a unified connector abstracti
 | Rabet | Browser extension | ✅ Supported |
 | Albedo | Web-based (no extension) | ✅ Supported |
 | Lobstr | Web-based (SEP-7) | ✅ Supported |
-| Ledger | Hardware (WebUSB) | ⏳ Pending — connector is a stub, not offered in the selector |
+| Ledger | Hardware (WebUSB) | ✅ Supported |
 
-> ⏳ **Ledger is pending.** `src/lib/wallets/ledger.ts` is a stub: it detects
-> WebUSB but the `@ledgerhq/hw-transport-webusb` and `@ledgerhq/hw-app-str`
-> packages are not dependencies, so it cannot sign a transaction. It is marked
-> `pending` in the wallet registry and is therefore not offered in the wallet
-> selector (no "Unable to connect" dead end). Even once implemented, Ledger
-> browser signing requires **WebUSB**, which only Chromium-based browsers
-> (Chrome, Edge, Brave, Opera) expose, over HTTPS or `localhost`, with the
-> Stellar app open on the device. See
+> **Ledger requirements:** connect a Ledger device over USB with its Stellar app
+> open. Browser signing uses WebUSB and is available in Chromium-based browsers
+> (Chrome, Edge, Brave, Opera) over HTTPS or `localhost`. Transactions are
+> signed on-device using the standard `44'/148'/0'` account path. See
 > [docs/STELLAR_101.md](docs/STELLAR_101.md#wallet-connectors--ledger-status).
-> Until then, use Freighter, xBull, Rabet, Albedo or Lobstr.
 
 ```tsx
 // Consuming the wallet anywhere in your app
@@ -392,9 +396,9 @@ OphirPay deploys **two Soroban contracts**. The main `OphirPayContract` handles 
 ```
 OphirPayContract.record_payment(payer, payee, amount, asset, tx_hash, metadata)
   │
-  ├─ 1. Increments payment counter
-  ├─ 2. Stores Payment struct in persistent storage
-  └─ 3. Publishes native Soroban event
+  ├─ 1. Returns the existing payment ID for an identical payer + tx_hash retry
+  ├─ 2. Otherwise increments payment counter and stores the payment
+  └─ 3. Publishes native Soroban event once for the new record
         env.events().publish(("payment", payer, payee), amount)
 
 Browser ←── SSE stream (GET /api/events) ──polls──→ PaymentEventEmitter
@@ -420,7 +424,7 @@ OphirPayContract.emergency_pause_all() / emergency_unpause_all()
 | Function | Access | Description |
 |---|---|---|
 | `init(owner)` | Admin | Initialize contract with owner address |
-| `record_payment(payer, payee, amount, asset, tx_hash, metadata)` | Public | Store payment + publish native Soroban event |
+| `record_payment(payer, payee, amount, asset, tx_hash, metadata)` | Payer-authenticated | Store payment + publish native Soroban event; deduplicate identical retries by payer + `tx_hash` |
 | `cancel_payment(id)` | Public | Cancel a recorded payment |
 | `propose_payment(...)` | Multisig | Propose a multisig payment request |
 | `approve_payment(id)` | Multisig | Approve a multisig payment request |
@@ -569,7 +573,7 @@ cd contracts/emitter && cargo test
 ## 📊 Testing & Quality
 
 ```bash
-# All app tests (2,574 cases across 185 suites)
+# All app tests (2,867 passing cases; 2 skipped)
 npm test
 
 # Coverage report (68.9% overall — 70.2% statements / 66.8% branches / 67.2% functions / 71.5% lines)
@@ -592,9 +596,9 @@ npm run test:visual        # Compare against baselines
 npm run test:visual:update # Update baselines
 ```
 
-### Unit Tests (Vitest) — 2,574 cases
+### Unit Tests (Vitest) — 2,867 cases
 
-All app tests live in `src/__tests__/` (185 files, 2,574 cases): auth & sessions, CSRF, API responses & branches, error codes, contract utilities & invocation, Stellar integration, transaction simulation, webhook URL guard & delivery, validation schemas, type guards, UI components, hooks, loading & error boundaries, and branch coverage suites.
+The Vitest suite reports 2,867 passing cases and 2 skipped, covering auth & sessions, CSRF, API responses & branches, error codes, contract utilities & invocation, Stellar integration, transaction simulation, webhook URL guard & delivery, validation schemas, type guards, UI components, hooks, loading & error boundaries, and branch coverage suites.
 
 ### Coverage budgets (per-directory)
 
@@ -607,6 +611,9 @@ a thinly-covered auth or webhook module. A file must clear every band it matches
 policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md#coverage-ratchet).
 
 ### E2E Tests (Playwright) — 97 cases
+
+See [docs/E2E_TESTING.md](docs/E2E_TESTING.md) for the required running
+server, database, contract configuration, and mocked boundaries.
 
 | Spec | Focus |
 |---|---|
@@ -693,7 +700,7 @@ contract and secret scans:
 |---|---|---|
 | Lint | `eslint . --max-warnings 0` | ESLint with zero-error, zero-warning tolerance |
 | TypeCheck | `tsc --noEmit` | Full project strict type-checking |
-| Unit Tests | `vitest run --reporter=verbose` | 806 app tests across 33 suites |
+| Unit Tests | `vitest run --reporter=verbose` | 2,867 app tests (2 skipped) |
 | Build | `next build` (after `prisma generate`) | Production Next.js build verification |
 | Contracts | `cargo build --target wasm32v1-none` + `cargo test` | Both Soroban contracts to WASM |
 | Deploy Config | `scripts/validate-deploy-config.sh` | Public-config guards on the deploy script |
@@ -757,7 +764,7 @@ the nightly E2E suite (`e2e-nightly.yml`), the Docker image smoke test
 | **Styling** | [Tailwind CSS v4](https://tailwindcss.com) | Utility-first, dark mode, custom theme |
 | **Blockchain** | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org) | Horizon, Soroban RPC, TX building |
 | **Contracts** | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27 | WASM compilation, cross-contract invocation |
-| **Wallet** | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) (pending) | 5-wallet connector abstraction + pending Ledger connector |
+| **Wallet** | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) | 6-wallet connector abstraction, including Ledger hardware signing |
 | **Database** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite | Type-safe ORM, provider switching |
 | **Testing** | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | Unit, integration & E2E coverage |
 | **CI/CD** | [GitHub Actions](https://github.com/features/actions) | Gating pipeline on every PR |
@@ -820,14 +827,16 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 | ✅ Cross-contract communication | **Done** |
 | ✅ SSE event streaming from chain | **Done** |
 | ✅ Mobile responsive UI | **Done** |
-| ✅ CI/CD pipeline + 806 app tests + 67 contract tests + 97 e2e | **Done** |
+| ✅ CI/CD pipeline + 2,867 app tests + 67 contract tests + 97 e2e | **Done** |
 | ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr) | **Done** |
-| ⏳ Ledger hardware wallet connector | **Pending** — WebUSB integration not shipped |
+| ✅ Ledger hardware wallet connector | **Done** — WebUSB Stellar app signing |
 | ✅ Stellar assets (USDC, custom tokens, trustline checks) | **Done** |
-| ✅ Payment request links (shareable invoices, QR codes) | **Done** |
+| ✅ Payment request links (shareable invoices, expiry, email notifications and reminders) | **Done** |
+| ✅ Address book CSV import/export with validation | **Done** |
+| ✅ SEP-7 mobile wallet handoff and resilient XLM/USD price display | **Done** |
 | ✅ Webhook delivery (HMAC signed, retries) | **Done** |
 | ✅ PostgreSQL support (provider switching, migrations) | **Done** |
-| ✅ PWA / mobile app (offline support, install prompt) | **Done** |
+| ✅ PWA / mobile app (offline fallback, install prompt) | **Done** |
 | ✅ Multisig approvals (N-of-M, propose/approve/execute, full UI) | **Done** |
 | ✅ Spending limits + escalation tiers | **Done** |
 | ✅ RBAC (Admin/Operator/Auditor) — full-stack + dashboard UI | **Done** |
@@ -946,7 +955,7 @@ OphirPay is engineered for predictable on-chain costs and fast reads:
 ### Audit-Readiness
 
 - **~300 typed contract error variants** — every failure path returns a machine-readable `PaymentError` (many variants reserved for unimplemented features), mirrored in the TypeScript error catalog and surfaced as clean HTTP/API errors
-- **Invariant tests** — fund-safety (`LOCKED_BALANCE` cap), reentrancy, pause, timelock, and 1-vote-per-address are covered by Rust unit tests (60 in `ophirpay`, 7 in `emitter`) plus 806 app vitest cases
+- **Invariant tests** — fund-safety (`LOCKED_BALANCE` cap), reentrancy, pause, timelock, and 1-vote-per-address are covered by Rust unit tests (60 in `ophirpay`, 7 in `emitter`) plus 2,867 app vitest cases
 - **Zero failing tests** — the full suite is green in CI (`lint`, `typecheck`, `unit-tests`, `contract-wasm`, `next-build`, `e2e`, `secret-scan`)
 - **Threat-modeled web layer** — CSRF, SSRF, HMAC sessions, hashed API keys, rate limiting, and CSP are documented in the Security section above and enforced in code
 - **Manual security review completed** — a full review of both Soroban contracts and the web/API security layer is in [docs/AUDIT.md](docs/AUDIT.md) (2 High, 6 Medium findings); a third-party audit is still pending before mainnet

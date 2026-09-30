@@ -237,6 +237,17 @@ export const createPaymentRequestSchema = z.object({
   assetIssuer: z.string().optional(),
   description: z.string().max(500).optional(),
   recipientAddress: stellarAddress.optional(),
+  recipientEmail: z.string().email().optional(),
+  notificationEmail: z.string().email().optional(),
+  dueDate: z
+    .string()
+    .refine((value) => !Number.isNaN(new Date(value).getTime()), "Due date must be valid")
+    .refine((value) => new Date(value).getTime() > Date.now(), "Due date must be in the future")
+    .optional(),
+});
+
+export const confirmPaymentRequestSchema = z.object({
+  transactionHash: z.string().regex(/^[a-fA-F0-9]{64}$/, "Invalid Stellar transaction hash"),
 });
 
 // ── Pagination (moved from validations.ts) ────────────────────

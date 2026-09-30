@@ -51,7 +51,12 @@ export default function RecurringPage() {
 
   // ── Currency display preference (issue #795) ───────────────────
   const { currency, setCurrency } = useCurrencyDisplay();
-  const { price: xlmPrice, isUnavailable: priceUnavailable } = useXlmPrice();
+  const {
+    price: xlmPrice,
+    isLoading: priceIsLoading,
+    isUnavailable: priceUnavailable,
+    isStale: priceIsStale,
+  } = useXlmPrice();
 
   const [showCreate, setShowCreate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -198,6 +203,7 @@ export default function RecurringPage() {
             showPrice
             price={xlmPrice}
             isUnavailable={priceUnavailable}
+            isStale={priceIsStale}
           />
           <Button onClick={() => setShowCreate(true)}>+ New Recurring</Button>
         </div>
@@ -234,17 +240,26 @@ export default function RecurringPage() {
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-white">
                     {/* Issue #795 — respect persisted currency preference */}
-                    {currency === "USD" && rp.assetCode === "XLM" && xlmPrice !== null
+                    {currency === "USD" &&
+                    rp.assetCode === "XLM" &&
+                    xlmPrice !== null &&
+                    convertXlmToUsd(parseFloat(rp.amount), xlmPrice) !== null
                       ? <>
                           ~{formatFiatAmount(convertXlmToUsd(parseFloat(rp.amount), xlmPrice))}
                           <span className="ml-1.5 text-xs font-normal text-gray-400 dark:text-gray-500">
                             ({formatAmount(parseFloat(rp.amount), rp.assetCode)})
                           </span>
                         </>
-                      : currency === "USD" && rp.assetCode === "XLM" && priceUnavailable
+                      : currency === "USD" && rp.assetCode === "XLM"
                         ? <>
                             {formatAmount(parseFloat(rp.amount), rp.assetCode)}
-                            <span className="ml-1.5 text-xs font-normal text-amber-500">(USD unavailable)</span>
+                            <span className="ml-1.5 text-xs font-normal text-amber-500">
+                              {priceUnavailable
+                                ? "(USD unavailable)"
+                                : priceIsLoading
+                                  ? "(USD price loading)"
+                                  : "(USD amount unavailable)"}
+                            </span>
                           </>
                         : formatAmount(parseFloat(rp.amount), rp.assetCode)
                     }

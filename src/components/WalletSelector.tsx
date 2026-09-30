@@ -121,7 +121,7 @@ export function WalletSelector({
                   </span>
                 ) : isAvailable ? (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
-                    Installed
+                    {wallet.id === "ledger" ? "Available" : "Installed"}
                   </span>
                 ) : (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
@@ -134,17 +134,10 @@ export function WalletSelector({
         })}
       </div>
 
-      {/* Pending connectors */}
-      {WALLET_REGISTRY.some((w) => w.status === "pending") && (
-        <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-          <span className="font-medium text-gray-700 dark:text-gray-300">
-            Ledger is pending:
-          </span>{" "}
-          the hardware connector is not shipped yet and needs WebUSB, which only
-          Chromium-based browsers (Chrome, Edge, Brave, Opera) support. Use
-          Freighter, xBull, Rabet, Albedo or Lobstr for now.
-        </p>
-      )}
+      <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+        Ledger requires a USB-connected device with the Stellar app open, and
+        WebUSB in a Chromium-based browser over HTTPS or localhost.
+      </p>
 
       {/* Error */}
       {error && (

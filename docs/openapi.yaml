@@ -15,6 +15,9 @@ info:
     **Conventions** — see [docs/API_GUIDE.md](./API_GUIDE.md) for the
     endpoint conventions: file structure, Zod validation, error handling,
     auth usage, the response envelope, and rate limiting.
+
+    **Error codes** — see [docs/API_ERRORS.md](./API_ERRORS.md) for the
+    declared status and typical condition for each catalog code.
   version: 0.1.0
   contact:
     name: OphirPay Team
@@ -153,13 +156,46 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreatePaymentRequest"
+            examples:
+              validPayment:
+                summary: Create a 125 XLM payment
+                value:
+                  amount: 125
+                  sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                  destAddress: GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU
+                  assetCode: XLM
+                  description: September invoice 1042
+                  memo: INV-1042
       responses:
         "201":
           description: Payment created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaymentResponse"
+                $ref: "#/components/schemas/PaymentEnvelopeResponse"
+              examples:
+                createdPayment:
+                  summary: Payment created and awaiting submission
+                  value:
+                    success: true
+                    data:
+                      id: cmf4k2q8p0001x9a2b3c4d5e6
+                      amount: 125
+                      assetCode: XLM
+                      assetIssuer: null
+                      description: September invoice 1042
+                      memo: INV-1042
+                      status: CREATED
+                      transactionHash: null
+                      idempotencyKey: 42ce12b8-4d15-4a34-8f52-7b2136a84462
+                      sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                      userId: seed-user-1
+                      batchId: null
+                      createdAt: "2026-09-29T10:00:00.000Z"
+                      completedAt: null
+                      errorMessage: null
+                    meta:
+                      timestamp: "2026-09-29T10:00:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "500":
@@ -181,7 +217,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaymentResponse"
+                $ref: "#/components/schemas/PaymentEnvelopeResponse"
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
@@ -256,7 +292,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaymentResponse"
+                $ref: "#/components/schemas/PaymentEnvelopeResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "404":
@@ -621,6 +657,23 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateBatchRequest"
+            examples:
+              validBatch:
+                summary: Two-recipient XLM payroll batch
+                value:
+                  name: September payroll
+                  description: September payroll payouts
+                  sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                  idempotencyKey: september-payroll-2026
+                  recipients:
+                    - address: GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU
+                      amount: 3200
+                      assetCode: XLM
+                      memo: PAYROLL-001
+                    - address: GA5AZNWWOW5PXPNHBVRJOB2ZPZO3PXN5VTXTXOIJTACZZHE5ZA7CAH7H
+                      amount: 2850
+                      assetCode: XLM
+                      memo: PAYROLL-002
       responses:
         "200":
           description: Already-processed batch returned for a replayed idempotency key (meta.deduplicated is true)
@@ -634,6 +687,56 @@ paths:
                   success: { type: boolean, const: true }
                   data:
                     $ref: "#/components/schemas/BatchResponse"
+                  meta:
+                    type: object
+                    properties:
+                      timestamp: { type: string, format: date-time }
+              examples:
+                createdBatch:
+                  summary: Batch created with two child payments
+                  value:
+                    success: true
+                    data:
+                      id: cmf4k2q8p0002x9a2b3c4d5e7
+                      userId: seed-user-1
+                      name: September payroll
+                      description: September payroll payouts
+                      status: CREATED
+                      createdAt: "2026-09-29T10:00:00.000Z"
+                      updatedAt: "2026-09-29T10:00:00.000Z"
+                      payments:
+                        - id: cmf4k2q8p0003x9a2b3c4d5e8
+                          amount: 3200
+                          assetCode: XLM
+                          assetIssuer: null
+                          description: null
+                          memo: PAYROLL-001
+                          status: CREATED
+                          transactionHash: null
+                          idempotencyKey: 756580f6-82db-4a72-bbd8-0a12792f11a9
+                          sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                          userId: seed-user-1
+                          batchId: cmf4k2q8p0002x9a2b3c4d5e7
+                          createdAt: "2026-09-29T10:00:00.000Z"
+                          completedAt: null
+                          errorMessage: null
+                        - id: cmf4k2q8p0004x9a2b3c4d5e9
+                          amount: 2850
+                          assetCode: XLM
+                          assetIssuer: null
+                          description: null
+                          memo: PAYROLL-002
+                          status: CREATED
+                          transactionHash: null
+                          idempotencyKey: 07682f53-1b06-4eb0-9c8f-6a8c5b4e4d9a
+                          sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                          userId: seed-user-1
+                          batchId: cmf4k2q8p0002x9a2b3c4d5e7
+                          createdAt: "2026-09-29T10:00:00.000Z"
+                          completedAt: null
+                          errorMessage: null
+                    meta:
+                      timestamp: "2026-09-29T10:00:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -913,6 +1016,62 @@ paths:
           description: Payment request created
         "400":
           $ref: "#/components/responses/ValidationError"
+  /api/requests/{id}/paid:
+    post:
+      tags: [Payment Requests]
+      summary: Confirm payment for a payment request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transactionHash]
+              properties:
+                transactionHash: { type: string }
+      responses:
+        "200":
+          description: Payment request marked as paid
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/requests/{id}/remind:
+    post:
+      tags: [Payment Requests]
+      summary: Email a reminder for a payment request
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Reminder email sent
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/requests/expire:
+    get:
+      tags: [Payment Requests]
+      summary: Expire overdue payment requests
+      description: Invoked by the scheduled job with the configured cron secret.
+      responses:
+        "200":
+          description: Number of payment requests expired
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Expiry scheduler is not configured
 
   # ── Webhooks ──────────────────────────────────────────────
   /api/webhooks:
@@ -2180,6 +2339,17 @@ components:
         createdAt: { type: string, format: date-time }
         completedAt: { type: [string, 'null'], format: date-time }
         errorMessage: { type: [string, 'null'] }
+
+    PaymentEnvelopeResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          $ref: "#/components/schemas/PaymentResponse"
+        meta:
+          type: object
+          properties:
+            timestamp: { type: string, format: date-time }
 
     PaginatedPayments:
       type: object

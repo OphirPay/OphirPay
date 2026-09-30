@@ -23,7 +23,7 @@
 //
 //   1. Swap the datasource: uncomment the sqlite block below and comment out
 //      the postgresql block.
-//   2. Drop all four `@db.Decimal(18, 7)` annotations — SQLite has no
+//   2. Drop all five `@db.Decimal(18, 7)` annotations — SQLite has no
 //      fixed-precision numeric type, so Prisma stores Decimal as its own
 //      arbitrary-precision text representation.
 //
@@ -32,6 +32,10 @@
 //   • Enums — PostgreSQL uses native ENUM types; SQLite emulates them as
 //     TEXT columns with client-side validation. Enum *values* are identical
 //     across providers, so `prisma db push` handles the translation.
+//
+//   • Scalar lists — `ApiKey.scopes` is a PostgreSQL String[] field and is
+//     unsupported by Prisma's SQLite connector. SQLite is therefore not a
+//     full-featured substitute; API-key scope work requires PostgreSQL.
 //
 //   • `relationMode = "prisma"` — required by SQLite (it has no foreign-key
 //     enforcement); PostgreSQL supports both modes. Keep it set so the same
@@ -780,4 +784,3 @@ model PaymentSyncRun {
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
 }
-

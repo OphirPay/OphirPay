@@ -581,19 +581,28 @@ DATABASE_URL="postgresql://ophirpay:<password>@<host>:5432/ophirpay" \
 
 ### Connection Pooling (Neon, Supabase)
 
-If your `DATABASE_URL` uses a pooled connection (PgBouncer, Neon), set `DIRECT_DATABASE_URL` for migrations:
+If your `DATABASE_URL` uses a pooled connection (PgBouncer, Neon), Prisma
+migrations need the direct connection. In the committed `prisma/schema.prisma`,
+`directUrl` is commented out, so `DIRECT_DATABASE_URL` alone does not redirect
+Prisma CLI commands. Set `DATABASE_URL` to the direct URL when running
+migrations, or configure `directUrl` in the Prisma datasource:
 
 ```env
 DATABASE_URL=postgresql://user:pass@ep-xxx.pooler.supabase.com:6543/ophirpay
 DIRECT_DATABASE_URL=postgresql://user:pass@ep-xxx.supabase.co:5432/ophirpay
 ```
 
-Prisma uses `DATABASE_URL` at runtime and `DIRECT_DATABASE_URL` for `migrate deploy`.
+The example above documents the two connection strings, but the current
+datasource only reads `DATABASE_URL`. See the
+[Database Provider Compatibility guide](DATABASE_PROVIDERS.md) for details.
 
 ### SQLite (Development Only)
 
 ```bash
-DATABASE_PROVIDER=sqlite npx prisma db push
+# DATABASE_PROVIDER alone does not switch Prisma's datasource.
+# SQLite requires local, uncommitted schema edits first; see:
+# docs/LOCAL_DEV.md and docs/DATABASE_PROVIDERS.md
+npx prisma db push
 ```
 
 > ⚠️ SQLite is for local development only. Production must use PostgreSQL.

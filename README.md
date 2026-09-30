@@ -165,6 +165,9 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 
 **▶️ Watch on [Loom](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)** · [Watch on Vercel](https://ophirpay.vercel.app/demo.mp4)
 
+For local seeded walkthrough setup and the exact scope of `NEXT_PUBLIC_DEMO_MODE`,
+see [docs/DEMO_MODE.md](docs/DEMO_MODE.md).
+
 </div>
 
 ---
@@ -606,6 +609,9 @@ a thinly-covered auth or webhook module. A file must clear every band it matches
 policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md#coverage-ratchet).
 
 ### E2E Tests (Playwright) — 97 cases
+
+See [docs/E2E_TESTING.md](docs/E2E_TESTING.md) for the required running
+server, database, contract configuration, and mocked boundaries.
 
 | Spec | Focus |
 |---|---|

@@ -195,6 +195,8 @@ The file is accessible at:
 - Use environment variables for all sensitive configuration
 - Follow the contract security guidance below for any contract change
 
+### Token Lifecycle and Storage
+
 1. **Token Generation**: Clients request a CSRF token from `GET /api/csrf`.
    The server generates a cryptographically secure random token (256 bits),
    sets it as an `HttpOnly` cookie, and returns the token in the response body.
@@ -207,63 +209,56 @@ The file is accessible at:
    `x-csrf-token` header against the CSRF cookie value using constant-time
    comparison to prevent timing attacks.
 
-### Rules
-
-1. **Do not** exploit the vulnerability beyond what is necessary to demonstrate it
-2. **Do not** access, modify, or delete other users' data
-3. **Do not** disrupt the live service (ophirpay.vercel.app)
-4. **Do not** disclose the vulnerability publicly before it is resolved
-5. Provide a clear proof-of-concept with steps to reproduce
-6. Report vulnerabilities in good faith
-
 - **Production (HTTPS)**: Cookie named `__Host-csrf` with `Secure` attribute
 - **Development (HTTP)**: Cookie named `csrf` without `Secure` attribute
   (browsers reject `__Host-` cookies without Secure on non-localhost HTTP)
 
-1. Report via one of the [private channels](#how-to-report) above
-2. We acknowledge within 48 hours
-3. We validate and determine severity within 5 business days
-4. We ship a fix and publish an advisory
-5. You receive credit in the advisory + reward (with your consent)
-
-> Payouts are in XLM or USDC on Stellar. We follow
-> [CVSS v3.1](https://www.first.org/cvss/v3.1/specification-document) scoring.
+### Enforcement Methods
 
 ```typescript
 // Method 1: Manual enforcement
 import { verifyCsrf } from "@/lib/csrf";
 
-OphirPay implements the following security headers
-([`next.config.ts`](next.config.ts) is the single source of truth for static headers;
-`src/proxy.ts` sets the per-request `Content-Security-Policy` and violation-reporting headers):
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `X-XSS-Protection: 0` (the legacy `1; mode=block` filter is deprecated and
-  must not be re-enabled)
-- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`
-- `Content-Security-Policy` — strict `default-src 'self'`, `connect-src`
-  limited to Stellar/Soroban endpoints, `frame-src` limited to wallet
-  extensions, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
-
-  **Known limitation (issue #697):** `script-src` currently includes
-  `'unsafe-inline'` because this Next 16 build does not reliably propagate a
-  per-request nonce from the middleware layer into the App Router renderer.
-  Next injects several inline hydration/streaming scripts that cannot be
-  removed; without the nonce reaching those scripts the page fails to hydrate.
-  The recommended fix is to verify nonce propagation works end-to-end (browser
-  DevTools should show `nonce="…"` on the framework inline scripts) and then
-  remove `'unsafe-inline'` from the CSP.  Until that is confirmed, the
-  limitation is recorded here and in `docs/AUDIT.md` rather than advertising
-  a control that is not active.  See `src/proxy.ts` for the full rationale.
-
-- `Report-To` / `Reporting-Endpoints` — browsers POST CSP violation reports
-  to `POST /api/csp-report`, which validates, size-limits, and logs them via
-  the structured logger (with PII redaction) and counts them in the
-  `csp_violation_reports_total` metric (issue #698).
+export async function POST(request: Request) {
+  const csrfError = verifyCsrf(request);
+  if (csrfError) return csrfError;
+  // Handler logic here
+}
 
 // Method 2: Higher-order function wrapper
 import { withCsrf } from "@/lib/csrf";
+
+export const POST = withCsrf(async (request: Request) => {
+  // Handler logic here
+});
+```
+
+## Security Headers Policy
+
+OphirPay enforces HTTP security headers across all responses to mitigate clickjacking, MIME-type sniffing, cross-site scripting (XSS), and unauthorized framing.
+
+The authoritative security headers matrix, directive breakdowns, deployment precedence, and rationale for all deliberate relaxations are documented in [`docs/SECURITY_HEADERS.md`](docs/SECURITY_HEADERS.md).
+
+### Authoritative Ownership Architecture
+
+- **Static Headers and Cache Policy ([`next.config.ts`](next.config.ts))**: Single source of truth for baseline security headers (`X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection: 0`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security`, `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`) and content-addressed cache rules across all deployment environments (Vercel, Docker, Kubernetes, standalone Node.js; issue #681, issue #740).
+- **Dynamic Request Interception (`src/proxy.ts`)**: Edge runtime proxy dynamically computing `Content-Security-Policy` (CSP), CSP violation reporting via Reporting API (`Report-To`, `Reporting-Endpoints`), CORS headers, request correlation IDs (`X-Request-Id`), and rate limiting.
+- **Platform Configuration (`vercel.json`)**: Dedicated strictly to platform routing and build commands; explicitly sets zero headers to prevent configuration drift.
+
+### Deliberate Relaxations Overview
+
+- **`script-src 'unsafe-inline'`**: Required because Next.js 16 App Router streaming and inline hydration bootstrap scripts cannot reliably receive per-request nonces across the middleware boundary (tracked in issue #697 and Next.js upstream issue #74803).
+- **`script-src 'wasm-unsafe-eval'`**: Required for WebAssembly execution in the browser for Soroban smart contract interaction and cryptographic verification.
+- **`script-src 'unsafe-eval'`**: Allowed strictly in development (`NODE_ENV !== "production"`) for Fast Refresh and HMR; forbidden in production.
+- **`style-src 'unsafe-inline'`**: Required for Tailwind CSS runtime styling and dynamic component transitions.
+- **`connect-src`**: Restricts network access to self, official Stellar Horizon nodes, Soroban RPC endpoints, Futurenet, and Pulse RPC.
+- **`frame-src`**: Restricts frame targets to self, Freighter (`https://*.freighter.app`), and browser extension wallets (`chrome-extension:`, `moz-extension:`).
+- **`Cross-Origin-Resource-Policy`**: Baseline is `same-origin` on `/(.*)`, relaxed to `cross-origin` on `/api/(.*)` for external integration clients.
+- **`X-XSS-Protection: 0`**: Legacy filter is explicitly disabled to prevent browser XSS auditor vulnerabilities per OWASP standards (issue #681).
+
+See [`docs/SECURITY_HEADERS.md`](docs/SECURITY_HEADERS.md) for the complete policy and verification runbook.
+
+## Smart Contract Security
 
 - All contract functions use proper access control
 - Cross-contract calls are validated and propagate failures atomically (see

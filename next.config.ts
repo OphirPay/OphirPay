@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
 
+// NOTE: for the complete security headers policy, see docs/SECURITY_HEADERS.md.
+//
 // NOTE: the Content-Security-Policy is set per-request in src/proxy.ts
 // Note that 'unsafe-inline' is retained because the per-request nonce never
 // reaches the App Router renderer. A static CSP cannot express that nonce,

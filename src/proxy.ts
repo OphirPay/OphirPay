@@ -39,6 +39,8 @@ function generateRequestId(): string {
 /**
  * Content-Security-Policy for HTML pages.
  *
+ * For the complete policy matrix and layer precedence, see docs/SECURITY_HEADERS.md.
+ *
  * ### Why 'unsafe-inline' is still present in script-src (issue #697)
  *
  * Next.js App Router injects several inline scripts that are not authored by

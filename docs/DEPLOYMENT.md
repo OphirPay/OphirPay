@@ -460,7 +460,9 @@ curl https://ophirpay.com/api/health
 app emits, including `Cache-Control`. Every target — Vercel, Docker, Helm and
 standalone Node — therefore serves identical headers. Do not re-declare these
 headers in `vercel.json`; `src/__tests__/security-headers.test.ts` fails the
-build if the two layers disagree (issues #681 and #740).
+build if the two layers disagree (issues #681 and #740). For the complete
+authoritative matrix of security headers, dynamic CSP directives, and layer
+precedence, see [`docs/SECURITY_HEADERS.md`](SECURITY_HEADERS.md).
 
 | Path | `Cache-Control` | Why |
 |---|---|---|
@@ -634,6 +636,9 @@ curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/api/health
 # 5. Verify database connectivity
 curl -s https://your-domain.com/api/health | jq .database
 # Expected: "connected"
+
+# 6. Verify security headers policy (see docs/SECURITY_HEADERS.md)
+curl -sI https://your-domain.com/ | grep -iE 'content-security-policy|x-content-type-options|x-frame-options|x-xss-protection|referrer-policy|strict-transport-security'
 ```
 
 ### Manual Smoke Test

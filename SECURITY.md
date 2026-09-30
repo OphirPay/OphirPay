@@ -246,16 +246,18 @@ OphirPay implements the following security headers
   limited to Stellar/Soroban endpoints, `frame-src` limited to wallet
   extensions, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
 
-  **Known limitation (issue #697):** `script-src` currently includes
-  `'unsafe-inline'` because this Next 16 build does not reliably propagate a
-  per-request nonce from the middleware layer into the App Router renderer.
-  Next injects several inline hydration/streaming scripts that cannot be
-  removed; without the nonce reaching those scripts the page fails to hydrate.
-  The recommended fix is to verify nonce propagation works end-to-end (browser
-  DevTools should show `nonce="…"` on the framework inline scripts) and then
-  remove `'unsafe-inline'` from the CSP.  Until that is confirmed, the
-  limitation is recorded here and in `docs/AUDIT.md` rather than advertising
-  a control that is not active.  See `src/proxy.ts` for the full rationale.
+  `script-src` is nonce-based: `'self' 'nonce-<per-request>' 'strict-dynamic'
+  'wasm-unsafe-eval'` in production (plus `'unsafe-eval'` in development for
+  HMR). `'unsafe-inline'` is **not** present, so injected inline scripts are
+  blocked. The proxy sets the CSP on the *request* headers so the App Router
+  renderer stamps the nonce on its framework scripts, and forwards it as
+  `x-nonce` for the inline scripts in `src/app/layout.tsx`.
+
+  **History (issues #697 → #1257):** earlier builds kept `'unsafe-inline'`
+  because the nonce appeared not to reach the renderer. Re-tested on
+  next@16.3.4 (2026-09-30): the cause was the proxy setting the CSP only on
+  the response. With the request header set, framework scripts carry
+  `nonce="…"` and pages hydrate with no CSP violations. See `src/proxy.ts`.
 
 - `Report-To` / `Reporting-Endpoints` — browsers POST CSP violation reports
   to `POST /api/csp-report`, which validates, size-limits, and logs them via

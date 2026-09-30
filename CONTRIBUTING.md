@@ -4,6 +4,8 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 
 ## Getting Started
 
+> **Fastest path:** Open this repository in a **Devcontainer** (GitHub Codespaces or VS Code). It automatically provisions Node 20, the pinned Rust toolchain + WASM targets, Postgres, and Redis. Just copy `.env.example` to `.env.local` and run `npm run dev`.
+
 1. Ensure you have **Node.js 20** installed (see `.nvmrc`) — `npm install`
    runs a preflight (`scripts/check-node.mjs`) and aborts with an actionable
    message on any other major, so there is no ambiguity about the supported

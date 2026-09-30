@@ -6,6 +6,23 @@
 
 ---
 
+## 0. Devcontainer (Fastest Path)
+
+If you use **GitHub Codespaces** or **VS Code Devcontainers**, you can skip all local toolchain setup. The repository includes a `.devcontainer` configuration that automatically provisions:
+- Node 20
+- Rust 1.91.0 with the Soroban `wasm32` targets
+- PostgreSQL and Redis (via `docker-compose`)
+
+**Steps:**
+1. Open the project in a Devcontainer.
+2. `cp .env.example .env.local`
+3. `npx prisma db push && npx prisma generate`
+4. `npm run dev`
+
+If you prefer to develop natively on your host machine without containers, continue with the prerequisites below.
+
+---
+
 ## 1. Prerequisites
 
 | Tool | Version | Purpose |

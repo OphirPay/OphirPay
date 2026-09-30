@@ -181,28 +181,32 @@ curl -X POST "https://api.ophirpay.com/api/payments" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
   -H "Content-Type: application/json" \
   -d '{
-    "recipient": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-    "asset": "USDC",
-    "issuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-    "amount": "250.00",
-    "memo": "INV-2026-0881",
-    "memoType": "text",
-    "description": "Consulting invoice payout #0881"
+    "amount": 150.00,
+    "sourceAccountId": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "destAddress": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    "assetCode": "USDC",
+    "assetIssuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    "description": "Consulting invoice payout #0881",
+    "memo": "INV-2026-001"
   }'
 ```
 **Response (`201 Created`):**
 ```json
 {
   "id": "pay_98234ab1c09d",
+  "amount": 150.00,
+  "assetCode": "USDC",
+  "assetIssuer": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  "description": "Consulting invoice payout #0881",
+  "memo": "INV-2026-001",
   "status": "PENDING",
-  "recipient": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-  "sender": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-  "asset": "USDC",
-  "amount": "250.00",
-  "fee": "0.01",
-  "memo": "INV-2026-0881",
   "transactionHash": null,
-  "createdAt": "2026-08-26T18:20:00.000Z"
+  "sourceAccountId": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  "userId": "usr_01hv89q7a4mpx3n",
+  "batchId": null,
+  "createdAt": "2026-08-26T18:15:00.000Z",
+  "completedAt": null,
+  "errorMessage": null
 }
 ```
 
@@ -267,17 +271,20 @@ curl -X POST "https://api.ophirpay.com/api/batches" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
   -H "Content-Type: application/json" \
   -d '{
-    "title": "August Payroll Distribution",
-    "asset": "USDC",
+    "name": "August Payroll Distribution",
+    "description": "Monthly contractor payouts",
+    "sourceAccountId": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
     "recipients": [
       {
         "address": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-        "amount": "3200.00",
+        "amount": 3200.00,
+        "assetCode": "USDC",
         "memo": "PAYROLL-ENG-01"
       },
       {
         "address": "GCKIK6UJJ5GDRV47Z2P3N2V376P5Y4G6Z66N2BJZP3M2M2N2M2N2M2N2",
-        "amount": "2850.00",
+        "amount": 2850.00,
+        "assetCode": "USDC",
         "memo": "PAYROLL-ENG-02"
       }
     ]
@@ -287,27 +294,26 @@ curl -X POST "https://api.ophirpay.com/api/batches" \
 ```json
 {
   "id": "batch_7710a9c82e",
-  "title": "August Payroll Distribution",
-  "status": "DRAFT",
-  "asset": "USDC",
-  "totalAmount": "6050.00",
+  "name": "August Payroll Distribution",
+  "status": "CREATED",
+  "totalAmount": 6050.00,
   "recipientCount": 2,
   "createdAt": "2026-08-26T18:30:00.000Z"
 }
 ```
 
-### Execute a Batch Payment
+### Bulk Cancel Pending Payments in a Batch
 ```bash
-curl -X POST "https://api.ophirpay.com/api/batches/batch_7710a9c82e/execute" \
+curl -X POST "https://api.ophirpay.com/api/batches/batch_7710a9c82e" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
 **Response (`200 OK`):**
 ```json
 {
-  "id": "batch_7710a9c82e",
-  "status": "PROCESSING",
-  "transactionHash": "8f33190e21a8b94ec174591a2bc0d8e12a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d",
-  "submittedAt": "2026-08-26T18:31:00.000Z"
+  "batchId": "batch_7710a9c82e",
+  "cancelled": 2,
+  "skipped": 0,
+  "total": 2
 }
 ```
 
@@ -485,7 +491,8 @@ curl -X POST "https://api.ophirpay.com/api/webhooks" \
   "id": "wh_019a99824c",
   "url": "https://backend.example.com/api/webhooks/ophirpay",
   "events": ["payment.completed", "payment.failed", "escrow.released"],
-  "active": true,
+  "isActive": true,
+  "secret": "whsec_9941a8c0e21b74f39281a",
   "createdAt": "2026-08-26T18:55:00.000Z"
 }
 ```

@@ -261,4 +261,117 @@ describe("OpenAPI schema-conformance", () => {
     }
     expect(failures).toEqual([]);
   });
+
+  it("provides a request example for every operation that accepts a body", () => {
+    const failures: string[] = [];
+    for (const { method, path, operation } of operations) {
+      if (!operation.requestBody) continue;
+      const requestBody = operation.requestBody as Record<string, unknown>;
+      const resolved = requestBody.$ref
+        ? (resolveRef(requestBody.$ref as string) as Record<string, unknown>)
+        : requestBody;
+      const content = resolved?.content as Record<string, Record<string, unknown>> | undefined;
+      const jsonContent = content?.["application/json"];
+      const hasExample =
+        resolved?.example !== undefined ||
+        resolved?.examples !== undefined ||
+        jsonContent?.example !== undefined ||
+        jsonContent?.examples !== undefined ||
+        (content !== undefined &&
+          Object.values(content).some(
+            (c) => c.example !== undefined || c.examples !== undefined
+          ));
+
+      if (!hasExample) {
+        failures.push(`${method} ${path}: requestBody does not declare an example`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("provides a success response example for every path and operation", () => {
+    const failures: string[] = [];
+    for (const { method, path, operation } of operations) {
+      const responses = operation.responses as Record<string, Record<string, unknown>> | undefined;
+      if (!responses) continue;
+
+      const successCodes = Object.keys(responses).filter(
+        (code) => /^2\d\d$/.test(code) || code === "default"
+      );
+      if (successCodes.length === 0) {
+        failures.push(`${method} ${path}: no success response declared`);
+        continue;
+      }
+
+      let hasAtLeastOneExample = false;
+      for (const code of successCodes) {
+        const resp = responses[code];
+        const resolved = resp.$ref
+          ? (resolveRef(resp.$ref as string) as Record<string, unknown>)
+          : resp;
+        const content = resolved?.content as Record<string, Record<string, unknown>> | undefined;
+        const hasExample =
+          code === "204" ||
+          resolved?.example !== undefined ||
+          resolved?.examples !== undefined ||
+          (content !== undefined &&
+            Object.values(content).some(
+              (c) => c.example !== undefined || c.examples !== undefined
+            ));
+        if (hasExample) {
+          hasAtLeastOneExample = true;
+          break;
+        }
+      }
+
+      if (!hasAtLeastOneExample) {
+        failures.push(
+          `${method} ${path}: primary success response (${successCodes.join(", ")}) has no example`
+        );
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("documents machine error codes for error responses", () => {
+    const failures: string[] = [];
+    const componentResponses = (spec.components?.responses ?? {}) as Record<string, Record<string, unknown>>;
+    for (const [name, resp] of Object.entries(componentResponses)) {
+      const content = resp.content as Record<string, Record<string, unknown>> | undefined;
+      const jsonContent = content?.["application/json"];
+      const example = (jsonContent?.example ?? resp.example) as { error?: { code?: string } } | undefined;
+      if (!example?.error?.code) {
+        failures.push(`components.responses.${name}: missing machine error code in example`);
+      }
+      const desc = typeof resp.description === "string" ? resp.description : "";
+      if (!/code:\s*[A-Z_]+/.test(desc)) {
+        failures.push(`components.responses.${name}: description does not mention machine code`);
+      }
+    }
+
+    for (const { method, path, operation } of operations) {
+      const responses = (operation.responses ?? {}) as Record<string, Record<string, unknown>>;
+      for (const [code, resp] of Object.entries(responses)) {
+        if (/^[45]\d\d$/.test(code)) {
+          const resolved = resp.$ref
+            ? (resolveRef(resp.$ref as string) as Record<string, unknown>)
+            : resp;
+          if (!resolved) {
+            failures.push(`${method} ${path} ${code}: unresolvable response`);
+            continue;
+          }
+          const content = resolved.content as Record<string, Record<string, unknown>> | undefined;
+          const jsonContent = content?.["application/json"];
+          const example = (jsonContent?.example ?? resolved.example) as { error?: { code?: string } } | undefined;
+          const hasCodeInExample = Boolean(example?.error?.code);
+          const desc = typeof resolved.description === "string" ? resolved.description : "";
+          const hasCodeInDesc = /code:\s*[A-Z_]+/.test(desc);
+          if (!hasCodeInExample && !hasCodeInDesc && !resp.$ref) {
+            failures.push(`${method} ${path} ${code}: error response does not document machine code`);
+          }
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
 });

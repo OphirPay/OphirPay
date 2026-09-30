@@ -8,11 +8,11 @@ import PaymentsPage from "@/app/payments/page";
 import { useVirtualRows } from "@/hooks/useVirtualRows";
 import type { OnChainPayment } from "@/lib/contracts";
 
-const replaceMock = vi.fn();
+const pushMock = vi.fn();
 let searchParams: URLSearchParams;
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: replaceMock, push: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({ replace: vi.fn(), push: pushMock, prefetch: vi.fn() }),
   usePathname: () => "/payments",
   useSearchParams: () => searchParams,
 }));
@@ -50,7 +50,7 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  replaceMock.mockClear();
+  pushMock.mockClear();
   searchParams = new URLSearchParams("");
 });
 
@@ -101,7 +101,9 @@ describe("PaymentsPage virtualization", () => {
     const loadMore = await screen.findByRole("button", { name: /load more/i });
     loadMore.click();
 
-    expect(replaceMock).toHaveBeenCalledWith(
+    // The page owns its filter/sort/page state in the URL, so growing the page
+    // size goes through the same `updateQuery` push the pagination controls use.
+    expect(pushMock).toHaveBeenCalledWith(
       expect.stringContaining("pageSize=50"),
       { scroll: false }
     );

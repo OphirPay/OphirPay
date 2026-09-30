@@ -42,6 +42,7 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "POST", path: "/api/keys", routeFile: "keys/route.ts", description: "Generate API key" },
   { method: "PATCH", path: "/api/keys", routeFile: "keys/route.ts", description: "Update key scopes" },
   { method: "DELETE", path: "/api/keys", routeFile: "keys/route.ts", description: "Revoke API key" },
+  { method: "POST", path: "/api/keys/[id]/rotate", routeFile: "keys/[id]/rotate/route.ts", description: "Rotate API key with a 24-hour overlap" },
 
   // Payments
   { method: "POST", path: "/api/payments", routeFile: "payments/route.ts", description: "Create payment" },

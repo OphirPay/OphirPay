@@ -20,23 +20,22 @@ export default defineConfig({
       "scripts/**/*.test.{ts,tsx}",
       "tests/**/*.test.{ts,tsx}",
     ],
-    //
     // ── Runner resource guards (CI worker-exit fix) ──────────────────
     //
-    // The full suite (~226 files / ~3000 tests) passed every assertion in
-    // CI but exited 1 with "[vitest-pool]: Worker forks emitted error /
-    // Worker exited unexpectedly" after ~10 minutes. At defaults Vitest
-    // forks one worker per CPU (2 on the CI runner) and holds every
-    // per-file jsdom environment in memory at once (163s of environment
-    // setup alone), so peak memory grows with all files in flight and the
-    // end-of-run worker teardown on a shared runner can OOM/kill forks
-    // after the last test has already passed.
+    // The full suite (~226 files / ~3000 tests) passed every assertion but
+    // CI exited 1 with "[vitest-pool]: Worker forks emitted error / Worker
+    // exited unexpectedly" after ~10 minutes. CI crash dumps show the real
+    // cause: "Ineffective mark-compacts near heap limit" — a forked worker
+    // accumulating per-file state (jsdom environments, Prisma engines)
+    // across 226 files until its V8 heap (~4 GB default) exhausted.
     //
-    // Bounding the pool to 2 forks caps peak memory while keeping a
-    // modest pipeline of files; assertion work is unchanged. If CI
-    // wall-clock becomes a problem, prefer tuning maxWorkers
-    // before re-enabling unbounded parallelism.
-    maxWorkers: 2,
+    // maxWorkers: 1 runs all files through a single fork (no parallel-heap
+    // stacking), and the CI step pairs it with NODE_OPTIONS heap headroom
+    // so the one worker has room for the whole suite. Assertion semantics
+    // are untouched — this is pure scheduling/memory. Long-term fix is
+    // finding the per-file leak; revisit if wall-clock grows past the
+    // 30-minute job timeout as the suite scales.
+    maxWorkers: 1,
     env: {
       NEXT_PUBLIC_CONTRACT_ID: "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET",
       NEXT_PUBLIC_EMITTER_CONTRACT_ID: "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN",

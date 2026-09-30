@@ -74,7 +74,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
-      - run: npx vitest run --reporter=verbose
+      - name: Run unit tests (single fork + heap headroom — see vitest.config.ts)
+        run: npx vitest run --reporter=verbose
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
   # ══════════════════════════════════════════════════════════════
   # 4. NEXT.JS BUILD — Production build verification (issue #677)

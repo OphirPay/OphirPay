@@ -3,6 +3,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import * as sentry from '@/lib/sentry';
+
+const mockCaptureError = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/sentry", () => ({
+  captureError: mockCaptureError,
+}));
 
 // Component that throws
 function BrokenComponent({ shouldThrow }: { shouldThrow: boolean }) {
@@ -47,8 +54,35 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText('Something went wrong')).toBeDefined();
     expect(screen.getByText('Test error')).toBeDefined();
     expect(screen.getByText('Try Again')).toBeDefined();
+    expect(mockCaptureError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Test error" }),
+      expect.objectContaining({ component: "ErrorBoundary" }),
+    );
 
     spy.mockRestore();
+  });
+
+  it('reports the failed segment and component stack', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const captureErrorSpy = vi.spyOn(sentry, 'captureError');
+
+    render(
+      <ErrorBoundary segment="analytics">
+        <BrokenComponent shouldThrow={true} />
+      </ErrorBoundary>
+    );
+
+    expect(captureErrorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Test error' }),
+      expect.objectContaining({
+        component: 'ErrorBoundary',
+        tags: { segment: 'analytics' },
+        extra: { componentStack: expect.any(String) },
+      })
+    );
+
+    captureErrorSpy.mockRestore();
+    consoleSpy.mockRestore();
   });
 
   it('renders without error message when error has no message', () => {

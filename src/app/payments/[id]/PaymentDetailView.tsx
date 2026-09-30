@@ -110,7 +110,7 @@ export default function PaymentDetailView({ id }: { id: string }) {
   );
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="payment-print-page space-y-6 animate-fade-in">
       <Breadcrumb
         items={[
           { label: "Payments", href: "/payments" },
@@ -132,6 +132,13 @@ export default function PaymentDetailView({ id }: { id: string }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="print:hidden inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            Print
+          </button>
           {canDownloadReceipt && (
             <button
               onClick={() =>
@@ -145,7 +152,7 @@ export default function PaymentDetailView({ id }: { id: string }) {
                   memo: payment.memo || undefined,
                 })
               }
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="print:hidden inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -166,7 +173,7 @@ export default function PaymentDetailView({ id }: { id: string }) {
           )}
           <Link
             href="/payments"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="print:hidden inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             ← Back to Payments
           </Link>

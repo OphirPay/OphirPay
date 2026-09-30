@@ -1,15 +1,17 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   getAddressBook,
+  importAddressBookCsv,
   saveAddress,
   removeAddress,
   searchAddressBook,
   type AddressEntry,
 } from "@/lib/address-book";
+import { exportToCsv } from "@/lib/csv";
 import { isValidStellarAddress } from "@/lib/stellar";
 import { shortenAddress, timeAgo } from "@/lib/utils";
 import { Breadcrumb } from "@/components/Breadcrumb";
@@ -51,6 +53,12 @@ export default function AddressBookPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<AddressEntry | null>(null);
   const [editingOriginalKey, setEditingOriginalKey] = useState<string | null>(null);
+  const [importReport, setImportReport] = useState<{
+    added: number;
+    updated: number;
+    rejected: { row: number; message: string }[];
+  } | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     return search.trim() ? searchAddressBook(search.trim()) : contacts;
@@ -116,6 +124,32 @@ export default function AddressBookPage() {
     toast.success("Contact deleted", deleting.label);
   };
 
+  const handleImport = async (file?: File) => {
+    if (!file) return;
+    const result = importAddressBookCsv(await file.text());
+    setImportReport(result);
+    refresh();
+    if (result.added || result.updated) {
+      toast.success(
+        "Address book imported",
+        `${result.added} added, ${result.updated} updated`
+      );
+    }
+    if (importInputRef.current) importInputRef.current.value = "";
+  };
+
+  const handleExport = () => {
+    exportToCsv(
+      contacts.map(({ label, publicKey, memo }) => ({ label, publicKey, memo: memo ?? "" })),
+      [
+        { key: "label", header: "label" },
+        { key: "publicKey", header: "publicKey" },
+        { key: "memo", header: "memo" },
+      ],
+      { filename: "ophirpay-address-book.csv" }
+    );
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
       <Breadcrumb items={[{ label: "Address Book" }]} />
@@ -130,10 +164,53 @@ export default function AddressBookPage() {
             Frequently used Stellar addresses — stored locally in your browser
           </p>
         </div>
-        <Button onClick={openAdd} leftIcon={<PlusIcon />}>
-          Add Contact
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            aria-label="Import address book CSV"
+            data-testid="address-book-csv-input"
+            className="hidden"
+            onChange={(event) => void handleImport(event.target.files?.[0])}
+          />
+          <Button variant="outline" onClick={() => importInputRef.current?.click()}>
+            Import CSV
+          </Button>
+          <Button variant="outline" onClick={handleExport} disabled={!contacts.length}>
+            Export CSV
+          </Button>
+          <Button onClick={openAdd} leftIcon={<PlusIcon />}>
+            Add Contact
+          </Button>
+        </div>
       </div>
+
+      {importReport && (
+        <section
+          aria-label="CSV import results"
+          className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-2"
+          role={importReport.rejected.length ? "alert" : "status"}
+        >
+          <p className="text-sm text-gray-700 dark:text-gray-200">
+            Import complete: {importReport.added} added, {importReport.updated} updated,{" "}
+            {importReport.rejected.length} rejected.
+          </p>
+          {importReport.rejected.length > 0 && (
+            <ul className="text-sm text-red-600 dark:text-red-400 space-y-1">
+              {importReport.rejected.map((entry, index) => (
+                <li key={`${entry.row}-${index}`}>
+                  Row {entry.row}: {entry.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Use label,address (or publicKey),memo columns. Matching addresses update their
+            label; blank memos preserve saved memos.
+          </p>
+        </section>
+      )}
 
       {/* Search */}
       <div className="relative max-w-sm">

@@ -16,7 +16,7 @@ test.describe('Service Worker Offline Behavior', () => {
       const cache = await caches.open('ophirpay-v2-static');
       const keys = await cache.keys();
       const urls = keys.map(req => new URL(req.url).pathname);
-      return urls.includes('/') && urls.includes('/manifest.json');
+      return urls.includes('/') && urls.includes('/manifest.json') && urls.includes('/offline.html');
     });
     expect(hasPrecache).toBe(true);
 

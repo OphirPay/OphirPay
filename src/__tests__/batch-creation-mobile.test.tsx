@@ -2,6 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 
 // Mock the wallet hook
 vi.mock("@/hooks/useMultiWallet", () => ({
@@ -81,8 +82,7 @@ vi.mock("@/components/ui/CopyButton", () => ({
 
 // Mock next/link
 vi.mock("next/link", () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  default: ({ children, href, ...props }: Record<string, any>) => (
+  default: ({ children, href, ...props }: ComponentProps<"a">) => (
     <a href={href} {...props}>
       {children}
     </a>

@@ -25,8 +25,13 @@
 import { getPriceTimeoutMs } from "./timeout";
 
 export const PRICE_CACHE_TTL_MS = 60_000; // 60 seconds
+/** Do not use a cached quote after this grace period, even with a custom TTL. */
+export const PRICE_CACHE_MAX_AGE_MS = 5 * 60_000;
 /** Default when `PRICE_REQUEST_TIMEOUT_MS` is unset (see `lib/timeout.ts`). */
 export const DEFAULT_PRICE_TIMEOUT_MS = 5_000; // 5 seconds
+/** Broad safety limits: quotes outside this range are treated as unavailable. */
+export const MIN_XLM_USD_PRICE = 0.000001;
+export const MAX_XLM_USD_PRICE = 10;
 
 export const ROUNDING_RULES = {
   USD_STANDARD_DECIMALS: 2,
@@ -52,6 +57,25 @@ interface CacheEntry {
 let priceCache: CacheEntry | null = null;
 let pendingPriceFetch: Promise<PriceResult> | null = null;
 
+const NUMERIC_PRICE = /^[+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+const NUMERIC_AMOUNT = /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+function isValidPrice(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= MIN_XLM_USD_PRICE &&
+    value <= MAX_XLM_USD_PRICE
+  );
+}
+
+function parsePrice(value: unknown): number | null {
+  if (typeof value === "number") return isValidPrice(value) ? value : null;
+  if (typeof value !== "string" || !NUMERIC_PRICE.test(value.trim())) return null;
+  const parsed = Number(value);
+  return isValidPrice(parsed) ? parsed : null;
+}
+
 /**
  * Clear cached price. Primarily for testing or manual cache busting.
  */
@@ -67,6 +91,10 @@ export function setCachedPrice(
   price: number,
   source: "coingecko" | "coinbase" = "coingecko"
 ): void {
+  if (!isValidPrice(price)) {
+    priceCache = null;
+    return;
+  }
   priceCache = {
     price,
     source,
@@ -87,17 +115,30 @@ export async function fetchXlmPrice(options?: {
   timeoutMs?: number;
   signal?: AbortSignal;
 }): Promise<PriceResult> {
-  const ttl = options?.ttlMs ?? PRICE_CACHE_TTL_MS;
+  const requestedTtl = options?.ttlMs;
+  const ttl =
+    requestedTtl === undefined
+      ? PRICE_CACHE_TTL_MS
+      : Number.isFinite(requestedTtl)
+        ? Math.max(0, Math.min(requestedTtl, PRICE_CACHE_MAX_AGE_MS))
+        : 0;
   // Configurable per environment (`PRICE_REQUEST_TIMEOUT_MS`), issue #747.
   const timeoutMs = options?.timeoutMs ?? getPriceTimeoutMs();
   const now = Date.now();
 
   // 1. Check in-memory cache
-  if (!options?.forceRefresh && priceCache && now - priceCache.timestamp < ttl) {
+  const cached = priceCache;
+  const cacheAge = cached ? now - cached.timestamp : -1;
+  const cacheIsUsable =
+    cached !== null &&
+    isValidPrice(cached.price) &&
+    cacheAge >= 0 &&
+    cacheAge <= PRICE_CACHE_MAX_AGE_MS;
+  if (!options?.forceRefresh && cacheIsUsable && cacheAge < ttl) {
     return {
-      price: priceCache.price,
+      price: cached.price,
       source: "cached",
-      timestamp: priceCache.timestamp,
+      timestamp: cached.timestamp,
     };
   }
 
@@ -126,8 +167,8 @@ export async function fetchXlmPrice(options?: {
 
       if (res.ok) {
         const data = await res.json();
-        const price = data?.stellar?.usd;
-        if (typeof price === "number" && !isNaN(price) && price > 0) {
+        const price = parsePrice(data?.stellar?.usd);
+        if (price !== null) {
           priceCache = { price, source: "coingecko", timestamp: Date.now() };
           return { price, source: "coingecko", timestamp: priceCache.timestamp };
         }
@@ -156,9 +197,8 @@ export async function fetchXlmPrice(options?: {
 
       if (res.ok) {
         const data = await res.json();
-        const priceStr = data?.data?.amount;
-        const price = typeof priceStr === "string" ? parseFloat(priceStr) : Number(priceStr);
-        if (typeof price === "number" && !isNaN(price) && price > 0) {
+        const price = parsePrice(data?.data?.amount);
+        if (price !== null) {
           priceCache = { price, source: "coinbase", timestamp: Date.now() };
           return { price, source: "coinbase", timestamp: priceCache.timestamp };
         }
@@ -172,12 +212,12 @@ export async function fetchXlmPrice(options?: {
     }
 
     // If cache has a stale price, return it with error indication rather than complete failure if available
-    if (priceCache) {
+    if (cacheIsUsable && cached) {
       return {
-        price: priceCache.price,
+        price: cached.price,
         source: "cached",
         error: "Price sources currently unreachable, using last known price",
-        timestamp: priceCache.timestamp,
+        timestamp: cached.timestamp,
       };
     }
 
@@ -203,13 +243,16 @@ export function convertXlmToUsd(
   xlmAmount: number | string,
   pricePerXlm: number | null | undefined
 ): number | null {
-  if (pricePerXlm === null || pricePerXlm === undefined || isNaN(pricePerXlm) || pricePerXlm <= 0) {
+  if (!isValidPrice(pricePerXlm)) {
     return null;
   }
-  const xlm = typeof xlmAmount === "string" ? parseFloat(xlmAmount) : xlmAmount;
-  if (isNaN(xlm)) return null;
+  const xlm = typeof xlmAmount === "string"
+    ? NUMERIC_AMOUNT.test(xlmAmount.trim()) ? Number(xlmAmount) : NaN
+    : xlmAmount;
+  if (!Number.isFinite(xlm)) return null;
 
-  return xlm * pricePerXlm;
+  const usd = xlm * pricePerXlm;
+  return Number.isFinite(usd) && Math.abs(usd) <= Number.MAX_SAFE_INTEGER ? usd : null;
 }
 
 export interface FormatFiatOptions {
@@ -235,7 +278,7 @@ export function formatFiatAmount(
   options?: FormatFiatOptions
 ): string {
   const fallback = options?.fallback ?? "—";
-  if (usdAmount === null || usdAmount === undefined || isNaN(usdAmount)) {
+  if (usdAmount === null || usdAmount === undefined || !Number.isFinite(usdAmount)) {
     return fallback;
   }
 

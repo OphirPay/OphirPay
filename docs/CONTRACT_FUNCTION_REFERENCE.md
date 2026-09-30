@@ -638,10 +638,12 @@ Returns the pending owner and expiry timestamp, if any.
 ### `record_payment(payer: Address, payee: Address, amount: i128, asset: Address, tx_hash: String, metadata: String) -> Result<u64, PaymentError>`
 
 Records an off-chain payment (typically called by the backend with the
-payer's auth). Returns the payment ID.
+payer's auth). The payer-scoped `tx_hash` is also the idempotency key: an
+identical retry returns the original payment ID without collecting the fee or
+creating another record. Reusing the key with different payment fields fails.
 
 - **Access:** actor auth (`payer.require_auth()`); `require_not_paused`.
-- **Errors:** `ContractPaused` (18), `InvalidAmount` (5), `TokenTransferFailed` (15), `InvalidTokenContract` (80).
+- **Errors:** `ContractPaused` (18), `InvalidAmount` (5), `TokenTransferFailed` (15), `InvalidTokenContract` (80), `PaymentIdempotencyConflict` (309).
 
 ### `get_payment(payment_id: u64) -> Result<Payment, PaymentError>`
 

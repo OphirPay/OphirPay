@@ -103,7 +103,11 @@ describe("dispatchWebhookEvent", () => {
       "w1",
       "evt_1",
       "SUCCESS",
-      { responseCode: 200, isReplay: false }
+      expect.objectContaining({
+        responseCode: 200,
+        isReplay: false,
+        attempts: 1,
+      })
     );
   });
 
@@ -114,7 +118,7 @@ describe("dispatchWebhookEvent", () => {
     expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled();
   });
 
-  it("records a FAILED delivery when the endpoint rejects the payload", async () => {
+  it("dead-letters a delivery when the endpoint rejects the payload", async () => {
     mocks.findMany.mockResolvedValue([webhook("w1", "[]")]);
     mocks.deliverWebhook.mockResolvedValue({
       success: false,
@@ -128,8 +132,12 @@ describe("dispatchWebhookEvent", () => {
     expect(mocks.recordWebhookDelivery).toHaveBeenCalledWith(
       "w1",
       "evt_1",
-      "FAILED",
-      { responseCode: 500, isReplay: false }
+      "DEAD_LETTER",
+      expect.objectContaining({
+        responseCode: 500,
+        isReplay: false,
+        attempts: 3,
+      })
     );
   });
 

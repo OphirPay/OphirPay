@@ -135,7 +135,7 @@ export async function POST(
       data: {
         webhookId: owned.webhook.id,
         eventId: storedEvent.id,
-        status: result.success ? "SUCCESS" : "FAILED",
+        status: result.success ? "SUCCESS" : "DEAD_LETTER",
         responseCode: result.statusCode,
         latencyMs: result.latencyMs,
         attempts: result.attempts,

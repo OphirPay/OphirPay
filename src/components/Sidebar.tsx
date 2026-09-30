@@ -26,6 +26,8 @@ const navItems = [
   { href: "/send", label: "Send", Icon: SendIcon },
   { href: "/address-book", label: "Address Book", Icon: AddressBookIcon },
   { href: "/payments", label: "Payments", Icon: PaymentsIcon },
+  { href: "/escrows", label: "Escrows", Icon: EscrowIcon },
+  { href: "/streams", label: "Streams", Icon: StreamIcon },
   { href: "/batches", label: "Batches", Icon: BatchesIcon },
   { href: "/recurring", label: "Recurring", Icon: RecurringIcon },
   { href: "/requests", label: "Requests", Icon: RequestsIcon },
@@ -48,6 +50,14 @@ const navItems = [
 
 function ApiKeysIcon({ className }: { className?: string }) {
   return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 19.5a7.5 7.5 0 0115 0M15 8.25l3 3m0 0l2.25-2.25M18 11.25l-2.25 2.25" /></svg>;
+}
+
+function EscrowIcon({ className }: { className?: string }) {
+  return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3l8.25 4.5v9L12 21l-8.25-4.5v-9L12 3zm0 0v9m0 9v-9m8.25-4.5L12 12 3.75 7.5" /></svg>;
+}
+
+function StreamIcon({ className }: { className?: string }) {
+  return <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M3 12h12m-12 6h8m5-8l5 2-5 2v-4z" /></svg>;
 }
 
 // Inline SVG icons for new feature pages
@@ -206,6 +216,8 @@ export function Sidebar() {
         onClick={() => setMobileOpen(!mobileOpen)}
         className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-md"
         aria-label="Toggle menu"
+        aria-expanded={mobileOpen}
+        aria-controls="mobile-navigation"
       >
         <div className="w-6 h-6 text-gray-700 dark:text-gray-300">
           {mobileOpen ? <XIcon className="w-6 h-6" /> : <MenuIcon className="w-6 h-6" />}
@@ -218,7 +230,7 @@ export function Sidebar() {
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 z-40 flex-col">
+      <aside aria-label="Desktop sidebar" className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 z-40 flex-col">
         <div className="flex items-center gap-3 px-6 h-16 border-b border-gray-200 dark:border-gray-800">
           <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-ophir-600 to-stellar flex items-center justify-center shadow-lg shadow-ophir-500/30">
             <span className="text-white font-bold text-lg">O</span>
@@ -228,12 +240,15 @@ export function Sidebar() {
             <p className="text-xs text-gray-500 dark:text-gray-400">Stellar Payments</p>
           </div>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
+        <nav aria-label="Primary navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
         {footer}
       </aside>
 
       {/* Mobile sidebar */}
-      <aside className={cn(
+      <aside
+        aria-label="Mobile sidebar"
+        inert={!mobileOpen}
+        className={cn(
         "lg:hidden fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 z-40 flex-col transition-transform duration-300",
         mobileOpen ? "translate-x-0 flex" : "-translate-x-full"
       )}>
@@ -243,7 +258,7 @@ export function Sidebar() {
           </div>
           <div><h1 className="text-lg font-bold text-gray-900 dark:text-white leading-none">OphirPay</h1></div>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
+        <nav id="mobile-navigation" aria-label="Primary navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">{links}</nav>
         {footer}
       </aside>
     </>

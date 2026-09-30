@@ -423,6 +423,7 @@ describe("API Routes: Payments, Batches & Requests", () => {
     it("GET returns user payment requests", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
       const mockRequests = [{ id: "req_1", amount: 50 }];
+      vi.mocked(prisma.paymentRequest.findMany).mockResolvedValueOnce([] as never);
       vi.mocked(prisma.paymentRequest.findMany).mockResolvedValueOnce(mockRequests as never);
 
       const res = await getRequests(new Request("http://localhost/api/requests"));
@@ -456,12 +457,24 @@ describe("API Routes: Payments, Batches & Requests", () => {
           amount: 100,
           assetCode: "XLM",
           description: "Invoice #101",
+          recipientEmail: "payer@example.com",
+          notificationEmail: "owner@example.com",
+          dueDate: "2099-12-31T23:59:59.000Z",
           recipientAddress: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
         })
       );
       expect(res.status).toBe(201);
       const data = await res.json();
       expect(data.data.id).toBe("req_new_1");
+      expect(prisma.paymentRequest.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            recipientEmail: "payer@example.com",
+            notificationEmail: "owner@example.com",
+            dueDate: new Date("2099-12-31T23:59:59.000Z"),
+          }),
+        }),
+      );
     });
   });
 });

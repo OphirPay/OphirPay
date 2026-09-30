@@ -193,7 +193,7 @@ export async function authenticateRequest(
 
   try {
     const apiKey = await prisma.apiKey.findFirst({
-      where: { keyHash: { in: keyHashes }, prefix },
+      where: { keyHash: { in: keyHashes }, prefix, revokedAt: null },
       select: {
         id: true,
         userId: true,

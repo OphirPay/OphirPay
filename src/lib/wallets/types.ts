@@ -93,10 +93,10 @@ export const WALLET_REGISTRY: {
   {
     id: "ledger",
     name: "Ledger",
-    description: "Hardware wallet — pending WebUSB integration",
+    description: "Hardware wallet — USB connection with the Stellar app",
     icon: "🔐",
     priority: 4,
-    status: "pending",
+    status: "supported",
   },
   {
     id: "rabet",

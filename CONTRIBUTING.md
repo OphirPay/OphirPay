@@ -61,6 +61,13 @@ lockfile), but please install with the pinned manager to avoid lockfile churn.
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org)
 - **Before submitting**: Run `npm run ci` (typecheck → lint → test → build)
 
+### Type safety and lint suppressions
+
+Use `unknown` with a type guard or a narrower domain type instead of `any`.
+Type-safety ESLint suppressions should be avoided; when a targeted suppression
+is necessary, keep it to one line and explain why on that line. The zero-warning
+ESLint check runs in CI.
+
 ### Dependency Updates
 
 [Dependabot](.github/dependabot.yml) checks the `npm` (root `package-lock.json`),
@@ -154,6 +161,19 @@ Configure these in **Settings → Branches → Branch protection rules** for `ma
 > **1 approving review** before it can be merged.
 
 ## Testing
+
+### Soroban contract tests
+
+Both contract crates use the same layout:
+
+- Put unit tests that need private implementation details in
+  `contracts/<crate>/src/test.rs`.
+- Put tests that exercise only the public contract API, including integration
+  and property tests, in `contracts/<crate>/tests/`.
+- Run a crate's complete Rust suite with `cd contracts/<crate> && cargo test`.
+
+This keeps implementation-level tests in the unit-test harness and gives
+public-contract tests the same integration-test harness in both crates.
 
 ```bash
 npm test              # Run all tests (800 frontend)

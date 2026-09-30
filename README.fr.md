@@ -27,7 +27,7 @@
 - [✨ Pourquoi OphirPay ?](#-pourquoi-ophirpay)
 - [🚀 Démo en Direct](#-démo-en-direct)
 - [🧭 Architecture du Système](#-architecture-du-système)
-- [⚡ Démarrage Rapide](#-démarrage-rapide)
+- [⚡ Démarrage Rapide](#-démarrage-rapide-60-secondes)
 - [🔐 Intégration de Portefeuille](#-intégration-de-portefeuille)
 - [📡 Événements en Temps Réel](#-événements-en-temps-réel)
 - [🧪 Contrats Intelligents](#-contrats-intelligents)
@@ -61,7 +61,7 @@ La plupart des outils de paiement blockchain sont soit des SDKs orientés dével
 | **Actions admin avec timelock** (délai de 24h) | ✅ | ❌ |
 | **Gouvernance DAO** (proposer→voter→exécuter) | ✅ | ❌ |
 
-> Toutes les fonctionnalités ci-dessus ont des pages d'interface dans le tableau de bord. Voir la [feuille de route](#-feuille-de-route) pour plus de détails.
+> Toutes les fonctionnalités ci-dessus ont des pages d'interface dans le tableau de bord. Voir la [feuille de route](README.md#-roadmap) pour plus de détails.
 
 ---
 

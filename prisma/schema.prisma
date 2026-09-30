@@ -23,7 +23,7 @@
 //
 //   1. Swap the datasource: uncomment the sqlite block below and comment out
 //      the postgresql block.
-//   2. Drop all four `@db.Decimal(18, 7)` annotations — SQLite has no
+//   2. Drop all five `@db.Decimal(18, 7)` annotations — SQLite has no
 //      fixed-precision numeric type, so Prisma stores Decimal as its own
 //      arbitrary-precision text representation.
 //
@@ -32,6 +32,10 @@
 //   • Enums — PostgreSQL uses native ENUM types; SQLite emulates them as
 //     TEXT columns with client-side validation. Enum *values* are identical
 //     across providers, so `prisma db push` handles the translation.
+//
+//   • Scalar lists — `ApiKey.scopes` is a PostgreSQL String[] field and is
+//     unsupported by Prisma's SQLite connector. SQLite is therefore not a
+//     full-featured substitute; API-key scope work requires PostgreSQL.
 //
 //   • `relationMode = "prisma"` — required by SQLite (it has no foreign-key
 //     enforcement); PostgreSQL supports both modes. Keep it set so the same
@@ -453,10 +457,18 @@ model PaymentRequest {
   description   String?
   /// Optional recipient address the request is addressed to.
   recipientAddress String?
+  /// Optional payer email used for reminders.
+  recipientEmail String?
+  /// Optional destination for status notifications; defaults to the owner's email.
+  notificationEmail String?
+  /// Optional deadline after which the request becomes EXPIRED.
+  dueDate       DateTime?
+  /// Most recent manual reminder delivery time (rate limited to once per day).
+  lastReminderAt DateTime?
   /// Lifecycle status (see RequestStatus enum).
   status        RequestStatus @default(PENDING)
   /// Transaction hash once the request is paid.
-  transactionHash String?
+  transactionHash String? @unique
   /// When the request was created.
   createdAt     DateTime @default(now())
   /// Last time any field on this row changed (maintained by Prisma).
@@ -467,6 +479,8 @@ model PaymentRequest {
 
   /// Speeds up "all requests for a user".
   @@index([userId])
+  /// Supports the scheduled due-date expiry sweep.
+  @@index([status, dueDate])
 }
 
 /// Lifecycle of a PaymentRequest.
@@ -561,6 +575,7 @@ model WebhookDelivery {
 enum DeliveryStatus {
   SUCCESS
   FAILED
+  DEAD_LETTER
 }
 
 
@@ -715,6 +730,12 @@ model ApiKey {
   createdAt DateTime @default(now())
   /// Optional expiry — the key stops working after this time.
   expiresAt DateTime?
+  /// Explicit revocation timestamp. Retained for request/audit history.
+  revokedAt DateTime?
+  /// Set during rotation; the former key remains valid until its grace expiry.
+  rotatedAt DateTime?
+  /// Replacement key ID, retained as an audit link.
+  rotatedToId String?
 
   /// Owner of this key (see User).
   user      User     @relation(fields: [userId], references: [id])
@@ -780,4 +801,3 @@ model PaymentSyncRun {
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
 }
-

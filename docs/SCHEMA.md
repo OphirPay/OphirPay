@@ -277,17 +277,25 @@ Lifecycle of a one-off scheduled payment, driven by the cron endpoint
 
 ## Database Providers
 
-OphirPay supports two database providers, switchable via the `DATABASE_PROVIDER` environment variable:
+PostgreSQL is the canonical provider for CI and production. `DATABASE_PROVIDER`
+does not switch Prisma's datasource: the committed `prisma/schema.prisma`
+selects PostgreSQL, and SQLite requires local, uncommitted schema edits.
+SQLite also does not support every production type or migration. See the
+[Database Provider Compatibility guide](DATABASE_PROVIDERS.md) for feature
+differences, the status of all 18 migrations, and data-transfer guidance.
 
 | Provider | Use Case | Connection |
 |---|---|---|
-| **SQLite** | Local development | `file:./dev.db` |
+| **SQLite** | Local experiments only | `file:./dev.db` |
 | **PostgreSQL** | Production (Neon, Supabase, RDS) | Connection string with pooling |
 
 ### Provider-specific notes
 
-- **SQLite**: Used for local development with `npx prisma db push`. No migrations needed.
-- **PostgreSQL**: Used in production with `npx prisma migrate deploy`. Supports connection pooling via `DIRECT_DATABASE_URL`.
+- **SQLite**: Local schema changes use `npx prisma db push`; the PostgreSQL
+  migration history does not apply.
+- **PostgreSQL**: CI and production use `npx prisma migrate deploy`. The
+  committed datasource currently reads `DATABASE_URL`; setting
+  `DIRECT_DATABASE_URL` alone does not redirect Prisma CLI commands.
 
 ---
 

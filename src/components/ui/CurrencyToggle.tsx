@@ -13,6 +13,7 @@ export interface CurrencyToggleProps {
   showPrice?: boolean;
   price?: number | null;
   isUnavailable?: boolean;
+  isStale?: boolean;
 }
 
 /**
@@ -27,6 +28,7 @@ export function CurrencyToggle({
   showPrice = false,
   price,
   isUnavailable = false,
+  isStale = false,
 }: CurrencyToggleProps) {
   const isSm = size === "sm";
 
@@ -74,17 +76,26 @@ export function CurrencyToggle({
         )}
       >
         USD
-        {showPrice && price !== null && price !== undefined && (
+        {showPrice && price !== null && price !== undefined && Number.isFinite(price) && (
           <span className="hidden sm:inline text-[10px] font-mono opacity-75">
             (${price.toFixed(2)})
           </span>
         )}
         {showPrice && isUnavailable && (
           <span
-            className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500"
+            className="text-[10px] font-medium text-amber-600 dark:text-amber-400"
             title="Price feed unavailable"
-            aria-label="Price feed unavailable"
-          />
+          >
+            Price unavailable
+          </span>
+        )}
+        {showPrice && isStale && !isUnavailable && (
+          <span
+            className="text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            title="Using last known price because price feeds are unavailable"
+          >
+            Stale price
+          </span>
         )}
       </button>
     </div>

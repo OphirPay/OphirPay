@@ -183,6 +183,8 @@ Never hand-roll an error body.
 
 Error codes are centralized in **`src/lib/error-codes.ts`** (`ERROR_CODES`) —
 reuse them instead of inventing new strings.
+For the full code/status lookup and notes on runtime messages, see the
+[API error code reference](./API_ERRORS.md).
 
 ---
 

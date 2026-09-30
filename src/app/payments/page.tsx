@@ -5,7 +5,9 @@ import {
   Suspense,
   startTransition,
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   useOptimistic,
   type ReactNode,
@@ -148,7 +150,7 @@ function PaymentsClient() {
   const pathname = usePathname();
 
   // Pre-populate the search box from `?q=` so filtered views are shareable
-  // (Issue #157: the search param lives in the URL).
+  // and keep it in sync when browser history restores an earlier view.
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const debouncedSearch = useDebounce(search, 300);
 
@@ -222,6 +224,38 @@ function PaymentsClient() {
   const dateTo = searchParams.get("dateTo") ?? "";
   const assetFilter = searchParams.get("asset") ?? "";
 
+  const updateQuery = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null) params.delete(key);
+        else params.set(key, value);
+      }
+      const query = params.toString();
+      router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  useEffect(() => {
+    setSearch(searchParams.get("q") ?? "");
+  }, [searchParams]);
+
+  const previousDebouncedSearch = useRef(debouncedSearch);
+  useEffect(() => {
+    if (debouncedSearch === previousDebouncedSearch.current) return;
+    previousDebouncedSearch.current = debouncedSearch;
+    const query = debouncedSearch.trim();
+    if (query !== (searchParams.get("q") ?? "")) {
+      updateQuery({ q: query || null, page: null });
+    }
+  }, [debouncedSearch, searchParams, updateQuery]);
+
+  const assetOptions = useMemo(
+    () => [...new Set(payments.map((payment) => payment.assetCode ?? "XLM"))].sort(),
+    [payments]
+  );
+
   // Client-side search/filter
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase();
@@ -283,16 +317,6 @@ function PaymentsClient() {
   const { activeIndex, getRowProps, onRowsKeyDown, tbodyRef } =
     useTableKeyboardNavigation(visibleRows.length);
 
-  const updateQuery = (updates: Record<string, string | null>) => {
-    const params = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(updates)) {
-      if (value === null) params.delete(key);
-      else params.set(key, value);
-    }
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
-
   const goToPage = (target: number) => updateQuery({ page: target <= 1 ? null : String(target) });
 
   const changePageSize = (size: number) =>
@@ -313,18 +337,24 @@ function PaymentsClient() {
   };
 
   const { currency, setCurrency } = useCurrencyDisplay();
-  const { price: xlmPrice, isUnavailable: isPriceUnavailable } = useXlmPrice();
+  const {
+    price: xlmPrice,
+    isLoading: isPriceLoading,
+    isUnavailable: isPriceUnavailable,
+    isStale: isPriceStale,
+  } = useXlmPrice();
 
   const renderPaymentAmount = (payment: OnChainPayment) => {
     const xlmAmount = payment.amountStroops / XLM_STROOPS;
     if (currency !== "USD") {
       return formatAmount(xlmAmount, "XLM");
     }
-    if (xlmPrice !== null) {
+    const usdAmount = xlmPrice !== null ? convertXlmToUsd(xlmAmount, xlmPrice) : null;
+    if (usdAmount !== null) {
       return (
         <div>
           <span className="font-medium text-gray-900 dark:text-white">
-            {formatFiatAmount(convertXlmToUsd(xlmAmount, xlmPrice), { showApprox: true })}
+            {formatFiatAmount(usdAmount, { showApprox: true })}
           </span>
           <span className="block text-[11px] text-gray-400 dark:text-gray-500">
             {formatAmount(xlmAmount, "XLM")}
@@ -336,7 +366,11 @@ function PaymentsClient() {
       <div>
         <span>{formatAmount(xlmAmount, "XLM")}</span>
         <span className="block text-[11px] text-amber-600 dark:text-amber-400 font-sans">
-          (USD unavailable)
+          {isPriceUnavailable
+            ? "(USD unavailable)"
+            : isPriceLoading
+              ? "(USD price loading)"
+              : "(USD amount unavailable)"}
         </span>
       </div>
     );
@@ -402,6 +436,7 @@ function PaymentsClient() {
             showPrice={currency === "USD"}
             price={xlmPrice}
             isUnavailable={isPriceUnavailable}
+            isStale={isPriceStale}
           />
           <button
             type="button"
@@ -491,6 +526,88 @@ function PaymentsClient() {
         />
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <label className="block text-sm text-gray-600 dark:text-gray-300">
+          <span className="block mb-1">Status</span>
+          <select
+            aria-label="Status filter"
+            value={statusFilter}
+            onChange={(event) =>
+              updateQuery({ status: event.target.value || null, page: null })
+            }
+            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-900 dark:text-white"
+          >
+            <option value="">All statuses</option>
+            <option value="RECORDED">Recorded</option>
+            <option value="CANCELLED">Cancelled</option>
+          </select>
+        </label>
+        <label className="block text-sm text-gray-600 dark:text-gray-300">
+          <span className="block mb-1">From</span>
+          <input
+            aria-label="Filter from date"
+            type="date"
+            value={dateFrom}
+            onChange={(event) =>
+              updateQuery({ dateFrom: event.target.value || null, page: null })
+            }
+            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-900 dark:text-white"
+          />
+        </label>
+        <label className="block text-sm text-gray-600 dark:text-gray-300">
+          <span className="block mb-1">To</span>
+          <input
+            aria-label="Filter to date"
+            type="date"
+            value={dateTo}
+            onChange={(event) =>
+              updateQuery({ dateTo: event.target.value || null, page: null })
+            }
+            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-900 dark:text-white"
+          />
+        </label>
+        <label className="block text-sm text-gray-600 dark:text-gray-300">
+          <span className="block mb-1">Asset</span>
+          <select
+            aria-label="Asset filter"
+            value={assetFilter}
+            onChange={(event) =>
+              updateQuery({ asset: event.target.value || null, page: null })
+            }
+            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-900 dark:text-white"
+          >
+            <option value="">All assets</option>
+            {assetOptions.map((asset) => (
+              <option key={asset} value={asset}>
+                {asset}
+              </option>
+            ))}
+          </select>
+        </label>
+        {(searchParams.has("q") ||
+          statusFilter ||
+          dateFrom ||
+          dateTo ||
+          assetFilter) && (
+          <button
+            type="button"
+            onClick={() =>
+              updateQuery({
+                q: null,
+                status: null,
+                dateFrom: null,
+                dateTo: null,
+                asset: null,
+                page: null,
+              })
+            }
+            className="justify-self-start text-sm text-ophir-600 dark:text-ophir-400 hover:underline"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
       {/* Chain record count */}
       <div className="flex items-center gap-2">
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-xs font-medium text-green-700 dark:text-green-400">
@@ -521,7 +638,14 @@ function PaymentsClient() {
       )}
 
       {/* Empty state / Table */}
-      {!loading && !error && payments.length === 0 && !search ? (
+      {!loading &&
+      !error &&
+      payments.length === 0 &&
+      !search &&
+      !statusFilter &&
+      !dateFrom &&
+      !dateTo &&
+      !assetFilter ? (
         <EmptyState
           icon={
             <svg
@@ -600,8 +724,8 @@ function PaymentsClient() {
                 <tr>
                   <td colSpan={5} className="py-12 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {search
-                        ? "No payments match your search."
+                      {search || statusFilter || dateFrom || dateTo || assetFilter
+                        ? "No payments match your filters."
                         : "No on-chain payments yet — send one from the Send page."}
                     </p>
                   </td>

@@ -11,9 +11,10 @@
 import {
   Asset,
   nativeToScVal,
-  type xdr,
+  xdr,
 } from "@stellar/stellar-sdk";
 import {
+  CHAIN_READ_SOURCE,
   invokeContractFunction,
   submitContractInvocation,
   simulateContractCall,
@@ -101,6 +102,113 @@ async function signAndSubmit(
     const ce = classifyContractError(err);
     return { success: false, error: ce.message };
   }
+}
+
+export async function createEscrow(
+  depositor: string,
+  beneficiary: string,
+  arbiter: string | null,
+  amount: bigint,
+  asset: "native" | string,
+  deadline: number,
+  metadata: string,
+): Promise<ContractCallResult> {
+  const assetAddress = asset === "native"
+    ? Asset.native().contractId(NETWORK_PASSPHRASE)
+    : asset;
+  const args: xdr.ScVal[] = [
+    nativeToScVal(depositor, { type: "address" }),
+    nativeToScVal(beneficiary, { type: "address" }),
+    arbiter ? nativeToScVal(arbiter, { type: "address" }) : xdr.ScVal.scvVoid(),
+    nativeToScVal(amount, { type: "i128" }),
+    nativeToScVal(assetAddress, { type: "address" }),
+    nativeToScVal(deadline, { type: "u64" }),
+    nativeToScVal(metadata, { type: "string" }),
+  ];
+  return signAndSubmit(depositor, CONTRACT_ID, "create_escrow", args);
+}
+
+export async function releaseEscrow(
+  owner: string,
+  escrowId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(owner, CONTRACT_ID, "release_escrow", [
+    nativeToScVal(owner, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+  ]);
+}
+
+export async function releaseEscrowByArbiter(
+  arbiter: string,
+  escrowId: number,
+  releaseToBeneficiary: boolean,
+): Promise<ContractCallResult> {
+  return signAndSubmit(arbiter, CONTRACT_ID, "release_by_arbiter", [
+    nativeToScVal(arbiter, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+    nativeToScVal(releaseToBeneficiary, { type: "bool" }),
+  ]);
+}
+
+export async function claimEscrow(
+  beneficiary: string,
+  escrowId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(beneficiary, CONTRACT_ID, "claim_escrow", [
+    nativeToScVal(beneficiary, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+  ]);
+}
+
+export async function getContractOwner(): Promise<string> {
+  const result = await simulateContractCall(CONTRACT_ID, "get_owner", CHAIN_READ_SOURCE);
+  if (result.status !== "SIMULATED" || typeof result.returnValue !== "string") {
+    throw new Error(result.error || "Unable to read the contract owner.");
+  }
+  return result.returnValue;
+}
+
+export async function createStream(
+  creator: string,
+  recipient: string,
+  totalAmount: bigint,
+  asset: "native" | string,
+  startTime: number,
+  endTime: number,
+  metadata: string,
+): Promise<ContractCallResult> {
+  const assetAddress = asset === "native"
+    ? Asset.native().contractId(NETWORK_PASSPHRASE)
+    : asset;
+  return signAndSubmit(creator, CONTRACT_ID, "create_stream", [
+    nativeToScVal(creator, { type: "address" }),
+    nativeToScVal(recipient, { type: "address" }),
+    nativeToScVal(totalAmount, { type: "i128" }),
+    nativeToScVal(assetAddress, { type: "address" }),
+    nativeToScVal(startTime, { type: "u64" }),
+    nativeToScVal(endTime, { type: "u64" }),
+    nativeToScVal(metadata, { type: "string" }),
+  ]);
+}
+
+export async function claimStream(
+  recipient: string,
+  streamId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(recipient, CONTRACT_ID, "claim_stream", [
+    nativeToScVal(recipient, { type: "address" }),
+    nativeToScVal(streamId, { type: "u64" }),
+  ]);
+}
+
+export async function cancelStream(
+  creator: string,
+  streamId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(creator, CONTRACT_ID, "cancel_stream", [
+    nativeToScVal(creator, { type: "address" }),
+    nativeToScVal(streamId, { type: "u64" }),
+  ]);
 }
 
 // ── Multisig Functions ─────────────────────────────────────────

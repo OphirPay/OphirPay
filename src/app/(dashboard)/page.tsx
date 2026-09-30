@@ -37,8 +37,17 @@ export default function TreasuryDashboard() {
 
   // ── Currency display preference (issue #795) ───────────────────
   const { currency, setCurrency } = useCurrencyDisplay();
-  const { price: xlmPrice, isUnavailable: priceUnavailable } = useXlmPrice();
-
+  const {
+    price: xlmPrice,
+    isLoading: isPriceLoading,
+    isUnavailable: priceUnavailable,
+    isStale: priceIsStale,
+  } = useXlmPrice();
+  const usdPriceStatus = priceUnavailable
+    ? "(USD unavailable)"
+    : isPriceLoading
+      ? "(USD price loading)"
+      : "(USD unavailable)";
   const {
     data,
     isLoading: loading,
@@ -63,6 +72,11 @@ export default function TreasuryDashboard() {
   // On-chain stats (computed from the fetched records)
   const volume = payments.reduce((sum, p) => sum + p.amountStroops / XLM_STROOPS, 0);
   const avgPayment = payments.length > 0 ? volume / payments.length : 0;
+  const totalBalanceUsd = xlmPrice !== null ? convertXlmToUsd(totalBalance, xlmPrice) : null;
+  const volumeUsd = xlmPrice !== null ? convertXlmToUsd(volume, xlmPrice) : null;
+  const avgPaymentUsd = xlmPrice !== null ? convertXlmToUsd(avgPayment, xlmPrice) : null;
+  const walletBalanceUsd =
+    xlmPrice !== null ? convertXlmToUsd(parseFloat(wallet.balance ?? "0"), xlmPrice) : null;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -98,6 +112,7 @@ export default function TreasuryDashboard() {
               showPrice
               price={xlmPrice}
               isUnavailable={priceUnavailable}
+              isStale={priceIsStale}
             />
             <Link href="/send">
               <Button
@@ -137,12 +152,16 @@ export default function TreasuryDashboard() {
                 wallet.balanceLoading ? (
                   "Loading..."
                 ) : currency === "USD" && xlmPrice !== null ? (
-                  <AnimatedNumber
-                    value={convertXlmToUsd(totalBalance, xlmPrice) ?? 0}
-                    format={(n) => formatFiatAmount(n)}
-                  />
-                ) : currency === "USD" && priceUnavailable ? (
-                  <><AnimatedNumber value={totalBalance} format={(n) => formatAmount(n, "XLM")} /><span className="ml-1 text-xs text-amber-500">(USD n/a)</span></>
+                  totalBalanceUsd !== null ? (
+                    <AnimatedNumber
+                      value={totalBalanceUsd}
+                      format={(n) => formatFiatAmount(n)}
+                    />
+                  ) : (
+                    <><AnimatedNumber value={totalBalance} format={(n) => formatAmount(n, "XLM")} /><span className="ml-1 text-xs text-amber-500">{usdPriceStatus}</span></>
+                  )
+                ) : currency === "USD" ? (
+                  <><AnimatedNumber value={totalBalance} format={(n) => formatAmount(n, "XLM")} /><span className="ml-1 text-xs text-amber-500">{usdPriceStatus}</span></>
                 ) : (
                   <AnimatedNumber
                     value={totalBalance}
@@ -180,10 +199,16 @@ export default function TreasuryDashboard() {
             trend="On-chain"
           />
           <StatCard
-            title={currency === "USD" && xlmPrice !== null ? "Volume (USD)" : "Recorded Volume"}
+            title={currency === "USD" && xlmPrice !== null ? "Volume (USD)" : currency === "USD" ? "Volume (USD unavailable)" : "Recorded Volume"}
             value={
               currency === "USD" && xlmPrice !== null ? (
-                <AnimatedNumber value={convertXlmToUsd(volume, xlmPrice) ?? 0} format={(n) => formatFiatAmount(n)} />
+                volumeUsd !== null ? (
+                  <AnimatedNumber value={volumeUsd} format={(n) => formatFiatAmount(n)} />
+                ) : (
+                  <><AnimatedNumber value={volume} format={(n) => formatAmount(n, "XLM")} /><span className="ml-1 text-xs text-amber-500">(USD unavailable)</span></>
+                )
+              ) : currency === "USD" ? (
+                <><AnimatedNumber value={volume} format={(n) => formatAmount(n, "XLM")} /><span className="ml-1 text-xs text-amber-500">{usdPriceStatus}</span></>
               ) : (
                 <AnimatedNumber value={volume} format={(n) => formatAmount(n, "XLM")} />
               )
@@ -192,10 +217,16 @@ export default function TreasuryDashboard() {
             trend={`Last ${payments.length} records`}
           />
           <StatCard
-            title={currency === "USD" && xlmPrice !== null ? "Avg Payment (USD)" : "Avg Payment"}
+            title={currency === "USD" && xlmPrice !== null ? "Avg Payment (USD)" : currency === "USD" ? "Avg Payment (USD unavailable)" : "Avg Payment"}
             value={
               currency === "USD" && xlmPrice !== null ? (
-                <AnimatedNumber value={convertXlmToUsd(avgPayment, xlmPrice) ?? 0} format={(n) => formatFiatAmount(n)} />
+                avgPaymentUsd !== null ? (
+                  <AnimatedNumber value={avgPaymentUsd} format={(n) => formatFiatAmount(n)} />
+                ) : (
+                  <><AnimatedNumber value={avgPayment} format={(n) => formatAmount(n, "XLM")} /><span className="ml-1 text-xs text-amber-500">(USD unavailable)</span></>
+                )
+              ) : currency === "USD" ? (
+                <><AnimatedNumber value={avgPayment} format={(n) => formatAmount(n, "XLM")} /><span className="ml-1 text-xs text-amber-500">{usdPriceStatus}</span></>
               ) : (
                 <AnimatedNumber value={avgPayment} format={(n) => formatAmount(n, "XLM")} />
               )
@@ -231,14 +262,16 @@ export default function TreasuryDashboard() {
                 </p>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {currency === "USD" && xlmPrice !== null ? "Balance (USD)" : "XLM Balance"}
+                    {currency === "USD" && xlmPrice !== null ? "Balance (USD)" : currency === "USD" ? "Balance (USD unavailable)" : "XLM Balance"}
                   </span>
                   <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
                     {wallet.balanceLoading
                       ? "Loading..."
                       : currency === "USD" && xlmPrice !== null
-                        ? formatFiatAmount(convertXlmToUsd(parseFloat(wallet.balance ?? "0"), xlmPrice))
-                        : formatAmount(parseFloat(wallet.balance ?? "0"), "XLM")}
+                        ? walletBalanceUsd !== null
+                          ? formatFiatAmount(walletBalanceUsd)
+                          : <>{formatAmount(parseFloat(wallet.balance ?? "0"), "XLM")}<span className="ml-1 text-xs text-amber-500">(USD unavailable)</span></>
+                        : <>{formatAmount(parseFloat(wallet.balance ?? "0"), "XLM")}{currency === "USD" && <span className="ml-1 text-xs text-amber-500">{usdPriceStatus}</span>}</>}
                   </span>
                 </div>
                 <a
@@ -348,8 +381,10 @@ export default function TreasuryDashboard() {
                       </td>
                       <td className="py-3 pr-4 text-gray-700 dark:text-gray-300 font-mono">
                         {currency === "USD" && xlmPrice !== null
-                          ? <>~{formatFiatAmount(convertXlmToUsd(payment.amountStroops / XLM_STROOPS, xlmPrice))}</>
-                          : formatAmount(payment.amountStroops / XLM_STROOPS, "XLM")
+                          ? convertXlmToUsd(payment.amountStroops / XLM_STROOPS, xlmPrice) !== null
+                            ? <>~{formatFiatAmount(convertXlmToUsd(payment.amountStroops / XLM_STROOPS, xlmPrice))}</>
+                            : <>{formatAmount(payment.amountStroops / XLM_STROOPS, "XLM")}<span className="ml-1 text-amber-500">(USD unavailable)</span></>
+                          : <>{formatAmount(payment.amountStroops / XLM_STROOPS, "XLM")}{currency === "USD" && <span className="ml-1 text-amber-500">{usdPriceStatus}</span>}</>
                         }
                       </td>
                       <td className="py-3 pr-4">

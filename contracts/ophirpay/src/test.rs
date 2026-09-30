@@ -114,6 +114,52 @@ mod tests {
         assert_eq!(payment.amount, 1000);
         assert_eq!(payment.tx_hash, String::from_str(&env, "tx_hash_abc"));
         assert!(payment.timestamp > 0);
+
+        let duplicate_id = client.record_payment(
+            &payer,
+            &payee,
+            &1000i128,
+            &sac,
+            &String::from_str(&env, "tx_hash_abc"),
+            &String::from_str(&env, "test payment"),
+        );
+        assert_eq!(duplicate_id, id);
+        assert_eq!(client.get_payment_count(), 1);
+    }
+
+    #[test]
+    fn test_record_payment_rejects_idempotency_key_payload_conflict() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let _ = client.init(&owner);
+
+        client.record_payment(
+            &payer,
+            &payee,
+            &1000i128,
+            &sac,
+            &String::from_str(&env, "tx_hash_abc"),
+            &String::from_str(&env, "original"),
+        );
+
+        assert_eq!(
+            client.try_record_payment(
+                &payer,
+                &payee,
+                &2000i128,
+                &sac,
+                &String::from_str(&env, "tx_hash_abc"),
+                &String::from_str(&env, "changed"),
+            ),
+            Err(Ok(PaymentError::PaymentIdempotencyConflict))
+        );
+        assert_eq!(client.get_payment_count(), 1);
     }
 
     #[test]
@@ -405,12 +451,20 @@ mod tests {
             &String::from_str(&env, "cancel test"),
         );
 
+        env.ledger().set_timestamp(now + 100);
+        assert_eq!(client.claim_stream(&recipient, &1), 100);
+
         env.ledger().set_timestamp(now + 200);
         let returned = client.cancel_stream(&creator, &1);
         assert_eq!(returned, 800);
 
         let stream = client.get_stream(&1);
         assert!(stream.cancelled);
+        assert_eq!(stream.claimed_amount, 200);
+        assert_eq!(token::Client::new(&env, &sac).balance(&recipient), 200);
+        assert_eq!(token::Client::new(&env, &sac).balance(&creator), 9_800);
+        assert_eq!(client.get_locked_balance(), 0);
+        assert!(client.try_claim_stream(&recipient, &1).is_err());
     }
 
     // ── Vesting Overflow (AUDIT LOW-1 / issue #691) ─────────
@@ -1881,6 +1935,10 @@ mod tests {
         let limit = client.get_spending_limit(&payer);
         assert!(limit.is_some());
         assert!(limit.unwrap().is_active);
+        assert!(matches!(
+            client.check_spending(&payer, &500i128),
+            SpendCheckResult::Approved
+        ));
 
         // Spend within expiry — should succeed
         let id = client.atomic_spend(
@@ -1895,6 +1953,13 @@ mod tests {
 
         // Advance past expiry
         env.ledger().set_timestamp(now + 200);
+
+        // Read-only checks reject an expired limit without mutating it.
+        assert!(matches!(
+            client.check_spending(&payer, &500i128),
+            SpendCheckResult::Rejected
+        ));
+        assert!(client.get_spending_limit(&payer).unwrap().is_active);
 
         // Spend after expiry — should fail
         let result = client.try_atomic_spend(
@@ -2560,4 +2625,3 @@ mod tests {
         assert!(!missing.truncated);
     }
 }
-

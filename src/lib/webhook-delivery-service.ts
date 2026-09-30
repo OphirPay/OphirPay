@@ -22,7 +22,7 @@ export async function persistDeliveryResult(
   return recordWebhookDelivery(
     webhookId,
     eventId,
-    result.success ? "SUCCESS" : "FAILED",
+    result.success ? "SUCCESS" : "DEAD_LETTER",
     {
       responseCode: result.statusCode,
       latencyMs: result.latencyMs,

@@ -10,6 +10,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
       create: vi.fn(),
       deleteMany: vi.fn(),
+      updateMany: vi.fn(),
     },
     user: {
       findUnique: vi.fn(),
@@ -309,7 +310,7 @@ describe("API Routes: Auth, CSRF & Keys", () => {
 
     it("DELETE returns 400 when key is not found or not owned by user", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce({ userId: "u123" });
-      vi.mocked(prisma.apiKey.deleteMany).mockResolvedValueOnce({ count: 0 });
+      vi.mocked(prisma.apiKey.updateMany).mockResolvedValueOnce({ count: 0 });
 
       const res = await deleteKeys(
         new Request("http://localhost/api/keys?id=nonexistent", { method: "DELETE" })
@@ -321,7 +322,7 @@ describe("API Routes: Auth, CSRF & Keys", () => {
 
     it("DELETE successfully deletes key", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce({ userId: "u123" });
-      vi.mocked(prisma.apiKey.deleteMany).mockResolvedValueOnce({ count: 1 });
+      vi.mocked(prisma.apiKey.updateMany).mockResolvedValueOnce({ count: 1 });
 
       const res = await deleteKeys(
         new Request("http://localhost/api/keys?id=k1", { method: "DELETE" })

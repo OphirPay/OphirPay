@@ -80,24 +80,23 @@ import {
   handleApiError,
 } from "@/lib/api-response";
 
-export const GET = apiRoute({ name: "GET /api/counterparties", querySchema: counterpartyQuerySchema }, async (request, { auth, query }) => {
-  try {
-    // 1. Authenticate
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
-    }
-
-    // 2. Validate input (see §3)
-    // 3. Query, scoped to the authenticated user
-    // 4. Respond with the standard envelope (see §6)
-  } catch (err) {
-    // 5. Central error mapping (see §4)
-    return handleApiError(err, "GET /api/<resource>");
+export const GET = apiRoute({
+  name: "GET /api/counterparties",
+  querySchema: counterpartyQuerySchema,
+}, async (request, { auth, query }) => {
+  const where: any = { userId: auth.userId };
+  if (query.search) {
+    where.name = { contains: query.search, mode: "insensitive" };
   }
-}
+
+  const items = await prisma.counterparty.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: query.limit,
+  });
+
+  return successResponse(items, { limit: query.limit });
+});
 ```
 
 The try/catch around the whole body is **mandatory** — `handleApiError` is what
@@ -362,48 +361,29 @@ import {
   counterpartyQuerySchema,
 } from "@/lib/validation-schemas";
 
-export const GET = apiRoute({ name: "GET /api/counterparties", querySchema: counterpartyQuerySchema }, async (request, { auth, query }) => {
-  try {
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
-    }
-
-    const { searchParams } = new URL(request.url);
-    const parsed = counterpartyQuerySchema.safeParse({
-      limit: searchParams.get("limit"),
-      search: searchParams.get("search"),
-    });
-    if (!parsed.success) return validationError(parsed.error);
-
-    const where = { userId: auth.userId };
-    if (parsed.data.search) {
-      where.name = { contains: parsed.data.search, mode: "insensitive" };
-    }
-
-    const items = await prisma.counterparty.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: parsed.data.limit,
-    });
-
-    return successResponse(items, { limit: parsed.data.limit });
-  } catch (err) {
-    return handleApiError(err, "GET /api/counterparties");
+export const GET = apiRoute({
+  name: "GET /api/counterparties",
+  querySchema: counterpartyQuerySchema,
+}, async (request, { auth, query }) => {
+  const where: any = { userId: auth.userId };
+  if (query.search) {
+    where.name = { contains: query.search, mode: "insensitive" };
   }
-}
 
-export async function POST(request: Request) {
+  const items = await prisma.counterparty.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: query.limit,
+  });
+
+  return successResponse(items, { limit: query.limit });
+});
+
+export const POST = apiRoute({
+  name: "POST /api/counterparties",
+  bodySchema: createCounterpartySchema,
+}, async (request, { auth, body }) => {
   try {
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
-    }
-
     // Stricter per-user limit than the global per-IP one (example of §7)
     const rate = await getRateLimitStore().increment(
       `user:${auth.userId}:counterparties`,
@@ -414,14 +394,9 @@ export async function POST(request: Request) {
       return errorResponse("RATE_LIMITED", "Too many requests", 429);
     }
 
-    const body = await request.json();
-    const parsed = createCounterpartySchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error);
-
     const item = await prisma.counterparty.create({
       data: {
-        ...parsed.data,
-        // Always derive ownership from auth — never trust a client-supplied userId
+        ...body,
         userId: auth.userId,
       },
     });
@@ -430,7 +405,7 @@ export async function POST(request: Request) {
   } catch (err) {
     return handleApiError(err, "POST /api/counterparties");
   }
-}
+});
 ```
 
 > Note the `where` filter is always scoped to `auth.userId` — the single most

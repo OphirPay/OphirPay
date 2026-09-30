@@ -1,0 +1,28 @@
+{
+  "name": "OphirPay",
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20",
+      "nodeGypDependencies": true
+    },
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "1.91.0",
+      "profile": "minimal"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "rust-lang.rust-analyzer",
+        "Prisma.prisma"
+      ]
+    }
+  },
+  "forwardPorts": [3000, 5432, 6379],
+  "postCreateCommand": "rustup target add wasm32-unknown-unknown wasm32v1-none && npm install"
+}

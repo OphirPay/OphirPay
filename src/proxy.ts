@@ -37,34 +37,39 @@ function generateRequestId(): string {
 }
 
 /**
+ * Fresh, unguessable nonce for each HTML request (128 bits, base64).
+ */
+function generateNonce(): string {
+  return btoa(crypto.randomUUID());
+}
+
+/**
  * Content-Security-Policy for HTML pages.
  *
- * ### Why 'unsafe-inline' is still present in script-src (issue #697)
+ * ### Nonce-based script-src (issue #1257, follow-up to #697)
  *
- * Next.js App Router injects several inline scripts that are not authored by
- * us and cannot be removed:
+ * Next.js App Router injects inline scripts we do not author (the RSC /
+ * streaming bootstrap and the flight payload). Instead of `'unsafe-inline'`,
+ * each HTML request gets a fresh nonce:
  *
- *   1. The RSC / streaming bootstrap script (rendered server-side into the
- *      initial HTML response at request time).
- *   2. The hydration chunk-manifest script (`__NEXT_DATA__` / flight payload).
+ *   1. The proxy generates the nonce and sets the full CSP on the *request*
+ *      headers passed to `NextResponse.next({ request: { headers } })`. The
+ *      App Router renderer reads `content-security-policy` from the incoming
+ *      request (next/dist/server/app-render/app-render.js,
+ *      `getScriptNonceFromHeader`) and stamps `nonce="…"` on every framework
+ *      `<script>` it emits. Setting the header only on the *response* — which
+ *      is what this file did before — never reaches the renderer; that was
+ *      the real cause of the "nonce does not propagate" behaviour recorded in
+ *      #697 / next.js issue #74803.
+ *   2. The same nonce is forwarded as `x-nonce` so `src/app/layout.tsx` can
+ *      put it on our own inline scripts (theme bootstrap, SW registration).
+ *   3. The same CSP string is set on the response so the browser enforces it.
  *
- * The recommended mitigation is a *per-request nonce*: Next generates a fresh
- * nonce for each request, embeds it in those inline scripts via `nonce="…"`,
- * and the proxy propagates the same value in the `script-src 'nonce-…'`
- * directive so browsers accept the scripts while rejecting injected ones.
+ * `'strict-dynamic'` lets nonce-trusted scripts load their chunks; `'self'`
+ * stays as a fallback for browsers without CSP3 support (ignored by those that
+ * support `'strict-dynamic'`).
  *
- * **Current status:** This Next 16 build does NOT reliably propagate the nonce
- * from the middleware layer into the App Router renderer.  The nonce value set
- * in `x-nonce` / the CSP header by the proxy does NOT reach the inline scripts
- * Next renders for hydration, so removing `'unsafe-inline'` breaks hydration
- * in production.  Re-testing is required against each Next.js minor release;
- * the behaviour is tracked in next.js issue #74803.
- *
- * Until the nonce propagation path is confirmed working end-to-end (browser
- * DevTools showing `nonce="…"` on the framework inline scripts AND the page
- * hydrating without CSP violations), we keep `'unsafe-inline'` and document
- * the limitation explicitly in SECURITY.md and docs/AUDIT.md rather than
- * advertising a control that does not function.
+ * Re-tested against next@16.3.4 on 2026-09-30.
  *
  * Development additionally needs 'unsafe-eval' for HMR / Fast Refresh.
  *
@@ -76,10 +81,10 @@ function generateRequestId(): string {
  * `report-uri` is the legacy fallback for browsers that do not support the
  * Reporting API header yet (Safari < 17, Firefox without the flag).
  */
-function buildCsp(): string {
+function buildCsp(nonce: string): string {
   const scriptSrc = isProd
-    ? "'self' 'unsafe-inline' 'wasm-unsafe-eval'"
-    : "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'";
+    ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'`
+    : `'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval' 'wasm-unsafe-eval'`;
 
   // The Reporting API group name must match the Report-To / Reporting-Endpoints
   // header value set just below in the HTML-page response branch.
@@ -205,8 +210,18 @@ export async function proxy(request: NextRequest) {
   }
 
   // ── HTML pages: CSP + security headers ──────────────────────
-  const response = NextResponse.next();
-  response.headers.set("Content-Security-Policy", buildCsp());
+  // The CSP must be on the *request* headers for the App Router renderer to
+  // pick up the nonce (see buildCsp above), and on the response for the
+  // browser to enforce it.
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+  requestHeaders.set("x-request-id", requestId);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", csp);
   response.headers.set("X-Request-Id", requestId);
   response.headers.set("X-Api-Version", "1.0.0");
   response.headers.set("X-Content-Type-Options", "nosniff");

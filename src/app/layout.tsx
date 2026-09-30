@@ -2,6 +2,7 @@
 
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 import "./mobile-ux.css";
 import { AppShell } from "@/components/AppShell";
@@ -48,11 +49,16 @@ export const metadata: Metadata = {
   colorScheme: "dark light",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Per-request CSP nonce set by src/proxy.ts (issue #1257). Next stamps it on
+  // its own framework scripts; our inline scripts below must carry it too or
+  // the nonce-based script-src blocks them.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -60,6 +66,7 @@ export default function RootLayout({
             first paint to prevent a flash of the wrong theme (FOUC). Must stay
             in sync with resolveTheme() in src/hooks/useTheme.tsx. */}
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
               (function () {
@@ -78,6 +85,7 @@ export default function RootLayout({
         {/* JSON-LD structured data for SEO */}
         <script
           type="application/ld+json"
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               "@context": "https://schema.org",
@@ -97,6 +105,7 @@ export default function RootLayout({
         />
         {/* Register service worker for PWA offline support */}
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {

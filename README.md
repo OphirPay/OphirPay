@@ -26,7 +26,7 @@
       <img src="https://img.shields.io/github/actions/workflow/status/OphirPay/OphirPay/ci.yml?label=CI&logo=githubactions&logoColor=white" alt="CI" />
     </a>
     <a href="#-testing--quality">
-      <img src="https://img.shields.io/badge/tests-2738%20passed%20(2574%20app%20%2B%2067%20contracts%20%2B%2097%20e2e)-brightgreen.svg" alt="2738 Tests Passing" />
+      <img src="https://img.shields.io/badge/tests-3031%20passed%20(2867%20app%20%2B%2067%20contracts%20%2B%2097%20e2e)-brightgreen.svg" alt="3031 Tests Passing" />
     </a>
     <a href="#-testing--quality">
       <img src="https://img.shields.io/badge/coverage-68.9%25%20overall-brightgreen.svg?logo=vitest" alt="68.9% Overall Coverage" />
@@ -114,9 +114,10 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 | **Multi-wallet support** (5 wallets: Freighter, xBull, Rabet, Albedo, Lobstr; Ledger pending) | ✅ | ❌ |
 | **Multi-asset support** (USDC, custom tokens) | ✅ | ❌ |
 | **Path payments** (cross-asset sends, rate preview, slippage protection) | ✅ | ❌ |
-| **PWA with offline support** | ✅ | ❌ |
+| **PWA with an install prompt and offline fallback page** | ✅ | ❌ |
+| **Discoverable keyboard shortcuts and table navigation** | ✅ | ❌ |
 | **Classified error handling** (3 types, 300 contract variants) | ✅ | ❌ |
-| **Production error boundaries** | ✅ | ❌ |
+| **Page error boundaries that preserve dashboard navigation** | ✅ | ❌ |
 | **PostgreSQL + SQLite** (provider switching) | ✅ | ⚠️ |
 | **Multisig approvals** (N-of-M signers) | ✅ | ❌ |
 | **Spending limits + escalation tiers** | ✅ | ❌ |
@@ -136,7 +137,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 >
 > 📄 **Batch payments CSV import** — see [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md) for the exact CSV format, validation rules, and error messages.
 
-| **Full CI/CD + 970 tests (806 app + 67 contracts + 97 e2e)** | ✅ | ⚠️ |
+| **Full CI/CD + 3,031 tests (2,867 app + 67 contracts + 97 e2e)** | ✅ | ⚠️ |
 
 ---
 
@@ -567,7 +568,7 @@ cd contracts/emitter && cargo test
 ## 📊 Testing & Quality
 
 ```bash
-# All app tests (2,574 cases across 185 suites)
+# All app tests (2,867 passing cases; 2 skipped)
 npm test
 
 # Coverage report (68.9% overall — 70.2% statements / 66.8% branches / 67.2% functions / 71.5% lines)
@@ -590,9 +591,9 @@ npm run test:visual        # Compare against baselines
 npm run test:visual:update # Update baselines
 ```
 
-### Unit Tests (Vitest) — 2,574 cases
+### Unit Tests (Vitest) — 2,867 cases
 
-All app tests live in `src/__tests__/` (185 files, 2,574 cases): auth & sessions, CSRF, API responses & branches, error codes, contract utilities & invocation, Stellar integration, transaction simulation, webhook URL guard & delivery, validation schemas, type guards, UI components, hooks, loading & error boundaries, and branch coverage suites.
+The Vitest suite reports 2,867 passing cases and 2 skipped, covering auth & sessions, CSRF, API responses & branches, error codes, contract utilities & invocation, Stellar integration, transaction simulation, webhook URL guard & delivery, validation schemas, type guards, UI components, hooks, loading & error boundaries, and branch coverage suites.
 
 ### Coverage budgets (per-directory)
 
@@ -691,7 +692,7 @@ contract and secret scans:
 |---|---|---|
 | Lint | `eslint . --max-warnings 0` | ESLint with zero-error, zero-warning tolerance |
 | TypeCheck | `tsc --noEmit` | Full project strict type-checking |
-| Unit Tests | `vitest run --reporter=verbose` | 806 app tests across 33 suites |
+| Unit Tests | `vitest run --reporter=verbose` | 2,867 app tests (2 skipped) |
 | Build | `next build` (after `prisma generate`) | Production Next.js build verification |
 | Contracts | `cargo build --target wasm32v1-none` + `cargo test` | Both Soroban contracts to WASM |
 | Deploy Config | `scripts/validate-deploy-config.sh` | Public-config guards on the deploy script |
@@ -818,14 +819,14 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 | ✅ Cross-contract communication | **Done** |
 | ✅ SSE event streaming from chain | **Done** |
 | ✅ Mobile responsive UI | **Done** |
-| ✅ CI/CD pipeline + 806 app tests + 67 contract tests + 97 e2e | **Done** |
+| ✅ CI/CD pipeline + 2,867 app tests + 67 contract tests + 97 e2e | **Done** |
 | ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr) | **Done** |
 | ⏳ Ledger hardware wallet connector | **Pending** — WebUSB integration not shipped |
 | ✅ Stellar assets (USDC, custom tokens, trustline checks) | **Done** |
 | ✅ Payment request links (shareable invoices, QR codes) | **Done** |
 | ✅ Webhook delivery (HMAC signed, retries) | **Done** |
 | ✅ PostgreSQL support (provider switching, migrations) | **Done** |
-| ✅ PWA / mobile app (offline support, install prompt) | **Done** |
+| ✅ PWA / mobile app (offline fallback, install prompt) | **Done** |
 | ✅ Multisig approvals (N-of-M, propose/approve/execute, full UI) | **Done** |
 | ✅ Spending limits + escalation tiers | **Done** |
 | ✅ RBAC (Admin/Operator/Auditor) — full-stack + dashboard UI | **Done** |
@@ -942,7 +943,7 @@ OphirPay is engineered for predictable on-chain costs and fast reads:
 ### Audit-Readiness
 
 - **~300 typed contract error variants** — every failure path returns a machine-readable `PaymentError` (many variants reserved for unimplemented features), mirrored in the TypeScript error catalog and surfaced as clean HTTP/API errors
-- **Invariant tests** — fund-safety (`LOCKED_BALANCE` cap), reentrancy, pause, timelock, and 1-vote-per-address are covered by Rust unit tests (60 in `ophirpay`, 7 in `emitter`) plus 806 app vitest cases
+- **Invariant tests** — fund-safety (`LOCKED_BALANCE` cap), reentrancy, pause, timelock, and 1-vote-per-address are covered by Rust unit tests (60 in `ophirpay`, 7 in `emitter`) plus 2,867 app vitest cases
 - **Zero failing tests** — the full suite is green in CI (`lint`, `typecheck`, `unit-tests`, `contract-wasm`, `next-build`, `e2e`, `secret-scan`)
 - **Threat-modeled web layer** — CSRF, SSRF, HMAC sessions, hashed API keys, rate limiting, and CSP are documented in the Security section above and enforced in code
 - **Manual security review completed** — a full review of both Soroban contracts and the web/API security layer is in [docs/AUDIT.md](docs/AUDIT.md) (2 High, 6 Medium findings); a third-party audit is still pending before mainnet

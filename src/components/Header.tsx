@@ -4,6 +4,7 @@
 
 import { WalletButton } from "./WalletButton";
 import { NotificationCenter } from "./NotificationCenter";
+import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
 import { useTheme } from "@/hooks/useTheme";
 
 export function Header() {
@@ -11,7 +12,7 @@ export function Header() {
   const isDark = resolved === "dark";
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
+    <header aria-label="Application header" className="sticky top-0 z-30 h-16 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
       <div className="flex items-center justify-between h-full px-4 md:px-6">
         {/* Left: Page title / breadcrumb area */}
         <div className="flex items-center gap-4">
@@ -22,6 +23,7 @@ export function Header() {
 
         {/* Right: Notifications + Theme toggle + Wallet button */}
         <div className="flex items-center gap-2 md:gap-3">
+          <KeyboardShortcutsHelp />
           <NotificationCenter />
           {/* Dark mode toggle */}
           <button

@@ -130,12 +130,17 @@ describe("CSP documentation (next.config.ts) — #679", () => {
     expect(config).toContain("src/proxy.ts");
   });
 
-  it("keeps the documented policy in sync with src/proxy.ts (unsafe-inline retained)", () => {
-    // src/proxy.ts keeps 'unsafe-inline' because the per-request nonce never
-    // reaches the App Router renderer; the comment must not overstate the
-    // policy by claiming a nonce-based CSP that is not in place.
-    expect(read("src/proxy.ts")).toContain("'unsafe-inline'");
-    expect(config).toContain("unsafe-inline");
+  it("keeps the documented policy in sync with src/proxy.ts (nonce-based, no unsafe-inline) — #1257", () => {
+    // src/proxy.ts sets a per-request nonce on the request CSP header so the
+    // App Router renderer stamps it on framework scripts; 'unsafe-inline' is
+    // gone from script-src and the docs must say so.
+    const proxy = read("src/proxy.ts");
+    expect(proxy).toMatch(/'nonce-\$\{nonce\}' 'strict-dynamic'/);
+    const scriptSrcDecl = proxy.match(/const scriptSrc = [\s\S]*?;\n/)?.[0] ?? "";
+    expect(scriptSrcDecl).toContain("'nonce-");
+    expect(scriptSrcDecl).not.toContain("'unsafe-inline'");
+    expect(config).toContain("no 'unsafe-inline'");
+    expect(read("src/app/layout.tsx")).toContain('get("x-nonce")');
   });
 });
 

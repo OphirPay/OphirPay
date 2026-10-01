@@ -126,16 +126,57 @@ describe("audit document provenance (#689)", () => {
     expect(mismatches, mismatches.join("; ")).toEqual([]);
   });
 
-  it("points each generated audit document at the issue it describes", () => {
-    const expected: Record<string, number> = {
-      "docs/RBAC-AUDIT.md": 392,
-      "docs/CSRF-AUDIT.md": 563,
-    };
+  // Every generated audit document must pin the issue it was produced for.
+  // Adding a provenance-bearing doc without recording its origin here is a
+  // failure, so a new copy-paste slip of this exact class cannot ship silently.
+  const PINNED_PROVENANCE: Record<string, number> = {
+    "docs/RBAC-AUDIT.md": 392,
+    "docs/CSRF-AUDIT.md": 563,
+  };
 
-    for (const [doc, issue] of Object.entries(expected)) {
+  it("points each generated audit document at the issue it describes", () => {
+    for (const [doc, issue] of Object.entries(PINNED_PROVENANCE)) {
       const contents = readFileSync(path.join(ROOT, doc), "utf8");
       expect(contents, `${doc} should cite #${issue}`).toContain(`Generated for [Issue #${issue}]`);
     }
+  });
+
+  it("pins the origin issue for every document carrying a provenance header", () => {
+    const unpinned: string[] = [];
+    const drifted: string[] = [];
+
+    for (const doc of docs) {
+      const contents = readFileSync(path.join(ROOT, doc), "utf8");
+      for (const match of contents.matchAll(PROVENANCE)) {
+        const cited = match[1];
+        const pinned = PINNED_PROVENANCE[doc];
+        if (pinned === undefined) {
+          unpinned.push(doc);
+        } else if (String(pinned) !== cited) {
+          drifted.push(`${doc}: header cites #${cited} but is pinned to #${pinned}`);
+        }
+      }
+    }
+
+    expect(unpinned, `provenance docs missing a pinned origin: ${unpinned.join(", ")}`).toEqual([]);
+    expect(drifted, drifted.join("; ")).toEqual([]);
+  });
+
+  it("resolves every provenance header to this repository", () => {
+    const foreign: string[] = [];
+
+    for (const doc of docs) {
+      const contents = readFileSync(path.join(ROOT, doc), "utf8");
+      for (const match of contents.matchAll(PROVENANCE)) {
+        if (!match[2].startsWith("https://github.com/OphirPay/OphirPay/issues/")) {
+          foreign.push(`${doc}: ${match[2]}`);
+        }
+      }
+    }
+
+    expect(foreign, `provenance links pointing outside this repo: ${foreign.join(", ")}`).toEqual(
+      []
+    );
   });
 
   it("keeps the secrets rotation runbook tied to its origin issue", () => {
@@ -159,6 +200,35 @@ describe("repository root hygiene (#690)", () => {
   it("has no automation-shaped *_update.md files at the root", () => {
     const strays = rootEntries.filter((entry) => /_update\.md$/i.test(entry));
     expect(strays, `stray update docs: ${strays.join(", ")}`).toEqual([]);
+  });
+
+  // The root is an inventory, not a dumping ground: a document may only live
+  // there if it is deliberately listed here. This catches automation leftovers
+  // whose names do not happen to end in `_update.md`.
+  const ALLOWED_ROOT_MARKDOWN = new Set([
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "GLOSSARY.md",
+    "GOVERNANCE.md",
+    "MAINTAINERS.md",
+    "README.md",
+    "README.es.md",
+    "README.fr.md",
+    "README.ja.md",
+    "RELEASE.md",
+    "ROADMAP.md",
+    "SECURITY.md",
+  ]);
+
+  it("keeps only intentional markdown documents at the repository root", () => {
+    const rootMarkdown = rootEntries.filter((entry) => entry.toLowerCase().endsWith(".md"));
+    const unexpected = rootMarkdown.filter((entry) => !ALLOWED_ROOT_MARKDOWN.has(entry));
+
+    expect(
+      unexpected,
+      `unexpected root-level markdown (add it to ALLOWED_ROOT_MARKDOWN if intentional): ${unexpected.join(", ")}`
+    ).toEqual([]);
   });
 
   it("does not link to the deleted docs_update.md from any tracked doc", () => {

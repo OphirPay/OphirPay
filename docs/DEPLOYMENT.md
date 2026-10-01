@@ -225,9 +225,9 @@ The `Dockerfile` uses a 3-stage build:
 
 | Stage | Base Image | Purpose |
 |---|---|---|
-| `deps` | `node:20-slim` | Install npm dependencies (with OpenSSL for Prisma) |
-| `builder` | `node:20-slim` | Generate Prisma client, run `next build` |
-| `runner` | `node:20-slim` | Minimal production image, runs as the non-root `node` user |
+| `deps` | `node:24-slim` | Install npm dependencies (with OpenSSL for Prisma) |
+| `builder` | `node:24-slim` | Generate Prisma client, run `next build` |
+| `runner` | `node:24-slim` | Minimal production image, runs as the non-root `node` user |
 
 **Key details:**
 - Uses **Debian (glibc)**, not Alpine (musl) — Tailwind v4's native binaries require glibc
@@ -663,7 +663,7 @@ curl -s https://your-domain.com/api/health | jq .database
 |---|---|---|
 | `Prisma generate failed` | Prisma CLI not installed | Run `npx prisma generate` explicitly, or `npm ci` to install devDependencies |
 | `ENOENT: no such file or directory, open '.env'` | Missing `.env` file | Copy `.env.example` to `.env.local` |
-| `tailwindcss/postcss` crash on musl | Alpine Linux uses musl libc | Use the Debian-based Dockerfile (already configured) or switch to `node:20-slim` |
+| `tailwindcss/postcss` crash on musl | Alpine Linux uses musl libc | Use the Debian-based Dockerfile (already configured) or switch to `node:24-slim` |
 | `next build` fails with `ENOENT .next/next-server.js.nft.json` | Standalone mode on Vercel | Already handled — `output` is disabled when `VERCEL` env is set |
 
 ### Database Errors

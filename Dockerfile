@@ -4,7 +4,7 @@
 # NOTE: Use the Debian (glibc) image, not Alpine (musl). Tailwind v4's
 # `@tailwindcss/postcss` and its native `lightningcss`/`oxide` binaries crash
 # the Turbopack PostCSS loader on musl, which fails `next build` in Docker.
-FROM node:20-slim AS deps
+FROM node:24-slim AS deps
 RUN apt-get update -qq \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -19,7 +19,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 RUN npm ci
 
 # Stage 2: Builder
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -31,10 +31,11 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 3: Runner
-FROM node:20-slim AS runner
-# `apt-get upgrade` is what keeps the image-scan step green: the node:20-slim
-# base ships snapshot versions of libcap2/libgnutls30/libpcre2 that Debian has
-# since revised, and every one of those findings has a fix in bookworm-updates.
+FROM node:24-slim AS runner
+# `apt-get upgrade` is what keeps the image-scan step green: the node:24-slim
+# base ships snapshot versions of system libraries (libcap2, gnutls, pcre2)
+# that Debian has since revised, and every finding has a fix in the distro's
+# -updates pocket.
 RUN apt-get update -qq \
   && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
@@ -62,7 +63,7 @@ COPY --chown=node:node --from=builder /app/.next/standalone ./
 COPY --chown=node:node --from=builder /app/.next/static ./.next/static
 # Prisma query engine — copy only the native binary, not the whole CLI.
 # The glob matches the openssl-3.x variant produced by `prisma generate` on
-# the node:20-slim (Debian Bookworm) builder.  The destination mirrors where
+# the node:24-slim (Debian) builder.  The destination mirrors where
 # standalone's own node_modules/.prisma/client/ expects to find the engine.
 COPY --chown=node:node --from=builder /app/node_modules/.prisma/client/*.node ./node_modules/.prisma/client/
 COPY --chown=node:node --from=builder /app/node_modules/@prisma/engines-version ./node_modules/@prisma/engines-version

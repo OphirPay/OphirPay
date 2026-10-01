@@ -9,7 +9,7 @@
 ## 0. Devcontainer (Fastest Path)
 
 If you use **GitHub Codespaces** or **VS Code Devcontainers**, you can skip all local toolchain setup. The repository includes a `.devcontainer` configuration that automatically provisions:
-- Node 20
+- Node 24
 - Rust 1.91.0 with the Soroban `wasm32` targets
 - PostgreSQL and Redis (via `docker-compose`)
 
@@ -27,7 +27,7 @@ If you prefer to develop natively on your host machine without containers, conti
 
 | Tool | Version | Purpose |
 |---|---|---|
-| [Node.js](https://nodejs.org) | 20 (see `.nvmrc`) | Runtime — use `nvm use` if you have nvm |
+| [Node.js](https://nodejs.org) | 24 (see `.nvmrc`) | Runtime — use `nvm use` if you have nvm |
 | [npm](https://www.npmjs.com) | 9+ (ships with Node) | Package manager |
 | [Git](https://git-scm.com) | Any | Clone the repo |
 | [Freighter Wallet](https://freighter.app) | Latest | Browser extension for signing Stellar transactions |
@@ -272,7 +272,7 @@ A `200` with a `balances` array means you're funded.
    `NEXT_PUBLIC_STELLAR_NETWORK`, contract IDs, etc. requires restarting
    `npm run dev` (dev re-evaluates) and a fresh `npm run build` for production
    bundles.
-6. **Node version** — the repo pins Node 20 (`.nvmrc`). Newer majors usually
+6. **Node version** — the repo pins Node 24 (`.nvmrc`). Newer majors usually
    work, but if `next build` or Prisma acts up, switch: `nvm use`.
 7. **Default contract IDs work out of the box** — `.env.example` ships with
    community Testnet contract IDs for OphirPay + Emitter, so you don't need to

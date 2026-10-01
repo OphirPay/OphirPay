@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "npm@10.8.2",
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   },
   "description": "Open-source payment orchestration layer for Stellar — smart contracts, webhooks, batch payments, refunds, multisig, governance, and real-time event streaming",
   "homepage": "https://ophirpay.vercel.app",

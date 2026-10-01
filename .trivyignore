@@ -45,3 +45,7 @@ CVE-2026-29786
 CVE-2026-31802
 CVE-2026-59874
 CVE-2026-73566
+# undici (2026-10-01) — npm 11.x bundle in the node:24-slim base image; DoS
+# via unrequested WebSocket, reachable only through the npm CLI, which never
+# runs in the container (same rationale as the block at the top).
+CVE-2026-19534

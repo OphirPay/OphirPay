@@ -406,7 +406,20 @@ to mainnet solely on the basis of this report.
 
 **File:** `src/proxy.ts` (`buildCsp`), `src/app/layout.tsx`
 
-**Status:** ⚠️ Known limitation — documented, not yet fixed in code.
+**Status:** ✅ Fixed (2026-09-30, issue #1257) — re-tested on next@16.3.4.
+
+**Resolution:** the nonce never "failed to propagate" in Next itself — the App Router renderer
+reads the nonce from the *request* `content-security-policy` header
+(`next/dist/server/app-render/app-render.js`, `getScriptNonceFromHeader`), but the proxy only set
+the CSP on the *response*. `src/proxy.ts` now generates a per-request nonce, sets the CSP on both
+the forwarded request headers and the response, and forwards `x-nonce` so `src/app/layout.tsx`
+tags its own inline scripts. Production `script-src` is now
+`'self' 'nonce-…' 'strict-dynamic' 'wasm-unsafe-eval'` with no `'unsafe-inline'`; browser check
+on a production build showed `nonce="…"` on every framework inline script and hydration with no
+CSP violation reports. `src/__tests__/config-drift.test.ts` and
+`src/__tests__/csp-nonce.test.ts` guard the new directive set. Re-verify on each Next minor bump.
+
+**Original finding:**
 
 `buildCsp()` produces `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'` in production.
 The intended mitigation is a per-request nonce: Next generates a fresh value per request and

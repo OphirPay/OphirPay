@@ -4,7 +4,9 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 
 ## Getting Started
 
-1. Ensure you have **Node.js 20** installed (see `.nvmrc`) — `npm install`
+> **Fastest path:** Open this repository in a **Devcontainer** (GitHub Codespaces or VS Code). It automatically provisions Node 24, the pinned Rust toolchain + WASM targets, Postgres, and Redis. Just copy `.env.example` to `.env.local` and run `npm run dev`.
+
+1. Ensure you have **Node.js 24** installed (see `.nvmrc`) — `npm install`
    runs a preflight (`scripts/check-node.mjs`) and aborts with an actionable
    message on any other major, so there is no ambiguity about the supported
    runtime
@@ -29,7 +31,7 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 
 | Tool | Supported | Declared in |
 |---|---|---|
-| Node.js | **20.x** | `.nvmrc` (`20`), `package.json` → `engines.node` (`20.x`), and `node-version-file: .nvmrc` in every workflow |
+| Node.js | **24.x** | `.nvmrc` (`24`), `package.json` → `engines.node` (`24.x`), and `node-version-file: .nvmrc` in every workflow |
 | npm | **10.x** | `package.json` → `packageManager` (`npm@10.8.2`) |
 
 `.nvmrc` is the single source of truth. `npm install` / `npm ci` run the
@@ -37,7 +39,7 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 
 ```
 [ERROR] Unsupported Node.js version.
-  required : Node 20.x (.nvmrc → "20", package.json engines.node → "20.x", packageManager → "npm@10.8.2")
+  required : Node 24.x (.nvmrc → "24", package.json engines.node → "24.x", packageManager → "npm@10.8.2")
   running  : Node 24.14.0
 
 Switch to the supported version and re-run the install:
@@ -45,7 +47,7 @@ Switch to the supported version and re-run the install:
 ```
 
 A running npm major that differs from `packageManager` is reported as a
-warning rather than an error (a newer npm on Node 20 still installs the same
+warning rather than an error (a newer npm on Node 24 still installs the same
 lockfile), but please install with the pinned manager to avoid lockfile churn.
 
 **Bumping the version** — change `.nvmrc` and `engines.node` together, then run

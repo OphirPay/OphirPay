@@ -1,10 +1,9 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
 
-// NOTE: the Content-Security-Policy is set per-request in src/proxy.ts
-// Note that 'unsafe-inline' is retained because the per-request nonce never
-// reaches the App Router renderer. A static CSP cannot express that nonce,
-// so it must NOT live here.
+// NOTE: the Content-Security-Policy is set per-request in src/proxy.ts with a
+// fresh nonce-based script-src (no 'unsafe-inline', issue #1257). A static CSP
+// cannot express that per-request nonce, so it must NOT live here.
 //
 // NOTE: this file is the single source of truth for static security headers
 // (issue #681). vercel.json used to repeat the same headers over the

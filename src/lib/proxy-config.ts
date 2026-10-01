@@ -24,9 +24,13 @@ export function generateRequestId(
 
 export const CSP_POLICY = {
   defaultSrc: ["'self'"],
+  // `'unsafe-inline'` is deliberately absent (issue #1257, follow-up to #697):
+  // every HTML request carries a fresh nonce instead, and `'strict-dynamic'`
+  // lets nonce-trusted scripts load their own chunks. Development additionally
+  // needs `'unsafe-eval'` for HMR / Fast Refresh.
   scriptSrc: {
-    production: ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
-    development: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'"],
+    production: ["'self'", "'strict-dynamic'", "'wasm-unsafe-eval'"],
+    development: ["'self'", "'strict-dynamic'", "'unsafe-eval'", "'wasm-unsafe-eval'"],
   },
   styleSrc: ["'self'", "'unsafe-inline'"],
   connectSrc: [
@@ -54,14 +58,35 @@ export const CSP_POLICY = {
 } as const;
 
 /**
- * Next.js App Router still emits inline hydration scripts that do not receive
- * proxy nonces reliably. Keep 'unsafe-inline' until nonce propagation works
- * end-to-end; development also needs 'unsafe-eval' for HMR / Fast Refresh.
+ * Fresh, unguessable nonce for each HTML request (128 bits, base64).
+ *
+ * The nonce is generated per request so it cannot be reused across documents,
+ * and it must be applied to the *request* headers handed to the App Router
+ * renderer (see src/proxy.ts) — setting it on the response alone never reaches
+ * `getScriptNonceFromHeader` and is what left `#697` unresolved.
  */
-export function buildCsp(isProduction = process.env.NODE_ENV === "production"): string {
-  const scriptSrc = isProduction
+export function generateNonce(): string {
+  return btoa(crypto.randomUUID());
+}
+
+/**
+ * Content-Security-Policy for HTML pages.
+ *
+ * `script-src` is assembled per request from `nonce` plus the environment
+ * template, so `'unsafe-inline'` is never emitted. The remaining directives
+ * (including the #698 violation-reporting pair) stay environment-static and
+ * reviewable in `CSP_POLICY`.
+ */
+export function buildCsp(
+  nonce: string,
+  isProduction = process.env.NODE_ENV === "production"
+): string {
+  const template = isProduction
     ? CSP_POLICY.scriptSrc.production
     : CSP_POLICY.scriptSrc.development;
+  // Slot the nonce directly after 'self' so the directive always reads
+  // `'self' 'nonce-…' 'strict-dynamic' …`.
+  const scriptSrc = [template[0], `'nonce-${nonce}'`, ...template.slice(1)];
   const directives: Array<[string, readonly string[]]> = [
     ["default-src", CSP_POLICY.defaultSrc],
     ["script-src", scriptSrc],

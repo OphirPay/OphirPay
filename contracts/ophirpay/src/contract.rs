@@ -2043,9 +2043,35 @@ impl OphirPayContract {
             return Err(PaymentError::InvalidAmount);
         }
 
+        // Idempotency (#804): (payer, tx_hash) identifies a payment. Replaying
+        // the same call returns the original id; replaying it with a different
+        // payload is a conflict rather than a silent second payment. Mirrors
+        // `atomic_spend` so both entry points dedupe identically.
+        let idempotency_key = (PAYMENT_IDEMPOTENCY_KEY, payer.clone(), tx_hash.clone());
+        if let Some(existing_id) = env
+            .storage()
+            .persistent()
+            .get::<_, u64>(&idempotency_key)
+        {
+            let existing: Payment = env
+                .storage()
+                .persistent()
+                .get(&(PAYMENT_KEY, existing_id))
+                .ok_or(PaymentError::StateSyncMismatch)?;
+            if existing.payer != payer
+                || existing.payee != payee
+                || existing.amount != amount
+                || existing.asset != asset
+                || existing.metadata != metadata
+            {
+                return Err(PaymentError::PaymentIdempotencyConflict);
+            }
+            return Ok(existing_id);
+        }
+
         // Collect protocol fee before recording.  If fee transfer fails
         // (insufficient balance, missing trustline), the entire payment
-        // reverts — no partial state.
+        // reverts - no partial state.
         let _fee = collect_fee(&env, &payer, &asset, amount)?;
 
         let mut count: u64 = env.storage().instance().get(&PAYMENT_COUNT).unwrap_or(0);
@@ -2069,6 +2095,12 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .extend_ttl(&(PAYMENT_KEY, count), BUMP_MIN_TTL, BUMP_MAX_TTL);
+        env.storage()
+            .persistent()
+            .set(&idempotency_key, &count);
+        env.storage()
+            .persistent()
+            .extend_ttl(&idempotency_key, BUMP_MIN_TTL, BUMP_MAX_TTL);
         env.storage().instance().set(&PAYMENT_COUNT, &count);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
 

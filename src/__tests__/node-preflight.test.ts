@@ -116,7 +116,7 @@ describe("Node version agreement (.nvmrc · engines.node · CI)", () => {
     const { nvmrc, enginesNode } = requirements();
     expect(enginesNode).toBeTruthy();
     expect(preflight.majorOf(enginesNode)).toBe(preflight.majorOf(nvmrc));
-    expect(preflight.majorOf(nvmrc)).toBe(20);
+    expect(preflight.majorOf(nvmrc)).toBe(24);
   });
 
   it("packageManager pins the npm major that ships with that Node line", () => {
@@ -150,7 +150,7 @@ describe("Node version agreement (.nvmrc · engines.node · CI)", () => {
 
   it("CONTRIBUTING documents the supported version and the preflight", () => {
     const doc = read("CONTRIBUTING.md");
-    expect(doc).toMatch(/Node\.js 20|Node 20/);
+    expect(doc).toMatch(/Node\.js 24|Node 24/);
     expect(doc).toContain(".nvmrc");
     expect(doc).toContain("scripts/check-node.mjs");
     expect(doc).toContain("preinstall");

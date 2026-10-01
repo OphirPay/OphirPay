@@ -237,9 +237,14 @@ function PaymentsClient() {
     [pathname, router, searchParams]
   );
 
+  // Sync the box when the URL query changes (back/forward, shared links).
+  // Depend on the *string*, not the URLSearchParams object: the object is a
+  // fresh instance on every render, and an unstable dep makes this effect
+  // refire on every commit — which, inside a transition, is an update loop.
+  const urlQuery = searchParams.get("q") ?? "";
   useEffect(() => {
-    setSearch(searchParams.get("q") ?? "");
-  }, [searchParams]);
+    setSearch(urlQuery);
+  }, [urlQuery]);
 
   const previousDebouncedSearch = useRef(debouncedSearch);
   useEffect(() => {

@@ -68,6 +68,49 @@ function exportedHandlers(source: string): string[] {
   return [...source.matchAll(re)].map((m) => m[1]);
 }
 
+/** Narrow a documented operation to the shape the example assertions walk. */
+function operationFor(
+  specPath: string,
+  method: string
+): Record<string, Record<string, unknown>> {
+  const item = spec.paths?.[specPath];
+  expect(item, `${specPath} is not documented in the spec`).toBeTruthy();
+  const pathItem = (item ?? {}) as Record<string, unknown>;
+  const operation = pathItem[method];
+  expect(
+    operation,
+    `${method.toUpperCase()} ${specPath} is not documented in the spec`
+  ).toBeTruthy();
+  return operation as Record<string, Record<string, unknown>>;
+}
+
+/**
+ * Pull `content["application/json"].examples[<name>].value` out of a request
+ * body or response object. Going through here means a spec that drops or
+ * renames an example fails with the path/method that lost it, instead of an
+ * opaque `undefined` dereference further down the assertion chain.
+ */
+function jsonExample(
+  container: unknown,
+  exampleName: string,
+  specPath: string,
+  method: string
+): Record<string, unknown> {
+  const body = (container ?? {}) as Record<string, unknown>;
+  const json = (body["content"] as
+    | Record<string, Record<string, unknown>>
+    | undefined)?.["application/json"];
+  const examples = json?.["examples"] as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  const value = examples?.[exampleName]?.["value"];
+  expect(
+    value,
+    `${method.toUpperCase()} ${specPath} is missing the '${exampleName}' example`
+  ).toBeTruthy();
+  return (value ?? {}) as Record<string, unknown>;
+}
+
 /** Recursively list every `route.ts` under src/app/api (as API-relative paths). */
 function listRouteFiles(dir = API_DIR): string[] {
   const out: string[] = [];
@@ -308,11 +351,19 @@ describe("OpenAPI schema-conformance", () => {
   });
 
   it("provides usable request and response examples for payment and batch creation", () => {
-    const payment = spec.paths["/api/payments"].post;
-    const paymentRequest =
-      payment.requestBody.content["application/json"].examples.validPayment.value;
-    const paymentResponse =
-      payment.responses["201"].content["application/json"].examples.createdPayment.value;
+    const paymentOp = operationFor("/api/payments", "post");
+    const paymentRequest = jsonExample(
+      paymentOp["requestBody"],
+      "validPayment",
+      "/api/payments",
+      "post"
+    );
+    const paymentResponse = jsonExample(
+      paymentOp["responses"]?.["201"],
+      "createdPayment",
+      "/api/payments",
+      "post"
+    );
 
     expect(paymentRequest).toMatchObject({
       amount: expect.any(Number),
@@ -322,18 +373,30 @@ describe("OpenAPI schema-conformance", () => {
     expect(paymentResponse).toMatchObject({
       success: true,
       data: {
-        amount: paymentRequest.amount,
-        sourceAccountId: paymentRequest.sourceAccountId,
+        amount: paymentRequest["amount"],
+        sourceAccountId: paymentRequest["sourceAccountId"],
         status: "CREATED",
       },
       meta: { timestamp: expect.any(String) },
     });
 
-    const batch = spec.paths["/api/batches"].post;
-    const batchRequest =
-      batch.requestBody.content["application/json"].examples.validBatch.value;
-    const batchResponse =
-      batch.responses["201"].content["application/json"].examples.createdBatch.value;
+    const batchOp = operationFor("/api/batches", "post");
+    const batchRequest = jsonExample(
+      batchOp["requestBody"],
+      "validBatch",
+      "/api/batches",
+      "post"
+    );
+    const batchResponse = jsonExample(
+      batchOp["responses"]?.["201"],
+      "createdBatch",
+      "/api/batches",
+      "post"
+    );
+
+    const recipients = batchRequest["recipients"] as Array<
+      Record<string, unknown>
+    >;
 
     expect(batchRequest).toMatchObject({
       name: expect.any(String),
@@ -348,12 +411,12 @@ describe("OpenAPI schema-conformance", () => {
     expect(batchResponse).toMatchObject({
       success: true,
       data: {
-        name: batchRequest.name,
+        name: batchRequest["name"],
         status: "CREATED",
         payments: expect.arrayContaining([
           expect.objectContaining({
-            amount: batchRequest.recipients[0].amount,
-            memo: batchRequest.recipients[0].memo,
+            amount: recipients[0]["amount"],
+            memo: recipients[0]["memo"],
           }),
         ]),
       },

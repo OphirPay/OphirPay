@@ -184,7 +184,7 @@ Style rules used across the existing changelog:
 - Use backticks for code identifiers: `record_payment`, `NEXT_PUBLIC_*`,
   `src/app/api/**/route.ts`.
 - Spell out numbers under 10 in prose; keep numeric literals for counts and
-  versions (`.nvmrc` → Node 20, 94 error variants).
+  versions (`.nvmrc` → Node 24, 94 error variants).
 - If the entry refers to error codes, contract functions, or env vars, the
   names must match the code exactly — reviewers will check.
 

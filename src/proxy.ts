@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 import {
   buildCsp,
   CSP_POLICY,
+  generateNonce,
   generateRequestId,
   getClientIp,
   getRateLimitMax,
@@ -124,10 +125,22 @@ export async function proxy(request: NextRequest) {
   }
 
   // ── HTML pages: CSP + security headers ──────────────────────
-  // `src/proxy.ts` keeps `'unsafe-inline'` because the App Router still emits
-  // hydration scripts that do not receive proxy nonces reliably.
-  const response = NextResponse.next();
-  response.headers.set("Content-Security-Policy", buildCsp());
+  // The CSP has to reach the App Router renderer on the *request* headers, not
+  // just the response: `getScriptNonceFromHeader` reads
+  // `content-security-policy` from the incoming request and stamps `nonce="…"`
+  // on every framework `<script>` it emits. Setting it on the response alone
+  // was the real cause of the "nonce does not propagate" behaviour in #697.
+  // `x-nonce` carries the same value to src/app/layout.tsx for our own inline
+  // scripts (theme bootstrap, service-worker registration).
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce);
+  const pageRequestHeaders = new Headers(request.headers);
+  pageRequestHeaders.set("x-nonce", nonce);
+  pageRequestHeaders.set("Content-Security-Policy", csp);
+  pageRequestHeaders.set("x-request-id", requestId);
+
+  const response = NextResponse.next({ request: { headers: pageRequestHeaders } });
+  response.headers.set("Content-Security-Policy", csp);
   response.headers.set("X-Request-Id", requestId);
   response.headers.set("X-Api-Version", "1.0.0");
   response.headers.set("X-Content-Type-Options", "nosniff");

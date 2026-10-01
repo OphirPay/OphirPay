@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCsp,
   CSP_POLICY,
+  generateNonce,
   generateRequestId,
   getClientIp,
   getRateLimitMax,
@@ -48,18 +49,38 @@ describe("proxy configuration", () => {
   });
 
   it("keeps the CSP endpoint whitelist reviewable and environment-specific", () => {
-    const production = buildCsp(true);
-    const development = buildCsp(false);
+    const production = buildCsp("dGVzdA==", true);
+    const development = buildCsp("dGVzdA==", false);
 
     expect(directive(production, "connect-src")).toEqual(CSP_POLICY.connectSrc);
-    expect(directive(production, "script-src")).toEqual(
-      CSP_POLICY.scriptSrc.production
-    );
-    expect(directive(development, "script-src")).toEqual(
-      CSP_POLICY.scriptSrc.development
-    );
+    expect(directive(production, "script-src")).toEqual([
+      CSP_POLICY.scriptSrc.production[0],
+      "'nonce-dGVzdA=='",
+      ...CSP_POLICY.scriptSrc.production.slice(1),
+    ]);
+    expect(directive(development, "script-src")).toEqual([
+      CSP_POLICY.scriptSrc.development[0],
+      "'nonce-dGVzdA=='",
+      ...CSP_POLICY.scriptSrc.development.slice(1),
+    ]);
     expect(directive(production, "script-src")).not.toContain("'unsafe-eval'");
     expect(production).toContain(`report-to ${CSP_POLICY.reportingGroup}`);
     expect(production).toContain(`report-uri ${CSP_POLICY.reportUri}`);
+  });
+
+  it("never emits 'unsafe-inline' in script-src and keeps a distinct nonce per call", () => {
+    // Issue #1257: the App Router's own inline scripts are covered by the
+    // per-request nonce, so 'unsafe-inline' would defeat the whole change.
+    expect(generateNonce()).not.toBe(generateNonce());
+    expect(generateNonce()).toMatch(/^[A-Za-z0-9+/]+={0,2}$/);
+
+    for (const nonce of [generateNonce(), generateNonce()]) {
+      for (const isProduction of [true, false]) {
+        const scriptSrc = directive(buildCsp(nonce, isProduction), "script-src");
+        expect(scriptSrc).toContain(`'nonce-${nonce}'`);
+        expect(scriptSrc).toContain("'strict-dynamic'");
+        expect(scriptSrc).not.toContain("'unsafe-inline'");
+      }
+    }
   });
 });

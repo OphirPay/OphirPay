@@ -14,6 +14,10 @@ import {
 import { fetchAllBalances, getHorizonServer, NETWORK_PASSPHRASE, STELLAR_NETWORK, type AssetBalance } from "@/lib/stellar";
 import { buildTrustlineTransaction, checkTrustline, getTrustlineMessage, type TrustlineState } from "@/lib/trustline";
 import { getActiveWalletConnector } from "@/lib/wallets";
+import {
+  fetchAssetMetadata,
+  type ClientAssetMetadata,
+} from "@/lib/asset-metadata-client";
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -61,6 +65,9 @@ export function AssetSelector({
   const [trustlineError, setTrustlineError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  // Issuer-supplied display metadata (issue #824), keyed by `code:issuer`.
+  // Absent/`null` entries fall back to the built-in display name.
+  const [metadata, setMetadata] = useState<Record<string, ClientAssetMetadata | null>>({});
 
   const fetchBalances = useCallback(async () => {
     if (!publicKey) return;
@@ -78,6 +85,29 @@ export function AssetSelector({
   useEffect(() => {
     fetchBalances();
   }, [fetchBalances]);
+
+  // Resolve ticker/issuer names for the non-native assets we might display.
+  // Resolution happens server-side via /api/assets/metadata; a missing or
+  // unreachable TOML just leaves the built-in display name in place.
+  useEffect(() => {
+    let cancelled = false;
+    const targets = [selectedAsset, ...KNOWN_ASSETS].filter(
+      (a) => a.type !== "native" && !!a.issuer
+    );
+    const seen = new Set<string>();
+    for (const asset of targets) {
+      const key = `${asset.code}:${asset.issuer}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      fetchAssetMetadata(asset.code, asset.issuer!).then((meta) => {
+        if (cancelled) return;
+        setMetadata((prev) => ({ ...prev, [key]: meta }));
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAsset]);
 
   useEffect(() => {
     if (!publicKey || selectedAsset.type === "native" || !selectedAsset.issuer) return;
@@ -160,6 +190,15 @@ export function AssetSelector({
 
   const balance = findAssetBalance(balances, selectedAsset);
 
+  /**
+   * Display label for an asset: the resolved TOML name when one exists,
+   * otherwise the built-in display name (issue #824).
+   */
+  const labelFor = (asset: AssetInfo): string => {
+    const resolved = metadata[`${asset.code}:${asset.issuer}`];
+    return resolved?.name ?? asset.displayName;
+  };
+
   return (
     <div className={cn("relative", className)}>
       <button
@@ -235,8 +274,13 @@ export function AssetSelector({
                       <span className="text-gray-900 dark:text-white font-medium">
                         {asset.code}
                       </span>
-                      <span className="block text-xs text-gray-400">
-                        {asset.displayName}
+                      <span
+                        className="block text-xs text-gray-400"
+                        // The issuer is available on demand (hover/focus) when
+                        // no human-readable metadata could be resolved.
+                        title={asset.issuer ?? undefined}
+                      >
+                        {labelFor(asset)}
                       </span>
                     </div>
                   </div>

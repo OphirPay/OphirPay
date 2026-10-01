@@ -374,9 +374,11 @@ fn variant_count_matches_catalog() {
     let variants = all_variants();
     // The TypeScript catalog should have exactly as many entries as Rust variants.
     // This is verified by the TS-side test; here we just record the count.
+    // PaymentIdempotencyConflict = 309 (#804) was added without bumping this,
+    // which is what the sibling `max_code == variants.len()` assertion catches.
     assert_eq!(
         variants.len(),
-        308,
-        "Expected 308 PaymentError variants (codes 1..=308)"
+        309,
+        "Expected 309 PaymentError variants (codes 1..=309)"
     );
 }

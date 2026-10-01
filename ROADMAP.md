@@ -45,7 +45,7 @@ fully-green repository.
 - [ ] Mainnet deployment with $1M+ TVL target
 - [ ] Token-weighted governance (governance token + snapshot system)
 - [ ] Mobile wallet SDK (React Native)
-- [ ] Fiat on-ramp integration (Kado, MoonPay)
+- [~] Fiat on-ramp integration — SEP-24 interactive anchor client shipped (`src/lib/sep24.ts`, [docs/ANCHORS.md](docs/ANCHORS.md)); remaining: production anchor terms + in-app on-ramp UI (#821)
 - [ ] Cross-chain bridge support (Sep-38 anchors)
 - [ ] Real-time WebSocket API enhancements (server-side RFC 6455 server exists on port 8787 with SSE fallback — see [docs/WEBSOCKET.md](docs/WEBSOCKET.md); remaining: replace internal contract polling with push-based Soroban RPC subscriptions, client channel filtering, and Redis pub/sub clustering)
 - [ ] Automated market maker for fee distribution

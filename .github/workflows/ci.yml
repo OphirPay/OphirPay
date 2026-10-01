@@ -56,18 +56,39 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npx tsc --noEmit
+      - name: Verify generated API client catalogue is current (issue #822)
+        run: node scripts/generate-api-client.mjs --check
 
   # ══════════════════════════════════════════════════════════════
-  # 3. UNIT TESTS — Vitest (800 frontend tests)
+  # 3. UNIT TESTS — Vitest (3000+ frontend tests)
   # ══════════════════════════════════════════════════════════════
   unit-tests:
     name: "3️⃣ Frontend — Unit Tests (Vitest)"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # The suite is ~3000 tests across ~225 files and does not finish in five
+    # minutes; the old cap killed the runner mid-suite, which reported as a
+    # red job even with every assertion still passing. 30 leaves headroom for a
+    # cold cache without letting a genuinely hung suite burn a runner for an
+    # hour.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
-      - run: npx vitest run --reporter=verbose
+      - name: Run unit tests (4 shards — fresh process per quarter; see vitest.config.ts)
+        # One vitest process accumulates per-file state (jsdom environments,
+        # Prisma engines) across all 226 files and OOMs near the end even
+        # though every assertion passes. Sharding gives each quarter of the
+        # suite a fresh process; shards run sequentially so the check name
+        # (and branch-protection match) is unchanged.
+        run: |
+          set -e
+          for i in 1 2 3 4; do
+            echo "::group::Vitest shard $i/4"
+            npx vitest run --shard=$i/4 --reporter=verbose
+            echo "::endgroup::"
+          done
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
   # ══════════════════════════════════════════════════════════════
   # 4. NEXT.JS BUILD — Production build verification (issue #677)

@@ -66,6 +66,7 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/policy-versions` | GET |
 | `/api/contracts` | GET |
 | `/api/stats` | GET |
+| `/api/assets/metadata` | GET |
 | `/api/batches` | GET, POST |
 | `/api/batches/{id}` | GET, POST |
 | `/api/batches/summary` | GET |
@@ -85,6 +86,7 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/webhooks/{id}/deliveries/{deliveryId}/redeliver` | POST |
 | `/api/keys` | GET, POST, PATCH, DELETE |
 | `/api/keys/stats` | GET |
+| `/api/keys/{id}/rotate` | POST |
 | `/api/multisig` | GET, POST |
 | `/api/multisig/propose` | POST |
 | `/api/multisig/approve` | POST |
@@ -172,6 +174,29 @@ curl -X DELETE "https://api.ophirpay.com/api/keys/key_01hv89q7a4mpx3n" \
   "message": "API key revoked successfully."
 }
 ```
+
+### Rotate an API Key (24-hour overlap)
+```bash
+curl -X POST "https://api.ophirpay.com/api/keys/key_01hv89q7a4mpx3n/rotate" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+```
+**Response (`201 Created`):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "key_01hv89q7a4mpz4r",
+    "name": "Production Backend Worker",
+    "prefix": "ophir_live_sk_3d9c1b",
+    "scopes": ["payments:read", "payments:write", "webhooks:manage"],
+    "key": "ophir_live_sk_3d9c1b5e7f4a2c8d0b6e9f1a",
+    "previousPrefix": "ophir_live_sk_8f7b2c",
+    "previousKeyValidUntil": "2026-09-27T18:00:00.000Z"
+  },
+  "meta": { "timestamp": "2026-09-26T18:00:00.000Z" }
+}
+```
+> The previous key keeps authenticating until `previousKeyValidUntil` (24 hours, never past its own expiry), so you can deploy the replacement without an outage. Rotating an already-rotated, revoked, expired, or unknown key returns `400`.
 
 ---
 
@@ -633,6 +658,28 @@ curl -X POST "https://api.ophirpay.com/api/refunds" \
   "createdAt": "2026-08-26T19:05:00.000Z"
 }
 ```
+
+### Resolve a Custom Asset's Display Name
+```bash
+curl -X GET "https://api.ophirpay.com/api/assets/metadata?code=USDC&issuer=GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+```
+**Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "code": "USDC",
+    "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "name": "USD Coin",
+    "homeDomain": "centre.io",
+    "source": "toml",
+    "fetchedAt": "2026-09-28T12:00:00.000Z"
+  }
+}
+```
+Metadata is read from the issuer's SEP-1 `stellar.toml`; an unknown or
+unreachable issuer returns `name: null` with `source: "fallback"` so callers
+render the raw code and issuer.
 
 ---
 

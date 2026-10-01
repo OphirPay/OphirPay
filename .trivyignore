@@ -1,21 +1,26 @@
 # Trivy vulnerabilities suppressions
 # Add CVE IDs here to ignore them during container image scanning
 #
-# ── npm CLI bundled in the `node:20-slim` base image (2026-09-28) ────────────
+# ── npm CLI bundled in the base image (tracked since 2026-09-28) ─────────────
 # The runner stage only executes `server.js`; `npm`/`npx` are never invoked by
 # the container, its HEALTHCHECK, or docker-compose. These findings resolve
 # against npm 10.8.2's own dependency tree (pacote 18.0.6, tar 6.2.1,
 # sigstore 2.3.1, glob 10.4.2, cross-spawn 7.0.3, brace-expansion 2.0.1,
 # ip-address 9.0.5, minimatch 9.0.5) which ships inside the base image and is
-# not part of the application's runtime dependency graph. Node 20 bundles npm
-# 10.8.2 and cannot be patched below these versions without leaving the Node
-# 20.x line, so they are tracked here rather than in the lockfile.
-# Revisit when the Dockerfile moves to Node 22+.
+# not part of the application's runtime dependency graph. The pinned Node line
+# bundles npm and it cannot be patched below these versions without leaving
+# that line, so they are tracked here rather than in the lockfile.
+# (2026-10-01) The Dockerfile now uses node:24-slim; these IDs stay listed
+# until a scan confirms the npm 11.x bundle no longer matches them.
 #
 # brace-expansion
 CVE-2026-13149
 CVE-2026-14257
 CVE-2026-69152
+# (2026-09-30) same npm-bundled brace-expansion 2.0.1 — DoS via crafted/nested
+# brace patterns; only reachable through the npm CLI, which never runs.
+CVE-2026-102276
+CVE-2026-102278
 # cross-spawn
 CVE-2024-21538
 # glob
@@ -40,3 +45,7 @@ CVE-2026-29786
 CVE-2026-31802
 CVE-2026-59874
 CVE-2026-73566
+# undici (2026-10-01) — npm 11.x bundle in the node:24-slim base image; DoS
+# via unrequested WebSocket, reachable only through the npm CLI, which never
+# runs in the container (same rationale as the block at the top).
+CVE-2026-19534

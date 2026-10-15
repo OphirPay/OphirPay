@@ -194,3 +194,199 @@ describe("POST /api/csp-report — CSP directive in proxy.ts (issue #698)", () =
     expect(res?.headers?.get("Reporting-Endpoints")).toContain("csp-endpoint");
   });
 });
+
+describe("POST /api/csp-report — payload deduplication within 5-minute window (issue #1392)", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    const { getCspReportDeduplicator, setRateLimitStore, InMemoryRateLimitStore } = await import(
+      "@/lib/rate-limit"
+    );
+    getCspReportDeduplicator().reset();
+    setRateLimitStore(new InMemoryRateLimitStore());
+  });
+
+  it("logs the first violation report and suppresses identical duplicate reports", async () => {
+    const { logger } = await import("@/lib/logger");
+    const { incMetric } = await import("@/lib/metrics-counters");
+
+    const report1 = legacyReport({
+      "violated-directive": "script-src",
+      "blocked-uri": "https://evil.com/dupe.js",
+    });
+
+    // 1st report: accepted and logged
+    const res1 = await postReport(report1);
+    expect(res1.status).toBe(204);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(incMetric).toHaveBeenCalledWith("csp_violation_reports_total");
+
+    // 2nd report: exact duplicate within 5 minutes -> suppressed from logs
+    const res2 = await postReport(report1);
+    expect(res2.status).toBe(204);
+    expect(logger.warn).toHaveBeenCalledTimes(1); // Not called again!
+    expect(incMetric).toHaveBeenCalledWith("csp_reports_dropped_total");
+  });
+
+  it("logs distinct reports with different blocked-uri or directive", async () => {
+    const { logger } = await import("@/lib/logger");
+    const { incMetric } = await import("@/lib/metrics-counters");
+
+    const reportA = legacyReport({
+      "violated-directive": "script-src",
+      "blocked-uri": "https://evil.com/a.js",
+    });
+    const reportB = legacyReport({
+      "violated-directive": "script-src",
+      "blocked-uri": "https://evil.com/b.js",
+    });
+
+    await postReport(reportA);
+    await postReport(reportB);
+
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+    expect(incMetric).toHaveBeenCalledWith("csp_violation_reports_total");
+  });
+
+  it("allows report to be logged again after deduplication window expires", async () => {
+    const { logger } = await import("@/lib/logger");
+    const { getCspReportDeduplicator } = await import("@/lib/rate-limit");
+
+    const report = legacyReport({
+      "violated-directive": "connect-src",
+      "blocked-uri": "https://bad-api.com",
+    });
+
+    await postReport(report);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+
+    // Reset deduplicator (simulating expiration of 5-minute window)
+    getCspReportDeduplicator().reset();
+
+    await postReport(report);
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("POST /api/csp-report — sliding-window rate limiting (issue #1392)", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    const { getCspReportDeduplicator, setRateLimitStore, InMemoryRateLimitStore } = await import(
+      "@/lib/rate-limit"
+    );
+    getCspReportDeduplicator().reset();
+    setRateLimitStore(new InMemoryRateLimitStore());
+  });
+
+  it("throttles requests exceeding 60 reports per minute with 429 and Retry-After", async () => {
+    const { POST } = await import("@/app/api/csp-report/route");
+    const { incMetric } = await import("@/lib/metrics-counters");
+
+    // Send 60 reports from the same IP
+    for (let i = 0; i < 60; i++) {
+      const req = new NextRequest("http://localhost/api/csp-report", {
+        method: "POST",
+        headers: {
+          "content-type": "application/csp-report",
+          "x-forwarded-for": "198.51.100.1",
+        },
+        body: JSON.stringify(
+          legacyReport({
+            "blocked-uri": `https://evil.com/rate-${i}.js`,
+          })
+        ),
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(204);
+    }
+
+    // 61st report exceeds rate limit (60 RPM)
+    const req61 = new NextRequest("http://localhost/api/csp-report", {
+      method: "POST",
+      headers: {
+        "content-type": "application/csp-report",
+        "x-forwarded-for": "198.51.100.1",
+      },
+      body: JSON.stringify(legacyReport()),
+    });
+    const res61 = await POST(req61);
+    expect(res61.status).toBe(429);
+    expect(res61.headers.get("Retry-After")).toBeTruthy();
+    expect(incMetric).toHaveBeenCalledWith("csp_reports_dropped_total");
+  });
+
+  it("isolates rate limits by IP address", async () => {
+    const { POST } = await import("@/app/api/csp-report/route");
+
+    // Client 1 maxes out
+    for (let i = 0; i < 60; i++) {
+      const req = new NextRequest("http://localhost/api/csp-report", {
+        method: "POST",
+        headers: {
+          "content-type": "application/csp-report",
+          "x-forwarded-for": "198.51.100.2",
+        },
+        body: JSON.stringify(legacyReport({ "blocked-uri": `https://evil.com/${i}` })),
+      });
+      await POST(req);
+    }
+
+    // Client 2 with different IP is still allowed
+    const reqClient2 = new NextRequest("http://localhost/api/csp-report", {
+      method: "POST",
+      headers: {
+        "content-type": "application/csp-report",
+        "x-forwarded-for": "198.51.100.3",
+      },
+      body: JSON.stringify(legacyReport({ "blocked-uri": "https://evil.com/client2" })),
+    });
+    const resClient2 = await POST(reqClient2);
+    expect(resClient2.status).toBe(204);
+  });
+});
+
+describe("POST /api/csp-report — oversized payload handling (issue #1392)", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("increments csp_reports_dropped_total when body exceeds 16 KiB", async () => {
+    const { POST } = await import("@/app/api/csp-report/route");
+    const { incMetric } = await import("@/lib/metrics-counters");
+
+    const request = new NextRequest("http://localhost/api/csp-report", {
+      method: "POST",
+      headers: {
+        "content-type": "application/csp-report",
+        "content-length": String(16 * 1024 + 10),
+      },
+      body: "{}",
+    });
+    const res = await POST(request);
+    expect(res.status).toBe(413);
+    expect(incMetric).toHaveBeenCalledWith("csp_reports_dropped_total");
+  });
+});
+
+describe("CspReportDeduplicator & computeCspReportHash (issue #1392)", () => {
+  it("computeCspReportHash produces normalized deterministic hashes", async () => {
+    const { computeCspReportHash } = await import("@/lib/rate-limit");
+    const h1 = computeCspReportHash("https://evil.com/test", "script-src");
+    const h2 = computeCspReportHash("  https://evil.com/test  ", "SCRIPT-SRC");
+    expect(h1).toBe(h2);
+    expect(h1).toBeTruthy();
+  });
+
+  it("CspReportDeduplicator evicts oldest when exceeding maxEntries", async () => {
+    const { CspReportDeduplicator } = await import("@/lib/rate-limit");
+    const dedup = new CspReportDeduplicator(10_000, 3);
+
+    expect(dedup.isDuplicate("hash-1")).toBe(false);
+    expect(dedup.isDuplicate("hash-2")).toBe(false);
+    expect(dedup.isDuplicate("hash-3")).toBe(false);
+    // Adding 4th should cause cache eviction
+    expect(dedup.isDuplicate("hash-4")).toBe(false);
+  });
+});

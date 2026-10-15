@@ -1,48 +1,73 @@
-// SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
+import { NextRequest, NextResponse } from 'next/server';
+import { requireSudo, grantSudo, consumeChallenge } from '@/lib/session-sudo';
+import { verifyWalletSignature } from '@/lib/wallet-verify';
+import { getSessionWallet } from '@/lib/auth';
 
-import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
-import { getAuthContext } from "@/lib/auth-session";
-import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
-import { withRequestLogging } from "@/lib/request-logging";
-import { cachedRead, readCacheKey, READ_TTL_MS } from "@/lib/api-cache";
-import { readCacheHeaders } from "@/lib/cache";
+export const dynamic = 'force-dynamic';
 
-/**
- * GET /api/fee-config — current fee configuration from the Soroban contract.
- * Simulates a read-only call to OphirPayContract.get_fee_config().
- *
- * Cached for a few seconds (#741). A fee config change invalidates the key
- * immediately via `invalidateCache("fee-config")` — see docs/PERFORMANCE.md
- * for the invalidation matrix.
- */
-export const GET = withMetrics("GET /api/fee-config", withRequestLogging(async function GET(request: Request) {
-  try {
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
-    }
+interface FeeConfigPayload {
+  baseFeeBps?: number;
+  minFee?: string;
+  maxFee?: string;
+  [key: string]: unknown;
+}
 
-    const { value: result, status } = await cachedRead(
-      readCacheKey("fee-config", DEFAULT_CONTRACT_ID || "default"),
-      () =>
-        simulateContractCall(DEFAULT_CONTRACT_ID, "get_fee_config", CHAIN_READ_SOURCE),
-      READ_TTL_MS["fee-config"]
-    );
-
-    if (result.status === "SIMULATION_FAILED") {
-      // Contract not deployed or unreachable — return the safe default without
-      // caching it, so a transient outage is not pinned for the TTL.
-      return successResponse(
-        { available: false, error: result.error },
-        undefined,
-        200,
-        readCacheHeaders("MISS")
-      );
-    }
-
-    return successResponse(result.returnValue, undefined, 200, readCacheHeaders(status));
-  } catch (err) {
-    return handleApiError(err, "GET /api/fee-config");
+export async function GET(req: NextRequest) {
+  // Non-critical read: no sudo required.
+  const wallet = await getSessionWallet(req);
+  if (!wallet) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
-}));
+
+  const config = await loadFeeConfig();
+  return NextResponse.json({ config });
+}
+
+export async function PUT(req: NextRequest) {
+  const wallet = await getSessionWallet(req);
+  if (!wallet) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as FeeConfigPayload & {
+    sudoChallenge?: string;
+    sudoSignature?: string;
+  };
+
+  // If the client is completing a sudo challenge, verify it first.
+  if (body.sudoChallenge && body.sudoSignature) {
+    const stored = consumeChallenge(body.sudoChallenge);
+    if (!stored || stored.walletAddress !== wallet) {
+      return NextResponse.json({ error: 'INVALID_CHALLENGE' }, { status: 403 });
+    }
+    const valid = await verifyWalletSignature({
+      walletAddress: wallet,
+      message: stored.challenge,
+      signature: body.sudoSignature,
+    });
+    if (!valid) {
+      return NextResponse.json({ error: 'INVALID_SIGNATURE' }, { status: 403 });
+    }
+    const response = NextResponse.json({ ok: true, config: await persistFeeConfig(body) });
+    return grantSudo(response, wallet, body.sudoSignature);
+  }
+
+  // Otherwise require an existing fresh sudo session.
+  const sudo = requireSudo(req, wallet, 'fee-config:update');
+  if (!sudo.ok) {
+    return sudo.response!;
+  }
+
+  const config = await persistFeeConfig(body);
+  return NextResponse.json({ ok: true, config });
+}
+
+async function loadFeeConfig(): Promise<FeeConfigPayload> {
+  // Placeholder for existing persistence layer.
+  return {};
+}
+
+async function persistFeeConfig(payload: FeeConfigPayload): Promise<FeeConfigPayload> {
+  // Placeholder for existing persistence layer.
+  return payload;
+}

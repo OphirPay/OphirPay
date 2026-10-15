@@ -69,6 +69,11 @@ export class OphirPayError extends Error {
   status: number | null;
   code: string | null;
   details: unknown;
+  type?: string | null;
+  title?: string | null;
+  detail?: string | null;
+  instance?: string | null;
+  invalidParams?: Array<{ name: string; reason: string }> | null;
 }
 
 export interface OphirPayClientOptions {

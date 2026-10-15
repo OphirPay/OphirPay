@@ -7,6 +7,7 @@ import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/
 import { withRequestLogging } from "@/lib/request-logging";
 import { cachedRead, readCacheKey, READ_TTL_MS } from "@/lib/api-cache";
 import { readCacheHeaders } from "@/lib/cache";
+import { isSessionFresh, type SessionInfo } from "@/lib/session-sudo";
 
 /**
  * GET /api/fee-config — current fee configuration from the Soroban contract.

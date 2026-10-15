@@ -225,6 +225,14 @@ const STATE_CHANGING_ROUTES: RouteEntry[] = [
     csrfProtected: true,
     description: "Redeliver a webhook payload (user-scoped)",
   },
+  {
+    method: "POST",
+    path: "/api/webhooks/[id]/deliveries/requeue",
+    authRequired: true,
+    requiredRole: "Admin",
+    csrfProtected: true,
+    description: "Requeue failed webhook deliveries (Admin-only)",
+  },
 
   // ── Notification Hooks ──────────────────────────────────────
   {

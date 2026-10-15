@@ -39,10 +39,31 @@ export async function GET(
       return badRequestError(parsed.error.issues.map((e) => e.message).join("; "));
     }
 
-    const { limit } = parsed.data;
+    const { limit, status, statusCode, dlq } = parsed.data;
+
+    const where: Record<string, unknown> = {
+      webhookId: webhook.id,
+    };
+
+    if (status) {
+      where.status = status;
+    } else if (dlq) {
+      where.status = { in: ["DEAD_LETTER", "FAILED"] };
+    }
+
+    if (statusCode === "timeout") {
+      where.OR = [
+        { errorMessage: { contains: "timed out" } },
+        { error: { contains: "timed out" } },
+        { errorMessage: { contains: "timeout" } },
+        { error: { contains: "timeout" } },
+      ];
+    } else if (typeof statusCode === "number") {
+      where.responseCode = statusCode;
+    }
 
     const deliveries = await prisma.webhookDelivery.findMany({
-      where: { webhookId: webhook.id },
+      where,
       orderBy: { deliveredAt: "desc" },
       take: limit,
       select: {
@@ -50,6 +71,9 @@ export async function GET(
         eventId: true,
         status: true,
         responseCode: true,
+        latencyMs: true,
+        attempts: true,
+        errorMessage: true,
         isReplay: true,
         replayBatchId: true,
         deliveredAt: true,
@@ -70,6 +94,9 @@ export async function GET(
         eventTimestamp: d.event.timestamp.toISOString(),
         status: d.status,
         responseCode: d.responseCode,
+        latencyMs: d.latencyMs,
+        attempts: d.attempts,
+        errorMessage: d.errorMessage,
         isReplay: d.isReplay,
         replayBatchId: d.replayBatchId,
         deliveredAt: d.deliveredAt.toISOString(),

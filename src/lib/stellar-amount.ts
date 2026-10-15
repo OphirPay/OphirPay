@@ -16,5 +16,5 @@ export function formatXlmStroops(value: number | string | bigint): string {
     .toString()
     .padStart(7, "0")
     .replace(/0+$/, "");
-  return `${new Intl.NumberFormat().format(whole)}.${fractional.padEnd(2, "0")} XLM`;
+  return `${new Intl.NumberFormat("en-US").format(whole)}.${fractional.padEnd(2, "0")} XLM`;
 }

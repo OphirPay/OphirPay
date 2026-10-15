@@ -1,12 +1,12 @@
 #![cfg(test)]
 // SPDX-License-Identifier: MIT
 //
-// Issue #717 — Assert every PaymentError variant has a unique numeric code.
+// Issues #717, #1411 — Assert every PaymentError variant has a unique numeric code.
 //
 // A duplicate discriminant compiles fine but produces wrong user-facing
-// messages at runtime because the TypeScript catalog (src/lib/contract-errors.ts)
-// maps codes 1:1. This test enumerates all discriminants and fails with the
-// offending variant names if a collision is found.
+// messages at runtime because the TypeScript catalogs (src/lib/contract-errors.ts
+// and src/types/errors.ts) map codes 1:1. This test enumerates all discriminants
+// and fails with the offending variant names if a collision is found.
 
 use ophirpay_contract::PaymentError;
 use std::collections::HashMap;

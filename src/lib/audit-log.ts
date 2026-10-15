@@ -84,6 +84,7 @@ export const auditLogQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
+    cursor: z.string().trim().min(1).optional(),
     actor: z.string().trim().min(1).optional(),
     action: z.string().trim().min(1).optional(),
     resource: z.coerce.number().int().nonnegative().optional(),
@@ -304,4 +305,54 @@ export const AUDIT_EXPORT_HEADER =
 /** Dated filename, e.g. `ophirpay-audit-log-2026-08-26.csv` (UTC date). */
 export function buildAuditExportFilename(now: Date = new Date()): string {
   return `ophirpay-audit-log-${now.toISOString().slice(0, 10)}.csv`;
+}
+
+// ── Cursor-based pagination & directional sorting (#1361) ──────
+
+export interface CursorPaginatedAuditResult<T> {
+  data: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+/**
+ * Deterministic keyset/cursor pagination and directional sorting for audit entries.
+ * Ensures non-overlapping pages ordered by (timestamp, id).
+ */
+export function paginateAuditEntriesByCursor<T extends { id: string | number; timestamp: number }>(
+  entries: readonly T[],
+  options: {
+    cursor?: string | null;
+    limit: number;
+    order?: "asc" | "desc";
+  },
+): CursorPaginatedAuditResult<T> {
+  const order = options.order === "asc" ? "asc" : "desc";
+  const dir = order === "asc" ? 1 : -1;
+  const limit = Math.min(Math.max(1, options.limit), 100);
+
+  const sorted = [...entries].sort((a, b) => {
+    if (a.timestamp !== b.timestamp) {
+      return (a.timestamp - b.timestamp) * dir;
+    }
+    const idA = String(a.id);
+    const idB = String(b.id);
+    return idA.localeCompare(idB, undefined, { numeric: true }) * dir;
+  });
+
+  let startIndex = 0;
+  if (options.cursor != null && options.cursor.trim() !== "") {
+    const targetCursor = options.cursor.trim();
+    const cursorIdx = sorted.findIndex((item) => String(item.id) === targetCursor);
+    if (cursorIdx !== -1) {
+      startIndex = cursorIdx + 1;
+    }
+  }
+
+  const windowSlice = sorted.slice(startIndex, startIndex + limit + 1);
+  const hasMore = windowSlice.length > limit;
+  const data = hasMore ? windowSlice.slice(0, limit) : windowSlice;
+  const nextCursor = hasMore && data.length > 0 ? String(data[data.length - 1].id) : null;
+
+  return { data, nextCursor, hasMore };
 }

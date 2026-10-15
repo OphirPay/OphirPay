@@ -30,6 +30,7 @@ export function Header() {
             onClick={toggle}
             aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            suppressHydrationWarning
             className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
           >
             {isDark ? (

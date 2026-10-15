@@ -935,3 +935,120 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+/// Issue #1354: Add multi-token balance integrity verification to emergency_withdraw
+/// Verifies:
+/// 1. Locked balance is strictly segregated per token contract
+/// 2. Attempting to withdraw asset A does not affect, unlock, or drain asset B obligations
+/// 3. Cross-asset isolation: surplus in asset A is withdrawable even if asset B has large locked balance
+/// 4. Neither asset can be drained below its individual locked balance
+#[test]
+fn test_multi_asset_emergency_withdraw_balance_integrity() {
+    let fix = TestFixture::new();
+    let token_a = fix.token_id.clone();
+
+    // Register second distinct asset (Token B, e.g. USDC)
+    let token_b_admin = Address::generate(&fix.env);
+    let token_b = fix.env.register_stellar_asset_contract(token_b_admin.clone());
+    let token_b_client = token::Client::new(&fix.env, &token_b);
+    let token_b_admin_client = token::StellarAssetClient::new(&fix.env, &token_b);
+
+    let user_a = Address::generate(&fix.env);
+    let beneficiary_a = Address::generate(&fix.env);
+    let user_b = Address::generate(&fix.env);
+    let beneficiary_b = Address::generate(&fix.env);
+
+    // Initial state: locked balances are all 0
+    assert_eq!(fix.client.get_locked_balance_for_asset(&token_a), 0);
+    assert_eq!(fix.client.get_locked_balance_for_asset(&token_b), 0);
+    assert_eq!(fix.client.get_locked_balance(), 0);
+
+    // Mint funds
+    fix.mint(&user_a, 5_000_000);
+    token_b_admin_client.mint(&user_b, &10_000_000);
+
+    // 1. Lock 2_000_000 in Token A via Escrow
+    let deadline_a = fix.env.ledger().timestamp() + 10_000;
+    let memo = String::from_str(&fix.env, "escrow_a");
+    let escrow_a_id = fix.client.create_escrow(
+        &user_a,
+        &beneficiary_a,
+        &None::<Address>,
+        &2_000_000i128,
+        &token_a,
+        &deadline_a,
+        &memo,
+    );
+    assert_eq!(escrow_a_id, 1);
+
+    // 2. Lock 6_000_000 in Token B via Stream
+    let stream_memo = String::from_str(&fix.env, "stream_b");
+    let stream_b_id = fix.client.create_stream(
+        &user_b,
+        &beneficiary_b,
+        &6_000_000i128,
+        &token_b,
+        &fix.env.ledger().timestamp(),
+        &(fix.env.ledger().timestamp() + 1_000),
+        &stream_memo,
+    );
+    assert_eq!(stream_b_id, 1);
+
+    // Verify segregation of locked balances
+    assert_eq!(fix.client.get_locked_balance_for_asset(&token_a), 2_000_000);
+    assert_eq!(fix.client.get_locked_balance_for_asset(&token_b), 6_000_000);
+    assert_eq!(fix.client.get_locked_balance(), 8_000_000);
+
+    // Verify contract token balances match locked amounts exactly
+    assert_eq!(fix.token_client.balance(&fix.contract_id), 2_000_000);
+    assert_eq!(token_b_client.balance(&fix.contract_id), 6_000_000);
+
+    // 3. Both assets have 0 unlocked surplus currently
+    // Emergency withdraw of even 1 unit of either asset MUST fail
+    let err_a = fix.client.try_emergency_withdraw(&fix.owner, &token_a, &1);
+    assert_eq!(err_a, Err(Ok(PaymentError::NoTokensToWithdraw)));
+
+    let err_b = fix.client.try_emergency_withdraw(&fix.owner, &token_b, &1);
+    assert_eq!(err_b, Err(Ok(PaymentError::NoTokensToWithdraw)));
+
+    // 4. Simulate accidental direct transfer of 1_500_000 Token A to contract
+    fix.mint(&fix.contract_id, 1_500_000);
+    assert_eq!(fix.token_client.balance(&fix.contract_id), 3_500_000);
+    // Token A surplus is 1_500_000, Token B surplus is still 0
+
+    // Attempting to withdraw Token B MUST still fail (Token A surplus does NOT unlock Token B)
+    let err_b2 = fix.client.try_emergency_withdraw(&fix.owner, &token_b, &1);
+    assert_eq!(err_b2, Err(Ok(PaymentError::NoTokensToWithdraw)));
+
+    // Attempting to withdraw 1_500_001 Token A MUST fail (cannot touch the 2_000_000 locked)
+    let err_a_greedy = fix.client.try_emergency_withdraw(&fix.owner, &token_a, &1_500_001);
+    assert_eq!(err_a_greedy, Err(Ok(PaymentError::NoTokensToWithdraw)));
+
+    // Withdrawing exactly the 1_500_000 surplus of Token A MUST succeed
+    // Even though Token B has 6_000_000 locked (which previously would have blocked Token A)
+    let owner_a_before = fix.token_client.balance(&fix.owner);
+    fix.client.emergency_withdraw(&fix.owner, &token_a, &1_500_000);
+    assert_eq!(fix.token_client.balance(&fix.owner), owner_a_before + 1_500_000);
+
+    // Verify post-withdrawal balances
+    assert_eq!(fix.token_client.balance(&fix.contract_id), 2_000_000);
+    assert_eq!(fix.client.get_locked_balance_for_asset(&token_a), 2_000_000);
+    assert_eq!(token_b_client.balance(&fix.contract_id), 6_000_000);
+    assert_eq!(fix.client.get_locked_balance_for_asset(&token_b), 6_000_000);
+    assert_eq!(fix.client.get_locked_balance(), 8_000_000);
+
+    // 5. Complete Token A escrow release
+    fix.client.release_escrow(&fix.owner, &escrow_a_id);
+    assert_eq!(fix.client.get_locked_balance_for_asset(&token_a), 0);
+    assert_eq!(fix.client.get_locked_balance_for_asset(&token_b), 6_000_000);
+    assert_eq!(fix.client.get_locked_balance(), 6_000_000);
+    assert_eq!(fix.token_client.balance(&beneficiary_a), 2_000_000);
+
+    // 6. Complete Token B stream claiming
+    fix.env.ledger().set_timestamp(fix.env.ledger().timestamp() + 1_000);
+    let claimed_b = fix.client.claim_stream(&beneficiary_b, &stream_b_id);
+    assert_eq!(claimed_b, 6_000_000);
+    assert_eq!(fix.client.get_locked_balance_for_asset(&token_b), 0);
+    assert_eq!(fix.client.get_locked_balance(), 0);
+    assert_eq!(token_b_client.balance(&beneficiary_b), 6_000_000);
+}

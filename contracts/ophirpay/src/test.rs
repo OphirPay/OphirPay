@@ -2627,4 +2627,58 @@ mod tests {
         assert_eq!(missing.total, 0);
         assert!(!missing.truncated);
     }
+
+    #[test]
+    fn test_multi_token_locked_balance_segregation_and_emergency_withdraw() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(1_000_000);
+
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        client.init(&owner);
+
+        let token_a_admin = Address::generate(&env);
+        let token_a = env.register_stellar_asset_contract(token_a_admin.clone());
+        let token_a_client = token::Client::new(&env, &token_a);
+        let token_a_admin_client = token::StellarAssetClient::new(&env, &token_a);
+
+        let token_b_admin = Address::generate(&env);
+        let token_b = env.register_stellar_asset_contract(token_b_admin.clone());
+        let token_b_client = token::Client::new(&env, &token_b);
+        let token_b_admin_client = token::StellarAssetClient::new(&env, &token_b);
+
+        let user = Address::generate(&env);
+        let payee = Address::generate(&env);
+        token_a_admin_client.mint(&user, &10_000_000);
+        token_b_admin_client.mint(&user, &10_000_000);
+
+        let memo = String::from_str(&env, "test");
+        // Create escrow with token A
+        let e1 = client.create_escrow(&user, &payee, &None, &1_000_000, &token_a, &(1_000_000 + 500), &memo);
+        assert_eq!(e1, 1);
+
+        // Create escrow with token B
+        let e2 = client.create_escrow(&user, &payee, &None, &3_000_000, &token_b, &(1_000_000 + 500), &memo);
+        assert_eq!(e2, 2);
+
+        assert_eq!(client.get_locked_balance_for_asset(&token_a), 1_000_000);
+        assert_eq!(client.get_locked_balance_for_asset(&token_b), 3_000_000);
+        assert_eq!(client.get_locked_balance(), 4_000_000);
+        assert_eq!(token_a_client.balance(&contract_id), 1_000_000);
+
+        // Mint surplus for token B
+        token_b_admin_client.mint(&contract_id, &500_000);
+        assert_eq!(token_b_client.balance(&contract_id), 3_500_000);
+
+        // Token A has no surplus -> emergency_withdraw fails
+        assert_eq!(client.try_emergency_withdraw(&owner, &token_a, &100), Err(Ok(PaymentError::NoTokensToWithdraw)));
+
+        // Token B has 500_000 surplus -> withdrawing 500_001 fails, 500_000 succeeds
+        assert_eq!(client.try_emergency_withdraw(&owner, &token_b, &500_001), Err(Ok(PaymentError::NoTokensToWithdraw)));
+        assert!(client.try_emergency_withdraw(&owner, &token_b, &500_000).is_ok());
+        assert_eq!(token_b_client.balance(&contract_id), 3_000_000);
+        assert_eq!(client.get_locked_balance_for_asset(&token_b), 3_000_000);
+    }
 }

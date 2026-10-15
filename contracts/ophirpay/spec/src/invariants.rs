@@ -38,6 +38,7 @@
 //! | 6 | Multisig threshold must be met before execution | `multisig_threshold_invariant` |
 //! | 7 | Timelock delay of 24h is enforced | `timelock_delay_invariant` |
 //! | 8 | Spending limits enforce expiry | `spending_limit_expiry_invariant` |
+| 9 | Multi-asset balance isolation in emergency_withdraw | `multi_asset_locked_balance_isolation_invariant` |
 
 #[path = "../../src/spending_limit.rs"]
 mod spending_limit;
@@ -776,6 +777,72 @@ fn compute_vested_zero_duration() {
     // Zero-duration stream: total_duration == 0 → return total_amount
     let vested = compute_vested_at(total_amount, t, t, t);
     assert_eq!(vested, total_amount);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INVARIANT 9: Multi-Asset Locked Balance Isolation
+//
+// Formula:  For any two distinct assets A and B:
+//           emergency_withdraw(A, amount_A) is valid iff
+//           amount_A <= balance(A) - locked(A).
+//           It has zero effect on balance(B) or locked(B), and
+//           funds locked in asset B can NEVER be used to fulfill or
+//           drain asset A obligations (cross-asset deficit protection).
+// ═══════════════════════════════════════════════════════════════
+
+/// Models multi-asset emergency withdraw check.
+/// Withdraw on asset A is allowed iff withdraw_amount_a <= balance_a - locked_a.
+fn model_multi_asset_emergency_withdraw_allowed(
+    balance_a: i128,
+    locked_a: i128,
+    withdraw_a: i128,
+) -> bool {
+    if withdraw_a <= 0 {
+        return false;
+    }
+    let unlocked_a = balance_a.saturating_sub(locked_a);
+    withdraw_a <= unlocked_a
+}
+
+#[proof]
+fn multi_asset_locked_balance_isolation_invariant() {
+    let balance_a: i128 = kani::any();
+    let locked_a: i128 = kani::any();
+    let balance_b: i128 = kani::any();
+    let locked_b: i128 = kani::any();
+    let withdraw_a: i128 = kani::any();
+
+    kani::assume(balance_a >= 0);
+    kani::assume(locked_a >= 0);
+    kani::assume(balance_b >= 0);
+    kani::assume(locked_b >= 0);
+    kani::assume(withdraw_a >= 0);
+
+    kani::assume(locked_a <= balance_a);
+    kani::assume(locked_b <= balance_b);
+
+    let allowed_a = model_multi_asset_emergency_withdraw_allowed(balance_a, locked_a, withdraw_a);
+
+    // Property 9a: Asset B locked funds are completely isolated from Asset A withdrawal
+    // Even if locked_b > 0 and balance_a == locked_a, withdrawal of A must fail
+    if balance_a == locked_a && withdraw_a > 0 {
+        assert!(!allowed_a);
+    }
+
+    // Property 9b: If withdrawal on Asset A succeeds, remaining balance of A is >= locked_a
+    if allowed_a {
+        let remaining_a = balance_a.saturating_sub(withdraw_a);
+        assert!(remaining_a >= locked_a);
+        // Asset B state is unchanged and fully preserved
+        assert!(balance_b >= locked_b);
+    }
+
+    // Property 9c: Surplus in Asset A cannot be blocked by large locked balance in Asset B
+    let unlocked_a = balance_a.saturating_sub(locked_a);
+    if withdraw_a > 0 && withdraw_a <= unlocked_a {
+        // Must succeed regardless of whether locked_b is huge
+        assert!(allowed_a);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════

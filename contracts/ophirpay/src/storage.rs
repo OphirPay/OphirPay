@@ -73,8 +73,8 @@ pub const STAT_AMT_BATCHED: Symbol = symbol_short!("S_AB");
 /// Incremented on create_escrow / create_stream / create_proposal (deposit).
 /// Decremented on release_escrow / claim_escrow / claim_stream / cancel_stream
 /// / execute_proposal (deposit refund).
-/// emergency_withdraw enforces: withdraw_amount <= contract_balance - LOCKED_BALANCE.
-/// Prevents the owner from draining user-deposited funds (critical invariant).
+/// emergency_withdraw enforces: withdraw_amount <= contract_balance(asset) - LOCKED_BALANCE(asset).
+/// Prevents cross-asset deficit drains and protects user funds (tracked per-asset via (LOCKED_BALANCE, Address) and globally).
 pub const LOCKED_BALANCE: Symbol = symbol_short!("LOCKED");
 pub const REENTRANCY_LOCK: Symbol = symbol_short!("RE_LOCK");
 

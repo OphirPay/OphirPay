@@ -69,12 +69,27 @@ pub fn add_counter(env: &Env, key: &Symbol, delta: i128) {
 /// Track funds locked in active escrows/streams. Pass the actual amount being
 /// deposited (positive) or withdrawn (negative). Used by emergency_withdraw
 /// to prevent the owner from withdrawing user-deposited funds.
-pub fn add_locked(env: &Env, delta: i128) {
-    let val: i128 = env.storage().instance().get(&LOCKED_BALANCE).unwrap_or(0);
-    let new_val = val.saturating_add(delta);
-    // Clamp at 0 — locked balance must never go negative
-    let clamped = if new_val < 0 { 0 } else { new_val };
-    env.storage().instance().set(&LOCKED_BALANCE, &clamped);
+pub fn add_locked(env: &Env, asset: &Address, delta: i128) {
+    // 1. Update asset-specific locked balance
+    let asset_key = (LOCKED_BALANCE, asset.clone());
+    let asset_val: i128 = env.storage().instance().get(&asset_key).unwrap_or(0);
+    let new_asset = asset_val.saturating_add(delta);
+    let clamped_asset = if new_asset < 0 { 0 } else { new_asset };
+    env.storage().instance().set(&asset_key, &clamped_asset);
+
+    // 2. Update global aggregate locked balance
+    let global_val: i128 = env.storage().instance().get(&LOCKED_BALANCE).unwrap_or(0);
+    let new_global = global_val.saturating_add(delta);
+    let clamped_global = if new_global < 0 { 0 } else { new_global };
+    env.storage().instance().set(&LOCKED_BALANCE, &clamped_global);
+}
+
+/// Retrieve the locked balance for a specific asset contract.
+pub fn get_asset_locked_balance(env: &Env, asset: &Address) -> i128 {
+    env.storage()
+        .instance()
+        .get(&(LOCKED_BALANCE, asset.clone()))
+        .unwrap_or(0)
 }
 
 /// Compute the protocol fee for an amount at the given fee basis points.
@@ -257,4 +272,4 @@ pub fn acquire_reentrancy_lock<'a>(env: &'a Env) -> Result<ReentrancyGuard<'a>, 
     env.storage().instance().set(&REENTRANCY_LOCK, &true);
     Ok(ReentrancyGuard { env })
 }
-
+

@@ -1,30 +1,58 @@
 version: 2
 
-# Issue #732 — keep dependency updates flowing without drowning reviewers.
+# Issue #1415 — Grouped dependency updates to reduce maintainer PR noise.
 #
-# Every ecosystem the repo actually pins is covered: the root npm lockfile,
-# both Cargo.lock files (contracts/ophirpay, contracts/emitter) and the pinned
-# GitHub Actions. Each is checked once a week and minor/patch bumps are grouped
-# into a single PR per ecosystem; a major bump still arrives on its own so it
-# gets the attention it needs. `open-pull-requests-limit` caps the backlog a
-# busy week can create.
-#
-# See CONTRIBUTING.md → "Dependency Updates" for the review flow.
+# Bundles minor and patch updates into logical groups while leaving major
+# version bumps on individual PRs for manual evaluation.
+# Security advisories automatically bypass grouped version updates and land as
+# individual high-priority PRs.
 
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
+      - "javascript"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      npm-minor-patch:
+      react-ecosystem:
         patterns:
-          - "*"
+          - "next"
+          - "next-*"
+          - "react"
+          - "react-*"
+          - "@types/react"
+          - "@types/react-*"
+        update-types:
+          - "minor"
+          - "patch"
+      dev-tools:
+        patterns:
+          - "eslint"
+          - "eslint-*"
+          - "@typescript-eslint/*"
+          - "prettier"
+          - "prettier-*"
+          - "vitest"
+          - "@vitest/*"
+          - "playwright"
+          - "@playwright/*"
+          - "typescript"
+          - "tsx"
+        update-types:
+          - "minor"
+          - "patch"
+      utilities:
+        patterns:
+          - "zod"
+          - "date-fns"
+          - "clsx"
+          - "tailwind-merge"
+          - "lucide-react"
         update-types:
           - "minor"
           - "patch"
@@ -33,15 +61,26 @@ updates:
     directory: "/contracts/ophirpay"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
+      - "rust"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      cargo-ophirpay-minor-patch:
+      soroban-sdk:
+        patterns:
+          - "soroban-*"
+          - "stellar-*"
+        update-types:
+          - "minor"
+          - "patch"
+      rust-tooling:
         patterns:
           - "*"
+        exclude-patterns:
+          - "soroban-*"
+          - "stellar-*"
         update-types:
           - "minor"
           - "patch"
@@ -50,15 +89,26 @@ updates:
     directory: "/contracts/emitter"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
+      - "rust"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      cargo-emitter-minor-patch:
+      soroban-sdk:
+        patterns:
+          - "soroban-*"
+          - "stellar-*"
+        update-types:
+          - "minor"
+          - "patch"
+      rust-tooling:
         patterns:
           - "*"
+        exclude-patterns:
+          - "soroban-*"
+          - "stellar-*"
         update-types:
           - "minor"
           - "patch"
@@ -66,14 +116,15 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: "monthly"
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
+      - "github-actions"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      actions-minor-patch:
+      actions-all:
         patterns:
           - "*"
         update-types:

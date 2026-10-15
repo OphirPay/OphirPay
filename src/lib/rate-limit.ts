@@ -327,3 +327,103 @@ export async function initRateLimitStore(): Promise<void> {
   // 3. In-memory.
   _store = createRateLimitStoreFromEnv();
 }
+
+// ── CSP Report Rate Limiting & Deduplication (issue #1392) ──────
+
+/** Maximum allowed CSP violation reports per minute per IP/session. */
+export const CSP_REPORT_RATE_LIMIT_RPM = 60;
+/** Sliding-window duration for CSP report rate limiting (1 minute). */
+export const CSP_REPORT_WINDOW_MS = 60 * 1000;
+/** Sliding-window duration for CSP report payload deduplication (5 minutes). */
+export const CSP_REPORT_DEDUP_WINDOW_MS = 5 * 60 * 1000;
+
+/** Compute deterministic hash for CSP report payload deduplication. */
+export function computeCspReportHash(
+  blockedUri: string | undefined,
+  violatedDirective: string | undefined
+): string {
+  const normBlocked = (blockedUri ?? "").trim().toLowerCase();
+  const normDirective = (violatedDirective ?? "").trim().toLowerCase();
+  const str = `${normDirective}|${normBlocked}`;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const nodeCrypto = require("crypto");
+    return nodeCrypto.createHash("sha256").update(str).digest("hex");
+  } catch {
+    // Fallback if node crypto is unavailable in Edge runtime: FNV-1a 64-bit
+    let h1 = 0x811c9dc5;
+    let h2 = 0x84222325;
+    for (let i = 0; i < str.length; i++) {
+      const code = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ code, 0x01000193);
+      h2 = Math.imul(h2 ^ code, 0x5bd1e995);
+    }
+    return (
+      (h1 >>> 0).toString(16).padStart(8, "0") +
+      (h2 >>> 0).toString(16).padStart(8, "0")
+    );
+  }
+}
+
+/**
+ * In-memory sliding-window deduplicator for CSP violation reports.
+ * Prevents identical (violated-directive, blocked-uri) reports from filling
+ * application logs and disk space within a 5-minute sliding window.
+ */
+export class CspReportDeduplicator {
+  private cache = new Map<string, number>();
+  private readonly windowMs: number;
+  private readonly maxEntries: number;
+
+  constructor(
+    windowMs = CSP_REPORT_DEDUP_WINDOW_MS,
+    maxEntries = 5000
+  ) {
+    this.windowMs = windowMs;
+    this.maxEntries = maxEntries;
+  }
+
+  /**
+   * Check if report hash has been seen within windowMs.
+   * If seen, returns true (is a duplicate).
+   * If new, records it and returns false.
+   */
+  isDuplicate(hashKey: string, now = Date.now()): boolean {
+    const expiresAt = this.cache.get(hashKey);
+    if (expiresAt !== undefined && expiresAt > now) {
+      return true;
+    }
+
+    this.cache.set(hashKey, now + this.windowMs);
+
+    // Evict expired entries if cache grows past maxEntries
+    if (this.cache.size > this.maxEntries) {
+      for (const [k, exp] of this.cache) {
+        if (exp <= now) this.cache.delete(k);
+      }
+      if (this.cache.size > this.maxEntries) {
+        const oldestKey = this.cache.keys().next().value;
+        if (oldestKey) this.cache.delete(oldestKey);
+      }
+    }
+
+    return false;
+  }
+
+  reset(): void {
+    this.cache.clear();
+  }
+}
+
+let _cspDeduplicator: CspReportDeduplicator | null = null;
+
+export function getCspReportDeduplicator(): CspReportDeduplicator {
+  if (!_cspDeduplicator) {
+    _cspDeduplicator = new CspReportDeduplicator();
+  }
+  return _cspDeduplicator;
+}
+
+export function setCspReportDeduplicator(deduplicator: CspReportDeduplicator | null): void {
+  _cspDeduplicator = deduplicator;
+}

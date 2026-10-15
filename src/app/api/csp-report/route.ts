@@ -23,6 +23,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 import { incMetric } from "@/lib/metrics-counters";
+import {
+  getRateLimitStore,
+  getRetryAfterSeconds,
+  CSP_REPORT_RATE_LIMIT_RPM,
+  CSP_REPORT_WINDOW_MS,
+  computeCspReportHash,
+  getCspReportDeduplicator,
+} from "@/lib/rate-limit";
 
 /** Maximum accepted request body size in bytes (16 KiB). */
 const MAX_BODY_BYTES = 16 * 1024;
@@ -121,9 +129,36 @@ function compact<T extends Record<string, unknown>>(obj: T): Partial<T> {
 // ── Route handler ─────────────────────────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  // 0. IP-based and session-based sliding-window rate limit (60 reports/min, issue #1392)
+  const forwarded = request.headers.get("x-forwarded-for");
+  const ip =
+    (forwarded ? forwarded.split(",")[0]?.trim() : null) ||
+    request.headers.get("x-real-ip") ||
+    "127.0.0.1";
+  const session = request.cookies.get("session")?.value || "";
+  const rateLimitKey = session ? `csp:${ip}:${session}` : `csp:${ip}`;
+
+  const rateLimitStore = getRateLimitStore();
+  const rateLimitResult = await rateLimitStore.increment(
+    rateLimitKey,
+    CSP_REPORT_WINDOW_MS,
+    CSP_REPORT_RATE_LIMIT_RPM
+  );
+
+  if (!rateLimitResult.allowed) {
+    incMetric("csp_reports_dropped_total");
+    return new NextResponse(null, {
+      status: 429,
+      headers: {
+        "Retry-After": String(getRetryAfterSeconds(rateLimitResult)),
+      },
+    });
+  }
+
   // 1. Size-cap the body before reading it.
   const contentLength = request.headers.get("content-length");
   if (contentLength !== null && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+    incMetric("csp_reports_dropped_total");
     return new NextResponse(null, { status: 413 });
   }
 
@@ -132,6 +167,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const buffer = await request.arrayBuffer();
     if (buffer.byteLength > MAX_BODY_BYTES) {
+      incMetric("csp_reports_dropped_total");
       return new NextResponse(null, { status: 413 });
     }
     rawText = new TextDecoder().decode(buffer);
@@ -205,8 +241,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse(null, { status: 204 });
   }
 
-  // 6. Log and count each report.
+  // 6. Log and count each report, suppressing duplicates within 5-min window (issue #1392)
+  const deduplicator = getCspReportDeduplicator();
   for (const report of reports) {
+    const reportHash = computeCspReportHash(
+      report.blockedUri,
+      report.violatedDirective
+    );
+
+    if (deduplicator.isDuplicate(reportHash)) {
+      incMetric("csp_reports_dropped_total");
+      continue;
+    }
+
     logger.warn("csp_violation", compact(report as unknown as Record<string, unknown>));
     incMetric("csp_violation_reports_total");
   }

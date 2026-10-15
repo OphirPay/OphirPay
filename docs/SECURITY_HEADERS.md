@@ -82,9 +82,20 @@ matching nonce and confirm there are no CSP violations or hydration failures.
 Development additionally needs `'unsafe-eval'` for HMR/Fast Refresh. This is a
 documented limitation, not a claim that the policy is nonce-based.
 
-The page CSP reports to `POST /api/csp-report`; the collector validates and
-limits reports before logging them. See `src/proxy.ts` and
-[AUDIT.md](AUDIT.md) for the implementation and tracked limitation.
+The page CSP reports to `POST /api/csp-report`; the collector validates,
+rate-limits, and deduplicates reports before logging them (issue #1392):
+- **Rate limiting**: Enforces an IP-based and session-based sliding-window rate
+  limit (60 reports per minute) using the shared rate-limit store. Excessive
+  reports are throttled with `429 Too Many Requests` and a `Retry-After` header.
+- **Payload deduplication**: Hashes report payloads (`violated-directive`,
+  `blocked-uri`) and suppresses duplicate reports within a 5-minute sliding
+  window to prevent disk exhaustion and log spam during violation bursts.
+- **Size bounding**: Limits incoming request bodies to 16 KiB; oversized payloads
+  are discarded with `413 Payload Too Large`.
+- **Telemetry**: Accepted reports increment `csp_violation_reports_total`, while
+  throttled, deduplicated, or oversized reports increment `csp_reports_dropped_total`.
+See `src/proxy.ts`, `src/app/api/csp-report/route.ts`, and [AUDIT.md](AUDIT.md)
+for the implementation and tracked limitation.
 
 ## Checking a deployment
 

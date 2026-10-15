@@ -36,6 +36,11 @@ const counters = {
    * malformed requests are rejected before reaching this counter.
    */
   csp_violation_reports_total: 0,
+  /**
+   * Counter: CSP reports dropped due to rate limit, duplicate suppression,
+   * or oversized payload (issue #1392).
+   */
+  csp_reports_dropped_total: 0,
 };
 
 /** Last failover snapshot read by a scrape, for diffing gauge/counter gauges. */

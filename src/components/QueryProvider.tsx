@@ -34,6 +34,15 @@ function getQueryClient() {
   return browserQueryClient;
 }
 
+/**
+ * Clear the client-side query cache (e.g. on wallet disconnect to prevent session data leakage).
+ */
+export function clearQueryCache(): void {
+  if (browserQueryClient) {
+    browserQueryClient.clear();
+  }
+}
+
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(getQueryClient);
 

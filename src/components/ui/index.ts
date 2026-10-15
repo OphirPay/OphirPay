@@ -19,3 +19,5 @@ export { Kbd } from "./Kbd";
 export { Amount } from "./Amount";
 export { CurrencyToggle } from "./CurrencyToggle";
 export type { CurrencyToggleProps } from "./CurrencyToggle";
+export { QrCode } from "./QrCode";
+export type { QrCodeProps, PaymentQrParams } from "./QrCode";

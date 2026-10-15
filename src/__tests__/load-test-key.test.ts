@@ -96,7 +96,7 @@ describe("scripts/create-load-test-key.mjs", () => {
   it("derives the key from the injected CSPRNG (so entropy is real)", () => {
     const deterministic = Buffer.alloc(API_KEY_RANDOM_BYTES, 0xab);
     const rawKey = keyScript.generateApiKey(() => deterministic);
-    expect(rawKey).toBe(`${API_KEY_PREFIX}${"ab".repeat(API_KEY_RANDOM_BYTES)}`);
+    expect(rawKey.startsWith(`op_test_${"ab".repeat(API_KEY_RANDOM_BYTES)}_`)).toBe(true);
     expect(rawKey).toMatch(API_KEY_PATTERN);
   });
 

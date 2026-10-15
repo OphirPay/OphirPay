@@ -229,6 +229,20 @@ const auth = await requireAuth(request);
 if (!("userId" in auth)) return auth; // auth is an error Response
 ```
 
+### API Key Format and Edge Verification (#1397)
+
+API keys in OphirPay enforce a standardized, high-entropy format with built-in checksum validation:
+
+```text
+op_{env}_{32_hex_bytes}_{4_byte_crc}
+```
+
+- **Prefix**: `op_live_` (production) or `op_test_` (development/testing), matching the 8-character indexed database lookup prefix (`prefix` column).
+- **Entropy**: 32 cryptographically secure random bytes (64 lowercase hex characters, 256 bits of entropy) generated via CSPRNG.
+- **Checksum**: 4-byte CRC-32 checksum (8 lowercase hex characters, IEEE 802.3 standard) computed over the prefix and random hex payload.
+- **Edge Validation**: Incoming API keys presented via `Authorization: Bearer <key>` or `X-API-Key: <key>` are checked by edge middleware (`src/proxy.ts`). Keys failing format or CRC-32 checksum validation are immediately rejected with `401 Unauthorized` (`INVALID_API_KEY`) before reaching route handlers or database lookups.
+- **Backward Compatibility**: Legacy keys (`oph_...`) issued prior to standardization remain supported and pass through to database authentication.
+
 ---
 
 ## 6. Response envelope

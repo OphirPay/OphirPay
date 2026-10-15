@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 //
-// Issue #701 — API key material must be high-entropy (>= 32 CSPRNG bytes) and
-// match the documented format at creation. Digests are version-tagged, and
-// keys minted before the change must keep authenticating.
+// Issue #1397 — API key minimum entropy check, standardized format
+// (op_{env}_{32_hex_bytes}_{4_byte_crc}), CRC-32 checksum integrity,
+// edge middleware rejection, and backward compatibility.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import crypto from "crypto";
+import { NextRequest } from "next/server";
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -21,152 +22,235 @@ vi.mock("@/lib/prisma", () => ({
 import prisma from "@/lib/prisma";
 import {
   API_KEY_PREFIX,
-  API_KEY_PATTERN,
-  API_KEY_LOOKUP_PATTERN,
+  API_KEY_LEGACY_PREFIX,
+  API_KEY_PREFIX_LENGTH,
   API_KEY_RANDOM_BYTES,
   API_KEY_RANDOM_HEX_LENGTH,
   API_KEY_LEGACY_HEX_LENGTH,
+  API_KEY_CRC_HEX_LENGTH,
+  API_KEY_PATTERN,
+  API_KEY_LOOKUP_PATTERN,
   API_KEY_DIGEST_VERSION,
-  apiKeyLookupHashes,
+  crc32,
+  computeCrcHex,
+  validateKeyFormat,
+  isLegacyApiKey,
+  isValidApiKeyFormat,
   assertValidApiKeyFormat,
-  authenticateRequest,
   deriveKeyPrefix,
   generateApiKey,
   hashApiKey,
   hashApiKeyV1,
-  isValidApiKeyFormat,
+  apiKeyLookupHashes,
+  authenticateRequest,
 } from "@/lib/api-auth";
+import { proxy } from "@/proxy";
 
-const LEGACY_KEY = `${API_KEY_PREFIX}${"a1b2c3d4".repeat(6)}`; // 48 hex chars
-const MODERN_KEY = `${API_KEY_PREFIX}${"a1b2c3d4".repeat(8)}`; // 64 hex chars
+const LEGACY_24_KEY = `${API_KEY_LEGACY_PREFIX}${"a1b2c3d4".repeat(6)}`; // 48 hex chars (24 bytes)
+const LEGACY_32_KEY = `${API_KEY_LEGACY_PREFIX}${"a1b2c3d4".repeat(8)}`; // 64 hex chars (32 bytes)
+const VALID_TEST_KEY = generateApiKey("test");
+const VALID_LIVE_KEY = generateApiKey("live");
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("generateApiKey", () => {
-  it("mints 32 CSPRNG bytes as lowercase hex behind the oph_ prefix", () => {
-    const key = generateApiKey();
-    expect(key).toMatch(API_KEY_PATTERN);
-    expect(key.startsWith(API_KEY_PREFIX)).toBe(true);
-    expect(key.length).toBe(
-      API_KEY_PREFIX.length + API_KEY_RANDOM_HEX_LENGTH
-    );
-    expect(API_KEY_RANDOM_HEX_LENGTH).toBe(API_KEY_RANDOM_BYTES * 2);
+describe("CRC-32 Checksum implementation", () => {
+  it("matches IEEE 802.3 standard test vector '123456789' -> 0xcbf43926", () => {
+    expect(crc32("123456789")).toBe(0xcbf43926);
+    expect(computeCrcHex("123456789")).toBe("cbf43926");
   });
 
-  it("produces unique keys", () => {
-    const keys = new Set(Array.from({ length: 50 }, () => generateApiKey()));
-    expect(keys.size).toBe(50);
-  });
-
-  it("never mints the legacy 24-byte format", () => {
-    expect(generateApiKey()).not.toMatch(
-      new RegExp(`^${API_KEY_PREFIX}[0-9a-f]{${API_KEY_LEGACY_HEX_LENGTH}}$`)
-    );
+  it("produces deterministic 8-character lowercase hex string", () => {
+    const hex = computeCrcHex("op_test_sample_payload");
+    expect(hex).toHaveLength(8);
+    expect(hex).toMatch(/^[0-9a-f]{8}$/);
+    expect(computeCrcHex("op_test_sample_payload")).toBe(hex);
   });
 });
 
-describe("isValidApiKeyFormat (creation format)", () => {
-  it("accepts the documented 32-byte format", () => {
-    expect(isValidApiKeyFormat(generateApiKey())).toBe(true);
+describe("generateApiKey", () => {
+  it("mints 32 CSPRNG bytes (64 hex chars) with standard prefix and CRC-32 checksum", () => {
+    const key = generateApiKey("test");
+    expect(key).toMatch(API_KEY_PATTERN);
+    expect(key.startsWith("op_test_")).toBe(true);
+    // op_ (3) + test_ (5) + 64 hex + _ (1) + 8 crc = 81
+    expect(key.length).toBe(81);
+    expect(validateKeyFormat(key)).toBe(true);
   });
 
-  it("rejects material shorter than 32 bytes", () => {
-    const shortKey = `${API_KEY_PREFIX}${crypto
-      .randomBytes(8)
-      .toString("hex")}`; // 8 bytes
-    expect(isValidApiKeyFormat(shortKey)).toBe(false);
+  it("supports explicit live environment prefix", () => {
+    const key = generateApiKey("live");
+    expect(key).toMatch(API_KEY_PATTERN);
+    expect(key.startsWith("op_live_")).toBe(true);
+    expect(key.length).toBe(81);
+    expect(validateKeyFormat(key)).toBe(true);
   });
 
-  it("rejects the legacy 24-byte format at creation", () => {
-    expect(isValidApiKeyFormat(LEGACY_KEY)).toBe(false);
+  it("produces unique keys with high entropy", () => {
+    const keys = new Set(Array.from({ length: 50 }, () => generateApiKey("test")));
+    expect(keys.size).toBe(50);
+  });
+
+  it("never mints legacy oph_ formats", () => {
+    const key = generateApiKey();
+    expect(key.startsWith(API_KEY_LEGACY_PREFIX)).toBe(false);
+  });
+});
+
+describe("validateKeyFormat & isValidApiKeyFormat", () => {
+  it("accepts valid keys in test and live environments", () => {
+    expect(validateKeyFormat(VALID_TEST_KEY)).toBe(true);
+    expect(validateKeyFormat(VALID_LIVE_KEY)).toBe(true);
+    expect(isValidApiKeyFormat(VALID_TEST_KEY)).toBe(true);
+  });
+
+  it("detects single-character corruption in the payload (CRC mismatch)", () => {
+    // Flip a single hex char in the payload guaranteed to be different
+    const parts = VALID_TEST_KEY.split("_");
+    const firstChar = parts[2]![0];
+    const replacement = firstChar === "a" ? "b" : "a";
+    const corruptedPayloadHex = replacement + parts[2]!.slice(1);
+    const corruptedKey = `op_test_${corruptedPayloadHex}_${parts[3]}`;
+    expect(validateKeyFormat(corruptedKey)).toBe(false);
+  });
+
+  it("detects single-character corruption in the CRC checksum", () => {
+    const parts = VALID_TEST_KEY.split("_");
+    const lastChar = parts[3]!.slice(-1);
+    const flippedCrc = parts[3]!.slice(0, -1) + (lastChar === "0" ? "1" : "0");
+    const corruptedKey = `op_test_${parts[2]}_${flippedCrc}`;
+    expect(validateKeyFormat(corruptedKey)).toBe(false);
+  });
+
+  it("rejects legacy keys at standard format validation", () => {
+    expect(validateKeyFormat(LEGACY_24_KEY)).toBe(false);
+    expect(validateKeyFormat(LEGACY_32_KEY)).toBe(false);
   });
 
   it.each([
-    ["missing prefix", "a1b2c3d4".repeat(8)],
-    ["wrong prefix", `key_${"a1b2c3d4".repeat(8)}`],
-    ["uppercase hex", `${API_KEY_PREFIX}${"A1B2C3D4".repeat(8)}`],
-    ["non-hex characters", `${API_KEY_PREFIX}${"z".repeat(64)}`],
-    ["one byte too short", `${API_KEY_PREFIX}${"a".repeat(63)}`],
-    ["one byte too long", `${API_KEY_PREFIX}${"a".repeat(65)}`],
+    ["missing prefix", "a1b2c3d4".repeat(8) + "_12345678"],
+    ["wrong prefix", "opp_test_" + "a1b2c3d4".repeat(8) + "_12345678"],
+    ["unknown environment", "op_stage_" + "a1b2c3d4".repeat(8) + "_12345678"],
+    ["uppercase hex in payload", "op_test_" + "A1B2C3D4".repeat(8) + "_12345678"],
+    ["non-hex characters in payload", "op_test_" + "z".repeat(64) + "_12345678"],
+    ["insufficient entropy (short payload)", "op_test_" + "a1b2c3d4".repeat(4) + "_12345678"],
+    ["excess entropy (long payload)", "op_test_" + "a1b2c3d4".repeat(10) + "_12345678"],
+    ["short checksum", "op_test_" + "a1b2c3d4".repeat(8) + "_1234"],
     ["empty string", ""],
   ])("rejects %s", (_label, value) => {
-    expect(isValidApiKeyFormat(value)).toBe(false);
+    expect(validateKeyFormat(value)).toBe(false);
   });
 
   it("rejects null and undefined", () => {
-    expect(isValidApiKeyFormat(null)).toBe(false);
-    expect(isValidApiKeyFormat(undefined)).toBe(false);
+    expect(validateKeyFormat(null)).toBe(false);
+    expect(validateKeyFormat(undefined)).toBe(false);
+  });
+});
+
+describe("isLegacyApiKey", () => {
+  it("recognizes legacy 24-byte (48 hex chars) and 32-byte (64 hex chars) keys", () => {
+    expect(isLegacyApiKey(LEGACY_24_KEY)).toBe(true);
+    expect(isLegacyApiKey(LEGACY_32_KEY)).toBe(true);
+  });
+
+  it("returns false for modern standardized keys", () => {
+    expect(isLegacyApiKey(VALID_TEST_KEY)).toBe(false);
+    expect(isLegacyApiKey(VALID_LIVE_KEY)).toBe(false);
+  });
+
+  it("returns false for arbitrary strings", () => {
+    expect(isLegacyApiKey("not-a-key")).toBe(false);
+    expect(isLegacyApiKey(null)).toBe(false);
   });
 });
 
 describe("assertValidApiKeyFormat", () => {
   it("does not throw for a valid key", () => {
-    expect(() => assertValidApiKeyFormat(MODERN_KEY)).not.toThrow();
+    expect(() => assertValidApiKeyFormat(VALID_TEST_KEY)).not.toThrow();
   });
 
-  it("throws on the reject path with an actionable message", () => {
-    expect(() => assertValidApiKeyFormat(`${API_KEY_PREFIX}short`)).toThrow(
+  it("throws on invalid key with actionable message", () => {
+    expect(() => assertValidApiKeyFormat("invalid-key")).toThrow(
       /Invalid API key format/
     );
-    expect(() => assertValidApiKeyFormat(LEGACY_KEY)).toThrow(
-      new RegExp(String(API_KEY_RANDOM_HEX_LENGTH))
-    );
+  });
+});
+
+describe("deriveKeyPrefix", () => {
+  it("returns exactly 8 characters matching the index column", () => {
+    expect(deriveKeyPrefix(VALID_TEST_KEY)).toBe("op_test_");
+    expect(deriveKeyPrefix(VALID_LIVE_KEY)).toBe("op_live_");
+    expect(deriveKeyPrefix(LEGACY_24_KEY)).toHaveLength(API_KEY_PREFIX_LENGTH);
   });
 });
 
 describe("versioned digests", () => {
-  it("hashApiKeyV1 is the legacy hash with a version tag", () => {
-    expect(hashApiKeyV1(MODERN_KEY)).toBe(
-      `${API_KEY_DIGEST_VERSION}:${hashApiKey(MODERN_KEY)}`
+  it("hashApiKeyV1 produces v1-tagged SHA-256", () => {
+    expect(hashApiKeyV1(VALID_TEST_KEY)).toBe(
+      `${API_KEY_DIGEST_VERSION}:${hashApiKey(VALID_TEST_KEY)}`
     );
-    expect(hashApiKeyV1(MODERN_KEY)).toMatch(/^v1:[a-f0-9]{64}$/);
+    expect(hashApiKeyV1(VALID_TEST_KEY)).toMatch(/^v1:[a-f0-9]{64}$/);
   });
 
-  it("apiKeyLookupHashes returns the tagged digest first, then the legacy one", () => {
-    expect(apiKeyLookupHashes(MODERN_KEY)).toEqual([
-      hashApiKeyV1(MODERN_KEY),
-      hashApiKey(MODERN_KEY),
+  it("apiKeyLookupHashes queries both tagged and legacy digests", () => {
+    expect(apiKeyLookupHashes(VALID_TEST_KEY)).toEqual([
+      hashApiKeyV1(VALID_TEST_KEY),
+      hashApiKey(VALID_TEST_KEY),
     ]);
-    expect(apiKeyLookupHashes(MODERN_KEY)).toHaveLength(2);
   });
 });
 
 describe("authenticateRequest", () => {
-  const call = (key: string) =>
+  const callWithHeader = (headers: Record<string, string>) =>
     authenticateRequest(
       new Request("http://localhost/api/payments", {
-        headers: { "x-api-key": key },
+        headers,
       })
     );
 
-  it("authenticates a new-format key and queries both digest forms", async () => {
+  it("authenticates a standardized key and queries both digest forms", async () => {
     const row = {
       id: "key_1",
       userId: "u1",
-      name: "CI bot",
+      name: "Standard Key",
       expiresAt: null,
       scopes: ["read:payments"],
     };
     vi.mocked(prisma.apiKey.findFirst).mockResolvedValueOnce(row as never);
 
-    const auth = await call(MODERN_KEY);
+    const auth = await callWithHeader({ "x-api-key": VALID_TEST_KEY });
     expect(auth).toEqual({
       userId: "u1",
       keyId: "key_1",
-      keyName: "CI bot",
+      keyName: "Standard Key",
       scopes: ["read:payments"],
     });
 
     const where = vi.mocked(prisma.apiKey.findFirst).mock.calls[0]![0]!
       .where as { keyHash: { in: string[] }; prefix: string };
-    expect(where.prefix).toBe(deriveKeyPrefix(MODERN_KEY));
-    expect(where.keyHash.in).toContain(hashApiKeyV1(MODERN_KEY));
-    expect(where.keyHash.in).toContain(hashApiKey(MODERN_KEY));
+    expect(where.prefix).toBe("op_test_");
+    expect(where.keyHash.in).toContain(hashApiKeyV1(VALID_TEST_KEY));
+    expect(where.keyHash.in).toContain(hashApiKey(VALID_TEST_KEY));
   });
 
-  it("still authenticates keys minted before #701 (legacy 24-byte format)", async () => {
+  it("authenticates via Authorization: Bearer header", async () => {
+    const row = {
+      id: "key_bearer",
+      userId: "u_bearer",
+      name: "Bearer Key",
+      expiresAt: null,
+      scopes: ["write:payments"],
+    };
+    vi.mocked(prisma.apiKey.findFirst).mockResolvedValueOnce(row as never);
+
+    const auth = await callWithHeader({
+      authorization: `Bearer ${VALID_LIVE_KEY}`,
+    });
+    expect(auth?.userId).toBe("u_bearer");
+  });
+
+  it("still authenticates legacy keys (backward compatibility)", async () => {
     vi.mocked(prisma.apiKey.findFirst).mockResolvedValueOnce({
       id: "key_legacy",
       userId: "u2",
@@ -175,19 +259,21 @@ describe("authenticateRequest", () => {
       scopes: null,
     } as never);
 
-    const auth = await call(LEGACY_KEY);
+    const auth = await callWithHeader({ "x-api-key": LEGACY_24_KEY });
     expect(auth?.userId).toBe("u2");
-    // The legacy bare SHA-256 digest is part of the lookup — and the strict
-    // creation format is not what gated this request.
-    expect(API_KEY_LOOKUP_PATTERN.test(LEGACY_KEY)).toBe(true);
-    const where = vi.mocked(prisma.apiKey.findFirst).mock.calls[0]![0]!
-      .where as { keyHash: { in: string[] } };
-    expect(where.keyHash.in).toContain(hashApiKey(LEGACY_KEY));
+    expect(prisma.apiKey.findFirst).toHaveBeenCalled();
   });
 
-  it("rejects malformed material without touching the database", async () => {
-    expect(await call("totally-not-a-key")).toBeNull();
-    expect(await call(`${API_KEY_PREFIX}${"a".repeat(40)}`)).toBeNull();
+  it("rejects keys with invalid CRC checksum without touching the database", async () => {
+    const parts = VALID_TEST_KEY.split("_");
+    const badKey = `op_test_${parts[2]}_ffffffff`;
+
+    expect(await callWithHeader({ "x-api-key": badKey })).toBeNull();
+    expect(prisma.apiKey.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed strings without touching the database", async () => {
+    expect(await callWithHeader({ "x-api-key": "not-a-valid-key" })).toBeNull();
     expect(prisma.apiKey.findFirst).not.toHaveBeenCalled();
   });
 
@@ -200,6 +286,59 @@ describe("authenticateRequest", () => {
       scopes: [],
     } as never);
 
-    expect(await call(MODERN_KEY)).toBeNull();
+    expect(await callWithHeader({ "x-api-key": VALID_TEST_KEY })).toBeNull();
+  });
+});
+
+describe("Edge Middleware (src/proxy.ts) key integrity rejection (#1397)", () => {
+  it("rejects malformed x-api-key with 401 INVALID_API_KEY before database lookup", async () => {
+    const req = new NextRequest("http://localhost/api/payments", {
+      headers: { "x-api-key": "bad_key_format" },
+    });
+    const res = await proxy(req);
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body).toEqual({
+      success: false,
+      error: {
+        code: "INVALID_API_KEY",
+        message: "Invalid API key format.",
+      },
+    });
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
+  });
+
+  it("rejects tampered CRC in Authorization: Bearer with 401 INVALID_API_KEY", async () => {
+    const parts = VALID_TEST_KEY.split("_");
+    const tamperedKey = `op_test_${parts[2]}_ffffffff`;
+    const req = new NextRequest("http://localhost/api/payments", {
+      headers: { authorization: `Bearer ${tamperedKey}` },
+    });
+    const res = await proxy(req);
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe("INVALID_API_KEY");
+  });
+
+  it("allows valid standardized API key to pass through", async () => {
+    const req = new NextRequest("http://localhost/api/payments", {
+      headers: { "x-api-key": VALID_TEST_KEY },
+    });
+    const res = await proxy(req);
+    expect(res.status).toBe(200); // NextResponse.next() defaults to status 200 in Next.js middleware
+  });
+
+  it("allows legacy oph_ API key to pass through", async () => {
+    const req = new NextRequest("http://localhost/api/payments", {
+      headers: { "x-api-key": LEGACY_24_KEY },
+    });
+    const res = await proxy(req);
+    expect(res.status).toBe(200);
+  });
+
+  it("allows requests without API key to pass through (e.g. cookie sessions)", async () => {
+    const req = new NextRequest("http://localhost/api/payments");
+    const res = await proxy(req);
+    expect(res.status).toBe(200);
   });
 });

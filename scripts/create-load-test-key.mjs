@@ -31,8 +31,33 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+// Standard IEEE 802.3 CRC32 lookup table
+const CRC32_TABLE = new Uint32Array(256);
+for (let i = 0; i < 256; i++) {
+  let c = i;
+  for (let k = 0; k < 8; k++) {
+    c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  }
+  CRC32_TABLE[i] = c;
+}
+
+/** Compute standard CRC32 checksum as an unsigned 32-bit integer. */
+export function crc32(str) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < str.length; i++) {
+    const byte = str.charCodeAt(i) & 0xff;
+    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** Compute standard 8-character lowercase hex CRC checksum. */
+export function computeCrcHex(payload) {
+  return crc32(payload).toString(16).padStart(8, "0");
+}
+
 /** Prefix every OphirPay API key starts with (mirrors src/lib/api-auth.ts). */
-export const API_KEY_PREFIX = "oph_";
+export const API_KEY_PREFIX = "op_";
 /** Length of the indexed lookup prefix (mirrors API_KEY_PREFIX_LENGTH). */
 export const API_KEY_PREFIX_LENGTH = 8;
 /** CSPRNG bytes in the random portion (mirrors API_KEY_RANDOM_BYTES). */
@@ -40,9 +65,12 @@ export const API_KEY_RANDOM_BYTES = 32;
 /** Digest version tag (mirrors API_KEY_DIGEST_VERSION). */
 export const API_KEY_DIGEST_VERSION = "v1";
 
-/** `oph_` + 32 CSPRNG bytes as lowercase hex. */
-export function generateApiKey(randomBytes = crypto.randomBytes) {
-  return `${API_KEY_PREFIX}${randomBytes(API_KEY_RANDOM_BYTES).toString("hex")}`;
+/** op_{env}_{32_hex_bytes}_{4_byte_crc} */
+export function generateApiKey(randomBytes = crypto.randomBytes, env = "test") {
+  const hex = randomBytes(API_KEY_RANDOM_BYTES).toString("hex");
+  const payload = `op_${env}_${hex}`;
+  const crc = computeCrcHex(payload);
+  return `${payload}_${crc}`;
 }
 
 /** `v1:<sha256 hex>` — the digest stored in `ApiKey.keyHash`. */

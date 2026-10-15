@@ -53,6 +53,9 @@ pub struct Escrow {
     pub released: bool,
     pub claimed: bool,
     pub metadata: String,
+    /// Timestamp when a dispute was initiated (0 = no dispute).
+    /// Used to enforce MIN_DISPUTE_PERIOD before arbiter can resolve.
+    pub dispute_initiated_at: u64,
 }
 
 /// A payment stream that vests tokens over time.
@@ -378,4 +381,4 @@ pub struct HookList {
     pub total: u32,
     pub truncated: bool,
 }
-
+

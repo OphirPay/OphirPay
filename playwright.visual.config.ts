@@ -11,7 +11,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./tests/visual",
+  testMatch: ["tests/visual/**/*.spec.ts", "e2e/visual-*.spec.ts"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -31,10 +31,9 @@ export default defineConfig({
   snapshotPathTemplate:
     "{testDir}/__screenshots__/{testFilePath}/{projectName}/{arg}{ext}",
   //
-  // Two colour-scheme projects (issue #715). `colorScheme` drives
-  // `prefers-color-scheme`, so the app's ThemeProvider resolves dark mode even
-  // before any persisted preference is read; the spec additionally pins the
-  // persisted theme per project so the render is deterministic.
+  // Colour-scheme and mobile viewport projects (issues #715, #1400).
+  // `colorScheme` drives `prefers-color-scheme`, and mobile viewports
+  // capture responsive modals on iPhone SE (375x667) and Galaxy (414x896).
   //
   projects: [
     {
@@ -44,6 +43,34 @@ export default defineConfig({
     {
       name: "visual-dark",
       use: { ...devices["Desktop Chrome"], colorScheme: "dark" },
+    },
+    {
+      name: "visual-mobile-se-light",
+      use: {
+        viewport: { width: 375, height: 667 },
+        colorScheme: "light",
+      },
+    },
+    {
+      name: "visual-mobile-se-dark",
+      use: {
+        viewport: { width: 375, height: 667 },
+        colorScheme: "dark",
+      },
+    },
+    {
+      name: "visual-mobile-galaxy-light",
+      use: {
+        viewport: { width: 414, height: 896 },
+        colorScheme: "light",
+      },
+    },
+    {
+      name: "visual-mobile-galaxy-dark",
+      use: {
+        viewport: { width: 414, height: 896 },
+        colorScheme: "dark",
+      },
     },
   ],
   // No webServer — visual tests run against a live deployment (same as E2E).

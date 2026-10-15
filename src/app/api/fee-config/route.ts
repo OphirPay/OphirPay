@@ -1,48 +1,55 @@
-// SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
+import { NextRequest, NextResponse } from 'next/server';
+import { enforceSudo, markSudoVerified, verifySudoSignature } from '@/lib/session-sudo';
+import { getSession } from '@/lib/session';
+import { feeConfigSchema } from '@/lib/validation/fee-config';
+import { updateFeeConfig, getFeeConfig } from '@/lib/services/fee-config';
 
-import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
-import { getAuthContext } from "@/lib/auth-session";
-import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
-import { withRequestLogging } from "@/lib/request-logging";
-import { cachedRead, readCacheKey, READ_TTL_MS } from "@/lib/api-cache";
-import { readCacheHeaders } from "@/lib/cache";
+export async function GET(req: NextRequest) {
+  const session = await getSession(req);
+  if (!session) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
+  }
 
-/**
- * GET /api/fee-config — current fee configuration from the Soroban contract.
- * Simulates a read-only call to OphirPayContract.get_fee_config().
- *
- * Cached for a few seconds (#741). A fee config change invalidates the key
- * immediately via `invalidateCache("fee-config")` — see docs/PERFORMANCE.md
- * for the invalidation matrix.
- */
-export const GET = withMetrics("GET /api/fee-config", withRequestLogging(async function GET(request: Request) {
-  try {
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
-    }
+  const config = await getFeeConfig(session.organizationId);
+  return NextResponse.json({ config });
+}
 
-    const { value: result, status } = await cachedRead(
-      readCacheKey("fee-config", DEFAULT_CONTRACT_ID || "default"),
-      () =>
-        simulateContractCall(DEFAULT_CONTRACT_ID, "get_fee_config", CHAIN_READ_SOURCE),
-      READ_TTL_MS["fee-config"]
-    );
+export async function PUT(req: NextRequest) {
+  const session = await getSession(req);
+  if (!session) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
+  }
 
-    if (result.status === "SIMULATION_FAILED") {
-      // Contract not deployed or unreachable — return the safe default without
-      // caching it, so a transient outage is not pinned for the TTL.
-      return successResponse(
-        { available: false, error: result.error },
-        undefined,
-        200,
-        readCacheHeaders("MISS")
+  if (session.role !== 'admin' && session.role !== 'owner') {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 });
+  }
+
+  const body = await req.json().catch(() => null);
+
+  // Sudo re-authentication path: client submits a signature to satisfy the challenge.
+  if (body?.sudoSignature && body?.sudoPublicKey) {
+    const result = await verifySudoSignature(req, body.sudoSignature, body.sudoPublicKey);
+    if (!result.verified) {
+      return NextResponse.json(
+        { error: result.reason ?? 'SUDO_REQUIRED' },
+        { status: 403 },
       );
     }
-
-    return successResponse(result.returnValue, undefined, 200, readCacheHeaders(status));
-  } catch (err) {
-    return handleApiError(err, "GET /api/fee-config");
+    // Fall through to apply the mutation with a freshly verified session.
+  } else {
+    const sudoResponse = enforceSudo(req, 'fee-config:update');
+    if (sudoResponse) return sudoResponse;
   }
-}));
+
+  const parsed = feeConfigSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'INVALID_PAYLOAD', details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  const updated = await updateFeeConfig(session.organizationId, parsed.data);
+  const res = NextResponse.json({ config: updated });
+  return markSudoVerified(res);
+}

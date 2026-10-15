@@ -14,6 +14,53 @@ const ignoredDirectories = new Set([
 ]);
 const markdownFiles = [];
 
+// Ignored external URL domains and non-filesystem schemes prone to rate limits or external dependencies
+const ignoredExternalDomains = [
+  "stellar.org",
+  "github.com",
+  "gitlab.com",
+  "npmjs.com",
+  "vercel.app",
+  "w3.org",
+  "schema.org",
+  "docker.com",
+  "kubernetes.io",
+  "prometheus.io",
+  "prisma.io",
+  "vitest.dev",
+  "nextjs.org",
+  "react.dev",
+  "rust-lang.org",
+  "crates.io",
+  "docs.rs",
+];
+
+const ignoredSchemes = [
+  "http:",
+  "https:",
+  "mailto:",
+  "tel:",
+  "javascript:",
+  "data:",
+  "irc:",
+  "ftp:",
+];
+
+function isIgnoredExternal(destination) {
+  if (!destination) return true;
+  const lower = destination.toLowerCase().trim();
+  if (ignoredSchemes.some((scheme) => lower.startsWith(scheme))) {
+    return true;
+  }
+  if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(destination)) {
+    return true;
+  }
+  if (ignoredExternalDomains.some((domain) => lower.includes(domain))) {
+    return true;
+  }
+  return false;
+}
+
 function collectMarkdownFiles(directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     if (entry.isDirectory()) {
@@ -145,7 +192,26 @@ function resolveMarkdownTarget(sourceFile, rawDestination) {
   return { path: undefined, fragment };
 }
 
-collectMarkdownFiles(root);
+// Parse CLI flags and arguments
+const cliArgs = process.argv.slice(2);
+const annotate =
+  cliArgs.includes("--annotate") || process.env.GITHUB_ACTIONS === "true";
+const explicitFiles = cliArgs.filter((arg) => !arg.startsWith("--"));
+
+if (explicitFiles.length > 0) {
+  for (const file of explicitFiles) {
+    const resolved = path.isAbsolute(file) ? file : path.resolve(root, file);
+    if (
+      fs.existsSync(resolved) &&
+      fs.statSync(resolved).isFile() &&
+      /\.mdx?$/i.test(resolved)
+    ) {
+      markdownFiles.push(resolved);
+    }
+  }
+} else {
+  collectMarkdownFiles(root);
+}
 
 const failures = [];
 for (const sourceFile of markdownFiles) {
@@ -155,21 +221,25 @@ for (const sourceFile of markdownFiles) {
 
   for (const link of linksIn(markdown)) {
     const destination = link.destination.trim();
-    if (
-      !destination ||
-      /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(destination) ||
-      destination.startsWith("#")
-    ) {
+
+    // Check if link is an ignored external URL or anchor-only
+    if (isIgnoredExternal(destination) || destination.startsWith("#")) {
       if (destination.startsWith("#")) {
         let fragment = destination.slice(1);
         try {
           fragment = decodeURIComponent(fragment);
         } catch {
-          // Keep the literal fragment so malformed escapes fail as missing anchors.
+          // Keep literal fragment
         }
         if (!headingAnchors(markdown).has(fragment)) {
           const line = lineOffsets.filter((offset) => offset <= link.offset).length;
-          failures.push(`${path.relative(root, sourceFile)}:${line}: missing anchor #${fragment}`);
+          const relativeFile = path.relative(root, sourceFile);
+          failures.push({
+            file: relativeFile,
+            line,
+            message: `missing anchor #${fragment}`,
+            formatted: `${relativeFile}:${line}: missing anchor #${fragment}`,
+          });
         }
       }
       continue;
@@ -177,16 +247,27 @@ for (const sourceFile of markdownFiles) {
 
     const { path: target, fragment } = resolveMarkdownTarget(sourceFile, destination);
     const line = lineOffsets.filter((offset) => offset <= link.offset).length;
+    const relativeFile = path.relative(root, sourceFile);
+
     if (!target) {
-      failures.push(`${path.relative(root, sourceFile)}:${line}: missing file ${destination}`);
+      failures.push({
+        file: relativeFile,
+        line,
+        message: `missing file ${destination}`,
+        formatted: `${relativeFile}:${line}: missing file ${destination}`,
+      });
       continue;
     }
+
     if (fragment && /\.mdx?$/i.test(target)) {
       const anchors = headingAnchors(fs.readFileSync(target, "utf8"));
       if (!anchors.has(fragment)) {
-        failures.push(
-          `${path.relative(root, sourceFile)}:${line}: missing anchor ${destination}`
-        );
+        failures.push({
+          file: relativeFile,
+          line,
+          message: `missing anchor ${destination}`,
+          formatted: `${relativeFile}:${line}: missing anchor ${destination}`,
+        });
       }
     }
   }
@@ -194,8 +275,15 @@ for (const sourceFile of markdownFiles) {
 
 if (failures.length > 0) {
   console.error(`Found ${failures.length} broken Markdown link(s):`);
-  for (const failure of failures) console.error(`  ${failure}`);
+  for (const failure of failures) {
+    console.error(`  ${failure.formatted}`);
+    if (annotate) {
+      console.log(`::error file=${failure.file},line=${failure.line}::${failure.message}`);
+    }
+  }
   process.exitCode = 1;
 } else {
-  console.log(`Checked Markdown links in ${markdownFiles.length} files; no broken links found.`);
+  console.log(
+    `Checked Markdown links in ${markdownFiles.length} file(s); no broken links found.`
+  );
 }

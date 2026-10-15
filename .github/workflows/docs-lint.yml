@@ -1,0 +1,64 @@
+name: Documentation Lint
+
+on:
+  pull_request:
+    branches:
+      - integration/staging
+      - main
+    paths:
+      - '**.md'
+      - '**.mdx'
+      - 'scripts/check-markdown-links.mjs'
+      - '.github/workflows/docs-lint.yml'
+  push:
+    branches:
+      - integration/staging
+      - main
+    paths:
+      - '**.md'
+      - '**.mdx'
+      - 'scripts/check-markdown-links.mjs'
+      - '.github/workflows/docs-lint.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  markdown-links:
+    name: Markdown Link Integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Verify Markdown Links
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Checking Markdown files modified in this PR..."
+            git fetch origin ${{ github.base_ref }} --depth=1 || true
+            CHANGED_MD=$(git diff --name-only origin/${{ github.base_ref }} HEAD -- '*.md' '*.mdx' 2>/dev/null || true)
+            if [ -n "$CHANGED_MD" ]; then
+              echo "Targeting changed files: $CHANGED_MD"
+              node scripts/check-markdown-links.mjs --annotate $CHANGED_MD
+            else
+              echo "No Markdown files changed; running full repository verification..."
+              node scripts/check-markdown-links.mjs --annotate
+            fi
+          else
+            echo "Running full repository Markdown link check on push..."
+            node scripts/check-markdown-links.mjs --annotate
+          fi

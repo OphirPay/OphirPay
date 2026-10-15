@@ -91,6 +91,26 @@ is starting or unavailable. Tune delays and thresholds for cold starts, but do
 not point probes at a database-only endpoint or make liveness depend on a
 transient external provider.
 
+## Network policy and egress
+
+When `networkPolicy.enabled` is true (default), egress is default-deny with explicit allows for DNS, HTTPS (TCP 443), and PostgreSQL (TCP 5432).
+
+To support distributed rate limiting with Redis (`REDIS_URL`), egress allows TCP 6379 by default (`networkPolicy.redis.enabled: true`, `port: 6379`). You can optionally scope Redis egress by namespace or pod selectors, or configure `networkPolicy.egress.extraPorts`:
+
+```yaml
+networkPolicy:
+  redis:
+    enabled: true
+    port: 6379
+    namespaceSelector:
+      kubernetes.io/metadata.name: redis
+    podSelector:
+      app.kubernetes.io/name: redis
+  egress:
+    extraPorts:
+      - 6380
+```
+
 ## Pre-flight checklist
 
 - [ ] Build and publish an image with the intended `NEXT_PUBLIC_*` values.

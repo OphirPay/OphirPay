@@ -116,3 +116,21 @@ describe("chart inventory (#684)", () => {
     }
   });
 });
+
+describe("networkpolicy.yaml Redis egress (#1345)", () => {
+  const contents = template("networkpolicy.yaml");
+
+  it("declares networkPolicy.redis in values.yaml", () => {
+    expect(valueAt("networkPolicy.redis.enabled")).toBe(true);
+    expect(valueAt("networkPolicy.redis.port")).toBe(6379);
+  });
+
+  it("gates Redis egress rule on .Values.networkPolicy.redis.enabled", () => {
+    expect(contents).toContain(".Values.networkPolicy.redis.enabled");
+    expect(contents).toContain(".Values.networkPolicy.redis.port");
+  });
+
+  it("supports configurable extra egress ports", () => {
+    expect(contents).toContain(".Values.networkPolicy.egress.extraPorts");
+  });
+});

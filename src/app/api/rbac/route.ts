@@ -1,60 +1,53 @@
-// SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
+import { NextRequest, NextResponse } from 'next/server';
+import { enforceSudo, markSudoVerified, verifySudoSignature } from '@/lib/session-sudo';
+import { getSession } from '@/lib/session';
+import { rbacUpdateSchema } from '@/lib/validation/rbac';
+import { updateRoleAssignments, listRoleAssignments } from '@/lib/services/rbac';
 
-import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
-import { getAuthContext } from "@/lib/auth-session";
-import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
-import { nativeToScVal } from "@stellar/stellar-sdk";
-import { withRequestLogging } from "@/lib/request-logging";
-import { enforceLookupRateLimit } from "@/lib/lookup-rate-limit";
-
-/**
- * GET /api/rbac — look up role assignments from the Soroban contract.
- * Reads from OphirPayContract.get_role(addr) for a specific address.
- * Use query param `addr` to look up a specific address's role.
- */
-export const GET = withMetrics("GET /api/rbac", withRequestLogging(async function GET(request: Request) {
-  try {
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
-    }
-
-    const { searchParams } = new URL(request.url);
-    const addr = searchParams.get("addr");
-
-    // Enforce per-IP and per-address rate limiting to prevent enumeration
-    const rateLimited = await enforceLookupRateLimit(request, {
-      address: addr ? addr.trim() : undefined,
-    });
-    if (rateLimited) return rateLimited;
-
-    if (!addr) {
-      // Without a specific address, return contract availability
-      const countResult = await simulateContractCall(
-        DEFAULT_CONTRACT_ID,
-        "get_audit_log_count",
-        CHAIN_READ_SOURCE
-      );
-      return successResponse({
-        available: countResult.status !== "SIMULATION_FAILED",
-        message: "Provide ?addr=G... to look up a specific address role",
-      });
-    }
-
-    const result = await simulateContractCall(
-      DEFAULT_CONTRACT_ID,
-      "get_role",
-      CHAIN_READ_SOURCE,
-      [nativeToScVal(addr, { type: "address" })]
-    );
-
-    if (result.status === "SIMULATION_FAILED") {
-      return successResponse({ available: false, address: addr });
-    }
-
-    return successResponse({ address: addr, role: result.returnValue });
-  } catch (err) {
-    return handleApiError(err, "GET /api/rbac");
+export async function GET(req: NextRequest) {
+  const session = await getSession(req);
+  if (!session) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
-}));
+
+  const assignments = await listRoleAssignments(session.organizationId);
+  return NextResponse.json({ assignments });
+}
+
+export async function POST(req: NextRequest) {
+  const session = await getSession(req);
+  if (!session) {
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
+  }
+
+  if (session.role !== 'admin' && session.role !== 'owner') {
+    return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 });
+  }
+
+  const body = await req.json().catch(() => null);
+
+  if (body?.sudoSignature && body?.sudoPublicKey) {
+    const result = await verifySudoSignature(req, body.sudoSignature, body.sudoPublicKey);
+    if (!result.verified) {
+      return NextResponse.json(
+        { error: result.reason ?? 'SUDO_REQUIRED' },
+        { status: 403 },
+      );
+    }
+  } else {
+    const sudoResponse = enforceSudo(req, 'rbac:update');
+    if (sudoResponse) return sudoResponse;
+  }
+
+  const parsed = rbacUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'INVALID_PAYLOAD', details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  const assignments = await updateRoleAssignments(session.organizationId, parsed.data);
+  const res = NextResponse.json({ assignments });
+  return markSudoVerified(res);
+}

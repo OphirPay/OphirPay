@@ -513,3 +513,40 @@ changes an API endpoint:
 **Rate limiting & Testing**
 - [ ] `docs/openapi.yaml` updated with the new/changed path and schemas
 - [ ] Unit tests added in `src/__tests__/`
+
+
+---
+
+### Cursor-Based Pagination (`/api/audit-log`)
+
+For high-volume endpoints such as `GET /api/audit-log`, use keyset/cursor-based pagination via `cursor`, `limit`, and `order` (`asc` | `desc`) to avoid deep Postgres `OFFSET` scans:
+
+```http
+GET /api/audit-log?source=db&limit=25&order=desc&cursor=clx123abc
+```
+
+Response envelope:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "clx123def",
+      "timestamp": 1785168000000,
+      "action": "refund:create",
+      "actor": "user_1",
+      "target_id": "ref_42",
+      "details": null
+    }
+  ],
+  "meta": {
+    "timestamp": "2026-10-15T10:00:00.000Z",
+    "page": 1,
+    "limit": 25,
+    "total": 1420,
+    "nextCursor": "clx123def",
+    "hasMore": true
+  }
+}
+```

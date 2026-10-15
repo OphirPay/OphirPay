@@ -121,12 +121,14 @@ Runnable, dependency-free examples are in
 
 | Language | File | Run |
 |---|---|---|
+| TypeScript / Node | [`node-verifier.ts`](../examples/webhook-verification/node-verifier.ts) | Import `verifyOphirPayWebhook` |
 | Node.js (ESM) | [`node/verify.mjs`](../examples/webhook-verification/node/verify.mjs) | `node verify.mjs --secret <secret> --signature <hex> --body-file body.json` |
 | Python 3 | [`python/verify.py`](../examples/webhook-verification/python/verify.py) | `python3 verify.py --secret <secret> --signature <hex> --body-file body.json` |
 
-Both print `VALID` (exit 0) or `INVALID: <reason>` (exit 1), and both
-implement the canonical form above plus a configurable freshness window
-(`--max-age`, default 300s; `--max-age 0` disables it).
+All reference implementations enforce constant-time comparison via length-guarded timing-safe comparisons to protect against timing attacks, and implement the canonical form above plus a configurable freshness window (`--max-age`, default 300s; `--max-age 0` disables it).
+
+> 🔒 **Timing-Safe Comparison:** Always compare signatures using `crypto.timingSafeEqual` after verifying buffer lengths are identical. Direct string comparison (`===`) leaks timing information that allows attackers to deduce valid signatures byte-by-byte.
+
 
 ### Sample payload (self-test)
 

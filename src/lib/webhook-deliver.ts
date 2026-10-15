@@ -221,3 +221,98 @@ export async function deliverWebhookWithDetails(
 ): Promise<WebhookDeliveryDetails> {
   return deliverWebhook(url, secret, payload, maxRetries);
 }
+
+/**
+ * Constant-time comparison of two signature strings using Node.js crypto.timingSafeEqual.
+ * Enforces strict byte buffer length verification prior to comparison to eliminate
+ * side-channel timing attack vectors and prevent uncaught RangeError exceptions.
+ */
+export function timingSafeEqualSignatures(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") {
+    return false;
+  }
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+export interface VerifyWebhookSignatureOptions {
+  body: string;
+  signature: string;
+  secret: string;
+  timestamp?: string;
+  maxAgeSeconds?: number;
+  now?: number;
+}
+
+export interface VerifyWebhookSignatureResult {
+  valid: boolean;
+  reason?: string;
+}
+
+/**
+ * Validates incoming webhook payloads against an HMAC-SHA256 signature and timestamp.
+ */
+export function verifyWebhookSignature({
+  body,
+  signature,
+  secret,
+  timestamp,
+  maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+  now = Date.now(),
+}: VerifyWebhookSignatureOptions): VerifyWebhookSignatureResult {
+  if (!body || typeof body !== "string") {
+    return { valid: false, reason: "Missing or invalid body" };
+  }
+  if (!signature || typeof signature !== "string") {
+    return { valid: false, reason: "Missing or invalid signature" };
+  }
+  if (!secret || typeof secret !== "string") {
+    return { valid: false, reason: "Missing webhook signing secret" };
+  }
+
+  let parsed: WebhookPayload;
+  try {
+    parsed = JSON.parse(body) as WebhookPayload;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { valid: false, reason: "Payload must be a JSON object" };
+    }
+  } catch {
+    return { valid: false, reason: "Invalid JSON body" };
+  }
+
+  const effectiveTimestamp = String(timestamp ?? parsed.timestamp ?? "");
+  if (!effectiveTimestamp) {
+    return { valid: false, reason: "Missing timestamp header and body field" };
+  }
+
+  const canonical = canonicalizeWebhookBody(parsed);
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(webhookSignedInput(effectiveTimestamp, canonical))
+    .digest("hex");
+
+  if (!timingSafeEqualSignatures(signature, expectedSignature)) {
+    return { valid: false, reason: "Signature mismatch" };
+  }
+
+  if (maxAgeSeconds > 0) {
+    const parsedTs = Date.parse(effectiveTimestamp);
+    if (Number.isNaN(parsedTs)) {
+      return { valid: false, reason: "Malformed timestamp format" };
+    }
+    const ageSeconds = (now - parsedTs) / 1000;
+    if (ageSeconds > maxAgeSeconds) {
+      return { valid: false, reason: "Payload timestamp expired (potential replay)" };
+    }
+    if (ageSeconds < -maxAgeSeconds) {
+      return { valid: false, reason: "Payload timestamp is in the future" };
+    }
+  }
+
+  return { valid: true };
+}
+

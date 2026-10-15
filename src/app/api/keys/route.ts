@@ -6,8 +6,15 @@ import {
   successResponse,
   badRequestError,
   unauthorizedError,
+  rateLimitError,
   handleApiError,
 } from "@/lib/api-response";
+import {
+  checkApiKeyRateLimit,
+  getRetryAfterSeconds,
+  API_KEY_RATE_LIMIT_OPERATIONS_PER_HOUR,
+  MAX_ACTIVE_API_KEYS_PER_USER,
+} from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import {
@@ -86,6 +93,21 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
 
+    // Sliding-window rate limit (10 operations per hour per user/organization)
+    const rateLimit = await checkApiKeyRateLimit(auth.userId);
+    if (!rateLimit.allowed) {
+      const retryAfter = getRetryAfterSeconds(rateLimit);
+      return rateLimitError(
+        `Rate limit exceeded: maximum ${API_KEY_RATE_LIMIT_OPERATIONS_PER_HOUR} API key operations per hour.`,
+        retryAfter,
+        {
+          "X-RateLimit-Limit": String(API_KEY_RATE_LIMIT_OPERATIONS_PER_HOUR),
+          "X-RateLimit-Remaining": String(rateLimit.remaining),
+          "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetAt / 1000)),
+        }
+      );
+    }
+
     const body = (await request.json().catch(() => ({}))) as {
       name?: string;
       scopes?: unknown;
@@ -98,6 +120,19 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
     const parsed = parseScopes(body.scopes);
     if (!parsed.ok) {
       return badRequestError(parsed.error ?? "Invalid scopes");
+    }
+
+    // Enforce maximum active API key count per account (max 5 active keys)
+    const activeKeyCount = await prisma.apiKey.count({
+      where: {
+        userId: auth.userId,
+        revokedAt: null,
+      },
+    });
+    if (activeKeyCount >= MAX_ACTIVE_API_KEYS_PER_USER) {
+      return badRequestError(
+        `Maximum limit of ${MAX_ACTIVE_API_KEYS_PER_USER} active API keys reached. Revoke an unused key before creating a new one.`
+      );
     }
 
     // `generateApiKey` mints 32 CSPRNG bytes (issue #701) and fails closed if
@@ -115,6 +150,25 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
         scopes: parsed.scopes,
       },
     });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: "api_key:create",
+          actor: auth.userId,
+          target: apiKey.id,
+          details: {
+            name,
+            prefix,
+            scopes: parsed.scopes,
+          },
+        },
+      });
+    } catch (auditErr) {
+      logger.warn("Failed to create audit log for api_key:create", {
+        error: String(auditErr),
+      });
+    }
 
     logger.info("API key generated", {
       id: apiKey.id,
@@ -199,6 +253,20 @@ export const DELETE = withMetrics("DELETE /api/keys", withRequestLogging(async f
       data: { revokedAt: new Date() },
     });
     if (result.count === 0) return badRequestError("Key not found");
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: "api_key:revoke",
+          actor: auth.userId,
+          target: id,
+        },
+      });
+    } catch (auditErr) {
+      logger.warn("Failed to create audit log for api_key:revoke", {
+        error: String(auditErr),
+      });
+    }
 
     return successResponse({ deleted: true });
   } catch (err) {

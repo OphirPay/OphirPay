@@ -327,3 +327,29 @@ export async function initRateLimitStore(): Promise<void> {
   // 3. In-memory.
   _store = createRateLimitStoreFromEnv();
 }
+
+// ── API Key Management Rate Limiting ───────────────────────────
+
+export const API_KEY_RATE_LIMIT_OPERATIONS_PER_HOUR = 10;
+export const API_KEY_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+export const MAX_ACTIVE_API_KEYS_PER_USER = 5;
+
+/**
+ * Check sliding-window rate limit for API key operations (creation and rotation).
+ * Default quota: 10 operations per hour per identifier (userId or orgId).
+ */
+export async function checkApiKeyRateLimit(
+  identifier: string,
+  options?: {
+    windowMs?: number;
+    maxOperations?: number;
+  }
+): Promise<RateLimitResult> {
+  const windowMs = options?.windowMs ?? API_KEY_RATE_LIMIT_WINDOW_MS;
+  const maxOperations =
+    options?.maxOperations ?? API_KEY_RATE_LIMIT_OPERATIONS_PER_HOUR;
+  const store = getRateLimitStore();
+  const key = `ratelimit:api_keys:${identifier}`;
+  return store.increment(key, windowMs, maxOperations);
+}
+

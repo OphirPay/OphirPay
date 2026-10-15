@@ -134,4 +134,32 @@ describe("POST /api/keys/[id]/rotate", () => {
     expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.auditCreate).not.toHaveBeenCalled();
   });
+
+  it("returns 429 when rotation exceeds the hourly rate limit quota (10 ops)", async () => {
+    mocks.getAuthContext.mockResolvedValue({ userId: "rate_limited_rotator" });
+
+    // Use up the 10 hourly quota operations
+    for (let i = 0; i < 10; i++) {
+      const res = await POST(
+        new Request("http://localhost/api/keys/old_key/rotate", { method: "POST" }),
+        { params: Promise.resolve({ id: "old_key" }) },
+      );
+      expect(res.status).toBe(201);
+    }
+
+    // 11th operation should be rate limited
+    const limitedRes = await POST(
+      new Request("http://localhost/api/keys/old_key/rotate", { method: "POST" }),
+      { params: Promise.resolve({ id: "old_key" }) },
+    );
+
+    expect(limitedRes.status).toBe(429);
+    expect(limitedRes.headers.get("Retry-After")).toBeDefined();
+    expect(limitedRes.headers.get("X-RateLimit-Limit")).toBe("10");
+    expect(limitedRes.headers.get("X-RateLimit-Remaining")).toBe("0");
+    const body = await limitedRes.json();
+    expect(body.error.code).toBe("RATE_LIMITED");
+    expect(body.error.message).toContain("Rate limit exceeded: maximum 10 API key operations per hour");
+  });
 });
+

@@ -11,6 +11,10 @@ vi.mock("@/lib/prisma", () => ({
       create: vi.fn(),
       deleteMany: vi.fn(),
       updateMany: vi.fn(),
+      count: vi.fn().mockResolvedValue(0),
+    },
+    auditLog: {
+      create: vi.fn().mockResolvedValue({}),
     },
     user: {
       findUnique: vi.fn(),
@@ -330,6 +334,69 @@ describe("API Routes: Auth, CSRF & Keys", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.data.deleted).toBe(true);
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          action: "api_key:revoke",
+          actor: "u123",
+          target: "k1",
+        },
+      });
+    });
+
+    it("POST returns 400 when maximum active keys (5 keys) limit is reached", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce({ userId: "user_capped" });
+      vi.mocked(prisma.apiKey.count).mockResolvedValueOnce(5);
+
+      const res = await postKeys(
+        new Request("http://localhost/api/keys", {
+          method: "POST",
+          body: JSON.stringify({ name: "Capped Key" }),
+        })
+      );
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error.message).toContain("Maximum limit of 5 active API keys reached");
+      expect(prisma.apiKey.create).not.toHaveBeenCalled();
+    });
+
+    it("POST returns 429 when hourly creation quota (10 ops) is exceeded", async () => {
+      const quotaUser = "user_rate_limited";
+      vi.mocked(authSession.getAuthContext).mockResolvedValue({ userId: quotaUser });
+      vi.mocked(prisma.apiKey.count).mockResolvedValue(0);
+      vi.mocked(prisma.apiKey.create).mockResolvedValue({
+        id: "key_new",
+        name: "Test",
+        prefix: "oph_test",
+      } as never);
+
+      // Perform 10 operations within the hour (allowed quota)
+      for (let i = 0; i < 10; i++) {
+        const okRes = await postKeys(
+          new Request("http://localhost/api/keys", {
+            method: "POST",
+            body: JSON.stringify({ name: `Key ${i}` }),
+          })
+        );
+        expect(okRes.status).toBe(201);
+      }
+
+      // 11th operation exceeds hourly rate limit
+      const limitedRes = await postKeys(
+        new Request("http://localhost/api/keys", {
+          method: "POST",
+          body: JSON.stringify({ name: "Key 11" }),
+        })
+      );
+
+      expect(limitedRes.status).toBe(429);
+      expect(limitedRes.headers.get("Retry-After")).toBeDefined();
+      expect(limitedRes.headers.get("X-RateLimit-Limit")).toBe("10");
+      expect(limitedRes.headers.get("X-RateLimit-Remaining")).toBe("0");
+      const data = await limitedRes.json();
+      expect(data.error.code).toBe("RATE_LIMITED");
+      expect(data.error.message).toContain("Rate limit exceeded: maximum 10 API key operations per hour");
     });
   });
 });
+

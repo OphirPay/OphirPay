@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import {
   badRequestError,
   handleApiError,
+  rateLimitError,
   successResponse,
   unauthorizedError,
 } from "@/lib/api-response";
@@ -13,6 +14,11 @@ import {
   generateApiKey,
   hashApiKeyV1,
 } from "@/lib/api-auth";
+import {
+  checkApiKeyRateLimit,
+  getRetryAfterSeconds,
+  API_KEY_RATE_LIMIT_OPERATIONS_PER_HOUR,
+} from "@/lib/rate-limit";
 import { verifyCsrf } from "@/lib/csrf";
 import { logger } from "@/lib/logger";
 
@@ -34,6 +40,21 @@ export async function POST(
 
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+
+    // Sliding-window rate limit (10 operations per hour per user/organization)
+    const rateLimit = await checkApiKeyRateLimit(auth.userId);
+    if (!rateLimit.allowed) {
+      const retryAfter = getRetryAfterSeconds(rateLimit);
+      return rateLimitError(
+        `Rate limit exceeded: maximum ${API_KEY_RATE_LIMIT_OPERATIONS_PER_HOUR} API key operations per hour.`,
+        retryAfter,
+        {
+          "X-RateLimit-Limit": String(API_KEY_RATE_LIMIT_OPERATIONS_PER_HOUR),
+          "X-RateLimit-Remaining": String(rateLimit.remaining),
+          "X-RateLimit-Reset": String(Math.ceil(rateLimit.resetAt / 1000)),
+        }
+      );
+    }
 
     const { id } = await params;
     const now = new Date();

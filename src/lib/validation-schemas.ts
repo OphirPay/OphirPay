@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { z } from "zod";
+import { stellarTextMemo } from "./validation/stellar";
 
 // ── Address / Identifier Schemas ──────────────────────────────
 
@@ -42,19 +43,7 @@ export const MEMO_ERROR_MESSAGES = {
  * Trims surrounding whitespace, then enforces the Stellar byte limit and a
  * printable-text charset.
  */
-export const memoField = z
-  .string()
-  .trim()
-  .refine((v) => !MEMO_CONTROL_CHARS.test(v), {
-    message: MEMO_ERROR_MESSAGES.controlChars,
-  })
-  .refine((v) => v.length <= MEMO_MAX_BYTES, {
-    message: MEMO_ERROR_MESSAGES.tooLong,
-  })
-  .refine((v) => new TextEncoder().encode(v).length <= MEMO_MAX_BYTES, {
-    message: MEMO_ERROR_MESSAGES.tooManyBytes,
-  })
-  .optional();
+export const memoField = stellarTextMemo;
 
 // ── Payment Schemas ───────────────────────────────────────────
 

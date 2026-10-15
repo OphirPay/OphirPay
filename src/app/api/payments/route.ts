@@ -11,6 +11,7 @@ import {
   handleApiError,
 } from "@/lib/api-response";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
+import { stellarTextMemo } from "@/lib/validation/stellar";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";

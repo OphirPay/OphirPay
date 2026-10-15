@@ -2043,6 +2043,9 @@ impl OphirPayContract {
             return Err(PaymentError::InvalidAmount);
         }
 
+        // Validate decimal precision against the token's configured decimals (#1347)
+        validate_decimal_precision(&env, &asset, amount)?;
+
         // Idempotency (#804): (payer, tx_hash) identifies a payment. Replaying
         // the same call returns the original id; replaying it with a different
         // payload is a conflict rather than a silent second payment. Mirrors
@@ -3500,4 +3503,4 @@ impl OphirPayContract {
         }
     }
 }
-
+

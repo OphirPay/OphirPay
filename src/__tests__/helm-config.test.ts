@@ -22,9 +22,19 @@ const repoRoot = process.cwd();
 const chartDir = join(repoRoot, "helm", "ophirpay");
 const templatesDir = join(chartDir, "templates");
 
+interface ProbeConfig {
+  httpGet: { path: string; port: number };
+  initialDelaySeconds: number;
+  periodSeconds: number;
+  timeoutSeconds: number;
+  failureThreshold: number;
+}
+
 interface ChartValues {
   config: Record<string, string>;
   secrets: Record<string, string>;
+  livenessProbe: ProbeConfig;
+  readinessProbe: ProbeConfig;
 }
 
 const values = load(
@@ -122,5 +132,38 @@ describe("helm/ophirpay config keys (#683)", () => {
     expect(notes).toMatch(/BUILD-TIME/i);
     expect(notes).toMatch(/NEXT_PUBLIC_/);
     expect(rawValues).toMatch(/build\*?\*? time/i);
+  });
+});
+
+describe("Kubernetes and Helm probe configuration (#1426)", () => {
+  it("configures liveness probe with tuned delay, period, timeout, and failure threshold", () => {
+    expect(values.livenessProbe.initialDelaySeconds).toBe(30);
+    expect(values.livenessProbe.periodSeconds).toBe(10);
+    expect(values.livenessProbe.timeoutSeconds).toBe(5);
+    expect(values.livenessProbe.failureThreshold).toBe(3);
+    expect(values.livenessProbe.httpGet.path).toBe("/api/health/live");
+  });
+
+  it("configures readiness probe with tuned delay, period, timeout, and failure threshold", () => {
+    expect(values.readinessProbe.initialDelaySeconds).toBe(15);
+    expect(values.readinessProbe.periodSeconds).toBe(10);
+    expect(values.readinessProbe.timeoutSeconds).toBe(5);
+    expect(values.readinessProbe.failureThreshold).toBe(3);
+    expect(values.readinessProbe.httpGet.path).toBe("/api/health");
+  });
+
+  it("matches probe settings in raw k8s deployment manifest", () => {
+    const deploymentManifest = readFileSync(
+      join(repoRoot, "k8s", "deployment.yaml"),
+      "utf8",
+    );
+    expect(deploymentManifest).toContain("path: /api/health/live");
+    expect(deploymentManifest).toContain("path: /api/health");
+    expect(deploymentManifest).toMatch(
+      /livenessProbe:[\s\S]*?initialDelaySeconds:\s*30[\s\S]*?periodSeconds:\s*10[\s\S]*?timeoutSeconds:\s*5[\s\S]*?failureThreshold:\s*3/,
+    );
+    expect(deploymentManifest).toMatch(
+      /readinessProbe:[\s\S]*?initialDelaySeconds:\s*15[\s\S]*?periodSeconds:\s*10[\s\S]*?timeoutSeconds:\s*5[\s\S]*?failureThreshold:\s*3/,
+    );
   });
 });

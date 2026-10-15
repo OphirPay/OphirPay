@@ -266,9 +266,48 @@ Rules observed in this repo:
 
 - Any change merged after the tag lands under the new `[Unreleased]` section.
 - Hotfixes to a released version are cut from the release tag, then merged
-  back to `main` so the fix also appears in `[Unreleased]`.
+   back to `main` so the fix also appears in `[Unreleased]`.
 
-## 7. PR checklist for changelog entries
+---
+
+## 7. Automated changelog generation
+
+OphirPay provides an automated changelog generation tool based on Conventional
+Commits in `scripts/generate-changelog.mjs`.
+
+### Commands
+
+```bash
+# Preview generated release notes for recent commits (dry run)
+npm run changelog
+
+# Write generated notes directly into CHANGELOG.md under ## [Unreleased]
+npm run changelog:write
+
+# Generate for a specific release tag
+node scripts/generate-changelog.mjs --tag v0.3.0 --write
+
+# Generate commits since a specific git revision
+node scripts/generate-changelog.mjs --since v0.2.0 --dry-run
+```
+
+### Commit mapping
+
+| Commit prefix | Changelog category | Description |
+|---|---|---|
+| `feat:` / `feat(...):` | `### Added` | New user-facing features |
+| `fix:` / `fix(...):` | `### Fixed` | Bug fixes and corrections |
+| `perf:` / `perf(...):` | `### Performance` | Speed and resource optimizations |
+| `sec:` / `fix(security):` | `### Security` | Vulnerability fixes and hardening |
+| `BREAKING CHANGE:` / `!:` | `### Breaking Changes` | Incompatible API / interface changes |
+| `refactor:` / `chore:` / `docs:` | `### Changed` | General codebase updates |
+
+PR numbers (e.g. `#1234`) and author GitHub handles (`@author`) are automatically
+attributed and linked from commit metadata.
+
+---
+
+## 8. PR checklist for changelog entries
 
 Copy this into the PR body (or use the repo's PR template) when your change is
 user-facing:
@@ -282,7 +321,7 @@ user-facing:
       when the issue is not yet public
 - [ ] `npm run typecheck`, `npm run lint`, and `npm test` pass locally
 
-## 8. Links
+## 9. Links
 
 - [`CHANGELOG.md`](../CHANGELOG.md) — the changelog itself
 - [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — the convention this guide implements

@@ -67,6 +67,8 @@
     "test:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots",
     "test:a11y": "playwright test e2e/accessibility.spec.ts",
     "generate-errors": "tsx scripts/regenerate-errors.ts",
+    "changelog": "node scripts/generate-changelog.mjs",
+    "changelog:write": "node scripts/generate-changelog.mjs --write",
     "client:generate": "node scripts/generate-api-client.mjs",
     "client:check": "node scripts/generate-api-client.mjs --check",
     "cli": "node scripts/ophirpay-cli.mjs"

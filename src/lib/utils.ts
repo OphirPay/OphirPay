@@ -19,10 +19,18 @@ export function shortenAddress(address: string, chars = 4): string {
  * Format a number as XLM/USDC amount
  */
 export function formatAmount(amount: number, assetCode = "XLM"): string {
-  return `${amount.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 7,
-  })} ${assetCode}`;
+  if (!Number.isFinite(amount)) return "—";
+  const abs = Math.abs(amount);
+  const fixed = abs.toFixed(7);
+  const [intPartRaw, fracPartRaw] = fixed.split(".");
+  const intFormatted = new Intl.NumberFormat("en-US", { useGrouping: true }).format(BigInt(intPartRaw));
+  let fracPart = fracPartRaw || "";
+  while (fracPart.length > 2 && fracPart.endsWith("0")) {
+    fracPart = fracPart.slice(0, -1);
+  }
+  const sign = amount < 0 ? "-" : "";
+  const numStr = fracPart.length > 0 ? `${sign}${intFormatted}.${fracPart}` : `${sign}${intFormatted}`;
+  return assetCode ? `${numStr} ${assetCode}` : numStr;
 }
 
 /**

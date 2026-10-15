@@ -82,6 +82,8 @@ export function parseSessionToken(token: string): SessionPayload | null {
   const [body, sig] = parts;
   if (!body || !sig) return null;
 
+  if (isSessionRevoked(token)) return null;
+
   const expected = signToken(body);
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
@@ -99,33 +101,118 @@ export function parseSessionToken(token: string): SessionPayload | null {
   }
 }
 
+// ── Revocation / Blacklist ────────────────────────────────────
+
+/** In-memory blacklist for revoked sessions (synced with Redis when available). */
+const revokedTokens = new Map<string, number>();
+
+/** Revoke a session token so it cannot be used across any browser tab. */
+export async function revokeSession(token: string): Promise<void> {
+  const parts = token.split(".");
+  if (parts.length !== 2) return;
+
+  const payload = parseSessionToken(token);
+  const exp = payload ? payload.exp : Date.now() + SESSION_TTL_MS;
+  revokedTokens.set(token, exp);
+
+  // Synchronize with Redis blacklist if configured
+  const redisUrl = process.env.REDIS_URL || process.env.REDIS_REST_URL;
+  if (redisUrl) {
+    try {
+      const ttlSec = Math.max(1, Math.floor((exp - Date.now()) / 1000));
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const restToken =
+        process.env.REDIS_TOKEN ||
+        process.env.REDIS_REST_TOKEN ||
+        process.env.UPSTASH_REDIS_REST_TOKEN;
+      if (redisUrl.startsWith("https://") && restToken) {
+        await fetch(`${redisUrl}/setex/revoked_session:${tokenHash}/${ttlSec}/1`, {
+          headers: { Authorization: `Bearer ${restToken}` },
+        }).catch(() => {});
+      }
+    } catch {
+      // Fallback cleanly to in-memory blacklist
+    }
+  }
+}
+
+/** Check whether a session token has been revoked. */
+export function isSessionRevoked(token: string): boolean {
+  const now = Date.now();
+  const exp = revokedTokens.get(token);
+  if (exp) {
+    if (exp < now) {
+      revokedTokens.delete(token);
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Reset blacklist (hermetic testing utility). */
+export function clearRevocationBlacklistForTests(): void {
+  revokedTokens.clear();
+}
+
+// ── Rolling session renewal ───────────────────────────────────
+
+/**
+ * Returns true if a valid session has less than half its TTL remaining.
+ * E.g., if TTL is 7 days, renews when fewer than 3.5 days remain.
+ */
+export function shouldRenewSession(payload: SessionPayload): boolean {
+  const remaining = payload.exp - Date.now();
+  return remaining > 0 && remaining < SESSION_TTL_MS / 2;
+}
+
+/** Issues an updated session cookie preserving the existing identity. */
+export function renewSessionCookie(payload: SessionPayload): string {
+  return buildSessionCookie(payload.pk, payload.nw);
+}
+
 // ── Cookie helpers ────────────────────────────────────────────
 
-/** Read and verify the session cookie from a Request. */
-export function readSessionCookie(request: Request): SessionPayload | null {
+export const SESSION_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "Strict" as const,
+  path: "/",
+};
+
+/** Extract raw session cookie token string from request headers. */
+export function extractRawSessionCookie(request: Request): string | null {
   const header = request.headers.get("cookie");
   if (!header) return null;
   for (const part of header.split(";")) {
     const [name, ...rest] = part.trim().split("=");
     if (name === SESSION_COOKIE_NAME && rest.length > 0) {
-      return parseSessionToken(rest.join("="));
+      return rest.join("=");
     }
   }
   return null;
 }
 
-/** Build the Set-Cookie value for a new session. */
+/** Read and verify the session cookie from a Request. */
+export function readSessionCookie(request: Request): SessionPayload | null {
+  const raw = extractRawSessionCookie(request);
+  if (!raw) return null;
+  return parseSessionToken(raw);
+}
+
+/** Build the Set-Cookie value for a new or renewed session. */
 export function buildSessionCookie(publicKey: string, network: string): string {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   return (
     `${SESSION_COOKIE_NAME}=${createSessionToken(publicKey, network)}; ` +
-    `Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure}`
+    `Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure}`
   );
 }
 
 /** Build the Set-Cookie value that clears the session. */
 export function buildLogoutCookie(): string {
-  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure}`;
 }
 
 // ── Auth context resolution ───────────────────────────────────

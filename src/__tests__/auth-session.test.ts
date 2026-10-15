@@ -8,6 +8,10 @@ import {
   buildSessionCookie,
   buildLogoutCookie,
   SESSION_COOKIE_NAME,
+  revokeSession,
+  isSessionRevoked,
+  shouldRenewSession,
+  renewSessionCookie,
 } from "@/lib/auth-session";
 
 const PK = "GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U";
@@ -109,18 +113,85 @@ describe("readSessionCookie", () => {
 });
 
 describe("cookie builders", () => {
-  it("builds a session cookie with security attributes", () => {
+  it("builds a session cookie with security attributes including SameSite=Strict", () => {
     const cookie = buildSessionCookie(PK, "TESTNET");
     expect(cookie.startsWith(`${SESSION_COOKIE_NAME}=`)).toBe(true);
     expect(cookie).toContain("Path=/");
     expect(cookie).toContain("HttpOnly");
-    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).toContain("SameSite=Strict");
     expect(cookie).toContain("Max-Age=");
   });
 
-  it("builds an immediate-expiry logout cookie", () => {
+  it("includes Secure flag in production environment", () => {
+    const env = process.env as Record<string, string | undefined>;
+    const prevEnv = env.NODE_ENV;
+    const prevSecret = env.AUTH_SECRET;
+    try {
+      env.AUTH_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+      env.NODE_ENV = "production";
+      const cookie = buildSessionCookie(PK, "PUBLIC");
+      expect(cookie).toContain("; Secure");
+      expect(cookie).toContain("SameSite=Strict");
+
+      const logout = buildLogoutCookie();
+      expect(logout).toContain("; Secure");
+      expect(logout).toContain("SameSite=Strict");
+    } finally {
+      env.NODE_ENV = prevEnv;
+      env.AUTH_SECRET = prevSecret;
+    }
+  });
+
+  it("builds an immediate-expiry logout cookie with SameSite=Strict", () => {
     const cookie = buildLogoutCookie();
     expect(cookie).toContain("Max-Age=0");
     expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Strict");
+  });
+});
+
+describe("session revocation & blacklist", () => {
+  it("revokes an active session token and rejects future parsing", async () => {
+    const token = createSessionToken(PK, "TESTNET");
+    expect(parseSessionToken(token)).not.toBeNull();
+
+    await revokeSession(token);
+    expect(isSessionRevoked(token)).toBe(true);
+    expect(parseSessionToken(token)).toBeNull();
+  });
+});
+
+describe("rolling session renewal", () => {
+  it("determines when a session should be renewed (< half TTL remaining)", () => {
+    const now = Date.now();
+    // Fresh session (almost full 7 days TTL) -> should NOT renew
+    const freshPayload = {
+      pk: PK,
+      nw: "TESTNET",
+      exp: now + 6 * 24 * 60 * 60 * 1000,
+    };
+    expect(shouldRenewSession(freshPayload)).toBe(false);
+
+    // Aging session (< 3.5 days TTL remaining) -> SHOULD renew
+    const agingPayload = {
+      pk: PK,
+      nw: "TESTNET",
+      exp: now + 2 * 24 * 60 * 60 * 1000,
+    };
+    expect(shouldRenewSession(agingPayload)).toBe(true);
+  });
+
+  it("issues renewed session cookie preserving identity", () => {
+    const payload = {
+      pk: PK,
+      nw: "PUBLIC",
+      exp: Date.now() + 10000,
+    };
+    const renewed = renewSessionCookie(payload);
+    expect(renewed).toContain("SameSite=Strict");
+    const parsed = parseSessionToken(renewed.split(";")[0].split("=")[1]);
+    expect(parsed?.pk).toBe(PK);
+    expect(parsed?.nw).toBe("PUBLIC");
+    expect(parsed?.exp).toBeGreaterThan(Date.now() + 5 * 24 * 60 * 60 * 1000);
   });
 });

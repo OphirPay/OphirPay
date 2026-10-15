@@ -19,6 +19,10 @@ import {
   buildSessionCookie,
   buildLogoutCookie,
   readSessionCookie,
+  extractRawSessionCookie,
+  revokeSession,
+  shouldRenewSession,
+  renewSessionCookie,
 } from "@/lib/auth-session";
 import { verifyChallengeToken, challengeMessage, verifyWalletSignature } from "@/lib/challenge";
 import { isValidStellarAddress } from "@/lib/stellar";
@@ -26,6 +30,26 @@ import { successResponse, badRequestError, unauthorizedError } from "@/lib/api-r
 import { verifyCsrf } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
 import { enforceAuthRateLimit } from "@/lib/auth-rate-limit";
+
+export const GET = withMetrics("GET /api/auth/session", withRequestLogging(async function GET(request: Request) {
+  const session = readSessionCookie(request);
+  if (!session) {
+    return unauthorizedError("No active session found.");
+  }
+
+  const response = successResponse({
+    authenticated: true,
+    publicKey: session.pk,
+    network: session.nw,
+  });
+
+  // Rolling session renewal: extend expiration if less than half TTL remains
+  if (shouldRenewSession(session)) {
+    response.headers.set("Set-Cookie", renewSessionCookie(session));
+  }
+
+  return response;
+}));
 
 export const POST = withMetrics("POST /api/auth/session", withRequestLogging(async function POST(request: Request) {
   const csrfError = verifyCsrf(request);
@@ -97,6 +121,12 @@ export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging
   // Logout is cheap, but still bounded per IP to stop cookie-flooding.
   const rateLimited = await enforceAuthRateLimit(request);
   if (rateLimited) return rateLimited;
+
+  // Revoke the session token so it is invalidated across all tabs
+  const rawToken = extractRawSessionCookie(request);
+  if (rawToken) {
+    await revokeSession(rawToken);
+  }
 
   const response = successResponse({ authenticated: false });
   response.headers.set("Set-Cookie", buildLogoutCookie());

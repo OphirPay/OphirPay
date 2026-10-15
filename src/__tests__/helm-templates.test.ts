@@ -116,3 +116,18 @@ describe("chart inventory (#684)", () => {
     }
   });
 });
+
+describe("networkpolicy.yaml Prometheus scraping (#1344)", () => {
+  it("defines metrics configuration under networkPolicy in values.yaml", () => {
+    expect(valueAt("networkPolicy.metrics.enabled")).toBe(true);
+    const metrics = (values.networkPolicy as { metrics: { namespaceSelector: { matchLabels: Record<string, string> } } }).metrics;
+    expect(metrics.namespaceSelector.matchLabels["kubernetes.io/metadata.name"]).toBe("monitoring");
+  });
+
+  it("networkpolicy.yaml template gates Prometheus metrics ingress on networkPolicy.metrics.enabled", () => {
+    const np = template("networkpolicy.yaml");
+    expect(np).toContain(".Values.networkPolicy.metrics.enabled");
+    expect(np).toContain(".Values.networkPolicy.metrics.namespaceSelector");
+  });
+});
+

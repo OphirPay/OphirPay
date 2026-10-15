@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { trapFocus } from "@/lib/focus-trap";
 
-interface ModalProps {
+export interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
@@ -15,6 +15,11 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: "sm" | "md" | "lg";
+  closable?: boolean;
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
 const sizeClasses = {
@@ -22,9 +27,6 @@ const sizeClasses = {
   md: "max-w-lg",
   lg: "max-w-2xl",
 };
-
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
 
 /**
  * Accessible modal dialog — ESC to close, backdrop click to close,
@@ -38,8 +40,22 @@ export function Modal({
   children,
   footer,
   size = "md",
+  closable = true,
+  initialFocusRef,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const generatedTitleId = useId();
+  const generatedDescId = useId();
+
+  const titleId = title ? generatedTitleId : undefined;
+  const descId = description ? generatedDescId : undefined;
+
+  const effectiveLabelledBy = ariaLabelledBy || titleId;
+  const effectiveDescribedBy = ariaDescribedBy || descId;
+  const effectiveLabel = ariaLabel || (!effectiveLabelledBy ? (title || "Dialog") : (title || undefined));
 
   // Keep the latest `onClose` in a ref so the popstate listener below always
   // invokes the current handler without re-subscribing on every render.
@@ -47,6 +63,11 @@ export function Modal({
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  const closableRef = useRef(closable);
+  useEffect(() => {
+    closableRef.current = closable;
+  }, [closable]);
 
   // title/description only decide where the focus trap starts when the dialog
   // opens — read the latest values through a ref (same pattern as onCloseRef)
@@ -61,7 +82,7 @@ export function Modal({
   // navigating away from the page. Opening the modal pushes a history entry;
   // pressing back pops it and fires `popstate`, which closes the modal.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !closable) return;
 
     const handlePopState = () => onCloseRef.current();
 
@@ -81,7 +102,7 @@ export function Modal({
         }
       }
     };
-  }, [open]);
+  }, [open, closable]);
 
   // ESC to close + focus trap + body scroll lock + focus restore.
   // Only depends on `open` — the close handler is read through `onCloseRef` so
@@ -100,30 +121,16 @@ export function Modal({
     // content dialogs move straight to the first interactive element.
     const releaseTrap = trapFocus(dialogRef.current, {
       focusContainer: Boolean(headerRef.current.title || headerRef.current.description),
+      initialFocus: initialFocusRef?.current,
     });
 
-    // ESC to close
+    // ESC to close when closable=true
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onCloseRef.current();
-        return;
-      }
-      if (e.key !== "Tab" || !dialogRef.current) return;
-
-      // Cycle Tab within the dialog
-      const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
-        FOCUSABLE_SELECTOR
-      );
-      if (focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
+        if (closableRef.current) {
+          e.preventDefault();
+          onCloseRef.current();
+        }
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -133,7 +140,7 @@ export function Modal({
       document.body.style.overflow = prevOverflow;
       releaseTrap();
     };
-  }, [open]);
+  }, [open, initialFocusRef]);
 
   // Guard against SSR — createPortal needs the client-side `document`
   if (!open || typeof document === "undefined") return null;
@@ -143,12 +150,15 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6"
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-label={effectiveLabel}
+      aria-labelledby={effectiveLabelledBy}
+      aria-describedby={effectiveDescribedBy}
     >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
-        onClick={onClose}
+        onClick={closable ? onClose : undefined}
+        aria-hidden="true"
       />
 
       {/* Dialog */}
@@ -168,36 +178,39 @@ export function Modal({
           <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-gray-100 dark:border-gray-800">
             <div>
               {title && (
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h2 id={titleId} className="text-lg font-semibold text-gray-900 dark:text-white">
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p id={descId} className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   {description}
                 </p>
               )}
             </div>
-            <button
-              onClick={onClose}
-              aria-label="Close dialog"
-              className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-5 h-5"
+            {closable && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close dialog"
+                className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-5 h-5"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
           </div>
         )}
 

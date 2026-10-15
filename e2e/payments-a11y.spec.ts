@@ -63,3 +63,48 @@ test.describe("Payments table accessibility", () => {
     await expect(rows.first()).toHaveAttribute("tabindex", "0");
   });
 });
+
+test.describe("Modal dialog accessibility and focus containment", () => {
+  test("keyboard shortcuts modal traps focus, closes on Escape, and passes axe scan", async ({ page }) => {
+    await page.goto("/payments");
+    await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
+
+    const shortcutsTrigger = page.getByRole("button", { name: "Keyboard shortcuts" });
+    await expect(shortcutsTrigger).toBeVisible();
+    await shortcutsTrigger.focus();
+    await expect(shortcutsTrigger).toBeFocused();
+
+    // Open modal dialog
+    await shortcutsTrigger.click();
+
+    const dialog = page.locator("div[role='dialog'][aria-modal='true']");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute("aria-labelledby");
+
+    // Verify close button is rendered with accessible name
+    const closeBtn = dialog.getByRole("button", { name: "Close dialog" });
+    await expect(closeBtn).toBeVisible();
+
+    // Verify Tab cycles focus within dialog and does not escape into background
+    await page.keyboard.press("Tab");
+    const activeInside = await page.evaluate(() => {
+      const el = document.activeElement;
+      const dlg = document.querySelector("div[role='dialog']");
+      return dlg ? dlg.contains(el) : false;
+    });
+    expect(activeInside).toBe(true);
+
+    // Automated axe accessibility audit of open modal
+    const axeResults = await new AxeBuilder({ page })
+      .include("div[role='dialog']")
+      .analyze();
+    expect(axeResults.violations).toEqual([]);
+
+    // Pressing Escape closes the modal cleanly
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+
+    // Restores focus to the triggering button
+    await expect(shortcutsTrigger).toBeFocused();
+  });
+});

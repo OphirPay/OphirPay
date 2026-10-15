@@ -5,11 +5,12 @@
  * Ensures keyboard focus stays within a container when active.
  */
 
-const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * Create a focus trap within a container element.
- * Focus moves to the first focusable element (or the container itself),
+ * Focus moves to the initial focus element, first focusable element (or the container itself),
  * Tab/Shift+Tab cycle within the container, and any attempt to focus an
  * element outside the container is redirected back inside.
  *
@@ -18,39 +19,58 @@ const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [ta
  */
 export function trapFocus(
   container: HTMLElement,
-  options?: { focusContainer?: boolean }
+  options?: {
+    focusContainer?: boolean;
+    initialFocus?: HTMLElement | null;
+  }
 ): () => void {
   const previous = document.activeElement as HTMLElement | null;
 
-  const getFocusables = () => container.querySelectorAll<HTMLElement>(FOCUSABLE);
+  const getFocusables = () =>
+    Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+      (el) => el.getAttribute("aria-hidden") !== "true"
+    );
 
-  // Focus the first focusable element, or the container itself. Callers that
-  // render their own labelled dialog shell (a header with a close control)
-  // pass `focusContainer` so the dialog region receives focus first and its
-  // accessible name is announced before tabbing reaches the close button.
-  const first = getFocusables()[0];
-  if (options?.focusContainer || !first) {
-    container.setAttribute("tabindex", "-1");
-    container.focus();
+  // Focus the initial element, first focusable element, or the container itself.
+  if (options?.initialFocus && container.contains(options.initialFocus)) {
+    options.initialFocus.focus();
   } else {
-    first.focus();
+    const focusables = getFocusables();
+    const first = focusables[0];
+    if (options?.focusContainer || !first) {
+      container.setAttribute("tabindex", "-1");
+      container.focus();
+    } else {
+      first.focus();
+    }
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== "Tab") return;
 
     const focusables = getFocusables();
-    if (focusables.length === 0) return;
+    if (focusables.length === 0) {
+      e.preventDefault();
+      container.focus();
+      return;
+    }
 
     const firstEl = focusables[0];
     const lastEl = focusables[focusables.length - 1];
 
-    if (e.shiftKey && document.activeElement === firstEl) {
-      e.preventDefault();
-      lastEl.focus();
-    } else if (!e.shiftKey && document.activeElement === lastEl) {
-      e.preventDefault();
-      firstEl.focus();
+    if (e.shiftKey) {
+      if (document.activeElement === firstEl || document.activeElement === container) {
+        e.preventDefault();
+        lastEl.focus();
+      }
+    } else {
+      if (document.activeElement === lastEl) {
+        e.preventDefault();
+        firstEl.focus();
+      } else if (document.activeElement === container) {
+        e.preventDefault();
+        firstEl.focus();
+      }
     }
   };
 
@@ -80,6 +100,12 @@ export function trapFocus(
   return () => {
     document.removeEventListener("keydown", onKeyDown);
     document.removeEventListener("focusin", onFocusIn);
-    previous?.focus();
+    if (previous && typeof previous.focus === "function" && document.contains(previous)) {
+      try {
+        previous.focus();
+      } catch {
+        // Safe focus restoration
+      }
+    }
   };
 }

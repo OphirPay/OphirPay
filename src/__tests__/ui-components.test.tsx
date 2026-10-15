@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
 
 describe("Spinner", () => {
@@ -315,6 +316,88 @@ describe("Modal", () => {
     input.focus();
     fireEvent.change(input, { target: { value: 5 } });
     expect(input).toHaveFocus();
+  });
+
+  it("binds aria-labelledby and aria-describedby to title and description elements", () => {
+    render(
+      <Modal open onClose={() => {}} title="Test Title" description="Test Description">
+        <p>Modal Body</p>
+      </Modal>
+    );
+    const dialog = screen.getByRole("dialog");
+    const heading = screen.getByRole("heading", { name: "Test Title" });
+    const description = screen.getByText("Test Description");
+
+    const labelledBy = dialog.getAttribute("aria-labelledby");
+    const describedBy = dialog.getAttribute("aria-describedby");
+
+    expect(labelledBy).toBe(heading.id);
+    expect(describedBy).toBe(description.id);
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+  });
+
+  it("respects closable=false by hiding close button, ignoring backdrop click, and ignoring Escape", () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <Modal open onClose={onClose} title="Locked Modal" closable={false}>
+        <p>Non-closable content</p>
+      </Modal>
+    );
+
+    // Close button should not be rendered
+    expect(screen.queryByRole("button", { name: /close dialog/i })).toBeNull();
+
+    // Escape keydown should not call onClose
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Backdrop click should not call onClose
+    const backdrop = container.querySelector(".bg-black\\/50") as HTMLElement;
+    if (backdrop) {
+      fireEvent.click(backdrop);
+      expect(onClose).not.toHaveBeenCalled();
+    }
+  });
+
+  it("supports initialFocusRef focusing requested element on open", async () => {
+    function InitialFocusHarness() {
+      const secondInputRef = useRef<HTMLInputElement>(null);
+      return (
+        <Modal open onClose={() => {}} title="Form Modal" initialFocusRef={secondInputRef}>
+          <input aria-label="First input" />
+          <input ref={secondInputRef} aria-label="Second input" />
+        </Modal>
+      );
+    }
+
+    render(<InitialFocusHarness />);
+    const secondInput = screen.getByLabelText("Second input");
+    await waitFor(() => expect(secondInput).toHaveFocus());
+  });
+
+  it("ConfirmDialog passes closable and aria-describedby properly", () => {
+    const onClose = vi.fn();
+    render(
+      <ConfirmDialog
+        open={true}
+        onClose={onClose}
+        onConfirm={vi.fn()}
+        title="Confirm Delete"
+        description="Are you sure you want to delete this key?"
+        closable={false}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /close dialog/i })).toBeNull();
+
+    const desc = screen.getByText("Are you sure you want to delete this key?");
+    expect(dialog.getAttribute("aria-describedby")).toBe(desc.id);
+
+    // Escape does not close when closable is false
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 

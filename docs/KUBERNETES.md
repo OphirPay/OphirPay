@@ -91,6 +91,13 @@ is starting or unavailable. Tune delays and thresholds for cold starts, but do
 not point probes at a database-only endpoint or make liveness depend on a
 transient external provider.
 
+## Pod security standard (Restricted)
+
+The Helm chart and standalone manifests in `k8s/deployment.yaml` adhere to the Kubernetes **restricted** Pod Security Standard:
+- Pod security context sets `seccompProfile: { type: RuntimeDefault }` and `fsGroup: 1001`.
+- Container security context enforces `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `runAsNonRoot: true`, `runAsUser: 1001`, and drops all capabilities (`ALL`).
+- Writable `emptyDir` volumes are mounted at `/app/.next/cache` (for Next.js ISR, fetch, and image caching) and `/tmp`.
+
 ## Pre-flight checklist
 
 - [ ] Build and publish an image with the intended `NEXT_PUBLIC_*` values.

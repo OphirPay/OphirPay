@@ -116,3 +116,50 @@ describe("chart inventory (#684)", () => {
     }
   });
 });
+
+describe("restricted Pod Security Standard (#1346)", () => {
+  const deploymentTpl = template("deployment.yaml");
+  const k8sManifest = readFileSync(
+    join(process.cwd(), "k8s", "deployment.yaml"),
+    "utf8",
+  );
+
+  it("configures RuntimeDefault seccompProfile in values.yaml and k8s", () => {
+    expect(valueAt("podSecurityContext.seccompProfile.type")).toBe(
+      "RuntimeDefault",
+    );
+    expect(k8sManifest).toContain("type: RuntimeDefault");
+  });
+
+  it("enforces readOnlyRootFilesystem in values.yaml and k8s", () => {
+    expect(valueAt("securityContext.readOnlyRootFilesystem")).toBe(true);
+    expect(k8sManifest).toContain("readOnlyRootFilesystem: true");
+  });
+
+  it("configures emptyDir volumes for next-cache and tmp in values.yaml and k8s", () => {
+    const mounts = valueAt("volumeMounts") as Array<{
+      name: string;
+      mountPath: string;
+    }>;
+    expect(mounts).toBeDefined();
+    expect(mounts.some((m) => m.mountPath === "/app/.next/cache")).toBe(true);
+    expect(mounts.some((m) => m.mountPath === "/tmp")).toBe(true);
+
+    const vols = valueAt("volumes") as Array<{
+      name: string;
+      emptyDir: Record<string, unknown>;
+    }>;
+    expect(vols).toBeDefined();
+    expect(vols.some((v) => v.name === "next-cache")).toBe(true);
+    expect(vols.some((v) => v.name === "tmp")).toBe(true);
+
+    expect(k8sManifest).toContain("mountPath: /app/.next/cache");
+    expect(k8sManifest).toContain("mountPath: /tmp");
+  });
+
+  it("renders volumeMounts and volumes in deployment.yaml template", () => {
+    expect(deploymentTpl).toContain(".Values.volumeMounts");
+    expect(deploymentTpl).toContain(".Values.volumes");
+  });
+});
+

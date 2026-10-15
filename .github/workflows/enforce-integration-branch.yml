@@ -33,9 +33,27 @@ jobs:
           # everyone and can be removed at any time.
           INTEGRATION_BRANCH="integration/staging"
 
-          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${INTEGRATION_BRANCH}" >/dev/null 2>&1; then
-            echo "Batch mode over: '${INTEGRATION_BRANCH}' does not exist. Passing."
+          # Probe integration branch existence with fail-closed semantics (issue #1341).
+          # Only a genuine 404 ("Not Found") indicates that the integration branch has been
+          # merged and deleted, meaning batch mode is over.
+          # Any other failure (401 unauthorized, 403 rate limit, 5xx server error,
+          # or network failure) must fail closed with exit 1.
+          if api_output=$(gh api -i "repos/${GITHUB_REPOSITORY}/git/ref/heads/${INTEGRATION_BRANCH}" 2>&1); then
+            api_status=0
+          else
+            api_status=$?
+          fi
+
+          if [ $api_status -eq 0 ]; then
+            echo "Integration branch '${INTEGRATION_BRANCH}' exists (HTTP 200). Batch mode is active."
+          elif echo "$api_output" | grep -qE "HTTP/[0-9.]+ 404|HTTP 404|\"message\": \"Not Found\""; then
+            echo "Batch mode over: '${INTEGRATION_BRANCH}' does not exist (HTTP 404). Passing."
             exit 0
+          else
+            echo "::error title=GitHub API Error::Failed to verify integration branch status (exit code ${api_status})."
+            echo "API Response:"
+            echo "$api_output"
+            exit 1
           fi
 
           if [ "${HEAD_REF}" = "${INTEGRATION_BRANCH}" ]; then

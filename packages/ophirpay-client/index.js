@@ -165,11 +165,18 @@ export class OphirPayClient {
     const json = text ? JSON.parse(text) : {};
 
     if (!res.ok || json.success === false) {
-      const error = json.error ?? {};
-      throw new OphirPayError(
-        error.message ?? `Request failed with status ${res.status}`,
-        { status: res.status, code: error.code ?? null, details: error.details ?? null }
-      );
+      // RFC 7807 problem details (application/problem+json) — see #1364.
+      // The API returns { type, title, status, detail, errors? } for errors.
+      // Legacy shape { success: false, error: { code, message, details } } is
+      // still handled for backward compatibility.
+      const problem = json.type ? json : null;
+      const legacy = json.error ?? {};
+
+      const message = problem?.detail ?? legacy.message ?? `Request failed with status ${res.status}`;
+      const code = problem?.type?.split("/").pop() ?? legacy.code ?? null;
+      const details = problem?.errors ?? legacy.details ?? null;
+
+      throw new OphirPayError(message, { status: res.status, code, details });
     }
 
     return json.data;

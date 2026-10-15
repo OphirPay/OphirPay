@@ -5,11 +5,12 @@ import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import {
   successResponse,
-  validationError,
-  badRequestError,
-  unauthorizedError,
   handleApiError,
 } from "@/lib/api-response";
+import {
+  problemResponse,
+  zodFieldErrors,
+} from "@/lib/api-errors";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -32,15 +33,11 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
+      return problemResponse(401, "Authentication required. Connect your wallet or provide an API key.");
     }
 
     const { searchParams } = new URL(request.url);
     const explicitPage = searchParams.get("page");
-    // `?? undefined` matters: searchParams.get() returns null for absent
-    // params, and the schema's defaults/optionals only apply to undefined.
     const parsed = paginationSchema.safeParse({
       page: explicitPage ?? undefined,
       limit: searchParams.get("limit") ?? undefined,
@@ -49,7 +46,9 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
       search: searchParams.get("search") ?? undefined,
     });
 
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) {
+      return problemResponse(422, "Request validation failed", { errors: zodFieldErrors(parsed.error) });
+    }
 
     const { page, limit, status, search, cursor: rawCursor } = parsed.data;
 
@@ -69,10 +68,10 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
     // pagination via an explicit `page` param is kept for legacy consumers.
     const cursor = rawCursor ? decodeCursor(rawCursor) : null;
     if (rawCursor && !cursor) {
-      return badRequestError("Invalid cursor");
+      return problemResponse(400, "Invalid cursor");
     }
     if (cursor !== null && explicitPage !== null) {
-      return badRequestError("page and cursor cannot both be used");
+      return problemResponse(400, "page and cursor cannot both be used");
     }
 
     // Keyset mode (default): fetch limit + 1 rows to learn whether another
@@ -125,14 +124,14 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
+      return problemResponse(401, "Authentication required. Connect your wallet or provide an API key.");
     }
 
     const body = await request.json();
     const parsed = createPaymentSchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) {
+      return problemResponse(422, "Request validation failed", { errors: zodFieldErrors(parsed.error) });
+    }
 
     const payment = await prisma.payment.create({
       data: {

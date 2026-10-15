@@ -3,14 +3,8 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { retryPaymentSchema } from "@/lib/validation-schemas";
-import {
-  successResponse,
-  validationError,
-  notFoundError,
-  conflictError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+import { successResponse, handleApiError } from "@/lib/api-response";
+import { problemResponse, zodFieldErrors } from "@/lib/api-errors";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
@@ -24,6 +18,8 @@ import { verifyCsrf } from "@/lib/csrf";
  * duplicated. The row returns to PENDING and flows through the normal submit
  * path (PENDING → SIGNED → SUBMITTED → … → COMPLETED) via the existing PATCH
  * transitions, which fire their usual webhooks.
+ *
+ * Error responses follow RFC 7807 (application/problem+json) — see #1364.
  */
 export async function POST(request: Request) {
   try {
@@ -32,14 +28,14 @@ export async function POST(request: Request) {
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
+      return problemResponse(401, "Authentication required. Connect your wallet or provide an API key.");
     }
 
     const body = await request.json().catch(() => null);
     const parsed = retryPaymentSchema.safeParse(body ?? {});
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) {
+      return problemResponse(422, "Request validation failed", { errors: zodFieldErrors(parsed.error) });
+    }
 
     const { id } = parsed.data;
 
@@ -48,10 +44,13 @@ export async function POST(request: Request) {
     const payment = await prisma.payment.findFirst({
       where: { id, userId: auth.userId, deletedAt: null },
     });
-    if (!payment) return notFoundError("Payment");
+    if (!payment) {
+      return problemResponse(404, "Payment not found");
+    }
 
     if (payment.status !== "FAILED") {
-      return conflictError(
+      return problemResponse(
+        409,
         `Only failed payments can be retried (current status: ${payment.status})`
       );
     }
@@ -69,10 +68,14 @@ export async function POST(request: Request) {
         idempotencyKey: crypto.randomUUID(),
       },
     });
-    if (updated.count === 0) return notFoundError("Payment");
+    if (updated.count === 0) {
+      return problemResponse(404, "Payment not found");
+    }
 
     const retried = await prisma.payment.findUnique({ where: { id } });
-    if (!retried) return notFoundError("Payment");
+    if (!retried) {
+      return problemResponse(404, "Payment not found");
+    }
 
     logger.info("Payment retried", {
       id,

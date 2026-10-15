@@ -7,6 +7,7 @@ import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/
 import { nativeToScVal } from "@stellar/stellar-sdk";
 import { withRequestLogging } from "@/lib/request-logging";
 import { enforceLookupRateLimit } from "@/lib/lookup-rate-limit";
+import { isSessionFresh, type SessionInfo } from "@/lib/session-sudo";
 
 /**
  * GET /api/rbac — look up role assignments from the Soroban contract.

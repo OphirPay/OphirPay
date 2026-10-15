@@ -58,6 +58,99 @@ export interface AuditLogFilters {
 
 const AUDIT_ENTRY_BATCH_SIZE = 10;
 
+// ── Cursor pagination (issue #1361) ───────────────────────────
+
+/** Allowlisted sort fields for `?sort=`. */
+export const AUDIT_SORT_FIELDS = ["id", "timestamp", "action", "actor"] as const;
+export type AuditSortField = (typeof AUDIT_SORT_FIELDS)[number];
+export type AuditSortDirection = "asc" | "desc";
+
+/** Default and maximum page size for cursor pagination. */
+export const AUDIT_PAGE_DEFAULT = 20;
+export const AUDIT_PAGE_MAX = 100;
+
+const sortValueOf = (entry: AuditLogEntry, field: AuditSortField): string | number => {
+  switch (field) {
+    case "id":
+      return entry.id;
+    case "timestamp":
+      return entry.timestamp;
+    case "action":
+      return entry.action;
+    case "actor":
+      return entry.actor;
+  }
+};
+
+/** Opaque cursor payload: the sort key value plus the entry id as tiebreaker. */
+export interface AuditCursor {
+  v: string | number;
+  id: number;
+}
+
+/** Encode a cursor from an entry and the active sort field (URL-safe base64). */
+export function encodeAuditCursor(
+  entry: AuditLogEntry,
+  sortField: AuditSortField
+): string {
+  const payload: AuditCursor = {
+    v: sortValueOf(entry, sortField),
+    id: entry.id,
+  };
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+/** Decode an opaque cursor. Returns null for malformed / tampered cursors. */
+export function decodeAuditCursor(raw: string): AuditCursor | null {
+  try {
+    const obj = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+    if (!obj || typeof obj !== "object") return null;
+    const { v, id } = obj as Record<string, unknown>;
+    if (typeof id !== "number" || !Number.isSafeInteger(id)) return null;
+    if (typeof v !== "string" && typeof v !== "number") return null;
+    return { v, id };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stable comparator on the allowlisted sort field with the entry id as an
+ * immutable tiebreaker, so equal keys always come back in the same order.
+ */
+export function compareAuditEntries(
+  a: AuditLogEntry,
+  b: AuditLogEntry,
+  field: AuditSortField,
+  direction: AuditSortDirection = "desc"
+): number {
+  const av = sortValueOf(a, field);
+  const bv = sortValueOf(b, field);
+  const cmp =
+    av < bv ? -1 : av > bv ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  return direction === "asc" ? cmp : -cmp;
+}
+
+/** True when `entry` is strictly after `cursor` for the given sort order. */
+export function auditEntryAfterCursor(
+  entry: AuditLogEntry,
+  cursor: AuditCursor,
+  field: AuditSortField,
+  direction: AuditSortDirection
+): boolean {
+  const ev = sortValueOf(entry, field);
+  const key = (x: string | number) =>
+    typeof x === "number" ? x : String(x).toLowerCase();
+  if (typeof ev === "number" && typeof cursor.v === "number") {
+    if (ev !== cursor.v) return direction === "asc" ? ev > cursor.v : ev < cursor.v;
+  } else {
+    const a = key(ev);
+    const b = key(cursor.v);
+    if (a !== b) return direction === "asc" ? a > b : a < b;
+  }
+  return direction === "asc" ? entry.id > cursor.id : entry.id < cursor.id;
+}
+
 // ── Query params ──────────────────────────────────────────────
 
 /** Parse a `since`/`until` query value: bare integer → Unix seconds, else ISO 8601. */
@@ -90,6 +183,10 @@ export const auditLogQuerySchema = z
     since: yearSuffixCheck.optional(),
     until: yearSuffixCheck.optional(),
     order: z.enum(["asc", "desc"]).default("desc"),
+    // Cursor pagination (issue #1361): opaque base64url cursor returned in
+    // `meta.next_cursor`; `sort` is an allowlisted field, direction via `order`.
+    cursor: z.string().optional(),
+    sort: z.enum(AUDIT_SORT_FIELDS).optional().default("id"),
     // Backing store for GET /api/audit-log (issue #365): "db" serves the
     // persisted audit trail, "contract" the on-chain ledger, "all" both.
     source: z.enum(["contract", "db", "all"]).optional().default("contract"),

@@ -11,7 +11,8 @@ import { useToast } from "@/components/ui/Toast";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { cancelStream, claimStream, createStream } from "@/lib/contract-advanced";
+import { VestingProgressChart } from "@/components/streams/VestingProgressChart";
+import { cancelStream, createStream, claimStream } from "@/lib/contract-advanced";
 import { fetchRecentContractRecords } from "@/lib/on-chain-records";
 import { formatXlmStroops, parseXlmAmount } from "@/lib/stellar-amount";
 import { PAGE_TITLES } from "@/lib/page-titles";
@@ -195,18 +196,15 @@ export default function StreamsPage() {
                     {formatXlmStroops(total)}
                   </span>
                 </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between gap-3 text-sm text-gray-600 dark:text-gray-400">
-                    <span>{stream.cancelled ? "Paid to recipient" : "Vested"}: {formatXlmStroops(vested)}</span>
-                    <span>Claimed: {formatXlmStroops(claimed)}</span>
-                  </div>
-                  <ProgressBar value={percent} showLabel />
-                  {isRecipient && claimable > BigInt(0) && !stream.cancelled && (
-                    <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                      Claimable now: {formatXlmStroops(claimable)}
-                    </p>
-                  )}
-                </div>
+                <VestingProgressChart
+                  streamId={id}
+                  totalAmount={total}
+                  startTime={start}
+                  endTime={end}
+                  claimedAmount={claimed}
+                  cancelled={stream.cancelled}
+                  metadata={stream.metadata}
+                />
                 <dl className="grid gap-2 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">
                   <div><dt className="inline font-medium">Creator: </dt><dd className="inline font-mono">{shortenAddress(stream.creator, 12)}</dd></div>
                   <div><dt className="inline font-medium">Recipient: </dt><dd className="inline font-mono">{shortenAddress(stream.recipient, 12)}</dd></div>

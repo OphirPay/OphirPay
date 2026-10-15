@@ -4,11 +4,13 @@ import { withMetrics } from "@/lib/metrics-middleware";
 import prisma from "@/lib/prisma";
 import {
   successResponse,
-  validationError,
-  unauthorizedError,
-  notFoundError,
   handleApiError,
 } from "@/lib/api-response";
+import {
+  validationProblem,
+  unauthorizedProblem,
+  notFoundProblem,
+} from "@/lib/api-errors";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -34,26 +36,26 @@ export const POST = withMetrics("POST /api/payments/cancel", withRequestLogging(
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
+      return unauthorizedProblem(
+              "Authentication required. Connect your wallet or provide an API key."
+            );
     }
 
     const rawBody = await request.json();
     const parsed = cancelPaymentSchema.safeParse(rawBody);
-    if (!parsed.success) return validationError(parsed.error);
-    const { txHash } = parsed.data;
+    if (!parsed.success) return validationProblem(parsed.error);
+        const { txHash } = parsed.data;
 
     const updated = await prisma.payment.updateMany({
       where: { transactionHash: txHash, userId: auth.userId, deletedAt: null },
       data: { status: "CANCELLED" },
     });
-    if (updated.count === 0) return notFoundError("Payment");
+    if (updated.count === 0) return notFoundProblem("Payment");
 
     const payment = await prisma.payment.findFirst({
       where: { transactionHash: txHash, userId: auth.userId, deletedAt: null },
     });
-    if (!payment) return notFoundError("Payment");
+    if (!payment) return notFoundProblem("Payment");
 
     logger.info("Payment cancelled", { id: payment.id, status: payment.status });
     return successResponse(payment);

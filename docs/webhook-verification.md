@@ -88,9 +88,13 @@ editing it. Reject deliveries whose timestamp is too old or too far in the
 future:
 
 - **Too old** (e.g. older than 5 minutes) — likely a replay of a captured
-  request.
+  request. The verifiers reject this with error code `WebhookTimestampExpired`.
 - **In the future** (beyond a small clock-skew allowance, e.g. 5 minutes) —
-  a sign of a fabricated or manipulated payload.
+  a sign of a fabricated or manipulated payload. The verifiers reject this with
+  error code `WebhookTimestampFutureSkew`.
+
+When using the reference verifiers or SDK helpers, check for these codes in the
+returned verification result to handle retries and alerts appropriately.
 
 OphirPay retries failed deliveries up to 3 attempts using configurable
 exponential backoff (1s, then 2s by default) with the **same payload and

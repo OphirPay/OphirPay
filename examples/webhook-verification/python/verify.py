@@ -102,12 +102,12 @@ def verify_webhook_signature(
         now = now or datetime.now(timezone.utc)
         age_seconds = (now - ts).total_seconds()
         if age_seconds > max_age_seconds:
-            return False, "payload too old (%ds > %ds) - possible replay" % (
+            return False, "WebhookTimestampExpired: payload too old (%ds > %ds) - possible replay" % (
                 round(age_seconds),
                 max_age_seconds,
             )
         if age_seconds < -max_age_seconds:
-            return False, "payload timestamp is in the future (%ds ahead)" % round(
+            return False, "WebhookTimestampFutureSkew: payload timestamp is in the future (%ds ahead)" % round(
                 -age_seconds
             )
 

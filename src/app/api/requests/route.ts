@@ -6,9 +6,11 @@ import { createPaymentRequestSchema } from "@/lib/validation-schemas";
 import {
   successResponse,
   validationError,
+  badRequestError,
   unauthorizedError,
   handleApiError,
 } from "@/lib/api-response";
+import { validateStellarMemo } from "@/lib/validation/stellar";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
@@ -50,6 +52,15 @@ export const POST = withMetrics("POST /api/requests", withRequestLogging(async f
     }
 
     const body = await request.json();
+
+    // Fast-fail validation for Stellar transaction memo encoding, bounds & character set
+    if (body.memo !== undefined && body.memo !== null && body.memo !== "") {
+      const memoCheck = validateStellarMemo(body.memo, body.memoType);
+      if (!memoCheck.valid) {
+        return badRequestError(memoCheck.error || "Invalid Stellar memo");
+      }
+    }
+
     const parsed = createPaymentRequestSchema.safeParse(body);
     if (!parsed.success) return validationError(parsed.error);
 

@@ -26,6 +26,11 @@ export class OphirPayError extends Error {
     this.status = options.status ?? null;
     this.code = options.code ?? null;
     this.details = options.details ?? null;
+    this.type = options.type ?? null;
+    this.title = options.title ?? null;
+    this.detail = options.detail ?? null;
+    this.instance = options.instance ?? null;
+    this.invalidParams = options.invalidParams ?? null;
   }
 }
 
@@ -165,6 +170,22 @@ export class OphirPayClient {
     const json = text ? JSON.parse(text) : {};
 
     if (!res.ok || json.success === false) {
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/problem+json") || json.type || json.title) {
+        throw new OphirPayError(
+          json.detail ?? json.title ?? `Request failed with status ${res.status}`,
+          {
+            status: json.status ?? res.status,
+            code: json.code ?? "PROBLEM_DETAILS",
+            details: json.invalidParams ?? json.details ?? null,
+            type: json.type ?? null,
+            title: json.title ?? null,
+            detail: json.detail ?? null,
+            instance: json.instance ?? null,
+            invalidParams: json.invalidParams ?? null,
+          }
+        );
+      }
       const error = json.error ?? {};
       throw new OphirPayError(
         error.message ?? `Request failed with status ${res.status}`,

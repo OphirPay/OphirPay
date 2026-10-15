@@ -232,6 +232,82 @@ describe("API Routes: Escrows & Streams", () => {
       const data = await res.json();
       expect(data.data.message).toContain("wallet signing");
     });
+
+    it("POST returns 202 when duration is exactly the 60s minimum", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      const res = await postStreams(
+        postRequest("http://localhost/api/streams", {
+          creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          totalAmount: 500,
+          startTime: 1000000000,
+          endTime: 1000000060,
+        })
+      );
+      expect(res.status).toBe(202);
+    });
+
+    it("POST returns 202 when duration is exactly the 90-day maximum", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      const res = await postStreams(
+        postRequest("http://localhost/api/streams", {
+          creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          totalAmount: 500,
+          startTime: 1000000000,
+          endTime: 1000000000 + 90 * 24 * 60 * 60,
+        })
+      );
+      expect(res.status).toBe(202);
+    });
+
+    it("POST returns 400 when duration is below the minimum (59s)", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      const res = await postStreams(
+        postRequest("http://localhost/api/streams", {
+          creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          totalAmount: 500,
+          startTime: 1000000000,
+          endTime: 1000000059,
+        })
+      );
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error.code).toBe("VALIDATION_ERROR");
+      expect(data.error.details.endTime[0]).toContain("at least 60 seconds");
+    });
+
+    it("POST returns 400 when duration exceeds the maximum (90 days + 1s)", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      const res = await postStreams(
+        postRequest("http://localhost/api/streams", {
+          creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          totalAmount: 500,
+          startTime: 1000000000,
+          endTime: 1000000000 + 90 * 24 * 60 * 60 + 1,
+        })
+      );
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error.code).toBe("VALIDATION_ERROR");
+      expect(data.error.details.endTime[0]).toContain("at most");
+    });
+
+    it("POST returns 400 when endTime is before startTime", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      const res = await postStreams(
+        postRequest("http://localhost/api/streams", {
+          creator: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          recipient: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+          totalAmount: 500,
+          startTime: 1000000100,
+          endTime: 1000000000,
+        })
+      );
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("GET /api/streams/[id]", () => {

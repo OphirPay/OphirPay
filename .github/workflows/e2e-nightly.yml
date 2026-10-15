@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 # A nightly run and a manual dispatch must not overlap; the newer run wins.
 concurrency:
@@ -186,3 +187,44 @@ jobs:
           name: merged-html-report
           path: playwright-report
           retention-days: 14
+
+  notify-status:
+    name: "🔔 Track failure / recovery issue"
+    if: always()
+    needs: [playwright-tests, merge-reports]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Open, update, or close tracking issue (issue #1342)
+        run: |
+          set -euo pipefail
+
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          TITLE="Nightly E2E failing on ${{ github.ref_name }}"
+
+          # Locate existing open tracking issue with label 'ci'
+          ISSUE_NUMBER=$(gh issue list --repo "${{ github.repository }}" --state open --label "ci" --search "$TITLE in:title" --json number -q '.[0].number' || echo "")
+
+          if [ "${{ needs.playwright-tests.result }}" != "success" ]; then
+            if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
+              echo "Updating existing tracking issue #$ISSUE_NUMBER"
+              gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" \
+                --body "Nightly E2E run failed again on \`${{ github.ref_name }}\` at commit \`${{ github.sha }}\`.\n\n- **Workflow Run**: [Run #${{ github.run_number }}]($RUN_URL)\n- **Merged Report**: [Run Artifacts]($RUN_URL#artifacts)"
+            else
+              echo "Opening new tracking issue"
+              gh issue create --repo "${{ github.repository }}" \
+                --title "$TITLE" \
+                --label "ci" \
+                --body "Nightly E2E test suite failed on \`${{ github.ref_name }}\` at commit \`${{ github.sha }}\`.\n\n- **Workflow Run**: [Run #${{ github.run_number }}]($RUN_URL)\n- **Merged HTML Report**: [Run Artifacts]($RUN_URL#artifacts)"
+            fi
+          else
+            if [ -n "$ISSUE_NUMBER" ] && [ "$ISSUE_NUMBER" != "null" ]; then
+              echo "Closing tracking issue #$ISSUE_NUMBER after green run"
+              gh issue close "$ISSUE_NUMBER" --repo "${{ github.repository }}" \
+                --comment "Nightly E2E test suite succeeded on \`${{ github.ref_name }}\` in [Run #${{ github.run_number }}]($RUN_URL). Closing tracking issue."
+            else
+              echo "No open tracking issue found; run passed cleanly."
+            fi
+          fi

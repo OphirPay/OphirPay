@@ -2608,11 +2608,26 @@ impl OphirPayContract {
         }
 
         let now = env.ledger().timestamp();
-        let vested = compute_vested(stream.total_amount, stream.start_time, stream.end_time, now);
+        let total_duration = stream.end_time.saturating_sub(stream.start_time);
+
+        // Linear pro-rata formula: vested = (total_amount * elapsed) / duration
+        // Explicitly guard against zero-duration vesting intervals
+        let vested = if total_duration == 0 {
+            stream.total_amount
+        } else {
+            compute_vested(stream.total_amount, stream.start_time, stream.end_time, now)
+        };
+
         let earned_unclaimed = vested
             .checked_sub(stream.claimed_amount)
             .ok_or(PaymentError::StreamInvariantViolated)?;
+
+        // Contract solvency guarantee: unvested refundable balance ensures
+        // claimed_amount + earned_unclaimed + unvested == total_amount exactly
         let unvested = stream.total_amount.saturating_sub(vested);
+        if stream.claimed_amount.saturating_add(earned_unclaimed).saturating_add(unvested) != stream.total_amount {
+            return Err(PaymentError::StreamInvariantViolated);
+        }
 
         stream.cancelled = true;
         stream.claimed_amount = vested;

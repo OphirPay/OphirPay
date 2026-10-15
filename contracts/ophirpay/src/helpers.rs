@@ -8,6 +8,7 @@ use crate::storage::*;
 use crate::types::*;
 use crate::errors::*;
 use crate::events::*;
+
 /// Release the reentrancy lock after cross-contract calls complete.
 /// Prefer using the [`ReentrancyGuard`] returned by [`acquire_reentrancy_lock`],
 /// which releases automatically on drop. This is only used internally by the guard.
@@ -33,11 +34,12 @@ pub fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u
     if now <= start_time {
         return 0;
     }
-    let elapsed = (now - start_time) as i128;
-    let total_duration = (end_time - start_time) as i128;
-    if total_duration == 0 {
+    let duration_u64 = end_time.saturating_sub(start_time);
+    if duration_u64 == 0 {
         return total_amount;
     }
+    let elapsed = (now.saturating_sub(start_time)) as i128;
+    let total_duration = duration_u64 as i128;
 
     if let Some(product) = total_amount.checked_mul(elapsed) {
         return product / total_duration;
@@ -64,4 +66,3 @@ pub fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u
     let fractional = ((amount % divisor) * multiplier) / divisor;
     (whole + fractional) as i128
 }
-

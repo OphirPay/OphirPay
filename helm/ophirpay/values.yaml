@@ -135,9 +135,9 @@ secrets:
 #   • liveness  → /api/health/live  — process-only, no DB/RPC/Redis I/O, so a
 #                                    transient dependency outage never restarts
 #                                    an otherwise healthy pod.
-#   • readiness → /api/health       — dependency-aware; 503 while the database
+#   • readiness → /api/health/ready — dependency-aware; 503 while the database
 #                                    is unreachable, which drains traffic from
-#                                    the pod without killing it.
+#                                    the pod without killing it (issue #1337).
 # Both paths are exempt from the global rate limiter (src/proxy.ts).
 livenessProbe:
   httpGet:
@@ -150,7 +150,7 @@ livenessProbe:
 
 readinessProbe:
   httpGet:
-    path: /api/health
+    path: /api/health/ready
     port: 3000
   initialDelaySeconds: 10
   periodSeconds: 10

@@ -21,7 +21,7 @@ vi.mock("@/lib/contracts", () => {
 });
 
 import prisma from "@/lib/prisma";
-import { GET } from "@/app/api/health/route";
+import { GET, resetHealthChecksCache } from "@/app/api/health/route";
 import * as contracts from "@/lib/contracts";
 
 const originalFetch = global.fetch;
@@ -29,6 +29,7 @@ const originalFetch = global.fetch;
 describe("GET /api/health", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetHealthChecksCache();
     global.fetch = vi.fn();
     // Reset contract ID to valid string
     (contracts as unknown as { setMockContractId: (id: string) => void }).setMockContractId("CAQQYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY");

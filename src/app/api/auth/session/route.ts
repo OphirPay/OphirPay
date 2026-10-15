@@ -19,6 +19,7 @@ import {
   buildSessionCookie,
   buildLogoutCookie,
   readSessionCookie,
+  revokeSessionToken,
 } from "@/lib/auth-session";
 import { verifyChallengeToken, challengeMessage, verifyWalletSignature } from "@/lib/challenge";
 import { isValidStellarAddress } from "@/lib/stellar";
@@ -98,7 +99,13 @@ export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging
   const rateLimited = await enforceAuthRateLimit(request);
   if (rateLimited) return rateLimited;
 
-  const response = successResponse({ authenticated: false });
+  // Active session revocation
+  const session = readSessionCookie(request);
+  if (session?.pk) {
+    revokeSessionToken(session.pk);
+  }
+
+  const response = successResponse({ authenticated: false, revoked: true });
   response.headers.set("Set-Cookie", buildLogoutCookie());
   return response;
 }));

@@ -7,6 +7,9 @@ import {
   readSessionCookie,
   buildSessionCookie,
   buildLogoutCookie,
+  revokeSessionToken,
+  isSessionRevoked,
+  clearRevokedSessions,
   SESSION_COOKIE_NAME,
 } from "@/lib/auth-session";
 
@@ -122,5 +125,29 @@ describe("cookie builders", () => {
     const cookie = buildLogoutCookie();
     expect(cookie).toContain("Max-Age=0");
     expect(cookie).toContain("HttpOnly");
+  });
+});
+
+describe("session revocation", () => {
+  beforeEach(() => {
+    clearRevokedSessions();
+  });
+
+  it("revokes active session tokens by public key", () => {
+    const token = createSessionToken(PK, "TESTNET");
+    expect(parseSessionToken(token)).not.toBeNull();
+
+    revokeSessionToken(PK);
+    expect(isSessionRevoked(PK)).toBe(true);
+    expect(parseSessionToken(token)).toBeNull();
+  });
+
+  it("revokes active session tokens by token string", () => {
+    const token = createSessionToken(PK, "TESTNET");
+    expect(parseSessionToken(token)).not.toBeNull();
+
+    revokeSessionToken(token);
+    expect(isSessionRevoked(token)).toBe(true);
+    expect(parseSessionToken(token)).toBeNull();
   });
 });

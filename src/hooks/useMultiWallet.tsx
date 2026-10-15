@@ -10,6 +10,8 @@ import {
   createContext,
   useContext,
 } from "react";
+import { QueryClientContext } from "@tanstack/react-query";
+import { clearQueryCache } from "@/components/QueryProvider";
 import type { MultiWalletState, WalletId } from "@/lib/wallets";
 import { getWalletConnector, getAvailableWallets, setActiveWalletId } from "@/lib/wallets";
 import { fetchXlmBalance } from "@/lib/stellar";
@@ -19,7 +21,7 @@ import { establishSession, revokeSession } from "@/lib/client-auth";
 
 const WalletContext = createContext<WalletContextType | null>(null);
 
-interface WalletContextType {
+export interface WalletContextType {
   wallet: MultiWalletState;
   connect: (walletId: WalletId) => Promise<void>;
   disconnect: () => Promise<void>;
@@ -27,6 +29,9 @@ interface WalletContextType {
   isConnecting: boolean;
   error: string | null;
   availableWallets: WalletId[];
+  hasUnsavedWork: boolean;
+  setHasUnsavedWork: (has: boolean) => void;
+  checkForPendingWork: () => boolean;
 }
 
 // ── Initial State ─────────────────────────────────────────────
@@ -47,6 +52,31 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availableWallets, setAvailableWallets] = useState<WalletId[]>([]);
+  const [hasUnsavedWork, setHasUnsavedWork] = useState(false);
+
+  // Safely read React Query client from context if available
+  const queryClient = useContext(QueryClientContext);
+
+  const checkForPendingWork = useCallback(() => {
+    if (hasUnsavedWork) return true;
+    if (queryClient && typeof queryClient.isMutating === "function" && queryClient.isMutating() > 0) {
+      return true;
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const draftPayment =
+          window.localStorage.getItem("ophirpay-draft-payment") ||
+          window.sessionStorage.getItem("ophirpay-draft-payment");
+        const draftBatch =
+          window.localStorage.getItem("ophirpay-draft-batch") ||
+          window.sessionStorage.getItem("ophirpay-draft-batch");
+        if (draftPayment || draftBatch) return true;
+      } catch {
+        // Best-effort
+      }
+    }
+    return false;
+  }, [hasUnsavedWork, queryClient]);
 
   // Detect available wallets on mount
   useEffect(() => {
@@ -200,6 +230,27 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     setWallet(initialWalletState);
     setActiveWalletId(null);
     setError(null);
+    setHasUnsavedWork(false);
+
+    // Purge cached queries to prevent session and balance leakage across addresses
+    try {
+      queryClient?.clear();
+      clearQueryCache();
+    } catch {
+      // Best effort
+    }
+
+    // Clear client draft storage
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem("ophirpay-draft-payment");
+        window.localStorage.removeItem("ophirpay-draft-batch");
+        window.sessionStorage.removeItem("ophirpay-draft-payment");
+        window.sessionStorage.removeItem("ophirpay-draft-batch");
+      } catch {
+        // Best effort
+      }
+    }
 
     if (walletId) {
       try {
@@ -211,7 +262,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     }
     // Revoke the server-side session cookie
     await revokeSession();
-  }, [wallet.activeWalletId]);
+  }, [wallet.activeWalletId, queryClient]);
 
   // Auto-refresh balance every 30 seconds when connected
   useEffect(() => {
@@ -237,6 +288,9 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
         isConnecting,
         error,
         availableWallets,
+        hasUnsavedWork,
+        setHasUnsavedWork,
+        checkForPendingWork,
       }}
     >
       {children}

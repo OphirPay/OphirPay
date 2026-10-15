@@ -10,12 +10,35 @@ import { Button } from "@/components/ui/Button";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WalletSelector } from "@/components/WalletSelector";
 import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 export function WalletButton() {
-  const { wallet, connect, disconnect, fetchBalance, isConnecting, error, availableWallets } =
-    useWallet();
+  const {
+    wallet,
+    connect,
+    disconnect,
+    fetchBalance,
+    isConnecting,
+    error,
+    availableWallets,
+    checkForPendingWork,
+  } = useWallet();
   const [showSelector, setShowSelector] = useState(false);
   const [connectingWallet, setConnectingWallet] = useState<WalletId | null>(null);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+
+  const handleDisconnectClick = () => {
+    if (checkForPendingWork && checkForPendingWork()) {
+      setShowDisconnectConfirm(true);
+    } else {
+      disconnect();
+    }
+  };
+
+  const handleConfirmDisconnect = async () => {
+    setShowDisconnectConfirm(false);
+    await disconnect();
+  };
 
   const handleSelectWallet = async (walletId: WalletId) => {
     setConnectingWallet(walletId);
@@ -99,7 +122,7 @@ export function WalletButton() {
 
         {/* Disconnect */}
         <button
-          onClick={disconnect}
+          onClick={handleDisconnectClick}
           aria-label="Disconnect wallet"
           className="text-sm text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors duration-200"
           title="Disconnect wallet"
@@ -119,6 +142,18 @@ export function WalletButton() {
             />
           </svg>
         </button>
+
+        {/* Confirmation dialog when unsaved drafts or in-flight operations exist */}
+        <ConfirmDialog
+          open={showDisconnectConfirm}
+          onClose={() => setShowDisconnectConfirm(false)}
+          onConfirm={handleConfirmDisconnect}
+          title="Disconnect Wallet"
+          description="You have unsaved draft payments or in-flight transactions. Disconnecting your wallet will clear this state and revoke your session. Are you sure you want to disconnect?"
+          confirmLabel="Disconnect Anyway"
+          cancelLabel="Cancel"
+          variant="danger"
+        />
       </div>
     );
   }

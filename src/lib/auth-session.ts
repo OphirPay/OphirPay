@@ -75,6 +75,30 @@ export function createSessionToken(publicKey: string, network: string): string {
   return `${body}.${signToken(body)}`;
 }
 
+// ── Session Revocation Blacklist ──────────────────────────────
+const revokedSessions = new Set<string>();
+
+/**
+ * Actively revoke a session token or associated public key.
+ */
+export function revokeSessionToken(identifier: string): void {
+  revokedSessions.add(identifier);
+}
+
+/**
+ * Check if a session has been revoked.
+ */
+export function isSessionRevoked(identifier: string): boolean {
+  return revokedSessions.has(identifier);
+}
+
+/**
+ * Clear the session revocation blacklist (for test cleanup).
+ */
+export function clearRevokedSessions(): void {
+  revokedSessions.clear();
+}
+
 /** Verify signature + expiry and return the payload, or null. */
 export function parseSessionToken(token: string): SessionPayload | null {
   const parts = token.split(".");
@@ -93,6 +117,7 @@ export function parseSessionToken(token: string): SessionPayload | null {
     ) as SessionPayload;
     if (!isValidStellarAddress(payload.pk ?? "")) return null;
     if (typeof payload.exp !== "number" || payload.exp < Date.now()) return null;
+    if (isSessionRevoked(payload.pk) || isSessionRevoked(token)) return null;
     return payload;
   } catch {
     return null;

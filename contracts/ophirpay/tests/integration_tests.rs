@@ -935,3 +935,74 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+/// Memos exceeding 64 bytes are rejected with PaymentError::MemoTooLong (#1360).
+/// Verifies boundary enforcement: 64-byte memos pass, 65-byte memos fail.
+#[test]
+fn test_memo_byte_length_limit() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    // 1. Boundary check on record_payment
+    let valid_memo_64 = String::from_str(&fix.env, "0123456789012345678901234567890123456789012345678901234567890123");
+    assert_eq!(valid_memo_64.len(), 64);
+
+    let tx_valid = String::from_str(&fix.env, "0xvalid_tx");
+    let payment_id = fix.client.record_payment(
+        &payer,
+        &payee,
+        &1_000_000i128,
+        &fix.token_id,
+        &tx_valid,
+        &valid_memo_64,
+    );
+    assert_eq!(payment_id, 1);
+
+    // 65 bytes memo fails
+    let oversized_memo_65 = String::from_str(&fix.env, "01234567890123456789012345678901234567890123456789012345678901234");
+    assert_eq!(oversized_memo_65.len(), 65);
+
+    let tx_err = String::from_str(&fix.env, "0xerr_tx");
+    let res_payment = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &1_000_000i128,
+        &fix.token_id,
+        &tx_err,
+        &oversized_memo_65,
+    );
+    assert_eq!(res_payment, Err(Ok(PaymentError::MemoTooLong)));
+
+    // 2. Boundary check on create_batch
+    let creator = Address::generate(&fix.env);
+    let mut payees = Vec::new(&fix.env);
+    payees.push_back(Address::generate(&fix.env));
+    let mut amounts = Vec::new(&fix.env);
+    amounts.push_back(100_000i128);
+
+    // 64 bytes batch tx/memo succeeds
+    let valid_batch_memo_64 = String::from_str(&fix.env, "0123456789012345678901234567890123456789012345678901234567890123");
+    let batch_res = fix.client.create_batch(
+        &creator,
+        &payees,
+        &amounts,
+        &fix.token_id,
+        &valid_batch_memo_64,
+    );
+    assert_eq!(batch_res.successful, 1);
+
+    // 65 bytes batch tx/memo fails
+    let oversized_batch_memo_65 = String::from_str(&fix.env, "01234567890123456789012345678901234567890123456789012345678901234");
+    let batch_err = fix.client.try_create_batch(
+        &creator,
+        &payees,
+        &amounts,
+        &fix.token_id,
+        &oversized_batch_memo_65,
+    );
+    match batch_err {
+        Err(Ok(err)) => assert_eq!(err, PaymentError::MemoTooLong),
+        _ => panic!("Expected MemoTooLong error on oversized batch memo"),
+    }
+}

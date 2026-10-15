@@ -24,6 +24,12 @@ describe("decodeContractError", () => {
     );
   });
 
+  it("decodes the memo too long error", () => {
+    expect(decodeContractError("Error(Contract, #310)")).toBe(
+      "Memo exceeds maximum allowed length of 64 bytes",
+    );
+  });
+
   it("returns raw string for unknown errors", () => {
     expect(decodeContractError("UnknownFault")).toBe("UnknownFault");
   });
@@ -67,5 +73,12 @@ describe("getContractErrorCatalog", () => {
     const entry = catalog.find((e) => e.code === "309");
     expect(entry).toBeDefined();
     expect(entry!.message).toContain("Idempotency key");
+  });
+
+  it("includes MemoTooLong (310) in error catalog", () => {
+    const catalog = getContractErrorCatalog();
+    const entry = catalog.find((e) => e.code === "310");
+    expect(entry).toBeDefined();
+    expect(entry!.message).toContain("Memo exceeds maximum allowed length of 64 bytes");
   });
 });

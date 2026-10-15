@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
+
 import { successResponse } from "@/lib/api-response";
+import { getAppVersion, getCommitSha } from "@/lib/app-version";
 
 /**
  * Liveness probe — `GET /api/health/live` (issue #738).
@@ -28,7 +30,8 @@ export function GET() {
   return successResponse({
     status: "ok",
     probe: "liveness",
-    version: "0.1.0",
+    version: getAppVersion(),
+    commit: getCommitSha(),
     uptime: process.uptime(),
   });
 }

@@ -11,6 +11,7 @@ import {
   isRpcFailoverDegraded,
   RPC_FAILOVER_DEGRADED_AFTER_MS,
 } from "@/lib/rpc-failover";
+import { getAppVersion, getCommitSha } from "@/lib/app-version";
 
 // ── Check helpers ──────────────────────────────────────────────
 
@@ -142,7 +143,8 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     return successResponse(
       {
         status: overallStatus,
-        version: "0.1.0",
+        version: getAppVersion(),
+        commit: getCommitSha(),
         services: {
           database: { status: dbStatus, latencyMs: dbLatency },
           redis: { status: redisStatus, latencyMs: redisLatency },

@@ -125,6 +125,26 @@ All writes call `extend_ttl(5000, 50000)` to prevent archival.
 
 300 typed error variants from `NotInitialized=1` to `SystemOverloaded=300` (many reserved for unimplemented features). Contract functions return `Result<T, PaymentError>` — no panics in production code.
 
+### 6. Process Lifecycle & Graceful Shutdown
+
+To prevent interrupted database transactions, orphaned connection pools, and severed Redis operations during container restarts or Kubernetes rolling deployments, the application provides a centralized graceful shutdown subsystem (`src/lib/lifecycle.ts`):
+
+1. **Signal Handling**:
+   - Registers listeners for `SIGTERM` and `SIGINT` during server bootstrap in `src/lib/startup.ts`.
+   - Transitions `isShuttingDown()` to `true` to immediately reject new incoming mutation requests.
+
+2. **In-Flight Operation Draining**:
+   - Asynchronous mutations and background workers use `trackOperation(() => Promise<T>)`.
+   - On termination, the process waits for active in-flight operations up to a configurable grace timeout (default 5,000ms).
+
+3. **Resource Disconnection**:
+   - Triggers `disconnectPrisma()` in `src/lib/prisma.ts` to close active PostgreSQL connections cleanly (`prisma.$disconnect()`).
+   - Triggers `disconnectRedis()` in `src/lib/redis.ts` to gracefully exit active Redis clients (`redis.quit()`).
+   - Executes custom subsystem cleanup hooks registered via `registerShutdownHook()`.
+
+4. **Structured Observability**:
+   - Emits structured JSON logs via `logger.info` at shutdown initiation (`signal`, `inFlightOperations`) and completion (`durationMs`).
+
 ## Directory Structure
 
 ```

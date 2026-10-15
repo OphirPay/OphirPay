@@ -51,6 +51,13 @@ pub const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 // `get_reason_code_analytics`.
 pub const MAX_READER_ENTRIES: u32 = 100;
 
+// ── Payment Stream Duration Bounds (issue #1350) ───────────────
+// `create_stream` only checked `end_time > start_time`, which allowed
+// pathological durations: 1-second streams (division edge cases in
+// `compute_vested`) or durations far beyond any realistic ledger TTL.
+pub const MIN_STREAM_DURATION: u64 = 60;
+pub const MAX_STREAM_DURATION: u64 = 5 * 365 * 24 * 60 * 60;
+
 // ── Contract ───────────────────────────────────────────────────
 
 #[contract]
@@ -2461,6 +2468,13 @@ impl OphirPayContract {
         }
         if end_time <= start_time {
             return Err(PaymentError::InvalidAmount);
+        }
+        let duration = end_time - start_time;
+        if duration < MIN_STREAM_DURATION {
+            return Err(PaymentError::StreamDurationTooShort);
+        }
+        if duration > MAX_STREAM_DURATION {
+            return Err(PaymentError::StreamDurationTooLong);
         }
 
         // Transfer total amount from creator to contract (reentrancy-guarded, MEDIUM-4)

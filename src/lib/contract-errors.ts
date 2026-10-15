@@ -5,7 +5,7 @@
 /**
  * Soroban contract error decoding utilities.
  * Maps raw contract error codes to human-readable messages.
- * Mirrors the PaymentError enum in contracts/ophirpay/src/lib.rs.
+ * Mirrors the PaymentError enum in contracts/ophirpay/src/errors.rs.
  */
 
 export const CONTRACT_ERROR_MAP: Record<string, string> = {
@@ -348,5 +348,5 @@ export function decodeContractError(rawError: string): string {
 export function getContractErrorCatalog(): { code: string; message: string }[] {
   return Object.entries(CONTRACT_ERROR_MAP)
     .map(([code, message]) => ({ code, message }))
-    .sort((a, b) => parseInt(a.code) - parseInt(b.code));
+    .sort((a, b) => parseInt(a.code, 10) - parseInt(b.code, 10));
 }

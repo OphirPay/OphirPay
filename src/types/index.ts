@@ -225,3 +225,8 @@ export interface TreasuryOverview {
   pendingPayments: number;
   monthlyVolume: number;
 }
+
+// ── Contract Errors ───────────────────────────────────────────
+
+export * from "./errors";
+

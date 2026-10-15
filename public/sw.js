@@ -77,12 +77,16 @@ self.addEventListener("fetch", (event) => {
   if (isStaticAsset(request)) {
     event.respondWith(
       caches.match(request).then((cached) => {
-        const fetchPromise = fetch(request).then((response) => {
-          const clone = response.clone();
-          caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
-          return response;
-        });
-        return cached || fetchPromise;
+        if (cached) return cached;
+        return fetch(request)
+          .then((response) => {
+            if (response && response.status === 200) {
+              const clone = response.clone();
+              caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
+            }
+            return response;
+          })
+          .catch(() => cached || new Response("", { status: 408, statusText: "Offline" }));
       })
     );
     return;
@@ -93,13 +97,18 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, clone));
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, clone));
+          }
           return response;
         })
         .catch(async () => {
           const cached = await caches.match(request);
-          return cached || (await caches.match("/offline.html"));
+          if (cached) return cached;
+          const rootCached = await caches.match("/");
+          if (rootCached) return rootCached;
+          return caches.match("/offline.html");
         })
     );
     return;

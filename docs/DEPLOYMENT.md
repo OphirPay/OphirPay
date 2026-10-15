@@ -200,6 +200,14 @@ services:
       - NODE_ENV=production
 ```
 
+### Development Mode with Hot Reload (issue #1340)
+
+To mount your local source code into the container for live hot-reloading during development, use the development overlay `docker-compose.dev.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
 ### Docker Build Only (Without Compose)
 
 ```bash

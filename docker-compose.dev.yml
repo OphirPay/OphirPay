@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT
+# Development overlay for OphirPay (issue #1340).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Mounts the host repository into the container so local code changes can be
+# reflected during development.
+
+services:
+  app:
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
+import { useId } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 
@@ -14,6 +15,7 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "danger" | "primary";
+  closable?: boolean;
 }
 
 /**
@@ -28,10 +30,22 @@ export function ConfirmDialog({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   variant = "danger",
+  closable = true,
 }: ConfirmDialogProps) {
+  const descriptionId = useId();
+
   return (
-    <Modal open={open} onClose={onClose} title={title} size="sm">
-      <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      size="sm"
+      closable={closable}
+      aria-describedby={descriptionId}
+    >
+      <p id={descriptionId} className="text-sm text-gray-600 dark:text-gray-400">
+        {description}
+      </p>
       <div className="flex justify-end gap-3 mt-4">
         <Button variant="outline" onClick={onClose}>
           {cancelLabel}

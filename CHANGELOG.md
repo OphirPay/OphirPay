@@ -2,6 +2,11 @@
 
 All notable changes to OphirPay will be documented in this file.
 
+## [Unreleased] — 2026-10-15
+
+### Added
+- **Automated conventional changelog generator (#1414)**: added `scripts/generate-changelog.mjs`, `docs/CHANGELOG_GUIDE.md`, and `npm run changelog` / `npm run changelog:check` to automatically parse Conventional Commits and generate formatted release notes grouped by type with PR and contributor attributions.
+
 ## [Unreleased] — 2026-09-25
 
 ### Added

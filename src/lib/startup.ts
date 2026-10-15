@@ -3,6 +3,7 @@
 import { logger } from "@/lib/logger";
 import { validateEnv, getDatabaseProvider } from "@/lib/env";
 import { initRateLimitStore } from "@/lib/rate-limit";
+import { registerShutdownHandlers } from "@/lib/lifecycle";
 
 /**
  * Application startup bootstrap.
@@ -60,6 +61,9 @@ export async function bootstrap(): Promise<void> {
     network: process.env.NEXT_PUBLIC_STELLAR_NETWORK || "TESTNET",
     rpcUrl: process.env.NEXT_PUBLIC_STELLAR_RPC_URL || "default",
   });
+
+  // Register graceful process termination handlers (SIGTERM / SIGINT)
+  registerShutdownHandlers();
 
   const duration = Date.now() - start;
   logger.info("Bootstrap complete", { durationMs: duration });

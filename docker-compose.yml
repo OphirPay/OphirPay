@@ -22,10 +22,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # ── Liveness (issue #738) ──────────────────────────────────
-    # The image already ships a HEALTHCHECK (see Dockerfile) that probes
-    # GET /api/health/live — no shell, no curl, just the bundled `node`. It is
-    # restated here so `docker compose up` shows the app becoming healthy, and
+    # ── Liveness (issues #738, #1424) ──────────────────────────
+    # The image ships a HEALTHCHECK (see Dockerfile) using scripts/healthcheck.js
+    # that probes GET /api/health/live — no shell, no curl, just lightweight Node.js.
+    # It is restated here so `docker compose up` shows the app becoming healthy, and
     # so the timings are visible/tunable next to the db + redis healthchecks.
     #
     # Liveness only asks "is the process serving?". Dependency-aware readiness
@@ -34,16 +34,10 @@ services:
     # and restart it. Kubernetes wires the two probes separately — see
     # k8s/deployment.yaml and docs/DEPLOYMENT.md.
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3000/api/health/live').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
-        ]
+      test: ["CMD", "node", "scripts/healthcheck.js"]
       interval: 30s
       timeout: 5s
-      start_period: 20s
+      start_period: 15s
       retries: 3
     volumes:
       - .:/app

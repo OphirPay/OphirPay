@@ -65,6 +65,128 @@ export function buildSignedPayload(
   return { body: JSON.stringify({ ...payload, signature }), signature, timestamp };
 }
 
+/**
+ * Constant-time comparison between two string digests or signatures.
+ */
+export function timingSafeEqualSignatures(sigA: string, sigB: string): boolean {
+  if (typeof sigA !== "string" || typeof sigB !== "string") {
+    return false;
+  }
+  try {
+    const bufA = Buffer.from(sigA);
+    const bufB = Buffer.from(sigB);
+    if (bufA.length === 0 || bufB.length === 0 || bufA.length !== bufB.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
+
+export interface VerifyWebhookSignatureOptions {
+  payload?: WebhookPayload;
+  rawBody?: string;
+  signature: string;
+  secret: string;
+  timestamp?: string;
+  maxAgeSeconds?: number;
+  now?: Date;
+}
+
+export interface WebhookVerificationResult {
+  valid: boolean;
+  reason?: string;
+  code?: "WebhookTimestampExpired" | "WebhookTimestampFutureSkew" | "SignatureMismatch" | "InvalidBody" | "MissingTimestamp";
+}
+
+/**
+ * Verifies an OphirPay webhook signature against a payload or raw body string.
+ */
+export function verifyWebhookSignature({
+  payload,
+  rawBody,
+  signature,
+  secret,
+  timestamp,
+  maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+  now = new Date(),
+}: VerifyWebhookSignatureOptions): WebhookVerificationResult {
+  if (!signature || typeof signature !== "string") {
+    return { valid: false, reason: "Missing or invalid signature", code: "SignatureMismatch" };
+  }
+  if (!secret || typeof secret !== "string") {
+    return { valid: false, reason: "Missing or invalid secret" };
+  }
+
+  let parsed: WebhookPayload;
+  let canonical: string;
+
+  try {
+    if (rawBody !== undefined) {
+      const decoded = JSON.parse(rawBody);
+      if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)) {
+        return { valid: false, reason: "Body must be a valid JSON object", code: "InvalidBody" };
+      }
+      parsed = decoded as WebhookPayload;
+      canonical = canonicalizeWebhookBody(parsed);
+    } else if (payload !== undefined) {
+      if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+        return { valid: false, reason: "Payload must be a valid object", code: "InvalidBody" };
+      }
+      parsed = payload;
+      canonical = canonicalizeWebhookBody(payload);
+    } else {
+      return { valid: false, reason: "Either rawBody or payload must be provided", code: "InvalidBody" };
+    }
+  } catch (err) {
+    return {
+      valid: false,
+      reason: `Invalid JSON body: ${err instanceof Error ? err.message : String(err)}`,
+      code: "InvalidBody",
+    };
+  }
+
+  const signedTimestamp = String(timestamp ?? parsed.timestamp ?? "");
+  if (!signedTimestamp) {
+    return { valid: false, reason: "Missing timestamp for webhook verification", code: "MissingTimestamp" };
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(webhookSignedInput(signedTimestamp, canonical))
+    .digest("hex");
+
+  const matches = timingSafeEqualSignatures(signature, expectedSignature);
+  if (!matches) {
+    return { valid: false, reason: "signature mismatch", code: "SignatureMismatch" };
+  }
+
+  if (maxAgeSeconds > 0) {
+    const ts = Date.parse(signedTimestamp);
+    if (Number.isNaN(ts)) {
+      return { valid: false, reason: "missing or invalid timestamp", code: "MissingTimestamp" };
+    }
+    const ageSeconds = (now.getTime() - ts) / 1000;
+    if (ageSeconds > maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `WebhookTimestampExpired: payload too old (${Math.round(ageSeconds)}s > ${maxAgeSeconds}s) — possible replay`,
+        code: "WebhookTimestampExpired",
+      };
+    }
+    if (ageSeconds < -maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `WebhookTimestampFutureSkew: payload timestamp is in the future (${Math.round(-ageSeconds)}s ahead)`,
+        code: "WebhookTimestampFutureSkew",
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
 export interface WebhookRequestPreview {
   canonicalBody: string;
   body: string;

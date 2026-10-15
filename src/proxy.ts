@@ -13,6 +13,11 @@ import {
   getRateLimitMax,
   RATE_LIMIT_WINDOW_MS,
 } from "@/lib/proxy-config";
+import {
+  extractApiKey,
+  validateKeyFormat,
+  isLegacyApiKey,
+} from "@/lib/api-key-validator";
 
 const RATE_LIMIT_MAX = getRateLimitMax();
 
@@ -74,6 +79,46 @@ export async function proxy(request: NextRequest) {
             status: 429,
             headers: {
               "Retry-After": String(retryAfter),
+              "X-Request-Id": requestId,
+            },
+          }
+        );
+      }
+    }
+
+    // ── Edge API Key integrity validation (#1397) ──────────────
+    // Reject malformed keys immediately before reaching route handlers or DB.
+    const apiKey = extractApiKey(request);
+    if (apiKey) {
+      const isCustomBearerRoute =
+        pathname === "/api/scheduled/run" || pathname === "/api/metrics";
+      const hasApiKeyHeader = Boolean(request.headers.get("x-api-key"));
+      const isCandidateKey =
+        apiKey.startsWith("op_") || apiKey.startsWith("oph_");
+
+      if (
+        (!isCustomBearerRoute || hasApiKeyHeader || isCandidateKey) &&
+        !validateKeyFormat(apiKey) &&
+        !isLegacyApiKey(apiKey)
+      ) {
+        logger.request(
+          request.method,
+          pathname,
+          401,
+          performance.now() - startedAt,
+          requestId
+        );
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "INVALID_API_KEY",
+              message: "Invalid API key format.",
+            },
+          },
+          {
+            status: 401,
+            headers: {
               "X-Request-Id": requestId,
             },
           }

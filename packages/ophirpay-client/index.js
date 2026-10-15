@@ -18,7 +18,15 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 /** Webhook signatures older/newer than this are rejected (seconds). */
 export const DEFAULT_SIGNATURE_TOLERANCE_SECONDS = 300;
 
-/** Error raised for any non-2xx API response or transport failure. */
+/**
+ * Error raised for any non-2xx API response or transport failure.
+ *
+ * When the server returns an RFC 7807 problem-details response
+ * (Content-Type: application/problem+json), `code` is populated from the
+ * `title` field and `details` carries the `detail` and `errors` fields.
+ * For the legacy `{ success: false, error: { code, message } }` envelope,
+ * `code` is populated from `error.code` and `details` from `error.details`.
+ */
 export class OphirPayError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -164,7 +172,23 @@ export class OphirPayClient {
     const text = await res.text();
     const json = text ? JSON.parse(text) : {};
 
+    // RFC 7807 problem-details responses use Content-Type: application/problem+json
+    // and have the shape { type, title, status, detail, instance, errors }.
+    // Legacy envelope: { success: false, error: { code, message, details } }.
+    const contentType = res.headers.get("content-type") ?? "";
+    const isProblemDetails = contentType.includes("application/problem+json");
+
     if (!res.ok || json.success === false) {
+      if (isProblemDetails) {
+        throw new OphirPayError(
+          json.detail ?? json.title ?? `Request failed with status ${res.status}`,
+          {
+            status: json.status ?? res.status,
+            code: json.title ?? null,
+            details: json.errors ?? json.detail ?? null,
+          }
+        );
+      }
       const error = json.error ?? {};
       throw new OphirPayError(
         error.message ?? `Request failed with status ${res.status}`,

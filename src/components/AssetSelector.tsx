@@ -13,6 +13,7 @@ import {
 } from "@/lib/assets";
 import { fetchAllBalances, getHorizonServer, NETWORK_PASSPHRASE, STELLAR_NETWORK, type AssetBalance } from "@/lib/stellar";
 import { buildTrustlineTransaction, checkTrustline, getTrustlineMessage, type TrustlineState } from "@/lib/trustline";
+import { TrustlineModal } from "@/components/wallet/TrustlineModal";
 import { getActiveWalletConnector } from "@/lib/wallets";
 import {
   fetchAssetMetadata,
@@ -65,6 +66,7 @@ export function AssetSelector({
   const [trustlineError, setTrustlineError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [showTrustlineModal, setShowTrustlineModal] = useState(false);
   // Issuer-supplied display metadata (issue #824), keyed by `code:issuer`.
   // Absent/`null` entries fall back to the built-in display name.
   const [metadata, setMetadata] = useState<Record<string, ClientAssetMetadata | null>>({});
@@ -334,11 +336,11 @@ export function AssetSelector({
                     {trustlineError && <p role="alert" className="text-xs text-red-600 mt-2">{trustlineError}</p>}
                     <button
                       type="button"
-                      onClick={() => handleSetupTrustline(selectedAsset)}
-                      disabled={settingUpTrustline || !publicKey}
+                      onClick={() => setShowTrustlineModal(true)}
+                      disabled={!publicKey}
                       className="mt-3 px-3 py-2 rounded-lg bg-ophir-600 text-white text-xs font-semibold disabled:opacity-50"
                     >
-                      {settingUpTrustline ? "Waiting for wallet…" : "Set up trustline"}
+                      Create Trustline
                     </button>
                   </>
                 )}
@@ -354,6 +356,25 @@ export function AssetSelector({
           </div>
         </>
       )}
+
+      <TrustlineModal
+        open={showTrustlineModal}
+        onClose={() => setShowTrustlineModal(false)}
+        asset={selectedAsset}
+        publicKey={publicKey ?? ""}
+        onTrustlineEstablished={() => {
+          fetchBalances();
+          if (selectedAsset.issuer) {
+            checkTrustline(publicKey!, selectedAsset.code, selectedAsset.issuer).then((info) => {
+              const key = `${selectedAsset.code}:${selectedAsset.issuer}`;
+              setTrustlineStatus((prev) => ({
+                ...prev,
+                [key]: { hasTrustline: info.hasTrustline, checking: false, state: info.state },
+              }));
+            });
+          }
+        }}
+      />
     </div>
   );
 }

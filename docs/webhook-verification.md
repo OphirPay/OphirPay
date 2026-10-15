@@ -122,6 +122,7 @@ Runnable, dependency-free examples are in
 | Language | File | Run |
 |---|---|---|
 | Node.js (ESM) | [`node/verify.mjs`](../examples/webhook-verification/node/verify.mjs) | `node verify.mjs --secret <secret> --signature <hex> --body-file body.json` |
+| TypeScript | [`node-verifier.ts`](../examples/webhook-verification/node-verifier.ts) | `npx tsx node-verifier.ts --secret <secret> --signature <hex> --body-file body.json` |
 | Python 3 | [`python/verify.py`](../examples/webhook-verification/python/verify.py) | `python3 verify.py --secret <secret> --signature <hex> --body-file body.json` |
 
 Both print `VALID` (exit 0) or `INVALID: <reason>` (exit 1), and both
@@ -150,16 +151,45 @@ when testing (see the examples README).
 
 ---
 
-## Node.js (reference)
+## Node.js & TypeScript (reference)
 
-```javascript
+> 🔒 **Security Notice: Timing-Safe Verification**
+> Webhook signature comparisons must never use loose or strict string equality (`===`).
+> String comparison aborts at the first differing byte, allowing attackers to reconstruct
+> valid signatures byte-by-byte via statistical timing side-channels.
+>
+> Always use `crypto.timingSafeEqual` over raw byte buffers. Because `timingSafeEqual`
+> throws a `RangeError` if buffer lengths differ, check that buffer lengths match and
+> return `false` gracefully if lengths mismatch.
+
+```typescript
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
+ * Constant-time comparison between two hex string digests.
+ * Prevents side-channel timing attacks and handles length mismatches safely.
+ */
+export function timingSafeEqualSignatures(sigA: string, sigB: string): boolean {
+  if (typeof sigA !== "string" || typeof sigB !== "string") {
+    return false;
+  }
+  try {
+    const bufA = Buffer.from(sigA);
+    const bufB = Buffer.from(sigB);
+    if (bufA.length === 0 || bufB.length === 0 || bufA.length !== bufB.length) {
+      return false;
+    }
+    return timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Verify an OphirPay webhook delivery.
- * @param {string} body      - raw request body (string)
+ * @param {string} body - raw request body (string)
  * @param {string} signature - X-OphirPay-Signature header value
- * @param {string} secret    - your webhook signing secret
+ * @param {string} secret - your webhook signing secret
  * @param {string} [timestamp] - X-OphirPay-Timestamp header value
  * @param {number} maxAgeSeconds - replay window (0 disables); default 300
  */
@@ -178,10 +208,7 @@ export function verifyWebhookSignature({ body, signature, secret, timestamp, max
     .digest("hex");
 
   // 5. Constant-time comparison against the header value.
-  const provided = Buffer.from(String(signature ?? ""));
-  const expectedBuf = Buffer.from(expected);
-  const matches =
-    provided.length === expectedBuf.length && timingSafeEqual(provided, expectedBuf);
+  const matches = timingSafeEqualSignatures(String(signature ?? ""), expected);
   if (!matches) return false;
 
   // Replay protection: timestamp freshness window.

@@ -49,6 +49,28 @@ export function canonicalize(body) {
 }
 
 /**
+ * Constant-time comparison between two string digests.
+ *
+ * Checks that lengths match before invoking `timingSafeEqual`, preventing
+ * length mismatch exceptions and guarding against timing side-channel attacks.
+ */
+export function timingSafeEqualSignatures(sigA, sigB) {
+  if (typeof sigA !== "string" || typeof sigB !== "string") {
+    return false;
+  }
+  try {
+    const bufA = Buffer.from(sigA);
+    const bufB = Buffer.from(sigB);
+    if (bufA.length === 0 || bufB.length === 0 || bufA.length !== bufB.length) {
+      return false;
+    }
+    return timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Verify an OphirPay webhook delivery.
  *
  * @param {object} opts
@@ -83,11 +105,9 @@ export function verifyWebhookSignature({
   const expected = createHmac("sha256", secret)
     .update(`${signedTimestamp}.${canonical}`)
     .digest("hex");
+
   const provided = String(signature ?? "");
-  const providedBuf = Buffer.from(provided);
-  const expectedBuf = Buffer.from(expected);
-  const matches =
-    providedBuf.length === expectedBuf.length && timingSafeEqual(providedBuf, expectedBuf);
+  const matches = timingSafeEqualSignatures(provided, expected);
   if (!matches) {
     return { valid: false, reason: "signature mismatch" };
   }

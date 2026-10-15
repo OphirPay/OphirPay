@@ -21,6 +21,8 @@ import {
   webhookSignedInput,
   WEBHOOK_TIMESTAMP_HEADER,
   WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+  timingSafeEqualSignatures,
+  verifyWebhookSignature,
   type WebhookPayload,
 } from "@/lib/webhook-deliver";
 import {
@@ -46,7 +48,7 @@ function expectedSignature(payload: WebhookPayload, secret = SECRET): string {
 /**
  * Minimal receiver check mirroring docs/webhook-verification.md and the
  * reference verifiers: verify the HMAC over `<timestamp>.<canonical body>`,
- * then enforce the freshness window on the signed timestamp.
+ * using timing-safe comparison, then enforce the freshness window on the signed timestamp.
  */
 function receiverVerify(
   body: string,
@@ -61,7 +63,7 @@ function receiverVerify(
     .createHmac("sha256", secret)
     .update(`${parsed.timestamp}.${canonical}`)
     .digest("hex");
-  if (expected !== signature) return "signature mismatch";
+  if (!timingSafeEqualSignatures(signature, expected)) return "signature mismatch";
   const ageSeconds = (nowMs - Date.parse(parsed.timestamp)) / 1000;
   if (ageSeconds > maxAgeSeconds) return "payload too old — possible replay";
   if (ageSeconds < -maxAgeSeconds) return "payload timestamp is in the future";
@@ -292,3 +294,109 @@ describe("deliverWebhook", () => {
     expect(result.errorMessage).toBe("Webhook delivery timed out after 10ms");
   });
 });
+
+describe("timingSafeEqualSignatures", () => {
+  it("returns true for matching signatures", () => {
+    const sig = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
+    expect(timingSafeEqualSignatures(sig, sig)).toBe(true);
+  });
+
+  it("returns false without throwing for length mismatches", () => {
+    const sig64 = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
+    const sig63 = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad8425";
+    expect(timingSafeEqualSignatures(sig64, sig63)).toBe(false);
+    expect(timingSafeEqualSignatures(sig63, sig64)).toBe(false);
+    expect(timingSafeEqualSignatures("", sig64)).toBe(false);
+    expect(timingSafeEqualSignatures(sig64, "")).toBe(false);
+  });
+
+  it("returns false for same length differing signatures", () => {
+    const sigA = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
+    const sigB = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84259";
+    expect(timingSafeEqualSignatures(sigA, sigB)).toBe(false);
+  });
+
+  it("handles non-string inputs safely without throwing", () => {
+    // @ts-expect-error test non-string types
+    expect(timingSafeEqualSignatures(null, "abc")).toBe(false);
+    // @ts-expect-error test non-string types
+    expect(timingSafeEqualSignatures("abc", undefined)).toBe(false);
+    // @ts-expect-error test non-string types
+    expect(timingSafeEqualSignatures(123, 123)).toBe(false);
+  });
+});
+
+describe("verifyWebhookSignature", () => {
+  it("verifies a signed payload successfully", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const res = verifyWebhookSignature({
+      rawBody: body,
+      signature,
+      secret: SECRET,
+      now: new Date("2026-08-14T00:00:30Z"),
+    });
+    expect(res.valid).toBe(true);
+    expect(res.reason).toBeUndefined();
+  });
+
+  it("verifies using payload object instead of raw body", () => {
+    const { signature } = buildSignedPayload(samplePayload, SECRET);
+    const res = verifyWebhookSignature({
+      payload: samplePayload,
+      signature,
+      secret: SECRET,
+      now: new Date("2026-08-14T00:00:30Z"),
+    });
+    expect(res.valid).toBe(true);
+  });
+
+  it("rejects an invalid signature with timingSafeEqualSignatures", () => {
+    const { body } = buildSignedPayload(samplePayload, SECRET);
+    const wrongSig = "0".repeat(64);
+    const res = verifyWebhookSignature({
+      rawBody: body,
+      signature: wrongSig,
+      secret: SECRET,
+      now: new Date("2026-08-14T00:00:30Z"),
+    });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toBe("signature mismatch");
+  });
+
+  it("rejects mismatched secret", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const res = verifyWebhookSignature({
+      rawBody: body,
+      signature,
+      secret: "different-secret",
+      now: new Date("2026-08-14T00:00:30Z"),
+    });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toBe("signature mismatch");
+  });
+
+  it("rejects replayed payloads outside the freshness window", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const res = verifyWebhookSignature({
+      rawBody: body,
+      signature,
+      secret: SECRET,
+      now: new Date("2026-08-14T01:00:00Z"), // 1 hour later
+    });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toContain("payload too old");
+  });
+
+  it("rejects future timestamps outside tolerance", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const res = verifyWebhookSignature({
+      rawBody: body,
+      signature,
+      secret: SECRET,
+      now: new Date("2026-08-13T23:00:00Z"), // 1 hour before
+    });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toContain("future");
+  });
+});
+

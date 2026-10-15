@@ -10,6 +10,7 @@ import {
   escapeCsvField,
   auditEntryToCsvRow,
   buildAuditExportFilename,
+  paginateAuditEntriesByCursor,
   type AuditLogEntry,
 } from "@/lib/audit-log";
 
@@ -199,5 +200,68 @@ describe("buildAuditExportFilename", () => {
     expect(buildAuditExportFilename(now)).toBe(
       "ophirpay-audit-log-2026-08-26.csv"
     );
+  });
+});
+
+describe("paginateAuditEntriesByCursor (#1361)", () => {
+  const dataset: AuditLogEntry[] = [
+    entry({ id: 1, timestamp: 1785100000, details: "Entry 1" }),
+    entry({ id: 2, timestamp: 1785100100, details: "Entry 2" }),
+    entry({ id: 3, timestamp: 1785100200, details: "Entry 3" }),
+    entry({ id: 4, timestamp: 1785100300, details: "Entry 4" }),
+    entry({ id: 5, timestamp: 1785100400, details: "Entry 5" }),
+  ];
+
+  it("navigates deterministically across multiple non-overlapping pages in descending order", () => {
+    const page1 = paginateAuditEntriesByCursor(dataset, { limit: 2, order: "desc" });
+    expect(page1.data.map((d) => d.id)).toEqual([5, 4]);
+    expect(page1.hasMore).toBe(true);
+    expect(page1.nextCursor).toBe("4");
+
+    const page2 = paginateAuditEntriesByCursor(dataset, {
+      cursor: page1.nextCursor,
+      limit: 2,
+      order: "desc",
+    });
+    expect(page2.data.map((d) => d.id)).toEqual([3, 2]);
+    expect(page2.hasMore).toBe(true);
+    expect(page2.nextCursor).toBe("2");
+
+    const page3 = paginateAuditEntriesByCursor(dataset, {
+      cursor: page2.nextCursor,
+      limit: 2,
+      order: "desc",
+    });
+    expect(page3.data.map((d) => d.id)).toEqual([1]);
+    expect(page3.hasMore).toBe(false);
+    expect(page3.nextCursor).toBeNull();
+  });
+
+  it("navigates deterministically across multiple non-overlapping pages in ascending order", () => {
+    const page1 = paginateAuditEntriesByCursor(dataset, { limit: 2, order: "asc" });
+    expect(page1.data.map((d) => d.id)).toEqual([1, 2]);
+    expect(page1.hasMore).toBe(true);
+    expect(page1.nextCursor).toBe("2");
+
+    const page2 = paginateAuditEntriesByCursor(dataset, {
+      cursor: page1.nextCursor,
+      limit: 3,
+      order: "asc",
+    });
+    expect(page2.data.map((d) => d.id)).toEqual([3, 4, 5]);
+    expect(page2.hasMore).toBe(false);
+    expect(page2.nextCursor).toBeNull();
+  });
+
+  it("validates cursor parameter in auditLogQuerySchema", () => {
+    const parsed = auditLogQuerySchema.safeParse({
+      cursor: "clx_cursor_123",
+      limit: "25",
+      order: "asc",
+      source: "db",
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.cursor).toBe("clx_cursor_123");
+    expect(parsed.data?.order).toBe("asc");
   });
 });

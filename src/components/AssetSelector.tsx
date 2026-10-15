@@ -18,6 +18,7 @@ import {
   fetchAssetMetadata,
   type ClientAssetMetadata,
 } from "@/lib/asset-metadata-client";
+import { TrustlineModal } from "@/components/wallet/TrustlineModal";
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -58,6 +59,8 @@ export function AssetSelector({
   disabled = false,
 }: AssetSelectorProps) {
   const [balances, setBalances] = useState<AssetBalance[]>([]);
+  const [availableAssets, setAvailableAssets] = useState<AssetInfo[]>(KNOWN_ASSETS);
+  const [trustlineModalOpen, setTrustlineModalOpen] = useState(false);
   const [trustlineStatus, setTrustlineStatus] = useState<
     Record<string, { hasTrustline: boolean; checking: boolean; state?: TrustlineState }>
   >({});
@@ -219,6 +222,13 @@ export function AssetSelector({
           <span className="text-gray-900 dark:text-white font-medium">
             {selectedAsset.code}
           </span>
+          {selectedAsset.type !== "native" &&
+            selectedAsset.issuer &&
+            trustlineStatus[`${selectedAsset.code}:${selectedAsset.issuer}`]?.state === "missing" && (
+              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700">
+                Trustline Required
+              </span>
+            )}
         </span>
 
         <span className="flex items-center gap-2">
@@ -249,7 +259,7 @@ export function AssetSelector({
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in">
-            {KNOWN_ASSETS.map((asset) => {
+            {availableAssets.map((asset) => {
               const bal = findAssetBalance(balances, asset);
               const key = `${asset.code}:${asset.issuer}`;
               const tl = trustlineStatus[key];
@@ -345,15 +355,41 @@ export function AssetSelector({
               </div>
             )}
 
-            {/* Custom token input */}
-            <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-1 px-3 pb-2">
-              <p className="text-xs text-gray-400 px-1 mb-1">
-                Custom token coming soon
-              </p>
+            {/* Custom token quick-action modal trigger */}
+            <div className="border-t border-gray-100 dark:border-gray-700 mt-1 pt-2 px-3 pb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  setTrustlineModalOpen(true);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold text-ophir-600 dark:text-ophir-400 hover:bg-ophir-50 dark:hover:bg-ophir-950/30 rounded-lg transition-colors border border-dashed border-ophir-200 dark:border-ophir-800"
+              >
+                <span>+</span>
+                <span>Add custom token trustline</span>
+              </button>
             </div>
           </div>
         </>
       )}
+
+      <TrustlineModal
+        open={trustlineModalOpen}
+        onClose={() => setTrustlineModalOpen(false)}
+        publicKey={publicKey}
+        onSuccess={(newAsset) => {
+          setAvailableAssets((prev) => {
+            const exists = prev.some(
+              (a) => a.code === newAsset.code && a.issuer === newAsset.issuer
+            );
+            return exists ? prev : [...prev, newAsset];
+          });
+          onSelect(newAsset);
+          if (publicKey) {
+            fetchAllBalances(publicKey).then((b) => setBalances(b)).catch(() => {});
+          }
+        }}
+      />
     </div>
   );
 }

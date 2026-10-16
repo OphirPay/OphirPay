@@ -24,6 +24,7 @@ import {
   WEBHOOK_SIGNATURE_HEADER,
   WEBHOOK_TIMESTAMP_HEADER,
   WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+  verifyWebhookSignature,
   type WebhookPayload,
   type WebhookVerificationResult,
 } from "@/lib/webhook-deliver";
@@ -65,7 +66,7 @@ function receiverVerify(
     .createHmac("sha256", secret)
     .update(`${parsed.timestamp}.${canonical}`)
     .digest("hex");
-  if (expected !== signature) return "signature mismatch";
+  if (!verifyWebhookSignature(body, signature, secret)) return "signature mismatch";
   const ageSeconds = (nowMs - Date.parse(parsed.timestamp)) / 1000;
   if (ageSeconds > maxAgeSeconds) return "payload too old — possible replay";
   if (ageSeconds < -maxAgeSeconds) return "payload timestamp is in the future";
@@ -174,6 +175,33 @@ describe("replay window", () => {
     expect(receiverVerify(body, signature, SECRET, receivedAt)).toContain(
       "future"
     );
+  });
+});
+
+describe("verifyWebhookSignature (timing-safe, issue #1386)", () => {
+  it("accepts a matching signature", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    expect(verifyWebhookSignature(body, signature, SECRET)).toBe(true);
+  });
+
+  it("rejects a non-matching digest without throwing", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const tampered = signature.slice(0, 63) + (signature.endsWith("0") ? "1" : "0");
+    expect(() => verifyWebhookSignature(body, tampered, SECRET)).not.toThrow();
+    expect(verifyWebhookSignature(body, tampered, SECRET)).toBe(false);
+    expect(verifyWebhookSignature(body, "f".repeat(64), SECRET)).toBe(false);
+  });
+
+  it("rejects a length-mismatched signature (returns false, no throw)", () => {
+    const { body } = buildSignedPayload(samplePayload, SECRET);
+    expect(() => verifyWebhookSignature(body, "deadbeef", SECRET)).not.toThrow();
+    expect(verifyWebhookSignature(body, "deadbeef", SECRET)).toBe(false);
+    expect(verifyWebhookSignature(body, "", SECRET)).toBe(false);
+  });
+
+  it("rejects garbage / invalid JSON bodies without throwing", () => {
+    expect(() => verifyWebhookSignature("not json", "x".repeat(64), SECRET)).not.toThrow();
+    expect(verifyWebhookSignature("not json", "x".repeat(64), SECRET)).toBe(false);
   });
 });
 

@@ -1107,10 +1107,22 @@ impl OphirPayContract {
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
+            // FIX #1347 - Linha 1110 até 1120
+    let token_client = token::Client::new(&env, &asset);
+    let token_decimals = token_client.decimals();
+    if token_decimals == 0 || token_decimals > 18 {
+        return Err(PaymentError::InvalidTokenDecimals);
+    }
+    if token_decimals < 7 {
+        let divisor: i128 = 10i128.pow(7 - token_decimals);
+        if amount % divisor != 0 {
+            return Err(PaymentError::AmountPrecisionMismatch);
+        }
+    }
         if tx_hash.len() == 0 {
             return Err(PaymentError::InvalidAmount);
         }
-
+        
         let idempotency_key = (PAYMENT_IDEMPOTENCY_KEY, payer.clone(), tx_hash.clone());
         if let Some(existing_id) = env
             .storage()
@@ -3500,4 +3512,4 @@ impl OphirPayContract {
         }
     }
 }
-
+

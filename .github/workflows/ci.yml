@@ -368,6 +368,10 @@ jobs:
           expect "kind: ServiceAccount" /tmp/enabled.yaml
           expect "policyTypes:" /tmp/enabled.yaml
 
+          expect "type: RuntimeDefault" /tmp/default.yaml
+          expect "readOnlyRootFilesystem: true" /tmp/default.yaml
+          expect "mountPath: /app/.next/cache" /tmp/default.yaml
+
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
           reject "kind: NetworkPolicy" /tmp/disabled.yaml

@@ -39,14 +39,29 @@ podAnnotations:
 
 podSecurityContext:
   fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 1001
   capabilities:
     drop:
       - ALL
+
+volumeMounts:
+  - name: next-cache
+    mountPath: /app/.next/cache
+  - name: tmp
+    mountPath: /tmp
+
+volumes:
+  - name: next-cache
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
 
 service:
   type: ClusterIP

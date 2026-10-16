@@ -24,6 +24,9 @@ RUN npm ci
 
 # Stage 2: Builder
 FROM node:24-slim AS builder
+ARG GIT_SHA="dev"
+ENV GIT_SHA=$GIT_SHA
+ENV NEXT_PUBLIC_COMMIT_SHA=$GIT_SHA
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -36,6 +39,9 @@ RUN npm run build
 
 # Stage 3: Runner
 FROM node:24-slim AS runner
+ARG GIT_SHA="dev"
+ENV GIT_SHA=$GIT_SHA
+ENV NEXT_PUBLIC_COMMIT_SHA=$GIT_SHA
 # `apt-get upgrade` is what keeps the image-scan step green: the node:24-slim
 # base ships snapshot versions of system libraries (libcap2, gnutls, pcre2)
 # that Debian has since revised, and every finding has a fix in the distro's

@@ -100,6 +100,7 @@ async function _GET(request: Request) {
     const parsed = auditLogQuerySchema.safeParse({
       page: param("page"),
       limit: param("limit"),
+      cursor: param("cursor"),
       actor: param("actor"),
       action: param("action"),
       resource: param("resource"),

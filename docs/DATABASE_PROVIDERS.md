@@ -87,6 +87,44 @@ point `DATABASE_URL` at the direct (non-pooled) connection, or first configure
 and validate Prisma's `directUrl` in the schema. Do not assume that merely
 setting `DIRECT_DATABASE_URL` changes the URL used by the current schema.
 
+### Connection Pool Sizing and Health Monitoring
+
+Under high throughput or large batch simulations, connection pools can suffer from
+starvation if pool parameters or connection wait times are not tuned properly.
+
+#### Recommended Connection Pool Settings
+
+Prisma connection pool parameters are specified via query parameters in `DATABASE_URL`:
+- `connection_limit`: Maximum number of connections in the pool (default: `num_physical_cpus * 2 + 1`).
+  For containerized environments (Kubernetes, Cloud Run), set explicitly according to database capacity
+  (e.g. `?connection_limit=20`).
+- `pool_timeout`: Maximum duration in seconds to wait for a connection before throwing a timeout error
+  (default: `10` seconds).
+- `connect_timeout`: Maximum duration in seconds to establish a new database connection
+  (default: `5` seconds).
+
+Example production connection string:
+```env
+DATABASE_URL="postgresql://user:password@pg-bouncer:6432/ophirpay?connection_limit=20&pool_timeout=10&connect_timeout=5"
+```
+
+#### Metrics Exposition
+
+Database pool metrics are exposed to Prometheus on `/api/metrics`:
+- `prisma_pool_connections_busy`: Number of currently busy connections in active use.
+- `prisma_pool_connections_idle`: Number of idle connections ready for immediate reuse.
+- `prisma_pool_wait_duration_ms`: Total time (in milliseconds) queries have spent waiting
+  for an available connection from the pool.
+
+#### High Wait Time Alerts
+
+The application logs a structured `WARN` event `database_slow_connection_wait` whenever
+connection acquisition or query wait duration exceeds 500ms (`CONNECTION_WAIT_WARN_THRESHOLD_MS`).
+When this warning is logged repeatedly:
+1. Increase `connection_limit` if database server CPU and RAM headroom permits.
+2. Deploy PgBouncer in transaction pooling mode for multiplexed connection scaling.
+3. Review slow database queries via index inspection and query profiling.
+
 ## Moving data between providers
 
 There is no checked-in cross-provider migration/export tool. `prisma migrate`

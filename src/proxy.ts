@@ -13,6 +13,12 @@ import {
   getRateLimitMax,
   RATE_LIMIT_WINDOW_MS,
 } from "@/lib/proxy-config";
+import {
+  parseAllowedOrigins,
+  buildStrictCorsHeaders,
+  handleCorsPreflight,
+  validateMutationOrigin,
+} from "@/lib/cors";
 
 const RATE_LIMIT_MAX = getRateLimitMax();
 
@@ -33,6 +39,36 @@ export async function proxy(request: NextRequest) {
 
   // ── API routes: rate limiting + API headers ─────────────────
   if (pathname.startsWith("/api/")) {
+    const allowedOrigins = parseAllowedOrigins();
+
+    // Strict CORS: preflight (OPTIONS) handler (issue #1393)
+    const preflight = handleCorsPreflight(request, allowedOrigins);
+    if (preflight) {
+      return preflight;
+    }
+
+    // Strict CORS: mutation endpoints origin check (issue #1393)
+    const mutationValidation = validateMutationOrigin(request, allowedOrigins);
+    if (!mutationValidation.allowed) {
+      logger.request(request.method, pathname, 403, performance.now() - startedAt, requestId);
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "CORS_ORIGIN_FORBIDDEN",
+            message: mutationValidation.reason || "Forbidden cross-origin mutation request.",
+          },
+        },
+        {
+          status: 403,
+          headers: {
+            "X-Request-Id": requestId,
+            "X-Content-Type-Options": "nosniff",
+          },
+        }
+      );
+    }
+
     // Skip rate limiting for health checks and metrics (monitoring endpoints
     // are hit frequently by orchestrators and should never be throttled).
     // The whole `/api/health` subtree is exempt: the readiness probe lives at
@@ -101,25 +137,16 @@ export async function proxy(request: NextRequest) {
     response.headers.set("X-RateLimit-Remaining", String(remaining));
     response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetAt / 1000)));
 
-    // Production CORS — restrict origins in production
-    const origin = request.headers.get("origin") || "";
-    const allowedOrigins = [
-      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-    ].filter(Boolean);
-    if (
-      allowedOrigins.includes(origin) ||
-      process.env.NODE_ENV !== "production"
-    ) {
-      response.headers.set("Access-Control-Allow-Origin", origin || "*");
+    // Strict CORS response headers (issue #1393)
+    const origin = request.headers.get("origin");
+    const corsHeaders = buildStrictCorsHeaders({
+      origin,
+      allowedOrigins,
+      allowCredentials: true,
+    });
+    for (const [key, value] of Object.entries(corsHeaders)) {
+      response.headers.set(key, value);
     }
-    response.headers.set(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS"
-    );
-    response.headers.set(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-API-Key"
-    );
 
     return response;
   }

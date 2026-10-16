@@ -5,14 +5,13 @@ import {
   pruneCronExecutionLogs,
   recordCronExecution,
   CRON_LOG_RETENTION_DAYS,
-  PRUNE_BATCH_SIZE,
 } from "@/lib/cron-pruner";
 import { getMetricsSnapshot, resetMetricsForTest } from "@/lib/metrics-counters";
 
 const mockFindMany = vi.fn();
 const mockDeleteMany = vi.fn();
 const mockCreate = vi.fn();
-const mockTransaction = vi.fn((operations) => Promise.all(operations));
+const mockTransaction = vi.fn((operations: Promise<unknown>[]) => Promise.all(operations));
 
 const mockRecurrenceDeleteMany = vi.fn();
 const mockScheduledPaymentDeleteMany = vi.fn();
@@ -20,17 +19,17 @@ const mockScheduledPaymentDeleteMany = vi.fn();
 vi.mock("@/lib/prisma", () => ({
   default: {
     cronExecutionLog: {
-      findMany: (...args: any[]) => mockFindMany(...args),
-      deleteMany: (...args: any[]) => mockDeleteMany(...args),
-      create: (...args: any[]) => mockCreate(...args),
+      findMany: (...args: unknown[]) => mockFindMany(...args),
+      deleteMany: (...args: unknown[]) => mockDeleteMany(...args),
+      create: (...args: unknown[]) => mockCreate(...args),
     },
     recurrence: {
-      deleteMany: (...args: any[]) => mockRecurrenceDeleteMany(...args),
+      deleteMany: (...args: unknown[]) => mockRecurrenceDeleteMany(...args),
     },
     scheduledPayment: {
-      deleteMany: (...args: any[]) => mockScheduledPaymentDeleteMany(...args),
+      deleteMany: (...args: unknown[]) => mockScheduledPaymentDeleteMany(...args),
     },
-    $transaction: (operations: any) => mockTransaction(operations),
+    $transaction: (operations: Promise<unknown>[]) => mockTransaction(operations),
   },
 }));
 

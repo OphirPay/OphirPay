@@ -37,6 +37,34 @@ export interface PruneResult {
   cutoff: Date;
 }
 
+interface CronExecutionLogDelegate {
+  findMany(args: {
+    where?: { createdAt?: { lt?: Date } };
+    select?: { id: boolean };
+    take?: number;
+  }): Promise<Array<{ id: string }>>;
+  deleteMany(args: {
+    where: { id: { in: string[] } };
+  }): Promise<{ count: number }>;
+  create(args: {
+    data: {
+      runId: string;
+      picked: number;
+      executed: number;
+      failed: number;
+      skipped: number;
+      durationMs?: number;
+      error?: string;
+      createdAt?: Date;
+    };
+  }): Promise<{ id: string }>;
+}
+
+interface PrismaClientWithCron {
+  cronExecutionLog?: CronExecutionLogDelegate;
+  $transaction<T>(arg: Promise<T>[]): Promise<T[]>;
+}
+
 /**
  * Prune ephemeral cron execution logs older than the retention window.
  * Deletes rows in batches of `batchSize` (default 1,000) inside transactions.
@@ -53,10 +81,15 @@ export async function pruneCronExecutionLogs(
   let totalPruned = 0;
   let batches = 0;
 
+  const db = prisma as unknown as PrismaClientWithCron;
+  if (!db.cronExecutionLog) {
+    return { prunedCount: 0, batchesExecuted: 0, cutoff };
+  }
+
   try {
     while (batches < maxBatches) {
       // Step 1: Select IDs of stale rows to avoid range locks across the whole table.
-      const staleRows = await (prisma as any).cronExecutionLog.findMany({
+      const staleRows = await db.cronExecutionLog.findMany({
         where: { createdAt: { lt: cutoff } },
         select: { id: true },
         take: batchSize,
@@ -66,11 +99,11 @@ export async function pruneCronExecutionLogs(
         break;
       }
 
-      const ids = staleRows.map((row: { id: string }) => row.id);
+      const ids = staleRows.map((row) => row.id);
 
       // Step 2: Delete by explicit IDs within a transaction block.
-      await (prisma as any).$transaction([
-        (prisma as any).cronExecutionLog.deleteMany({
+      await db.$transaction([
+        db.cronExecutionLog.deleteMany({
           where: { id: { in: ids } },
         }),
       ]);
@@ -119,8 +152,13 @@ export async function recordCronExecution(params: {
   error?: string;
   createdAt?: Date;
 }): Promise<void> {
+  const db = prisma as unknown as PrismaClientWithCron;
+  if (!db.cronExecutionLog) {
+    return;
+  }
+
   try {
-    await (prisma as any).cronExecutionLog.create({
+    await db.cronExecutionLog.create({
       data: {
         runId: params.runId,
         picked: params.picked,

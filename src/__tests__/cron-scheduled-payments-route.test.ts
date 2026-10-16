@@ -32,7 +32,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(() => Promise.resolve([])),
       deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
     },
-    $transaction: vi.fn((ops: any) => Promise.all(ops)),
+    $transaction: vi.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
   },
 }));
 

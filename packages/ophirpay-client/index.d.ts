@@ -65,10 +65,29 @@ export interface Paginated<T> {
   meta?: Record<string, unknown>;
 }
 
+export interface ProblemFieldError {
+  path: string;
+  message: string;
+}
+
+export interface ProblemDetails {
+  type: string;
+  title: string;
+  status: number;
+  detail?: string;
+  instance?: string;
+  errors?: ProblemFieldError[];
+  [key: string]: unknown;
+}
+
 export class OphirPayError extends Error {
   status: number | null;
   code: string | null;
   details: unknown;
+  type?: string | null;
+  title?: string | null;
+  instance?: string | null;
+  errors?: ProblemFieldError[] | null;
 }
 
 export interface OphirPayClientOptions {

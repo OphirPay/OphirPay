@@ -85,6 +85,24 @@ scrape_configs:
 For the Prometheus Operator, attach an `authorization` block (or a
 `secret`/`credentials` reference) to the `ServiceMonitor`/`PodMonitor` instead.
 
+### Kubernetes NetworkPolicy (issue #1344)
+
+When `networkPolicy.enabled` is `true`, ingress to the pods is restricted by default.
+The Helm chart provides `networkPolicy.metrics` to allow Prometheus to scrape `/api/metrics` from its namespace:
+
+```yaml
+networkPolicy:
+  enabled: true
+  metrics:
+    enabled: true
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    podSelector: {}
+```
+
+Customize `namespaceSelector` and `podSelector` to match your cluster's Prometheus deployment.
+
 ## Usage
 
 The metrics are in-process (reset on deploy), consistent with the existing

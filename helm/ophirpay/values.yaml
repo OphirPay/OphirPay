@@ -91,6 +91,14 @@ pdb:
 
 networkPolicy:
   enabled: true
+  # Ingress rule for Prometheus metrics scraping (issue #1344).
+  # Allows Prometheus in the monitoring namespace to scrape /api/metrics.
+  metrics:
+    enabled: true
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    podSelector: {}
 
 # ── Runtime configuration (rendered into a ConfigMap) ──────────
 # Every key here must be a real variable documented in `.env.example`;

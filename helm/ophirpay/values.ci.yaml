@@ -1,0 +1,118 @@
+# CI test overrides for OphirPay Helm chart validation
+# Used by helm lint, helm template, and kubeconform in CI
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/ophirpay/ophirpay
+  tag: ci-test
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "3000"
+  prometheus.io/path: "/api/metrics"
+
+podSecurityContext:
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 1001
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: ci.ophirpay.internal
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ophirpay-ci-tls
+      hosts:
+        - ci.ophirpay.internal
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+
+config:
+  NEXT_PUBLIC_STELLAR_NETWORK: "TESTNET"
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  NEXT_PUBLIC_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org"
+  DATABASE_PROVIDER: "postgresql"
+  NODE_ENV: "test"
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+  RATE_LIMIT_RPM: "120"
+  AUTH_RATE_LIMIT_IP_RPM: "30"
+  AUTH_RATE_LIMIT_WALLET_RPM: "10"
+  NEXT_PUBLIC_SENTRY_DSN: ""
+
+secrets:
+  DATABASE_URL: "postgresql://test:test@localhost:5432/ophirpay_test"
+  NEXT_PUBLIC_CONTRACT_ID: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+  NEXT_PUBLIC_EMITTER_CONTRACT_ID: "CA3D5KRYMCMCZMQN7FK7GTRG4GWT5O5226W6V5WXZWOTTV4OPVOF3CXM"
+  AUTH_SECRET: "ci-secret-32-bytes-long-super-secret-key-12345"
+
+livenessProbe:
+  httpGet:
+    path: /api/health/live
+    port: 3000
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 2
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

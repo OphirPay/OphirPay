@@ -18,7 +18,7 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: mockGetAuthContext,
 }));
 
-import { GET } from "@/app/api/payments/export/route";
+import { GET, EXPORT_CHUNK_SIZE } from "@/app/api/payments/export/route";
 import {
   MAX_EXPORT_ROWS,
   PAYMENT_EXPORT_COLUMNS,
@@ -93,11 +93,12 @@ describe("GET /api/payments/export", () => {
         ],
       },
       orderBy: { createdAt: "desc" },
-      take: MAX_EXPORT_ROWS + 1,
+      take: EXPORT_CHUNK_SIZE,
     });
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+    expect(res.headers.get("Transfer-Encoding")).toBe("chunked");
     expect(res.headers.get("X-Export-Truncated")).toBe("false");
     expect(res.headers.get("Content-Disposition")).toContain(
       "ophirpay-payments-"

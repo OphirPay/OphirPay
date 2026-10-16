@@ -157,3 +157,21 @@ Invalid amount at row 3.
 - **Balance check:** the batch total is checked against the connected
   wallet's balance before signing, so a file that imports cleanly can still
   be rejected at submission time if the total is too large.
+
+---
+
+## Streaming Chunked CSV Exports
+
+OphirPay provides incremental streaming export endpoints to prevent memory buffering
+and out-of-memory spikes on large datasets:
+- `/api/payments/export` — Streams filtered payment records for the authenticated account.
+- `/api/audit-log/export` — Streams immutable audit log entries with filter support.
+
+### Streaming Architecture & Chunking
+
+1. **Chunk Size**: The database is queried using cursor pagination in **250-row chunks** (`EXPORT_CHUNK_SIZE = 250`).
+2. **Transfer Encoding**: Responses use HTTP `Transfer-Encoding: chunked` over standard Web `ReadableStream`.
+3. **Memory Boundedness**: Rather than materializing all records in memory at once, memory consumption remains constant regardless of whether 100 or 10,000 records are exported.
+4. **Client Cancellation**: When a client terminates the connection mid-stream (`AbortSignal`), the underlying cursor loop aborts immediately to conserve database and runtime resources.
+5. **Formula Injection Guard**: OWASP CSV formula injection mitigation prefixes cells starting with `=, +, -, @` with a single quote.
+

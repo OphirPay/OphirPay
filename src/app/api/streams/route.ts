@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
-import { successResponse, handleApiError, badRequestError, unauthorizedError } from "@/lib/api-response";
+import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
 import { withRequestLogging } from "@/lib/request-logging";
+import { createStreamSchema } from "@/lib/validation-schemas";
 
 /**
  * GET /api/streams — list streams or fetch single by ?id=N
@@ -59,15 +60,28 @@ export const POST = withMetrics("POST /api/streams", withRequestLogging(async fu
     }
 
     const body = await request.json().catch(() => ({}));
-    const { creator, recipient, totalAmount, asset, startTime, endTime, metadata } = body;
+    const parsed = createStreamSchema.safeParse(body);
 
-    if (!creator || !recipient || !totalAmount) {
-      return badRequestError("creator, recipient, and totalAmount are required");
+    if (!parsed.success) {
+      const fieldErrors = parsed.error.flatten().fieldErrors;
+      return Response.json(
+        {
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Stream validation failed",
+            details: fieldErrors,
+          },
+        },
+        { status: 400 },
+      );
     }
+
+    const { creator, recipient, totalAmount, asset, startTime, endTime, metadata } = parsed.data;
 
     return successResponse({
       message: "Stream creation requires wallet signing via the client-side createStream flow.",
-      params: { creator, recipient, totalAmount, asset: asset ?? "native", startTime, endTime, metadata },
+      params: { creator, recipient, totalAmount, asset, startTime, endTime, metadata },
     }, undefined, 202);
   } catch (err) {
     return handleApiError(err, "POST /api/streams");

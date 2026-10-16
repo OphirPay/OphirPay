@@ -10,6 +10,11 @@ import {
   unauthorizedError,
   handleApiError,
 } from "@/lib/api-response";
+import {
+  problemResponse,
+  zodValidationProblem,
+  handlePaymentProblemError,
+} from "@/lib/api-errors";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -121,18 +126,30 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
 export const POST = withMetrics("POST /api/payments", withRequestLogging(async function POST(request: Request) {
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    if (csrfError) {
+      return problemResponse(
+        403,
+        "Invalid or missing CSRF token. Refresh the page and try again."
+      );
+    }
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
+      return problemResponse(
+        401,
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
 
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return problemResponse(400, "Invalid JSON body");
+    }
+
     const parsed = createPaymentSchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return zodValidationProblem(parsed.error);
 
     const payment = await prisma.payment.create({
       data: {
@@ -181,6 +198,6 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
 
     return successResponse(payment, undefined, 201);
   } catch (err) {
-    return handleApiError(err, "POST /api/payments");
+    return handlePaymentProblemError(err, "POST /api/payments");
   }
 }));

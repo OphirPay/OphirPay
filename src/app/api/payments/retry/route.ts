@@ -3,14 +3,12 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { retryPaymentSchema } from "@/lib/validation-schemas";
+import { successResponse } from "@/lib/api-response";
 import {
-  successResponse,
-  validationError,
-  notFoundError,
-  conflictError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+  problemResponse,
+  zodValidationProblem,
+  handlePaymentProblemError,
+} from "@/lib/api-errors";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
@@ -28,18 +26,24 @@ import { verifyCsrf } from "@/lib/csrf";
 export async function POST(request: Request) {
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    if (csrfError) {
+      return problemResponse(
+        403,
+        "Invalid or missing CSRF token. Refresh the page and try again."
+      );
+    }
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
+      return problemResponse(
+        401,
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
 
     const body = await request.json().catch(() => null);
     const parsed = retryPaymentSchema.safeParse(body ?? {});
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return zodValidationProblem(parsed.error);
 
     const { id } = parsed.data;
 
@@ -48,10 +52,11 @@ export async function POST(request: Request) {
     const payment = await prisma.payment.findFirst({
       where: { id, userId: auth.userId, deletedAt: null },
     });
-    if (!payment) return notFoundError("Payment");
+    if (!payment) return problemResponse(404, "Payment not found");
 
     if (payment.status !== "FAILED") {
-      return conflictError(
+      return problemResponse(
+        409,
         `Only failed payments can be retried (current status: ${payment.status})`
       );
     }
@@ -69,10 +74,10 @@ export async function POST(request: Request) {
         idempotencyKey: crypto.randomUUID(),
       },
     });
-    if (updated.count === 0) return notFoundError("Payment");
+    if (updated.count === 0) return problemResponse(404, "Payment not found");
 
     const retried = await prisma.payment.findUnique({ where: { id } });
-    if (!retried) return notFoundError("Payment");
+    if (!retried) return problemResponse(404, "Payment not found");
 
     logger.info("Payment retried", {
       id,
@@ -82,6 +87,6 @@ export async function POST(request: Request) {
 
     return successResponse(retried);
   } catch (err) {
-    return handleApiError(err, "POST /api/payments/retry");
+    return handlePaymentProblemError(err, "POST /api/payments/retry");
   }
 }

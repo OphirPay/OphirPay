@@ -18,7 +18,7 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 /** Webhook signatures older/newer than this are rejected (seconds). */
 export const DEFAULT_SIGNATURE_TOLERANCE_SECONDS = 300;
 
-/** Error raised for any non-2xx API response or transport failure. */
+/** Error raised for any non-2xx API response or transport failure. Supports RFC 7807 problem details. */
 export class OphirPayError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -26,6 +26,11 @@ export class OphirPayError extends Error {
     this.status = options.status ?? null;
     this.code = options.code ?? null;
     this.details = options.details ?? null;
+    this.type = options.type ?? null;
+    this.title = options.title ?? null;
+    this.detail = options.detail ?? null;
+    this.instance = options.instance ?? null;
+    this.errors = options.errors ?? null;
   }
 }
 
@@ -117,7 +122,7 @@ export class OphirPayClient {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.apiKey = apiKey;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = options.fetch ?? options.fetchImpl ?? globalThis.fetch;
     this.defaultHeaders = options.headers ?? {};
   }
 
@@ -165,11 +170,34 @@ export class OphirPayClient {
     const json = text ? JSON.parse(text) : {};
 
     if (!res.ok || json.success === false) {
-      const error = json.error ?? {};
-      throw new OphirPayError(
-        error.message ?? `Request failed with status ${res.status}`,
-        { status: res.status, code: error.code ?? null, details: error.details ?? null }
+      const isProblem = Boolean(
+        json.type ||
+        json.title ||
+        res.headers?.get?.("content-type")?.includes("problem+json")
       );
+
+      const message = isProblem
+        ? (json.detail || json.title || `Request failed with status ${res.status}`)
+        : (json.error?.message ?? `Request failed with status ${res.status}`);
+
+      const code = isProblem
+        ? (json.code ?? (json.type ? String(json.type).split("/").pop()?.toUpperCase()?.replace(/-/g, "_") : "ERROR"))
+        : (json.error?.code ?? null);
+
+      const details = isProblem
+        ? (json.errors ?? json.details ?? null)
+        : (json.error?.details ?? null);
+
+      throw new OphirPayError(message, {
+        status: res.status,
+        code,
+        details,
+        type: json.type ?? null,
+        title: json.title ?? null,
+        detail: json.detail ?? null,
+        instance: json.instance ?? null,
+        errors: json.errors ?? null,
+      });
     }
 
     return json.data;

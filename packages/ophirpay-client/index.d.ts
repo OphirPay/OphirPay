@@ -65,10 +65,25 @@ export interface Paginated<T> {
   meta?: Record<string, unknown>;
 }
 
+export interface ProblemFieldError {
+  field: string;
+  message: string;
+}
+
 export class OphirPayError extends Error {
   status: number | null;
   code: string | null;
   details: unknown;
+  /** RFC 7807 problem type URI. */
+  type?: string | null;
+  /** RFC 7807 problem title. */
+  title?: string | null;
+  /** RFC 7807 problem detail message. */
+  detail?: string | null;
+  /** RFC 7807 problem instance URI. */
+  instance?: string | null;
+  /** RFC 7807 field-level validation errors. */
+  errors?: ProblemFieldError[] | null;
 }
 
 export interface OphirPayClientOptions {
@@ -79,6 +94,7 @@ export interface OphirPayClientOptions {
   /** Per-request timeout in milliseconds (default 30000). */
   timeoutMs?: number;
   /** Injectable fetch (tests). */
+  fetch?: typeof fetch;
   fetchImpl?: typeof fetch;
   /** Extra headers applied to every request. */
   headers?: Record<string, string>;

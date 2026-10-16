@@ -935,3 +935,70 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MULTISIG CONFIG VALIDATION GUARDS (issue #1285)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_multisig_config_validation_guards() {
+    let fix = TestFixture::new();
+
+    let s1 = Address::generate(&fix.env);
+    let s2 = Address::generate(&fix.env);
+
+    // 1. Duplicate signers rejected with DuplicateSigner
+    let mut dup_signers = Vec::new(&fix.env);
+    dup_signers.push_back(s1.clone());
+    dup_signers.push_back(s2.clone());
+    dup_signers.push_back(s1.clone()); // duplicate
+    let res = fix.client.try_set_multisig_config(&fix.owner, &2u32, &dup_signers, &true);
+    assert!(res.is_err());
+    match res {
+        Err(Ok(err)) => {
+            assert_eq!(err, PaymentError::DuplicateSigner);
+            assert_eq!(err, PaymentError::DuplicateRecipient);
+        }
+        _ => panic!("Expected DuplicateSigner error"),
+    }
+
+    // 2. Exceeding MAX_MULTISIG_SIGNERS (50) rejected with MaxSignersExceeded
+    let mut max_signers = Vec::new(&fix.env);
+    for _ in 0..51 {
+        max_signers.push_back(Address::generate(&fix.env));
+    }
+    let res = fix.client.try_set_multisig_config(&fix.owner, &2u32, &max_signers, &true);
+    assert!(res.is_err());
+    match res {
+        Err(Ok(err)) => assert_eq!(err, PaymentError::MaxSignersExceeded),
+        _ => panic!("Expected MaxSignersExceeded error"),
+    }
+
+    // 3. Threshold > signer count rejected with InvalidAmount
+    let mut valid_signers = Vec::new(&fix.env);
+    valid_signers.push_back(s1.clone());
+    valid_signers.push_back(s2.clone());
+    let res = fix.client.try_set_multisig_config(&fix.owner, &3u32, &valid_signers, &true);
+    assert!(res.is_err());
+    match res {
+        Err(Ok(err)) => assert_eq!(err, PaymentError::InvalidAmount),
+        _ => panic!("Expected InvalidAmount error on threshold > signers"),
+    }
+
+    // 4. Threshold == 0 rejected with InvalidAmount
+    let res = fix.client.try_set_multisig_config(&fix.owner, &0u32, &valid_signers, &true);
+    assert!(res.is_err());
+    match res {
+        Err(Ok(err)) => assert_eq!(err, PaymentError::InvalidAmount),
+        _ => panic!("Expected InvalidAmount error on threshold == 0"),
+    }
+
+    // 5. Valid config succeeds
+    let res = fix.client.try_set_multisig_config(&fix.owner, &2u32, &valid_signers, &true);
+    assert!(res.is_ok());
+    let config = fix.client.get_multisig_config().unwrap();
+    assert_eq!(config.threshold, 2);
+    assert_eq!(config.signers.len(), 2);
+    assert!(config.enabled);
+}
+

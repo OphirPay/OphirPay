@@ -88,7 +88,7 @@ export async function proxy(request: NextRequest) {
     let resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;
 
     if (!skipRateLimit) {
-      const ip = getClientIp(request.headers);
+      const ip = getClientIp(request);
       const result = await rateLimitStore.increment(
         ip,
         RATE_LIMIT_WINDOW_MS,

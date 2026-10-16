@@ -62,6 +62,20 @@ export function getRetryAfterSeconds(result: RateLimitResult): number {
   return Math.max(0, Math.ceil((result.resetAt - Date.now()) / 1000));
 }
 
+/**
+ * Sanitizes and validates a rate limit key (e.g. client IP or identifier) (issue #1387).
+ * Strips whitespace, control characters, and newlines that could corrupt Redis commands.
+ * Replaces empty or purely non-printable keys with a safe fallback.
+ */
+export function sanitizeRateLimitKey(key: string): string {
+  if (typeof key !== "string" || !key.trim()) {
+    return "unknown";
+  }
+  // Replace newlines, carriage returns, tabs, null bytes, and whitespace with '_'
+  const sanitized = key.trim().replace(/[\x00-\x1F\x7F\s]+/g, "_");
+  return sanitized.slice(0, 256) || "unknown";
+}
+
 // ── In-Memory Store ────────────────────────────────────────────
 
 export class InMemoryRateLimitStore implements RateLimitStore {
@@ -72,15 +86,16 @@ export class InMemoryRateLimitStore implements RateLimitStore {
     windowMs: number,
     maxRequests: number
   ): Promise<RateLimitResult> {
+    const safeKey = sanitizeRateLimitKey(key);
     const now = Date.now();
-    let entry = this.store.get(key);
+    let entry = this.store.get(safeKey);
 
     if (!entry || entry.resetAt < now) {
       entry = { count: 0, resetAt: now + windowMs };
     }
 
     entry.count++;
-    this.store.set(key, entry);
+    this.store.set(safeKey, entry);
 
     // Periodic cleanup — prevent unbounded memory growth under abuse
     if (this.store.size > 10_000) {
@@ -94,7 +109,7 @@ export class InMemoryRateLimitStore implements RateLimitStore {
   }
 
   async reset(key: string): Promise<void> {
-    this.store.delete(key);
+    this.store.delete(sanitizeRateLimitKey(key));
   }
 }
 
@@ -115,12 +130,13 @@ export class RedisRateLimitStore implements RateLimitStore {
     windowMs: number,
     maxRequests: number
   ): Promise<RateLimitResult> {
+    const safeKey = sanitizeRateLimitKey(key);
     const now = Date.now();
     const ttl = Math.ceil(windowMs / 1000);
 
-    const count = await this.redis.incr(key);
+    const count = await this.redis.incr(safeKey);
     if (count === 1) {
-      await this.redis.expire(key, ttl);
+      await this.redis.expire(safeKey, ttl);
     }
 
     const remaining = Math.max(0, maxRequests - count);
@@ -128,7 +144,7 @@ export class RedisRateLimitStore implements RateLimitStore {
   }
 
   async reset(key: string): Promise<void> {
-    await this.redis.del(key);
+    await this.redis.del(sanitizeRateLimitKey(key));
   }
 }
 
@@ -188,14 +204,15 @@ export class HttpRedisRateLimitStore implements RateLimitStore {
     windowMs: number,
     maxRequests: number
   ): Promise<RateLimitResult> {
+    const safeKey = sanitizeRateLimitKey(key);
     const now = Date.now();
     const ttl = Math.ceil(windowMs / 1000);
 
     // INCR is atomic on the Redis side, so every replica observes the same
     // counter — this is what makes the limit global across instances.
-    const count = Number(await this.command(["INCR", key]));
+    const count = Number(await this.command(["INCR", safeKey]));
     if (count === 1) {
-      await this.command(["EXPIRE", key, ttl]);
+      await this.command(["EXPIRE", safeKey, ttl]);
     }
 
     const remaining = Math.max(0, maxRequests - count);
@@ -203,7 +220,7 @@ export class HttpRedisRateLimitStore implements RateLimitStore {
   }
 
   async reset(key: string): Promise<void> {
-    await this.command(["DEL", key]);
+    await this.command(["DEL", sanitizeRateLimitKey(key)]);
   }
 }
 

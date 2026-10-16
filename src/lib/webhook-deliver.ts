@@ -354,3 +354,80 @@ export async function deliverWebhookWithDetails(
 ): Promise<WebhookDeliveryDetails> {
   return deliverWebhook(url, secret, payload, maxRetries);
 }
+
+export interface VerifyWebhookSignatureOptions {
+  body: string;
+  signature: string;
+  secret: string;
+  timestamp?: string;
+  maxAgeSeconds?: number;
+  now?: Date;
+}
+
+/**
+ * Timing-safe HMAC signature verification for OphirPay webhooks (#1386).
+ * Compares signatures in constant time using crypto.timingSafeEqual to eliminate
+ * side-channel timing attacks.
+ */
+export function verifyWebhookSignature({
+  body,
+  signature,
+  secret,
+  timestamp,
+  maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+  now = new Date(),
+}: VerifyWebhookSignatureOptions): { valid: boolean; reason: string } {
+  let parsed: any;
+  let canonical: string;
+  try {
+    parsed = JSON.parse(body);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { valid: false, reason: "body must be a JSON object" };
+    }
+    canonical = JSON.stringify({ ...parsed, signature: "" });
+  } catch (err) {
+    return {
+      valid: false,
+      reason: `invalid body: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const signedTimestamp = String(timestamp ?? parsed.timestamp ?? "");
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(webhookSignedInput(signedTimestamp, canonical))
+    .digest("hex");
+
+  const provided = String(signature ?? "");
+  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected);
+
+  if (
+    providedBuf.length !== expectedBuf.length ||
+    !crypto.timingSafeEqual(providedBuf, expectedBuf)
+  ) {
+    return { valid: false, reason: "signature mismatch" };
+  }
+
+  if (maxAgeSeconds > 0) {
+    const ts = Date.parse(signedTimestamp);
+    if (Number.isNaN(ts)) {
+      return { valid: false, reason: "missing or invalid timestamp" };
+    }
+    const ageSeconds = (now.getTime() - ts) / 1000;
+    if (ageSeconds > maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload too old (${Math.round(ageSeconds)}s > ${maxAgeSeconds}s) — possible replay`,
+      };
+    }
+    if (ageSeconds < -maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload timestamp is in the future (${Math.round(-ageSeconds)}s ahead)`,
+      };
+    }
+  }
+
+  return { valid: true, reason: "valid" };
+}

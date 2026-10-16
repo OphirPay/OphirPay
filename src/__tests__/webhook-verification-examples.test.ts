@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildSignedPayload } from "@/lib/webhook-deliver";
+import { buildSignedPayload, verifyWebhookSignature } from "@/lib/webhook-deliver";
 
 const SECRET = "test-secret-0123456789";
 const EXAMPLES_DIR = path.resolve(process.cwd(), "examples/webhook-verification");
@@ -386,5 +386,69 @@ describe("webhook verification examples — Go (verify.go)", () => {
     const res = runGo(["--secret", SECRET, "--signature", signature, "--now", "2026-08-14T00:00:30Z"], reordered);
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("signature mismatch");
+  });
+});
+
+describe("verifyWebhookSignature in src/lib/webhook-deliver (#1386)", () => {
+  it("verifies valid signature with timingSafeEqual", () => {
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      now: new Date("2026-08-14T00:00:30Z"),
+    });
+    expect(result.valid).toBe(true);
+    expect(result.reason).toBe("valid");
+  });
+
+  it("rejects mismatched signature", () => {
+    const { body, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature: "0".repeat(64),
+      secret: SECRET,
+      timestamp,
+      now: new Date("2026-08-14T00:00:30Z"),
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("rejects mismatched signature length safely without exception", () => {
+    const { body, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature: "short-signature",
+      secret: SECRET,
+      timestamp,
+      now: new Date("2026-08-14T00:00:30Z"),
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("rejects expired timestamp", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp: SAMPLE_TIMESTAMP,
+      now: new Date("2026-08-14T01:00:00Z"),
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("payload too old");
+  });
+
+  it("rejects invalid JSON body", () => {
+    const result = verifyWebhookSignature({
+      body: "invalid-json",
+      signature: "abc",
+      secret: SECRET,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("invalid body");
   });
 });

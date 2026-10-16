@@ -27,6 +27,12 @@ vi.mock("@/lib/prisma", () => ({
       updateMany: mockUpdateMany,
       update: mockUpdate,
     },
+    cronExecutionLog: {
+      create: vi.fn(() => Promise.resolve({})),
+      findMany: vi.fn(() => Promise.resolve([])),
+      deleteMany: vi.fn(() => Promise.resolve({ count: 0 })),
+    },
+    $transaction: vi.fn((ops: any) => Promise.all(ops)),
   },
 }));
 

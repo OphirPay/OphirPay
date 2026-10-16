@@ -84,6 +84,7 @@ export const auditLogQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
+    cursor: z.string().trim().min(1).optional(),
     actor: z.string().trim().min(1).optional(),
     action: z.string().trim().min(1).optional(),
     resource: z.coerce.number().int().nonnegative().optional(),

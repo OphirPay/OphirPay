@@ -116,3 +116,52 @@ describe("chart inventory (#684)", () => {
     }
   });
 });
+
+describe("Helm and k8s immutable image configuration (#1333)", () => {
+  const valuesPath = join(chartDir, "values.yaml");
+  const chartYamlPath = join(chartDir, "Chart.yaml");
+  const deploymentTemplatePath = join(templatesDir, "deployment.yaml");
+  const k8sDeploymentPath = join(process.cwd(), "k8s", "deployment.yaml");
+  const ciWorkflowPath = join(process.cwd(), ".github", "workflows", "ci.yml");
+
+  it("defaults image.tag to empty, digest to empty, and pullPolicy to IfNotPresent in values.yaml", () => {
+    const rawValues = load(readFileSync(valuesPath, "utf8")) as Record<string, any>;
+    expect(rawValues.image.repository).toBe("ghcr.io/ophirpay/ophirpay");
+    expect(rawValues.image.tag).toBe("");
+    expect(rawValues.image.digest).toBe("");
+    expect(rawValues.image.pullPolicy).toBe("IfNotPresent");
+  });
+
+  it("declares appVersion 1.0.0 in Chart.yaml", () => {
+    const rawChart = load(readFileSync(chartYamlPath, "utf8")) as Record<string, any>;
+    expect(rawChart.appVersion).toBe("1.0.0");
+  });
+
+  it("supports image.digest and defaults image.tag to .Chart.AppVersion in deployment.yaml", () => {
+    const templateContent = readFileSync(deploymentTemplatePath, "utf8");
+    expect(templateContent).toMatch(
+      /\{\{-\s*if\s+\.Values\.image\.digest\s*\}\}\s*\r?\n\s*image:\s*"\{\{\s*\.Values\.image\.repository\s*\}\}@\{\{\s*\.Values\.image\.digest\s*\|\s*trimPrefix\s*"@"\s*\}\}"/
+    );
+    expect(templateContent).toMatch(
+      /\{\{-\s*else\s*\}\}\s*\r?\n\s*image:\s*"\{\{\s*\.Values\.image\.repository\s*\}\}:\{\{\s*\.Values\.image\.tag\s*\|\s*default\s+\.Chart\.AppVersion\s*\}\}"/
+    );
+  });
+
+  it("pins image tag and sets IfNotPresent in k8s/deployment.yaml", () => {
+    const k8sContent = readFileSync(k8sDeploymentPath, "utf8");
+    expect(k8sContent).toContain("image: ghcr.io/ophirpay/ophirpay:1.0.0");
+    expect(k8sContent).not.toContain("image: ghcr.io/ophirpay/ophirpay:latest");
+    expect(k8sContent).toContain("imagePullPolicy: IfNotPresent");
+  });
+
+  it("asserts default pinned tag, digest rendering, and kubeconform in CI helm-lint", () => {
+    const ciContent = readFileSync(ciWorkflowPath, "utf8");
+    expect(ciContent).toContain('expect "ghcr.io/ophirpay/ophirpay:1.0.0" /tmp/default.yaml');
+    expect(ciContent).toContain('reject "ghcr.io/ophirpay/ophirpay:latest" /tmp/default.yaml');
+    expect(ciContent).toContain('expect "imagePullPolicy: IfNotPresent" /tmp/default.yaml');
+    expect(ciContent).toContain(
+      'expect "ghcr.io/ophirpay/ophirpay@sha256:45b23dee08af5e43a7ff6c4e1aaec6fa60c6b72d54c4c822d84343a3e65f93aa" /tmp/digest.yaml'
+    );
+    expect(ciContent).toContain("kubeconform -strict -summary /tmp/digest.yaml");
+  });
+});

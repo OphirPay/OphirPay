@@ -272,7 +272,7 @@ export const createScheduledPaymentSchema = z.object({
   assetCode: z.string().default("XLM"),
   assetIssuer: z.string().optional(),
   destAddress: stellarAddress,
-  memo: z.string().max(28).optional(),
+  memo: memoField,
   scheduledAt: z
     .string()
     .refine(

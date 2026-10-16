@@ -6,6 +6,7 @@ import {
   updatePaymentSchema,
   createBatchSchema,
   proposeMultisigPaymentSchema,
+  createScheduledPaymentSchema,
   MEMO_ERROR_MESSAGES,
 } from "@/lib/validation-schemas";
 import { validateMemo } from "@/lib/validation-helpers";
@@ -285,5 +286,33 @@ describe("getMemoErrorMessage", () => {
   it("is case-insensitive", () => {
     const msg = getMemoErrorMessage("TX_MEMO_TOO_LONG: memo exceeds maximum length");
     expect(msg).toContain("too long");
+  });
+});
+
+describe("createScheduledPaymentSchema memoField validation", () => {
+  const scheduledBase = {
+    amount: 10,
+    destAddress: VALID_STELLAR,
+    scheduledAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+
+  it("rejects non-ASCII memo exceeding 28 bytes", () => {
+    const result = createScheduledPaymentSchema.safeParse({
+      ...scheduledBase,
+      memo: "你好世界你好世界你好世界", // 12 characters, 36 UTF-8 bytes (>28 bytes)
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === "memo");
+      expect(issue?.message).toBe(MEMO_ERROR_MESSAGES.tooManyBytes);
+    }
+  });
+
+  it("accepts valid UTF-8 memo <= 28 bytes", () => {
+    const result = createScheduledPaymentSchema.safeParse({
+      ...scheduledBase,
+      memo: "Stellar XLM",
+    });
+    expect(result.success).toBe(true);
   });
 });

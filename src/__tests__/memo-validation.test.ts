@@ -4,10 +4,18 @@ import { describe, it, expect } from "vitest";
 import {
   createPaymentSchema,
   updatePaymentSchema,
+  createPaymentRequestSchema,
   createBatchSchema,
   proposeMultisigPaymentSchema,
   MEMO_ERROR_MESSAGES,
 } from "@/lib/validation-schemas";
+import {
+  validateStellarMemo,
+  stellarMemoSchema,
+  STELLAR_MEMO_ERROR_MESSAGES,
+  getMemoByteLength,
+  normalizeStellarMemoType,
+} from "@/lib/validation/stellar";
 import { validateMemo } from "@/lib/validation-helpers";
 import { validateMemo as validateMemoTyped } from "@/lib/memo";
 import { toCsvString } from "@/lib/export-csv";
@@ -285,5 +293,185 @@ describe("getMemoErrorMessage", () => {
   it("is case-insensitive", () => {
     const msg = getMemoErrorMessage("TX_MEMO_TOO_LONG: memo exceeds maximum length");
     expect(msg).toContain("too long");
+  });
+});
+
+// ─── Stellar Memo Encoding & 4 Variant Types (Issue #1368) ─────
+
+describe("Stellar Memo Validation & 4 Variants (src/lib/validation/stellar.ts)", () => {
+  describe("getMemoByteLength & normalizeStellarMemoType", () => {
+    it("correctly calculates byte length for ASCII and UTF-8 multibyte characters", () => {
+      expect(getMemoByteLength("hello")).toBe(5);
+      expect(getMemoByteLength("café")).toBe(5); // 'é' is 2 bytes
+      expect(getMemoByteLength("😀")).toBe(4); // emoji is 4 bytes
+      expect(getMemoByteLength("😀".repeat(7))).toBe(28);
+      expect(getMemoByteLength("😀".repeat(8))).toBe(32);
+    });
+
+    it("normalizes memo types case-insensitively and maps aliases", () => {
+      expect(normalizeStellarMemoType("MEMO_TEXT")).toBe("MEMO_TEXT");
+      expect(normalizeStellarMemoType("text")).toBe("MEMO_TEXT");
+      expect(normalizeStellarMemoType("MEMO_ID")).toBe("MEMO_ID");
+      expect(normalizeStellarMemoType("id")).toBe("MEMO_ID");
+      expect(normalizeStellarMemoType("MEMO_HASH")).toBe("MEMO_HASH");
+      expect(normalizeStellarMemoType("hash")).toBe("MEMO_HASH");
+      expect(normalizeStellarMemoType("MEMO_RETURN")).toBe("MEMO_RETURN");
+      expect(normalizeStellarMemoType("return")).toBe("MEMO_RETURN");
+      expect(normalizeStellarMemoType(undefined)).toBe("MEMO_TEXT");
+    });
+  });
+
+  describe("Variant 1: MEMO_TEXT", () => {
+    it("accepts valid ASCII within 28 bytes", () => {
+      const res = validateStellarMemo("invoice-10294", "MEMO_TEXT");
+      expect(res.valid).toBe(true);
+      expect(res.type).toBe("MEMO_TEXT");
+      expect(res.byteLength).toBe(13);
+    });
+
+    it("accepts exactly 28 UTF-8 bytes with multibyte characters", () => {
+      const res = validateStellarMemo("😀".repeat(7), "MEMO_TEXT");
+      expect(res.valid).toBe(true);
+      expect(res.byteLength).toBe(28);
+    });
+
+    it("rejects text exceeding 28 characters with tooLong error", () => {
+      const res = validateStellarMemo("a".repeat(29), "MEMO_TEXT");
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.tooLong);
+    });
+
+    it("rejects multibyte text fitting in 28 chars but exceeding 28 bytes with tooManyBytes error", () => {
+      const res = validateStellarMemo("😀".repeat(8), "MEMO_TEXT");
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.tooManyBytes);
+    });
+
+    it("rejects control characters in text memo", () => {
+      const res = validateStellarMemo("line1\nline2", "MEMO_TEXT");
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.controlChars);
+    });
+  });
+
+  describe("Variant 2: MEMO_ID", () => {
+    it("accepts valid 64-bit unsigned integer values", () => {
+      expect(validateStellarMemo("0", "MEMO_ID").valid).toBe(true);
+      expect(validateStellarMemo("123456789", "MEMO_ID").valid).toBe(true);
+      expect(validateStellarMemo("18446744073709551615", "MEMO_ID").valid).toBe(true); // uint64 max
+    });
+
+    it("rejects negative numbers", () => {
+      const res = validateStellarMemo("-1", "MEMO_ID");
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.invalidId);
+    });
+
+    it("rejects non-numeric strings", () => {
+      const res = validateStellarMemo("not-a-number", "MEMO_ID");
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.invalidId);
+    });
+
+    it("rejects numbers exceeding 64-bit unsigned integer limit", () => {
+      const res = validateStellarMemo("18446744073709551616", "MEMO_ID"); // 2^64
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.invalidId);
+    });
+  });
+
+  describe("Variant 3: MEMO_HASH", () => {
+    const validHash = "a".repeat(64);
+    const validHexMixed = "0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789ABCDEF";
+
+    it("accepts 64-character hexadecimal strings", () => {
+      expect(validateStellarMemo(validHash, "MEMO_HASH").valid).toBe(true);
+      expect(validateStellarMemo(validHexMixed, "MEMO_HASH").valid).toBe(true);
+    });
+
+    it("rejects hashes shorter than 64 characters", () => {
+      const res = validateStellarMemo("a".repeat(63), "MEMO_HASH");
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.invalidHash);
+    });
+
+    it("rejects hashes longer than 64 characters", () => {
+      const res = validateStellarMemo("a".repeat(65), "MEMO_HASH");
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.invalidHash);
+    });
+
+    it("rejects non-hexadecimal characters", () => {
+      const res = validateStellarMemo("g".repeat(64), "MEMO_HASH");
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.invalidHash);
+    });
+  });
+
+  describe("Variant 4: MEMO_RETURN", () => {
+    const validReturn = "f".repeat(64);
+
+    it("accepts 64-character hexadecimal strings", () => {
+      expect(validateStellarMemo(validReturn, "MEMO_RETURN").valid).toBe(true);
+    });
+
+    it("rejects invalid return hashes", () => {
+      const res = validateStellarMemo("invalid-hex", "MEMO_RETURN");
+      expect(res.valid).toBe(false);
+      expect(res.error).toBe(STELLAR_MEMO_ERROR_MESSAGES.invalidReturn);
+    });
+  });
+
+  describe("Unsupported memo types", () => {
+    it("rejects unknown memo types with an actionable error message", () => {
+      const res = validateStellarMemo("test", "MEMO_INVALID");
+      expect(res.valid).toBe(false);
+      expect(res.error).toContain(STELLAR_MEMO_ERROR_MESSAGES.unsupportedType);
+    });
+  });
+
+  describe("Route integration schemas", () => {
+    it("createPaymentSchema validates all 4 variants", () => {
+      // MEMO_TEXT valid
+      expect(createPaymentSchema.safeParse({ ...paymentBase, memo: "invoice-42", memoType: "MEMO_TEXT" }).success).toBe(true);
+      // MEMO_TEXT invalid (too long)
+      expect(createPaymentSchema.safeParse({ ...paymentBase, memo: "a".repeat(29), memoType: "MEMO_TEXT" }).success).toBe(false);
+      // MEMO_ID valid
+      expect(createPaymentSchema.safeParse({ ...paymentBase, memo: "987654321", memoType: "MEMO_ID" }).success).toBe(true);
+      // MEMO_ID invalid
+      expect(createPaymentSchema.safeParse({ ...paymentBase, memo: "-5", memoType: "MEMO_ID" }).success).toBe(false);
+      // MEMO_HASH valid
+      expect(createPaymentSchema.safeParse({ ...paymentBase, memo: "a".repeat(64), memoType: "MEMO_HASH" }).success).toBe(true);
+      // MEMO_HASH invalid
+      expect(createPaymentSchema.safeParse({ ...paymentBase, memo: "not-hex", memoType: "MEMO_HASH" }).success).toBe(false);
+      // MEMO_RETURN valid
+      expect(createPaymentSchema.safeParse({ ...paymentBase, memo: "f".repeat(64), memoType: "MEMO_RETURN" }).success).toBe(true);
+      // MEMO_RETURN invalid
+      expect(createPaymentSchema.safeParse({ ...paymentBase, memo: "not-hex", memoType: "MEMO_RETURN" }).success).toBe(false);
+    });
+
+    it("createPaymentRequestSchema validates memos and rejects oversized memos", () => {
+      const validReq = createPaymentRequestSchema.safeParse({
+        amount: 50,
+        memo: "request-123",
+        memoType: "MEMO_TEXT",
+      });
+      expect(validReq.success).toBe(true);
+
+      const invalidReq = createPaymentRequestSchema.safeParse({
+        amount: 50,
+        memo: "😀".repeat(8),
+        memoType: "MEMO_TEXT",
+      });
+      expect(invalidReq.success).toBe(false);
+    });
+
+    it("stellarMemoSchema standalone Zod validation validates byte length and charsets", () => {
+      expect(stellarMemoSchema.safeParse("valid-memo").success).toBe(true);
+      expect(stellarMemoSchema.safeParse("😀".repeat(7)).success).toBe(true);
+      expect(stellarMemoSchema.safeParse("😀".repeat(8)).success).toBe(false);
+      expect(stellarMemoSchema.safeParse("a".repeat(29)).success).toBe(false);
+      expect(stellarMemoSchema.safeParse("bad\u0000char").success).toBe(false);
+    });
   });
 });

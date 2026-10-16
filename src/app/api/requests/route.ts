@@ -6,9 +6,11 @@ import { createPaymentRequestSchema } from "@/lib/validation-schemas";
 import {
   successResponse,
   validationError,
+  badRequestError,
   unauthorizedError,
   handleApiError,
 } from "@/lib/api-response";
+import { validateStellarMemo } from "@/lib/validation/stellar";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
@@ -52,6 +54,14 @@ export const POST = withMetrics("POST /api/requests", withRequestLogging(async f
     const body = await request.json();
     const parsed = createPaymentRequestSchema.safeParse(body);
     if (!parsed.success) return validationError(parsed.error);
+
+    // Fail fast on invalid Stellar memo encoding, length, or charset on payment requests
+    if (parsed.data.memo) {
+      const memoValidation = validateStellarMemo(parsed.data.memo, parsed.data.memoType);
+      if (!memoValidation.valid) {
+        return badRequestError(memoValidation.error ?? "Invalid Stellar memo");
+      }
+    }
 
     const req = await prisma.paymentRequest.create({
       data: {

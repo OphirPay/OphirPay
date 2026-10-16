@@ -43,6 +43,10 @@ ophirpay_csp_reports_dropped_total{reason="rate_limited"} 0
 ophirpay_csp_reports_dropped_total{reason="deduplicated"} 0
 ophirpay_csp_reports_dropped_total{reason="oversized"} 0
 
+# HELP ophirpay_cron_logs_pruned_total Total cron run execution logs pruned by retention policy
+# TYPE ophirpay_cron_logs_pruned_total counter
+ophirpay_cron_logs_pruned_total 0
+
 # HELP ophirpay_endpoint_request_duration_seconds Request latency histogram per endpoint and status class
 # TYPE ophirpay_endpoint_request_duration_seconds histogram
 ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.005"} 0

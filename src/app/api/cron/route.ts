@@ -22,6 +22,7 @@ import {
   selectDuePayments,
 } from "@/lib/scheduler";
 import { publicKeyFromSecret, submitPaymentFromSecret } from "@/lib/stellar";
+import { recordCronExecution, pruneCronExecutionLogs } from "@/lib/cron-pruner";
 
 /**
  * Scheduled payment execution (issue #175).
@@ -250,6 +251,26 @@ async function runScheduledPayments(request: Request) {
       failed: summary.failed,
       skipped: summary.skipped,
     });
+
+    // Record execution cycle log (issue #1420).
+    await recordCronExecution({
+      runId,
+      picked: summary.picked,
+      executed: summary.executed,
+      failed: summary.failed,
+      skipped: summary.skipped,
+      durationMs: Date.now() - now.getTime(),
+    });
+
+    // Ephemeral log retention sweep (issue #1420): prune runs older than 90 days.
+    try {
+      await pruneCronExecutionLogs({ now });
+    } catch (pruneErr) {
+      logger.warn("Automated cron log pruning encountered an error", {
+        runId,
+        error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
+      });
+    }
 
     return successResponse(summary);
   } catch (err) {

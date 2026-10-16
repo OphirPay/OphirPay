@@ -116,3 +116,19 @@ describe("chart inventory (#684)", () => {
     }
   });
 });
+
+describe("deployment.yaml autoscaling replicas guard (#1331)", () => {
+  const deploymentContent = template("deployment.yaml");
+
+  it("gates spec.replicas on !.Values.autoscaling.enabled", () => {
+    expect(deploymentContent).toMatch(
+      /\{\{-\s*if\s+not\s+\.Values\.autoscaling\.enabled\s*\}\}\s*\r?\n\s*replicas:\s*\{\{\s*\.Values\.replicaCount\s*\}\}\s*\r?\n\s*\{\{-\s*end\s*\}\}/
+    );
+  });
+
+  it("verifies CI asserts absence of replicas when autoscaling enabled and presence when disabled", () => {
+    const ciContent = readFileSync(join(process.cwd(), ".github", "workflows", "ci.yml"), "utf8");
+    expect(ciContent).toContain('reject "  replicas:" /tmp/enabled.yaml');
+    expect(ciContent).toContain('expect "  replicas: 2" /tmp/disabled.yaml');
+  });
+});

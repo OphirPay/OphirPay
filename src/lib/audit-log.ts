@@ -90,6 +90,8 @@ export const auditLogQuerySchema = z
     since: yearSuffixCheck.optional(),
     until: yearSuffixCheck.optional(),
     order: z.enum(["asc", "desc"]).default("desc"),
+    /** Opaque keyset cursor from a previous response's meta.nextCursor. */
+    cursor: z.string().trim().min(1).optional(),
     // Backing store for GET /api/audit-log (issue #365): "db" serves the
     // persisted audit trail, "contract" the on-chain ledger, "all" both.
     source: z.enum(["contract", "db", "all"]).optional().default("contract"),
@@ -104,6 +106,14 @@ export const auditLogQuerySchema = z
         code: z.ZodIssueCode.custom,
         path: ["until"],
         message: "until must be greater than or equal to since",
+      });
+    }
+    // Keyset cursor and offset pagination cannot be combined (issue #1361).
+    if (val.cursor != null && val.page != null && val.page !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cursor"],
+        message: "cursor and page cannot both be used",
       });
     }
   });

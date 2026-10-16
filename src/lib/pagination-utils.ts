@@ -108,20 +108,23 @@ export function prismaPagination(page: number, limit: number) {
 /**
  * Combine the base filter with the keyset condition for `createdAt desc,
  * id desc` ordering. Uses `AND` so a cursor never collides with the base
- * filter's own `OR` (e.g. search terms).
+ * filter's own `OR` (e.g. search terms). Supports directional sorting
+ * (`desc` default, or `asc`).
  */
 export function buildCursorWhere(
   baseWhere: Record<string, unknown>,
-  cursor: CursorPayload | null
+  cursor: CursorPayload | null,
+  order: "asc" | "desc" = "desc"
 ): Record<string, unknown> {
   if (!cursor) return baseWhere;
+  const comp = order === "asc" ? "gt" : "lt";
   return {
     AND: [
       baseWhere,
       {
         OR: [
-          { createdAt: { lt: cursor.createdAt } },
-          { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+          { createdAt: { [comp]: cursor.createdAt } },
+          { createdAt: cursor.createdAt, id: { [comp]: cursor.id } },
         ],
       },
     ],

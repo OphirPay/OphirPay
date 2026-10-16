@@ -63,6 +63,29 @@ describe("buildCursorWhere", () => {
     const and = where.AND as Array<Record<string, unknown>>;
     expect(and[0].OR).toBeDefined();
   });
+
+  it("supports ascending keyset condition when order='asc'", () => {
+    const base = { userId: "u1" };
+    const where = buildCursorWhere(
+      base,
+      {
+        createdAt: "2026-08-01T00:00:00.000Z",
+        id: "clx123",
+      },
+      "asc"
+    );
+    expect(where).toEqual({
+      AND: [
+        base,
+        {
+          OR: [
+            { createdAt: { gt: "2026-08-01T00:00:00.000Z" } },
+            { createdAt: "2026-08-01T00:00:00.000Z", id: { gt: "clx123" } },
+          ],
+        },
+      ],
+    });
+  });
 });
 
 describe("computeNextCursor", () => {

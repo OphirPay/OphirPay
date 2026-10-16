@@ -155,6 +155,51 @@ if (!parsed.success) return validationError(parsed.error);
 > where `details` is an array of `{ path, message }` per issue — clients can
 > render field-level errors directly.
 
+### Keyset (Cursor-Based) Pagination & Sorting
+
+High-volume endpoints such as `/api/audit-log` and `/api/payments` support keyset (cursor-based) pagination and directional sorting to maintain sub-25ms response times regardless of table depth:
+
+```ts
+// Initial page:
+// GET /api/audit-log?source=db&limit=20&order=desc
+// Subsequent page:
+// GET /api/audit-log?source=db&limit=20&order=desc&cursor=<nextCursor>
+```
+
+#### Query Parameters
+- `cursor`: Opaque base64url keyset cursor token returned in `meta.nextCursor` of a previous response (or a direct record ID).
+- `limit`: Number of records to return (1–100, default `20` for audit logs, `50` for payments).
+- `order`: Directional sorting by timestamp (`desc` [default, newest first] or `asc` [oldest first]).
+- `source`: Backing store selection for audit logs (`db` for persisted records, `contract` for on-chain ledger, `all` for combined).
+
+#### Standard Response Payload
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "clx...",
+      "timestamp": 1722513600000,
+      "action": "refund:create",
+      "actor": "user_alpha",
+      "target_id": "ref_1",
+      "details": "{\"amount\":100}"
+    }
+  ],
+  "meta": {
+    "timestamp": "2026-10-15T00:00:00.000Z",
+    "limit": 20,
+    "nextCursor": "eyJjcmVhdGVkQXQiOiIyMDI2LTA4LTAxVDAwOjAwOjAwLjAwMFoiLCJpZCI6ImNseDEyMyJ9",
+    "hasMore": true
+  }
+}
+```
+
+#### Rules & Best Practices
+1. **Mutual Exclusivity**: `cursor` and `page` cannot both be specified. Supplying both returns a `400 Bad Request` (`VALIDATION_ERROR` or `"cursor and page cannot both be used"`).
+2. **Determinism & Performance**: Keyset pagination queries leverage indexes on `createdAt` and `id` (`WHERE createdAt < $1 OR (createdAt = $1 AND id < $2)`). By fetching `limit + 1` rows to detect `hasMore`, it avoids full-table `COUNT(*)` scans and memory degradation from high `OFFSET` values.
+3. **Legacy Offset Support**: Supplying an explicit `page` parameter falls back to legacy offset mode returning `{ page, limit, total, hasMore, nextCursor: null }`.
+
 ---
 
 ## 4. Error-handling pattern

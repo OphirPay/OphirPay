@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 import { withApiAuth } from "@/lib/api-auth";
-import { successResponse, handleApiError, validationError } from "@/lib/api-response";
+import {
+  successResponse,
+  handleApiError,
+  validationError,
+  badRequestError,
+} from "@/lib/api-response";
 import prisma from "@/lib/prisma";
 import { withRequestLogging } from "@/lib/request-logging";
 import {
@@ -11,6 +16,13 @@ import {
   readAuditEntryById,
   type AuditLogEntry,
 } from "@/lib/audit-log";
+import {
+  decodeCursor,
+  computeNextCursor,
+  buildCursorWhere,
+  type CursorPayload,
+  encodeCursor,
+} from "@/lib/pagination-utils";
 
 /**
  * GET /api/audit-log
@@ -90,6 +102,8 @@ function matchesFilters(
 async function _GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+    const explicitPage = searchParams.get("page");
+
     // Blank query params are treated as absent (Zod .optional() only applies
     // to undefined).
     const param = (name: string): string | undefined => {
@@ -107,10 +121,43 @@ async function _GET(request: Request) {
       until: param("until"),
       order: param("order"),
       source: param("source"),
+      cursor: param("cursor"),
     });
     if (!parsed.success) return validationError(parsed.error);
 
-    const { page, limit, source } = parsed.data;
+    const { page, limit, source, order } = parsed.data;
+    const rawCursor = parsed.data.cursor;
+
+    if (rawCursor && explicitPage !== null) {
+      return badRequestError("cursor and page cannot both be used");
+    }
+
+    let cursor: CursorPayload | null = null;
+    if (rawCursor) {
+      cursor = decodeCursor(rawCursor);
+      if (!cursor) {
+        // Support direct record ID cursors as well (issue #1361)
+        try {
+          const anchor = await prisma.auditLog.findUnique({
+            where: { id: rawCursor },
+            select: { id: true, createdAt: true },
+          });
+          if (anchor) {
+            cursor = {
+              createdAt: anchor.createdAt.toISOString(),
+              id: anchor.id,
+            };
+          }
+        } catch {
+          // Ignore DB lookup error
+        }
+      }
+      if (!cursor) {
+        return badRequestError("Invalid cursor");
+      }
+    }
+
+    const useCursor = cursor !== null || explicitPage === null;
     const hasFilters = Boolean(
       parsed.data.actor ||
         parsed.data.action ||
@@ -134,7 +181,7 @@ async function _GET(request: Request) {
           ? (parseAuditTimestamp(parsed.data.until) ?? undefined)
           : undefined,
     };
-    const dbWhere = {
+    const dbWhere: Record<string, unknown> = {
       ...(filters.action ? { action: filters.action } : {}),
       ...(filters.actor ? { actor: { contains: parsed.data.actor } } : {}),
       ...(filters.resource != null
@@ -142,39 +189,80 @@ async function _GET(request: Request) {
         : {}),
     };
 
-    // Persisted (DB) audit entries — refund lifecycle history with record
-    // ids (issue #365).
+    // ── Persisted (DB) audit entries (issue #365 / issue #1361) ───
+    if (source === "db") {
+      const orderBy = [{ createdAt: order }, { id: order }];
+      if (useCursor) {
+        const where = buildCursorWhere(dbWhere, cursor, order);
+        const rows = await prisma.auditLog.findMany({
+          where,
+          orderBy,
+          take: limit + 1,
+        });
+        const visible = rows.slice(0, limit).map(mapDbRow);
+        const { nextCursor, hasMore } = computeNextCursor(rows, limit);
+        const meta: Record<string, unknown> = {
+          limit,
+          nextCursor,
+          hasMore,
+        };
+        if (searchParams.get("includeTotal") === "true") {
+          meta.total = await prisma.auditLog.count({ where: dbWhere });
+        }
+        return successResponse(visible, meta);
+      } else {
+        const [rows, total] = await Promise.all([
+          prisma.auditLog.findMany({
+            where: dbWhere,
+            orderBy,
+            skip: (page - 1) * limit,
+            take: limit,
+          }),
+          prisma.auditLog.count({ where: dbWhere }),
+        ]);
+        return successResponse(rows.map(mapDbRow), {
+          page,
+          limit,
+          total,
+          nextCursor: null,
+          hasMore: page * limit < total,
+        });
+      }
+    }
+
     const dbRows =
-      source === "db" || source === "all"
+      source === "all"
         ? (
             await prisma.auditLog.findMany({
-              where: dbWhere,
-              orderBy: { createdAt: "desc" },
-              skip: (page - 1) * limit,
-              take: limit,
+              where: useCursor ? buildCursorWhere(dbWhere, cursor, order) : dbWhere,
+              orderBy: [{ createdAt: order }, { id: order }],
+              take: useCursor ? limit + 1 : limit,
+              ...(useCursor ? {} : { skip: (page - 1) * limit }),
             })
           ).map(mapDbRow)
         : [];
     const dbTotal =
-      source === "db" || source === "all"
+      source === "all"
         ? await prisma.auditLog.count({ where: dbWhere })
         : 0;
-
-    if (source === "db") {
-      return successResponse(dbRows, { page, limit, total: dbTotal });
-    }
 
     // ── On-chain ledger (source=contract | all) ────────────────
     const totalCount = await readAuditLogTotalCount();
     if (totalCount === 0) {
-      return successResponse(dbRows, { page, limit, total: dbTotal });
+      return successResponse(dbRows, {
+        page: useCursor ? undefined : page,
+        limit,
+        total: dbTotal,
+        nextCursor: null,
+        hasMore: false,
+      });
     }
 
     // Which ids to read (ids are 1-indexed, newest = highest id):
     // - Unfiltered: only the page window, so plain reads stay cheap.
     // - Filtered: scan the whole ledger so the filtered `total` (and therefore
     //   pagination) is exact regardless of where matches fall.
-    const descending = parsed.data.order !== "asc";
+    const descending = order !== "asc";
     const ascendingIds = (count: number) => {
       const ids: number[] = [];
       for (let id = 1; id <= count; id++) ids.push(id);
@@ -188,18 +276,54 @@ async function _GET(request: Request) {
       return ids;
     };
 
-    const idPool = hasFilters ? ascendingIds(totalCount) : windowIds(totalCount);
-    if (!descending) idPool.reverse();
+    const idPool = hasFilters || cursor !== null
+      ? ascendingIds(totalCount)
+      : windowIds(totalCount);
+    if (!descending && (hasFilters || cursor !== null)) {
+      // ascendingIds is naturally 1..count; no reverse needed for asc
+    } else if (descending && (hasFilters || cursor !== null)) {
+      idPool.reverse();
+    } else if (!descending) {
+      idPool.reverse();
+    }
+
+    // When cursor is supplied on contract source, filter records past cursor
+    let filterCursorId: number | null = null;
+    if (cursor) {
+      const cid = Number(cursor.id);
+      if (Number.isInteger(cid) && cid > 0) {
+        filterCursorId = cid;
+      }
+    }
 
     const entries: AuditLogEntry[] = [];
     for (let i = 0; i < idPool.length; i += 10) {
       const chunk = idPool.slice(i, i + 10);
       const results = await Promise.all(chunk.map((id) => readAuditEntryById(id)));
       for (const entry of results) {
-        if (entry && (!hasFilters || matchesFilters(entry, filters))) {
+        if (!entry) continue;
+        if (filterCursorId != null) {
+          if (descending && entry.id >= filterCursorId) continue;
+          if (!descending && entry.id <= filterCursorId) continue;
+        }
+        if (!hasFilters || matchesFilters(entry, filters)) {
           entries.push(entry);
         }
       }
+      if (cursor !== null && entries.length >= limit + 1) break;
+    }
+
+    if (cursor !== null) {
+      const visible = entries.slice(0, limit);
+      const hasMore = entries.length > limit;
+      const nextCursor =
+        hasMore && visible.length > 0
+          ? encodeCursor({
+              createdAt: new Date(visible[visible.length - 1].timestamp * 1000).toISOString(),
+              id: String(visible[visible.length - 1].id),
+            })
+          : null;
+      return successResponse(visible, { limit, nextCursor, hasMore });
     }
 
     if (!hasFilters) {

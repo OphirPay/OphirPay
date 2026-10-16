@@ -1,7 +1,6 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
 import { useState, useEffect, useCallback } from "react";
 
 /**
@@ -68,4 +67,21 @@ export function useCountdown(initialSeconds: number, onExpire?: () => void) {
     start,
     reset,
   };
+}
+
+/**
+ * Hook for real-time live clock ticking every intervalMs (defaults to 1000ms / 1 second).
+ * Returns the current epoch timestamp in seconds.
+ */
+export function useLiveTimestamp(intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Math.floor(Date.now() / 1000));
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs]);
+
+  return now;
 }

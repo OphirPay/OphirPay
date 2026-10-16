@@ -661,4 +661,10 @@ pub enum PaymentError {
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
 }
+
+impl PaymentError {
+    /// Alias for MathOverflow (issue #1283)
+    #[allow(non_upper_case_globals)]
+    pub const ArithmeticOverflow: PaymentError = PaymentError::MathOverflow;
+}
 

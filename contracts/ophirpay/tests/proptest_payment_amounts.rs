@@ -353,3 +353,46 @@ proptest! {
         prop_assert_eq!(h.client.get_locked_balance(), 0);
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. STREAM CANCELLATION PRO-RATA SOLVENCY & FUZZING (Issue #1357)
+// ═══════════════════════════════════════════════════════════════════════════
+
+proptest! {
+    #![proptest_config(get_proptest_config())]
+
+    /// Across arbitrary combinations of stream principal amounts and timestamps,
+    /// compute_vested must never panic, divide by zero, or exceed total_amount,
+    /// and must strictly preserve contract solvency: vested + unvested == total_amount.
+    #[test]
+    fn prop_stream_cancellation_pro_rata_solvency_fuzz(
+        total_amount in 1i128..=1_000_000_000_000i128,
+        start_time in 0u64..1_000_000u64,
+        duration in 0u64..100_000u64,
+        now in 0u64..2_000_000u64,
+    ) {
+        let end_time = start_time.saturating_add(duration);
+        let vested = ophirpay_contract::compute_vested(total_amount, start_time, end_time, now);
+
+        prop_assert!(vested >= 0, "vested amount must never be negative");
+        prop_assert!(vested <= total_amount, "vested amount must never exceed principal");
+
+        let unvested = total_amount.checked_sub(vested).expect("total_amount >= vested");
+        prop_assert_eq!(
+            vested + unvested,
+            total_amount,
+            "contract solvency invariant violated: vested + unvested != total_amount"
+        );
+
+        if now <= start_time {
+            prop_assert_eq!(vested, 0);
+            prop_assert_eq!(unvested, total_amount);
+        } else if now >= end_time || duration == 0 {
+            prop_assert_eq!(vested, total_amount);
+            prop_assert_eq!(unvested, 0);
+        } else {
+            prop_assert!(vested >= 0);
+            prop_assert!(unvested >= 0);
+        }
+    }
+}

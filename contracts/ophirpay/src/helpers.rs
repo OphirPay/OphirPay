@@ -27,17 +27,21 @@ pub fn release_reentrancy_lock(env: &Env) {
 /// The multiply is therefore performed at 256-bit precision so the result is
 /// always the exact linear vesting value and can never exceed `total_amount`.
 pub fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u64) -> i128 {
-    if now >= end_time {
-        return total_amount;
+    if total_amount <= 0 {
+        return 0;
     }
     if now <= start_time {
         return 0;
     }
-    let elapsed = (now - start_time) as i128;
-    let total_duration = (end_time - start_time) as i128;
-    if total_duration == 0 {
+    if now >= end_time || end_time <= start_time {
         return total_amount;
     }
+    let duration = end_time.saturating_sub(start_time);
+    if duration == 0 {
+        return total_amount;
+    }
+    let elapsed = now.saturating_sub(start_time) as i128;
+    let total_duration = duration as i128;
 
     if let Some(product) = total_amount.checked_mul(elapsed) {
         return product / total_duration;

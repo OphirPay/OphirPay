@@ -367,6 +367,30 @@ fn test_batch_empty_and_overflow_errors() {
         fix.client
             .try_create_batch(&creator, &payees, &zero_amounts, &fix.token_id, &tx_hash);
     assert!(res.is_err());
+
+    // Overflow amounts (> i128::MAX) (issue #1283)
+    let mut ovf_payees = Vec::new(&fix.env);
+    let mut ovf_amounts = Vec::new(&fix.env);
+    ovf_payees.push_back(Address::generate(&fix.env));
+    ovf_amounts.push_back(i128::MAX - 10);
+    ovf_payees.push_back(Address::generate(&fix.env));
+    ovf_amounts.push_back(20);
+
+    let res = fix.client.try_create_batch(
+        &creator,
+        &ovf_payees,
+        &ovf_amounts,
+        &fix.token_id,
+        &tx_hash,
+    );
+    assert!(res.is_err());
+    match res {
+        Err(Ok(err)) => {
+            assert_eq!(err, PaymentError::ArithmeticOverflow);
+            assert_eq!(err, PaymentError::MathOverflow);
+        }
+        _ => panic!("Expected ArithmeticOverflow / MathOverflow error on batch total overflow"),
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

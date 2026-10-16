@@ -119,10 +119,10 @@ func verify(body []byte, signature, secret, headerTimestamp string, maxAgeSecond
 		}
 		age := now.Sub(sent).Seconds()
 		if age > float64(maxAgeSeconds) {
-			return false, fmt.Sprintf("payload too old (%.0fs > %ds) — possible replay", age, maxAgeSeconds)
+			return false, fmt.Sprintf("WebhookTimestampExpired: payload too old (%.0fs > %ds) — possible replay", age, maxAgeSeconds)
 		}
 		if age < -float64(maxAgeSeconds) {
-			return false, fmt.Sprintf("payload timestamp is in the future (%.0fs ahead)", -age)
+			return false, fmt.Sprintf("WebhookTimestampFutureSkew: payload timestamp is in the future (%.0fs ahead)", -age)
 		}
 	}
 

@@ -88,9 +88,10 @@ editing it. Reject deliveries whose timestamp is too old or too far in the
 future:
 
 - **Too old** (e.g. older than 5 minutes) — likely a replay of a captured
-  request.
+  request. Verifiers reject this with explicit error code `WebhookTimestampExpired`.
 - **In the future** (beyond a small clock-skew allowance, e.g. 5 minutes) —
-  a sign of a fabricated or manipulated payload.
+  a sign of a fabricated or manipulated payload. Verifiers reject this with
+  explicit error code `WebhookTimestampFutureSkew`.
 
 OphirPay retries failed deliveries up to 3 attempts using configurable
 exponential backoff (1s, then 2s by default) with the **same payload and
@@ -119,14 +120,24 @@ This makes replays harmless even if they arrive inside the freshness window.
 Runnable, dependency-free examples are in
 [`examples/webhook-verification/`](../examples/webhook-verification/):
 
-| Language | File | Run |
+| Language | File | Run / Import |
 |---|---|---|
+| TypeScript | [`node-verifier.ts`](../examples/webhook-verification/node-verifier.ts) | `import { verifyWebhookSignature } from "./node-verifier"` |
 | Node.js (ESM) | [`node/verify.mjs`](../examples/webhook-verification/node/verify.mjs) | `node verify.mjs --secret <secret> --signature <hex> --body-file body.json` |
 | Python 3 | [`python/verify.py`](../examples/webhook-verification/python/verify.py) | `python3 verify.py --secret <secret> --signature <hex> --body-file body.json` |
+| Go | [`go/verify.go`](../examples/webhook-verification/go/verify.go) | `cd go && go run . --secret <secret> --signature <hex> --body-file ../sample-payload.json` |
 
-Both print `VALID` (exit 0) or `INVALID: <reason>` (exit 1), and both
+All reference implementations print `VALID` (exit 0) or `INVALID: <reason>` (exit 1), and
 implement the canonical form above plus a configurable freshness window
 (`--max-age`, default 300s; `--max-age 0` disables it).
+
+### Explicit error codes
+
+When verification fails, reference implementations produce explicit, actionable error codes:
+
+- **`WebhookTimestampExpired`**: The delivery timestamp is older than the configured freshness window (`maxAgeSeconds`, default 300s / 5m), indicating a possible replay attack or stale network delivery.
+- **`WebhookTimestampFutureSkew`**: The delivery timestamp is ahead of the receiver's clock by more than the allowed skew tolerance (`maxAgeSeconds`, default 300s / 5m), indicating clock desynchronization or a manipulated payload.
+- **`WebhookSignatureMismatch`**: The computed HMAC-SHA256 does not match the provided signature header.
 
 ### Sample payload (self-test)
 

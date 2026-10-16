@@ -101,13 +101,15 @@ export function verifyWebhookSignature({
     if (ageSeconds > maxAgeSeconds) {
       return {
         valid: false,
-        reason: `payload too old (${Math.round(ageSeconds)}s > ${maxAgeSeconds}s) — possible replay`,
+        code: "WebhookTimestampExpired",
+        reason: `WebhookTimestampExpired: payload too old (${Math.round(ageSeconds)}s > ${maxAgeSeconds}s) — possible replay`,
       };
     }
     if (ageSeconds < -maxAgeSeconds) {
       return {
         valid: false,
-        reason: `payload timestamp is in the future (${Math.round(-ageSeconds)}s ahead)`,
+        code: "WebhookTimestampFutureSkew",
+        reason: `WebhookTimestampFutureSkew: payload timestamp is in the future (${Math.round(-ageSeconds)}s ahead)`,
       };
     }
   }

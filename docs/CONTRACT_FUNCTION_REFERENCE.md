@@ -643,7 +643,7 @@ identical retry returns the original payment ID without collecting the fee or
 creating another record. Reusing the key with different payment fields fails.
 
 - **Access:** actor auth (`payer.require_auth()`); `require_not_paused`.
-- **Errors:** `ContractPaused` (18), `InvalidAmount` (5), `TokenTransferFailed` (15), `InvalidTokenContract` (80), `PaymentIdempotencyConflict` (309).
+- **Errors:** `ContractPaused` (18), `InvalidAmount` (5), `TokenTransferFailed` (15), `InvalidTokenContract` (80), `PaymentIdempotencyConflict` (309), `MemoTooLong` (310).
 
 ### `get_payment(payment_id: u64) -> Result<Payment, PaymentError>`
 
@@ -895,7 +895,7 @@ Creates a batch of payments; returns a `BatchCreateResult` (batch ID +
 per-payment results).
 
 - **Access:** actor auth (`creator.require_auth()`); `require_not_paused`.
-- **Errors:** `ContractPaused` (18), `BatchEmpty` (14), `BatchTooLarge` (13), `MaxRecipientsExceeded` (67), `DuplicateRecipient` (68), `BatchItemFailed` (74), `TokenTransferFailed` (15).
+- **Errors:** `ContractPaused` (18), `BatchEmpty` (14), `BatchTooLarge` (13), `MaxRecipientsExceeded` (67), `DuplicateRecipient` (68), `BatchItemFailed` (74), `TokenTransferFailed` (15), `MemoTooLong` (310).
 
 ### `get_batch(batch_id: u64) -> Result<BatchPayment, PaymentError>`
 

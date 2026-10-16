@@ -346,6 +346,7 @@ export enum PaymentErrorCode {
   AlreadyVoted = 51,
   ReentrantCall = 52,
   PaymentIdempotencyConflict = 309,
+  MemoTooLong = 310,
 }
 
 export const PAYMENT_ERROR_MESSAGES: Record<number, string> = {
@@ -402,4 +403,5 @@ export const PAYMENT_ERROR_MESSAGES: Record<number, string> = {
   51: "Voter has already voted on this proposal",
   52: "Reentrant call detected — execution rejected by reentrancy lock",
   309: "Idempotency key was reused for a different payment payload",
+  310: "Memo exceeds maximum allowed length of 64 bytes",
 };

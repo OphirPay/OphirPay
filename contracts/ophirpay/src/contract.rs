@@ -51,6 +51,10 @@ pub const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 // `get_reason_code_analytics`.
 pub const MAX_READER_ENTRIES: u32 = 100;
 
+// ── Memo Constraints (Issue #1360) ────────────────────────────
+/// Maximum allowed byte length for payment memos / transaction metadata.
+pub const MAX_MEMO_BYTES: u32 = 64;
+
 // ── Contract ───────────────────────────────────────────────────
 
 #[contract]
@@ -1107,6 +1111,9 @@ impl OphirPayContract {
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
+        if metadata.len() > MAX_MEMO_BYTES || tx_hash.len() > MAX_MEMO_BYTES {
+            return Err(PaymentError::MemoTooLong);
+        }
         if tx_hash.len() == 0 {
             return Err(PaymentError::InvalidAmount);
         }
@@ -2041,6 +2048,9 @@ impl OphirPayContract {
         require_not_paused(&env, PauseScope::Payments)?;
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
+        }
+        if metadata.len() > MAX_MEMO_BYTES || tx_hash.len() > MAX_MEMO_BYTES {
+            return Err(PaymentError::MemoTooLong);
         }
 
         // Idempotency (#804): (payer, tx_hash) identifies a payment. Replaying
@@ -3339,6 +3349,10 @@ impl OphirPayContract {
     ) -> Result<BatchCreateResult, PaymentError> {
         creator.require_auth();
         require_not_paused(&env, PauseScope::Batches)?;
+
+        if tx_hash.len() > MAX_MEMO_BYTES {
+            return Err(PaymentError::MemoTooLong);
+        }
 
         let len = payees.len();
         if len == 0 {

@@ -935,3 +935,52 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+/// Issue #1350: Streams with durations shorter than MIN_STREAM_DURATION (60s)
+/// or longer than MAX_STREAM_DURATION (5 years) are rejected.
+#[test]
+fn test_stream_duration_bounds_enforced() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 10_000);
+
+    let now = fix.env.ledger().timestamp();
+    let meta = String::from_str(&fix.env, "duration_bounds_test");
+
+    // 1. Duration too short (< 60s)
+    let too_short = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 59),
+        &meta,
+    );
+    assert_eq!(too_short, Err(Ok(PaymentError::StreamDurationTooShort)));
+
+    // 2. Duration too long (> 5 years: 157_680_000s)
+    let too_long = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 157_680_001),
+        &meta,
+    );
+    assert_eq!(too_long, Err(Ok(PaymentError::StreamDurationTooLong)));
+
+    // 3. Valid duration (e.g. 60s minimum) succeeds
+    let valid = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 60),
+        &meta,
+    );
+    assert!(valid.is_ok());
+}

@@ -280,6 +280,56 @@ describe("webhook verification examples — docs consistency", () => {
   });
 });
 
+describe("webhook verification examples — TypeScript (node-verifier.ts)", () => {
+  it("verifies a payload produced by buildSignedPayload", async () => {
+    const { verifyWebhookSignature } = await import(
+      "../../examples/webhook-verification/node-verifier"
+    );
+    const { body, signature, timestamp } = buildSignedPayload(
+      { ...samplePayload, timestamp: new Date().toISOString() },
+      SECRET
+    );
+    const res = verifyWebhookSignature({ body, signature, secret: SECRET, timestamp });
+    expect(res.valid).toBe(true);
+    expect(res.reason).toBe("valid");
+  });
+
+  it("rejects a tampered body", async () => {
+    const { verifyWebhookSignature } = await import(
+      "../../examples/webhook-verification/node-verifier"
+    );
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const tampered = body.replace('"amount":100', '"amount":999');
+    const res = verifyWebhookSignature({
+      body: tampered,
+      signature,
+      secret: SECRET,
+      now: new Date("2026-08-14T00:00:30Z"),
+    });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toBe("signature mismatch");
+  });
+
+  it("handles length mismatch safely without throwing RangeError", async () => {
+    const { verifyWebhookSignature, timingSafeEqualSignature } = await import(
+      "../../examples/webhook-verification/node-verifier"
+    );
+    expect(timingSafeEqualSignature("short", "longer-string")).toBe(false);
+    expect(timingSafeEqualSignature("", "valid")).toBe(false);
+
+    const { body, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const res = verifyWebhookSignature({
+      body,
+      signature: "short-sig",
+      secret: SECRET,
+      timestamp,
+      now: new Date("2026-08-14T00:00:30Z"),
+    });
+    expect(res.valid).toBe(false);
+    expect(res.reason).toBe("signature mismatch");
+  });
+});
+
 describe("webhook verification examples — Go (verify.go)", () => {
   // `go run .` compiles the verifier on its first invocation, which blows past
   // the default 5s test timeout on a cold CI runner. Warm the build cache once

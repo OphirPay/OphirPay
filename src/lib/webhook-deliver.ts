@@ -65,6 +65,104 @@ export function buildSignedPayload(
   return { body: JSON.stringify({ ...payload, signature }), signature, timestamp };
 }
 
+/**
+ * Timing-safe comparison of two hex-encoded signatures or secret tokens.
+ * Returns true if both buffers match and have identical lengths, without
+ * leaking timing information or throwing exceptions on mismatched lengths.
+ */
+export function timingSafeEqualSignatures(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") {
+    return false;
+  }
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length === 0 || bufA.length !== bufB.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+export interface VerifyWebhookSignatureOptions {
+  body: string;
+  signature: string;
+  secret: string;
+  timestamp?: string;
+  maxAgeSeconds?: number;
+  now?: Date | number;
+}
+
+export interface VerifyWebhookSignatureResult {
+  valid: boolean;
+  reason: string;
+}
+
+/**
+ * Verify an incoming OphirPay webhook signature in constant time.
+ * Enforces timing-safe comparison to prevent byte-by-byte side-channel attacks,
+ * handles length mismatches gracefully without throwing unhandled exceptions,
+ * and validates the timestamp freshness window for replay protection.
+ */
+export function verifyWebhookSignature(
+  opts: VerifyWebhookSignatureOptions
+): VerifyWebhookSignatureResult {
+  const {
+    body,
+    signature,
+    secret,
+    timestamp,
+    maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+    now = new Date(),
+  } = opts;
+
+  let parsed: WebhookPayload;
+  let canonical: string;
+  try {
+    parsed = JSON.parse(body) as WebhookPayload;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { valid: false, reason: "body must be a JSON object" };
+    }
+    canonical = canonicalizeWebhookBody(parsed);
+  } catch (err) {
+    return {
+      valid: false,
+      reason: `invalid body: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const signedTimestamp = String(timestamp ?? parsed.timestamp ?? "");
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(webhookSignedInput(signedTimestamp, canonical))
+    .digest("hex");
+
+  if (!timingSafeEqualSignatures(signature, expected)) {
+    return { valid: false, reason: "signature mismatch" };
+  }
+
+  if (maxAgeSeconds > 0) {
+    const ts = Date.parse(signedTimestamp);
+    if (Number.isNaN(ts)) {
+      return { valid: false, reason: "missing or invalid timestamp" };
+    }
+    const nowMs = typeof now === "number" ? now : now.getTime();
+    const ageSeconds = (nowMs - ts) / 1000;
+    if (ageSeconds > maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload too old (${Math.round(ageSeconds)}s > ${maxAgeSeconds}s) — possible replay`,
+      };
+    }
+    if (ageSeconds < -maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload timestamp is in the future (${Math.round(-ageSeconds)}s ahead)`,
+      };
+    }
+  }
+
+  return { valid: true, reason: "valid" };
+}
+
 export interface WebhookRequestPreview {
   canonicalBody: string;
   body: string;

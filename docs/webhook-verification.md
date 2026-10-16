@@ -122,11 +122,14 @@ Runnable, dependency-free examples are in
 | Language | File | Run |
 |---|---|---|
 | Node.js (ESM) | [`node/verify.mjs`](../examples/webhook-verification/node/verify.mjs) | `node verify.mjs --secret <secret> --signature <hex> --body-file body.json` |
+| TypeScript | [`node-verifier.ts`](../examples/webhook-verification/node-verifier.ts) | `npx tsx node-verifier.ts --secret <secret> --signature <hex> --body-file body.json` |
 | Python 3 | [`python/verify.py`](../examples/webhook-verification/python/verify.py) | `python3 verify.py --secret <secret> --signature <hex> --body-file body.json` |
 
-Both print `VALID` (exit 0) or `INVALID: <reason>` (exit 1), and both
+All reference verifiers print `VALID` (exit 0) or `INVALID: <reason>` (exit 1), and
 implement the canonical form above plus a configurable freshness window
-(`--max-age`, default 300s; `--max-age 0` disables it).
+(`--max-age`, default 300s; `--max-age 0` disables it). Signature comparisons
+enforce constant-time buffers with explicit byte-length validation to prevent
+side-channel timing attacks and avoid uncaught RangeErrors.
 
 ### Sample payload (self-test)
 

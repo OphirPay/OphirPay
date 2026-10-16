@@ -21,6 +21,8 @@ import {
   webhookSignedInput,
   WEBHOOK_TIMESTAMP_HEADER,
   WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+  timingSafeEqualSignatures,
+  verifyWebhookSignature,
   type WebhookPayload,
 } from "@/lib/webhook-deliver";
 import {
@@ -44,9 +46,9 @@ function expectedSignature(payload: WebhookPayload, secret = SECRET): string {
 }
 
 /**
- * Minimal receiver check mirroring docs/webhook-verification.md and the
- * reference verifiers: verify the HMAC over `<timestamp>.<canonical body>`,
- * then enforce the freshness window on the signed timestamp.
+ * Receiver check mirroring docs/webhook-verification.md and the
+ * reference verifiers: constant-time HMAC verification over `<timestamp>.<canonical body>`,
+ * then enforcing the freshness window on the signed timestamp.
  */
 function receiverVerify(
   body: string,
@@ -55,17 +57,14 @@ function receiverVerify(
   nowMs: number,
   maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS
 ): string {
-  const parsed = JSON.parse(body) as WebhookPayload;
-  const canonical = JSON.stringify({ ...parsed, signature: "" });
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(`${parsed.timestamp}.${canonical}`)
-    .digest("hex");
-  if (expected !== signature) return "signature mismatch";
-  const ageSeconds = (nowMs - Date.parse(parsed.timestamp)) / 1000;
-  if (ageSeconds > maxAgeSeconds) return "payload too old — possible replay";
-  if (ageSeconds < -maxAgeSeconds) return "payload timestamp is in the future";
-  return "valid";
+  const res = verifyWebhookSignature({
+    body,
+    signature,
+    secret,
+    maxAgeSeconds,
+    now: nowMs,
+  });
+  return res.valid ? "valid" : res.reason;
 }
 
 describe("signWebhookPayload", () => {
@@ -292,3 +291,137 @@ describe("deliverWebhook", () => {
     expect(result.errorMessage).toBe("Webhook delivery timed out after 10ms");
   });
 });
+
+describe("timingSafeEqualSignatures (timing-safe HMAC comparison)", () => {
+  it("returns true for identical signatures", () => {
+    const sig = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
+    expect(timingSafeEqualSignatures(sig, sig)).toBe(true);
+  });
+
+  it("returns false for signatures differing only at the final byte without early-exit timing leaks", () => {
+    const sigA = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
+    const sigB = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84259";
+    expect(timingSafeEqualSignatures(sigA, sigB)).toBe(false);
+  });
+
+  it("returns false for signatures differing at the first byte without early-exit timing leaks", () => {
+    const sigA = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
+    const sigB = "93ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
+    expect(timingSafeEqualSignatures(sigA, sigB)).toBe(false);
+  });
+
+  it("handles length mismatches without throwing unhandled RangeError exceptions", () => {
+    const sig = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
+    const shortSig = "83ab64c58dadec40";
+    const longSig = `${sig}deadbeef`;
+    expect(timingSafeEqualSignatures(sig, shortSig)).toBe(false);
+    expect(timingSafeEqualSignatures(shortSig, sig)).toBe(false);
+    expect(timingSafeEqualSignatures(sig, longSig)).toBe(false);
+    expect(timingSafeEqualSignatures(longSig, sig)).toBe(false);
+  });
+
+  it("handles empty strings and invalid types gracefully", () => {
+    const sig = "83ab64c58dadec406835ebd9b907b579cb89132098823ec66f2b96dd1ad84258";
+    expect(timingSafeEqualSignatures("", "")).toBe(false);
+    expect(timingSafeEqualSignatures(sig, "")).toBe(false);
+    expect(timingSafeEqualSignatures("", sig)).toBe(false);
+    // @ts-expect-error test invalid inputs
+    expect(timingSafeEqualSignatures(null, sig)).toBe(false);
+    // @ts-expect-error test invalid inputs
+    expect(timingSafeEqualSignatures(sig, undefined)).toBe(false);
+  });
+});
+
+describe("verifyWebhookSignature (receiver-side constant-time verification)", () => {
+  it("verifies a genuinely signed payload", () => {
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      now: Date.parse(timestamp) + 10_000,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.reason).toBe("valid");
+  });
+
+  it("rejects signature mismatch of equal length", () => {
+    const { body, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const forgedSig = "00".repeat(32);
+    const result = verifyWebhookSignature({
+      body,
+      signature: forgedSig,
+      secret: SECRET,
+      timestamp,
+      now: Date.parse(timestamp) + 10_000,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("rejects truncated signature without throwing RangeError", () => {
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const truncated = signature.slice(0, 10);
+    const result = verifyWebhookSignature({
+      body,
+      signature: truncated,
+      secret: SECRET,
+      timestamp,
+      now: Date.parse(timestamp) + 10_000,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("rejects invalid JSON body with descriptive error", () => {
+    const result = verifyWebhookSignature({
+      body: "not-json",
+      signature: "00".repeat(32),
+      secret: SECRET,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("invalid body");
+  });
+
+  it("rejects non-object JSON body (e.g. array or primitive)", () => {
+    const result = verifyWebhookSignature({
+      body: "[1, 2, 3]",
+      signature: "00".repeat(32),
+      secret: SECRET,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("body must be a JSON object");
+  });
+
+  it("rejects expired deliveries outside the maxAgeSeconds window", () => {
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const expiredNow = Date.parse(timestamp) + 400_000; // 400s later (window is 300s)
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      maxAgeSeconds: 300,
+      now: expiredNow,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("too old");
+  });
+
+  it("rejects future-dated deliveries beyond clock-skew window", () => {
+    const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+    const futureNow = Date.parse(timestamp) - 400_000;
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp,
+      maxAgeSeconds: 300,
+      now: futureNow,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("future");
+  });
+});
+

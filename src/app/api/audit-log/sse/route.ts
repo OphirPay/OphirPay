@@ -10,7 +10,12 @@ import {
   createBoundedSseBuffer,
   type BoundedSseBuffer,
 } from "@/lib/events/sse-buffer";
-import { incMetric } from "@/lib/metrics-counters";
+import {
+  incMetric,
+  incSseActiveConnection,
+  decSseActiveConnection,
+  observeSseConnectionDuration,
+} from "@/lib/metrics-counters";
 
 /** Map of connected SSE clients (used for the safety-timeout sweep). */
 const clients = new Map<string, ReadableStreamDefaultController<Uint8Array>>();
@@ -95,24 +100,36 @@ async function pollContractForAuditEntries(
   return { entries, newLastSeenId: end };
 }
 
-export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(async function GET() {
+export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(async function GET(request?: Request) {
   const clientId = ++clientCounter;
   const contractId = process.env.NEXT_PUBLIC_CONTRACT_ID || DEFAULT_CONTRACT_ID;
+  const routeName = "/api/audit-log/sse";
+  const startTime = Date.now();
 
   let closed = false;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
   let safetyTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  // Cleanup on stream cancel / client disconnect / slow-consumer disconnect.
+  // Cleanup on stream cancel / client disconnect / slow-consumer disconnect / abort.
   const cleanup = () => {
     if (closed) return;
     closed = true;
     if (pollInterval) clearInterval(pollInterval);
     if (safetyTimeout) clearTimeout(safetyTimeout);
     clients.delete(String(clientId));
+
+    const durationSeconds = Math.max(0, (Date.now() - startTime) / 1000);
+    observeSseConnectionDuration(routeName, durationSeconds);
+    decSseActiveConnection(routeName);
+
     // Release the connection from the shared gauge exactly once.
     incMetric("sse_open_connections", -1);
   };
+
+  if (request?.signal?.aborted) {
+    cleanup();
+    return new NextResponse(null, { status: 499 });
+  }
 
   let lastDropped = 0;
   const buffer: BoundedSseBuffer = createBoundedSseBuffer({
@@ -132,7 +149,18 @@ export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(asyn
     async start(controller: AuditController) {
       buffer.attach(controller);
       clients.set(String(clientId), controller);
+
+      incSseActiveConnection(routeName);
       incMetric("sse_open_connections");
+
+      if (request?.signal) {
+        if (request.signal.aborted) {
+          cleanup();
+          return;
+        }
+        request.signal.addEventListener("abort", cleanup, { once: true });
+      }
+
       let lastSeenId = 0;
 
       // Send connected event immediately.

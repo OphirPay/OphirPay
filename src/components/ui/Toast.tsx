@@ -182,3 +182,7 @@ export function useToast(): ToastContextValue {
   }
   return context;
 }
+
+export function useOptionalToast(): ToastContextValue | null {
+  return useContext(ToastContext);
+}

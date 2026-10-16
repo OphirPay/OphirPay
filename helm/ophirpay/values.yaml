@@ -124,6 +124,9 @@ config:
 # ── Secrets (rendered into a Kubernetes Secret) ────────────────
 # Names must also exist in `.env.example` (same test as `config` above).
 secrets:
+  # Reference an existing Kubernetes Secret instead of rendering one.
+  # When set, no Secret resource is created and plain-text secrets below are not required.
+  existingSecret: ""
   DATABASE_URL: ""
   NEXT_PUBLIC_CONTRACT_ID: ""
   NEXT_PUBLIC_EMITTER_CONTRACT_ID: ""

@@ -71,19 +71,25 @@ describe("helm/ophirpay config keys (#683)", () => {
     },
   );
 
-  it.each(Object.keys(values.secrets))(
+  const secretEnvKeys = Object.keys(values.secrets).filter((key) => key !== "existingSecret");
+
+  it.each(secretEnvKeys)(
     "secret key %s is a documented .env.example variable",
     (key) => {
       expect(documentedEnvVars.has(key)).toBe(true);
     },
   );
 
-  it.each([...Object.keys(values.config), ...Object.keys(values.secrets)])(
+  it.each([...Object.keys(values.config), ...secretEnvKeys])(
     "key %s is a valid environment variable name",
     (key) => {
       expect(key).toMatch(/^[A-Z][A-Z0-9_]*$/);
     },
   );
+
+  it("supports existingSecret configuration in values.secrets (#1334)", () => {
+    expect(values.secrets).toHaveProperty("existingSecret");
+  });
 
   it("uses the Stellar variable names the application reads", () => {
     const envSchema = readFileSync(

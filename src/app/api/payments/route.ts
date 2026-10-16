@@ -10,6 +10,13 @@ import {
   unauthorizedError,
   handleApiError,
 } from "@/lib/api-response";
+import {
+  validationProblem,
+  codeProblem,
+  problemFromResponse,
+  handleApiErrorProblem,
+} from "@/lib/api-errors";
+import { ERROR_CODES } from "@/lib/error-codes";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -27,6 +34,37 @@ import {
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
+import {
+  STELLAR_MEMO_ERROR_MESSAGES,
+  memoTextByteLength,
+} from "@/lib/validation/stellar";
+
+// Issue #1368: memos accepted from client payloads are validated as Stellar
+// MEMO_TEXT by createPaymentSchema, but schema-level checks run before we know
+// the payload is well-formed JSON — defense in depth: reject anything that
+// still reaches the handler with an over-limit or invalidly-encoded memo
+// (e.g. lone surrogates that encode to U+FFFD replacement bytes) with a
+// descriptive 400 before any persistence or RPC submission.
+function memoGuard(memo: unknown): string | null {
+  if (memo === undefined || memo === null) return null;
+  if (typeof memo !== "string") {
+    return STELLAR_MEMO_ERROR_MESSAGES.notAString; // unreachable via schema
+  }
+  if (memoTextByteLength(memo) > 28) {
+    return STELLAR_MEMO_ERROR_MESSAGES.tooManyBytes;
+  }
+  // Invalid UTF-8: unpaired surrogates re-encode to U+FFFD replacement bytes.
+  if (/[\uD800-\uDFFF]/.test(memo)) {
+    const isPaired = memo.replace(
+      /[\uD800-\uDBFF][\uDC00-\uDFFF]/g,
+      ""
+    );
+    if (/[\uD800-\uDFFF]/.test(isPaired)) {
+      return "Memo contains invalid UTF-8 byte sequences.";
+    }
+  }
+  return null;
+}
 
 export const GET = withMetrics("GET /api/payments", withRequestLogging(async function GET(request: Request) {
   try {
@@ -121,18 +159,33 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
 export const POST = withMetrics("POST /api/payments", withRequestLogging(async function POST(request: Request) {
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    if (csrfError) return await problemFromResponse(csrfError, "/api/payments");
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+      return codeProblem(
+        ERROR_CODES.UNAUTHORIZED,
+        "Authentication required. Connect your wallet or provide an API key.",
+        401,
+        "/api/payments"
       );
     }
 
     const body = await request.json();
     const parsed = createPaymentSchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return validationProblem(parsed.error, "/api/payments");
+
+    // Issue #1368: reject an over-limit or invalidly-encoded memo with a
+    // descriptive 400 before persistence or downstream RPC submission.
+    const memoError = memoGuard(parsed.data.memo);
+    if (memoError) {
+      return codeProblem(
+        ERROR_CODES.VALIDATION_ERROR,
+        memoError,
+        400,
+        "/api/payments"
+      );
+    }
 
     const payment = await prisma.payment.create({
       data: {
@@ -181,6 +234,6 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
 
     return successResponse(payment, undefined, 201);
   } catch (err) {
-    return handleApiError(err, "POST /api/payments");
+    return await handleApiErrorProblem(err, "POST /api/payments", "/api/payments");
   }
 }));

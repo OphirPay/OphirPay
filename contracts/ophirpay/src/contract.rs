@@ -38,6 +38,9 @@ pub const BUMP_MIN_TTL: u32 = 5_000;
 pub const BUMP_MAX_TTL: u32 = 50_000;
 pub const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 
+/// Maximum signers allowed in a multisig configuration (issue #1285)
+pub const MAX_MULTISIG_SIGNERS: u32 = 50;
+
 // ── Enumeration Cap (docs/AUDIT.md MEDIUM-2, issue #742) ───────
 // Every *enumerating* reader is bounded by this many entries, newest first.
 // The upstream collections are only bounded by what a writer pushed into them
@@ -139,15 +142,16 @@ impl OphirPayContract {
         caller.require_auth();
         require_owner(&env, &caller)?;
 
-        let mut unique_signers = Vec::new(&env);
-        for signer in signers.into_iter() {
-            if !unique_signers.contains(signer.clone()) {
-                unique_signers.push_back(signer);
-            }
+        if signers.len() > MAX_MULTISIG_SIGNERS {
+            return Err(PaymentError::MaxSignersExceeded);
         }
 
-        if unique_signers.len() > 50 {
-            return Err(PaymentError::MaxSignersExceeded);
+        let mut unique_signers = Vec::new(&env);
+        for signer in signers.into_iter() {
+            if unique_signers.contains(signer.clone()) {
+                return Err(PaymentError::DuplicateSigner);
+            }
+            unique_signers.push_back(signer);
         }
 
         if threshold == 0 || threshold > unique_signers.len() {

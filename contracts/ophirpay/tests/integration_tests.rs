@@ -781,14 +781,14 @@ fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
         &total,
         &fix.token_id,
         &now,
-        &(now + 4),
+        &(now + 60),
         &String::from_str(&fix.env, "overflow e2e"),
     );
     assert_eq!(stream_id, 1);
 
     // Half-way through the schedule: `total * 2` overflows i128. Before the
     // fix this vested 0, so the recipient could claim nothing at all.
-    fix.env.ledger().set_timestamp(now + 2);
+    fix.env.ledger().set_timestamp(now + 30);
     let claimed = fix.client.claim_stream(&recipient, &stream_id);
     assert!(claimed > 0, "overflow must not collapse vesting to zero");
     assert_eq!(claimed, total / 2);
@@ -934,4 +934,53 @@ fn test_unknown_pause_scope_is_rejected() {
 
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
+}
+
+
+#[test]
+fn stream_duration_bounds_enforced() {
+    let fix = Fixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    let total: i128 = 10_000;
+    fix.mint(&creator, total * 3);
+
+    let now = fix.env.ledger().timestamp();
+
+    // 1. Shorter than MIN_STREAM_DURATION (60s) -> fails with StreamDurationTooShort (310)
+    let short_res = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &total,
+        &fix.token_id,
+        &now,
+        &(now + 59),
+        &String::from_str(&fix.env, "too short"),
+    );
+    assert_eq!(short_res, Err(Ok(PaymentError::StreamDurationTooShort)));
+
+    // 2. Exceeding MAX_STREAM_DURATION (5 years = 157_680_000s) -> fails with StreamDurationTooLong (311)
+    let max_duration: u64 = 5 * 365 * 86_400;
+    let long_res = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &total,
+        &fix.token_id,
+        &now,
+        &(now + max_duration + 1),
+        &String::from_str(&fix.env, "too long"),
+    );
+    assert_eq!(long_res, Err(Ok(PaymentError::StreamDurationTooLong)));
+
+    // 3. Valid duration within [MIN_STREAM_DURATION, MAX_STREAM_DURATION] -> succeeds
+    let ok_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total,
+        &fix.token_id,
+        &now,
+        &(now + 3600),
+        &String::from_str(&fix.env, "valid stream"),
+    );
+    assert_eq!(ok_id, 1);
 }

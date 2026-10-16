@@ -1,133 +1,155 @@
 // SPDX-License-Identifier: MIT
 
-import { StrKey } from "@stellar/stellar-sdk";
-
 /**
- * SEP-7 (Stellar URI Scheme) payload builders.
- *
- * SEP-7 defines URIs like `web+stellar:pay?destination=G...` that Stellar
- * wallets recognize and act on. The receive page encodes the connected
- * account's address into a `pay` payload so a sender can scan the QR with
- * any SEP-7-compatible wallet and pay instantly.
- *
- * Reference: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0007.md
+ * SEP-0007 URI generator and parser for Stellar payments.
+ * Specification: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0007.md#operation-pay
  */
+
+export type Sep7MemoType = "MEMO_TEXT" | "MEMO_ID" | "MEMO_HASH" | "MEMO_RETURN";
 
 export interface Sep7PayParams {
-  /** Required — the destination Stellar account (G...). */
+  /** The Stellar address (G...) or federated address of the recipient. */
   destination: string;
-  /** Optional — amount in the asset's base units. */
-  amount?: string;
-  /** Optional — transaction memo. */
-  memo?: string;
-  /** Optional — memo type; defaults to MEMO_TEXT when a memo is provided. */
-  memoType?: "MEMO_TEXT" | "MEMO_ID" | "MEMO_HASH" | "MEMO_RETURN";
-  /** Optional — asset code; omitted (native XLM) when "XLM". */
+  /** Amount to transfer. */
+  amount?: string | number;
+  /** Asset code (e.g. XLM, USDC). If omitted or XLM, assetIssuer is omitted. */
   assetCode?: string;
-  /** Optional — asset issuer for non-native assets. */
+  /** Account ID of the asset issuer (required if assetCode is not XLM/native). */
   assetIssuer?: string;
-  /** Optional — human-readable message shown to the sender. */
+  /** Memo content. */
+  memo?: string;
+  /** Memo type: MEMO_TEXT, MEMO_ID, MEMO_HASH, or MEMO_RETURN. */
+  memoType?: Sep7MemoType;
+  /** Human-readable explanation of why the payment is needed. */
   msg?: string;
-}
-
-const ASSET_CODE_PATTERN = /^[A-Za-z0-9]{1,12}$/;
-const MEMO_TYPES = new Set<Sep7PayParams["memoType"]>([
-  "MEMO_TEXT",
-  "MEMO_ID",
-  "MEMO_HASH",
-  "MEMO_RETURN",
-]);
-
-function isValidAmount(amount: string): boolean {
-  if (typeof amount !== "string") return false;
-  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,7})?$/.test(amount)) return false;
-  const [wholePart, fractionalPart = ""] = amount.split(".");
-  const whole = wholePart.replace(/^0+(?=\d)/, "");
-  const maximumWhole = "922337203685";
-  if (whole.length > maximumWhole.length) return false;
-  if (whole.length === maximumWhole.length && whole > maximumWhole) return false;
-  if (whole === maximumWhole && fractionalPart.padEnd(7, "0") > "4775807") {
-    return false;
-  }
-  return whole !== "0" || /[1-9]/.test(fractionalPart);
-}
-
-function isValidMemo(memo: string, memoType: Sep7PayParams["memoType"]): boolean {
-  if (typeof memo !== "string" || !memoType || !MEMO_TYPES.has(memoType)) {
-    return false;
-  }
-  if (memoType === "MEMO_TEXT") return new TextEncoder().encode(memo).length <= 28;
-  if (memoType === "MEMO_ID") {
-    if (!/^\d+$/.test(memo)) return false;
-    const normalizedId = memo.replace(/^0+(?=\d)/, "");
-    const maximumId = "18446744073709551615";
-    return (
-      normalizedId.length < maximumId.length ||
-      (normalizedId.length === maximumId.length && normalizedId <= maximumId)
-    );
-  }
-  return /^[0-9a-fA-F]{64}$/.test(memo);
-}
-
-export function isValidSep7Address(address: string): boolean {
-  return typeof address === "string" && StrKey.isValidEd25519PublicKey(address);
+  /** Network passphrase if targeting a specific network (e.g. Testnet vs Public). */
+  networkPassphrase?: string;
+  /** Domain of the service originating the request. */
+  originDomain?: string;
 }
 
 /**
- * Build a SEP-7 `web+stellar:pay` URI.
- *
- * Only the destination is required. Optional params are omitted when empty
- * or invalid, and the native XLM asset is never encoded as `asset_code`
- * (per SEP-7, native payments omit the asset entirely).
+ * Generates a SEP-0007 compliant `web+stellar:pay` URI.
+ * Validated for mobile wallets (Lobstr, Vibrant, Freighter, etc.).
  */
-export function buildSep7PayUri(params: Sep7PayParams): string {
-  if (!isValidSep7Address(params.destination)) {
-    throw new Error("Invalid Stellar destination address");
+export function generateSep7PayUri(params: Sep7PayParams): string {
+  if (!params.destination || !params.destination.trim()) {
+    throw new Error("Destination address is required for SEP-0007 payment URI");
   }
 
-  const url = new URL("web+stellar:pay");
-  url.searchParams.set("destination", params.destination);
+  const queryParts: string[] = [];
 
-  if (params.amount && isValidAmount(params.amount)) {
-    url.searchParams.set("amount", params.amount);
-  }
-  if (params.memo) {
-    const memoType = params.memoType ?? "MEMO_TEXT";
-    if (isValidMemo(params.memo, memoType)) {
-      url.searchParams.set("memo", params.memo);
-      url.searchParams.set("memo_type", memoType);
+  // destination (required)
+  queryParts.push(`destination=${encodeURIComponent(params.destination.trim())}`);
+
+  // amount (optional)
+  if (params.amount !== undefined && params.amount !== null && String(params.amount).trim() !== "") {
+    const amtStr = String(params.amount).trim();
+    const num = parseFloat(amtStr);
+    if (!isNaN(num) && num > 0) {
+      queryParts.push(`amount=${encodeURIComponent(amtStr)}`);
     }
   }
-  if (
-    typeof params.assetCode === "string" &&
-    params.assetCode &&
-    params.assetCode !== "XLM" &&
-    ASSET_CODE_PATTERN.test(params.assetCode)
-  ) {
-    url.searchParams.set("asset_code", params.assetCode);
-    if (
-      typeof params.assetIssuer === "string" &&
-      params.assetIssuer &&
-      isValidSep7Address(params.assetIssuer)
-    ) {
-      url.searchParams.set("asset_issuer", params.assetIssuer);
+
+  // asset_code & asset_issuer (optional; omit if XLM or empty)
+  const code = params.assetCode?.trim().toUpperCase();
+  if (code && code !== "XLM" && code !== "NATIVE") {
+    queryParts.push(`asset_code=${encodeURIComponent(code)}`);
+    if (params.assetIssuer && params.assetIssuer.trim()) {
+      queryParts.push(`asset_issuer=${encodeURIComponent(params.assetIssuer.trim())}`);
     }
   }
-  if (
-    typeof params.msg === "string" &&
-    params.msg &&
-    new TextEncoder().encode(params.msg).length <= 500
-  ) {
-    url.searchParams.set("msg", params.msg);
+
+  // memo & memo_type (optional)
+  if (params.memo && params.memo.trim()) {
+    queryParts.push(`memo=${encodeURIComponent(params.memo.trim())}`);
+    if (params.memoType) {
+      queryParts.push(`memo_type=${encodeURIComponent(params.memoType)}`);
+    } else {
+      queryParts.push(`memo_type=MEMO_TEXT`);
+    }
   }
 
-  return url.toString();
+  // msg (optional)
+  if (params.msg && params.msg.trim()) {
+    queryParts.push(`msg=${encodeURIComponent(params.msg.trim())}`);
+  }
+
+  // network_passphrase (optional)
+  if (params.networkPassphrase && params.networkPassphrase.trim()) {
+    queryParts.push(`network_passphrase=${encodeURIComponent(params.networkPassphrase.trim())}`);
+  }
+
+  // origin_domain (optional)
+  if (params.originDomain && params.originDomain.trim()) {
+    queryParts.push(`origin_domain=${encodeURIComponent(params.originDomain.trim())}`);
+  }
+
+  return `web+stellar:pay?${queryParts.join("&")}`;
 }
 
+/** Alias for generateSep7PayUri */
+export const buildSep7PayUri = generateSep7PayUri;
+
 /**
- * Build the receive payload for an account: a SEP-7 `pay` URI with no
- * amount, so the sender picks how much to send.
+ * Builds a simple receive payload URI for a Stellar address using SEP-0007.
  */
 export function buildReceivePayload(address: string): string {
-  return buildSep7PayUri({ destination: address });
+  return generateSep7PayUri({ destination: address });
+}
+
+/**
+ * Parses a SEP-0007 `web+stellar:pay` URI back into Sep7PayParams.
+ * Returns null if the URI is malformed or missing the destination parameter.
+ */
+export function parseSep7PayUri(uri: string): Sep7PayParams | null {
+  if (!uri || typeof uri !== "string") return null;
+
+  const prefix = "web+stellar:pay?";
+  if (!uri.startsWith(prefix)) return null;
+
+  try {
+    const queryString = uri.slice(prefix.length);
+    const searchParams = new URLSearchParams(queryString);
+
+    const destination = searchParams.get("destination");
+    if (!destination) return null;
+
+    const result: Sep7PayParams = { destination };
+
+    const amount = searchParams.get("amount");
+    if (amount) result.amount = amount;
+
+    const assetCode = searchParams.get("asset_code");
+    if (assetCode) result.assetCode = assetCode;
+
+    const assetIssuer = searchParams.get("asset_issuer");
+    if (assetIssuer) result.assetIssuer = assetIssuer;
+
+    const memo = searchParams.get("memo");
+    if (memo) result.memo = memo;
+
+    const memoType = searchParams.get("memo_type");
+    if (
+      memoType === "MEMO_TEXT" ||
+      memoType === "MEMO_ID" ||
+      memoType === "MEMO_HASH" ||
+      memoType === "MEMO_RETURN"
+    ) {
+      result.memoType = memoType;
+    }
+
+    const msg = searchParams.get("msg");
+    if (msg) result.msg = msg;
+
+    const networkPassphrase = searchParams.get("network_passphrase");
+    if (networkPassphrase) result.networkPassphrase = networkPassphrase;
+
+    const originDomain = searchParams.get("origin_domain");
+    if (originDomain) result.originDomain = originDomain;
+
+    return result;
+  } catch {
+    return null;
+  }
 }

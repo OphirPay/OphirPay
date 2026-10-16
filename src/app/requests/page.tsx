@@ -8,13 +8,13 @@ import { PAGE_TITLES } from "@/lib/page-titles";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { CopyButton } from "@/components/ui/CopyButton";
 import { StatusBadge } from "@/components/ui/Badge";
 import { useToast } from "@/components/ui/Toast";
 import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
 import { generatePaymentLink } from "@/lib/payment-link";
 import { formatAmount } from "@/lib/utils";
 import { useWallet } from "@/hooks/useMultiWallet";
+import { PaymentRequestModal } from "@/components/payments/PaymentRequestModal";
 
 interface RequestData {
   id: string;
@@ -41,8 +41,6 @@ interface CreateRequestBody {
   notificationEmail?: string;
   dueDate?: string;
 }
-
-const QR_API = "https://api.qrserver.com/v1/create-qr-code";
 
 export default function RequestsPage() {
   usePageTitle(PAGE_TITLES.REQUESTS);
@@ -132,11 +130,6 @@ export default function RequestsPage() {
     const url = new URL(link);
     url.searchParams.set("requestId", req.id);
     return url.toString();
-  };
-
-  const getQRUrl = (req: RequestData): string => {
-    const link = getPaymentLink(req);
-    return `${QR_API}?size=250x250&data=${encodeURIComponent(link)}`;
   };
 
   if (loading) {
@@ -432,57 +425,16 @@ export default function RequestsPage() {
         </div>
       </Modal>
 
-      {/* QR Code Modal */}
-      <Modal
+      {/* QR Code Modal with SEP-0007 generator & High-res PNG download */}
+      <PaymentRequestModal
         open={showQR && selectedRequest !== null}
         onClose={() => {
           setShowQR(false);
           setSelectedRequest(null);
         }}
-        title="Payment QR Code"
-        description="Scan to pay with any Stellar wallet"
-        size="sm"
-        footer={
-          <button
-            onClick={() => {
-              setShowQR(false);
-              setSelectedRequest(null);
-            }}
-            className="px-5 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors mx-auto"
-          >
-            Done
-          </button>
-        }
-      >
-        {selectedRequest && (
-          <div className="space-y-4 text-center">
-            <div className="bg-white rounded-xl p-4 inline-block border border-gray-200 dark:border-gray-700">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={getQRUrl(selectedRequest)}
-                alt="Payment QR Code"
-                className="w-56 h-56"
-              />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">
-                {formatAmount(selectedRequest.amount, selectedRequest.assetCode)}
-              </p>
-              {selectedRequest.description && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  {selectedRequest.description}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center justify-center gap-2">
-              <code className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate max-w-[240px]">
-                {getPaymentLink(selectedRequest)}
-              </code>
-              <CopyButton value={getPaymentLink(selectedRequest)} />
-            </div>
-          </div>
-        )}
-      </Modal>
+        request={selectedRequest}
+        defaultWalletAddress={wallet.publicKey || ""}
+      />
     </div>
   );
 }

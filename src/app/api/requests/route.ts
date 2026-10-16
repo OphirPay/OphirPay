@@ -50,6 +50,7 @@ export const POST = withMetrics("POST /api/requests", withRequestLogging(async f
     }
 
     const body = await request.json();
+    // Validate request payload including Stellar memo encoding/format
     const parsed = createPaymentRequestSchema.safeParse(body);
     if (!parsed.success) return validationError(parsed.error);
 

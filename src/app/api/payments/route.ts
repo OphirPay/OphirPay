@@ -131,6 +131,7 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
     }
 
     const body = await request.json();
+    // Validate request payload and Stellar memo encoding/format per Horizon standards
     const parsed = createPaymentSchema.safeParse(body);
     if (!parsed.success) return validationError(parsed.error);
 

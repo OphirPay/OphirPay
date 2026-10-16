@@ -11,6 +11,7 @@ import {
   isRpcFailoverDegraded,
   RPC_FAILOVER_DEGRADED_AFTER_MS,
 } from "@/lib/rpc-failover";
+import { checkRedisHealth } from "@/lib/redis-health";
 
 // ── Check helpers ──────────────────────────────────────────────
 
@@ -103,21 +104,7 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     }
 
     // Check Redis connectivity (if configured)
-    let redisStatus: "ok" | "error" | "disabled" = "disabled";
-    let redisLatency: number | null = null;
-    const redisUrl = process.env.REDIS_URL;
-    if (redisUrl) {
-      const pingUrlStr =
-        redisUrl.replace(/\/\/.*@/, "//health:@").replace(/\/\d+$/, "") +
-        "/ping";
-      const redis = await pingUrl(pingUrlStr, 3000);
-      if (redis) {
-        redisStatus = redis.ok ? "ok" : "error";
-        redisLatency = redis.latencyMs;
-      } else {
-        redisStatus = "error";
-      }
-    }
+    const { status: redisStatus, latencyMs: redisLatency } = await checkRedisHealth(3000);
 
     // Check Contract-ID presence
     const contractStatus: "ok" | "error" =

@@ -14,6 +14,8 @@ import type { MultiWalletState, WalletId } from "@/lib/wallets";
 import { getWalletConnector, getAvailableWallets, setActiveWalletId } from "@/lib/wallets";
 import { fetchXlmBalance } from "@/lib/stellar";
 import { establishSession, revokeSession } from "@/lib/client-auth";
+import { ARIA } from "@/lib/aria-labels";
+import { shortenAddress } from "@/lib/utils";
 
 // ── Context ───────────────────────────────────────────────────
 
@@ -27,6 +29,7 @@ interface WalletContextType {
   isConnecting: boolean;
   error: string | null;
   availableWallets: WalletId[];
+  statusAnnouncement: string | null;
 }
 
 // ── Initial State ─────────────────────────────────────────────
@@ -47,6 +50,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availableWallets, setAvailableWallets] = useState<WalletId[]>([]);
+  const [statusAnnouncement, setStatusAnnouncement] = useState<string | null>(null);
 
   // Detect available wallets on mount
   useEffect(() => {
@@ -117,6 +121,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     async (walletId: WalletId) => {
       setIsConnecting(true);
       setError(null);
+      setStatusAnnouncement(`${ARIA.WALLET_CONNECTING}...`);
 
       try {
         const connector = getWalletConnector(walletId);
@@ -150,6 +155,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
 
         if (publicKey) {
           loadBalance(publicKey);
+          setStatusAnnouncement(`${ARIA.WALLET_CONNECTED}: ${shortenAddress(publicKey)}`);
         }
         // Open a server-side session so API routes can authorize this user.
         // Wallets that support message signing prove ownership by signing a
@@ -170,6 +176,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
           setError(
             "Wallet connected, but the server rejected the session. You may have declined the signature request — reconnect and approve it to use API features."
           );
+          setStatusAnnouncement(`${ARIA.WALLET_CONNECTION_ERROR}: Server rejected session`);
           return;
         }
         if (!sessionOk) {
@@ -184,6 +191,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
         const message =
           err instanceof Error ? err.message : "Failed to connect wallet";
         setError(message);
+        setStatusAnnouncement(`${ARIA.WALLET_CONNECTION_ERROR}: ${message}`);
       } finally {
         setIsConnecting(false);
       }
@@ -200,6 +208,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     setWallet(initialWalletState);
     setActiveWalletId(null);
     setError(null);
+    setStatusAnnouncement(ARIA.WALLET_DISCONNECTED);
 
     if (walletId) {
       try {
@@ -237,6 +246,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
         isConnecting,
         error,
         availableWallets,
+        statusAnnouncement,
       }}
     >
       {children}

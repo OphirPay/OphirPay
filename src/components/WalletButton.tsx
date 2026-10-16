@@ -10,10 +10,19 @@ import { Button } from "@/components/ui/Button";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WalletSelector } from "@/components/WalletSelector";
 import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
+import { ARIA } from "@/lib/aria-labels";
 
 export function WalletButton() {
-  const { wallet, connect, disconnect, fetchBalance, isConnecting, error, availableWallets } =
-    useWallet();
+  const {
+    wallet,
+    connect,
+    disconnect,
+    fetchBalance,
+    isConnecting,
+    error,
+    availableWallets,
+    statusAnnouncement,
+  } = useWallet();
   const [showSelector, setShowSelector] = useState(false);
   const [connectingWallet, setConnectingWallet] = useState<WalletId | null>(null);
 
@@ -36,6 +45,16 @@ export function WalletButton() {
   if (wallet.connected && wallet.publicKey) {
     return (
       <div className="flex items-center gap-3">
+        {/* ARIA live region for screen reader announcements */}
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+          data-testid="wallet-status-announcer"
+        >
+          {statusAnnouncement || `${ARIA.WALLET_CONNECTED}: ${shortenAddress(wallet.publicKey)}`}
+        </div>
         {/* Balance */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
           {wallet.balanceLoading ? (
@@ -125,6 +144,16 @@ export function WalletButton() {
 
   return (
     <div className="flex flex-col items-end gap-1">
+      {/* ARIA live region for screen reader announcements */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="wallet-status-announcer"
+      >
+        {statusAnnouncement || (isConnecting ? ARIA.WALLET_CONNECTING : error ? `${ARIA.WALLET_CONNECTION_ERROR}: ${error}` : "")}
+      </div>
       <Tooltip content="Install Freighter wallet extension" position="bottom">
         <Button
           onClick={() => setShowSelector(true)}

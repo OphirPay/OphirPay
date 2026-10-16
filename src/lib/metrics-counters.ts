@@ -196,6 +196,7 @@ export function resetMetricsForTest(): void {
   for (const reason of ["rate_limited", "deduplicated", "oversized"] as CspReportDropReason[]) {
     cspReportsDropped.set(reason, 0);
   }
+  resetSseMetrics();
 }
 
 // ── Per-endpoint latency histograms and error counts ──────────
@@ -295,3 +296,92 @@ export function getEndpointMetrics(): EndpointMetricEntry[] {
 export function resetEndpointMetrics(): void {
   endpointMetrics.clear();
 }
+
+// ── SSE Active Connections Gauge & Duration Histogram (issue #1425) ──
+//
+// Track concurrent open SSE connections per route with label `route`.
+// In addition to active connections gauge, track client session longevity
+// via a duration histogram so connection pool capacity planning can be monitored.
+
+/** Histogram bucket upper bounds (seconds) for SSE connection longevity. */
+export const SSE_DURATION_BUCKET_BOUNDS = [
+  1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600,
+];
+
+export interface SseDurationObservation {
+  count: number;
+  sum: number;
+  buckets: number[];
+}
+
+const sseActiveConnections = new Map<string, number>();
+const sseDurationMetrics = new Map<string, SseDurationObservation>();
+
+/** Increment (or decrement) active SSE connections for a specific route. Clamped at >= 0. */
+export function incSseActiveConnections(route: string, delta = 1): void {
+  const current = sseActiveConnections.get(route) ?? 0;
+  const next = Math.max(0, current + delta);
+  sseActiveConnections.set(route, next);
+}
+
+/** Convenience helper to increment active SSE connections by 1 for a route. */
+export function incSseActiveConnection(route: string): void {
+  incSseActiveConnections(route, 1);
+}
+
+/** Convenience helper to decrement active SSE connections by 1 for a route. */
+export function decSseActiveConnection(route: string): void {
+  incSseActiveConnections(route, -1);
+}
+
+/** Read a snapshot of active SSE connections by route. */
+export function getSseActiveConnectionsSnapshot(): Record<string, number> {
+  const snapshot: Record<string, number> = {};
+  for (const [route, count] of sseActiveConnections.entries()) {
+    snapshot[route] = count;
+  }
+  return snapshot;
+}
+
+/** Record SSE connection duration observation in seconds for a specific route. */
+export function observeSseConnectionDuration(route: string, durationSeconds: number): void {
+  const safeDuration = Math.max(0, durationSeconds);
+  let obs = sseDurationMetrics.get(route);
+  if (!obs) {
+    obs = {
+      count: 0,
+      sum: 0,
+      buckets: new Array(SSE_DURATION_BUCKET_BOUNDS.length + 1).fill(0),
+    };
+    sseDurationMetrics.set(route, obs);
+  }
+  obs.count += 1;
+  obs.sum += safeDuration;
+  for (let i = 0; i < SSE_DURATION_BUCKET_BOUNDS.length; i++) {
+    if (safeDuration <= SSE_DURATION_BUCKET_BOUNDS[i]) {
+      obs.buckets[i] += 1;
+    }
+  }
+  obs.buckets[SSE_DURATION_BUCKET_BOUNDS.length] += 1;
+}
+
+export interface SseDurationMetricEntry {
+  route: string;
+  observation: SseDurationObservation;
+}
+
+/** Read all collected SSE connection duration observations. */
+export function getSseDurationMetrics(): SseDurationMetricEntry[] {
+  const entries: SseDurationMetricEntry[] = [];
+  for (const [route, observation] of sseDurationMetrics.entries()) {
+    entries.push({ route, observation });
+  }
+  return entries;
+}
+
+/** Reset SSE active connections and duration metrics (for testing). */
+export function resetSseMetrics(): void {
+  sseActiveConnections.clear();
+  sseDurationMetrics.clear();
+}
+

@@ -7,6 +7,9 @@ import {
   getEndpointMetrics,
   recordRpcFailoverState,
   LATENCY_BUCKET_BOUNDS,
+  getSseActiveConnectionsSnapshot,
+  getSseDurationMetrics,
+  SSE_DURATION_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
 import { getRpcFailoverState } from "@/lib/rpc-failover";
 import { timingSafeEqual } from "@/lib/crypto";
@@ -259,8 +262,49 @@ function buildMetrics(): string {
     "",
     "# HELP ophirpay_sse_dropped_events_total SSE events shed by the bounded slow-consumer buffer",
     "# TYPE ophirpay_sse_dropped_events_total counter",
-    `ophirpay_sse_dropped_events_total ${c.sse_dropped_events_total}`
+    `ophirpay_sse_dropped_events_total ${c.sse_dropped_events_total}`,
+    "",
+    "# HELP ophirpay_sse_active_connections Currently active SSE client connections per route",
+    "# TYPE ophirpay_sse_active_connections gauge"
   );
+
+  const sseActive = getSseActiveConnectionsSnapshot();
+  const knownSseRoutes = ["/api/events", "/api/audit-log/sse"];
+  const allSseRoutes = Array.from(
+    new Set([...knownSseRoutes, ...Object.keys(sseActive)])
+  ).sort();
+
+  for (const route of allSseRoutes) {
+    const count = sseActive[route] ?? 0;
+    lines.push(
+      `ophirpay_sse_active_connections{route="${escapeLabelValue(route)}"} ${count}`
+    );
+  }
+
+  lines.push(
+    "",
+    "# HELP ophirpay_sse_connection_duration_seconds Client SSE connection longevity in seconds",
+    "# TYPE ophirpay_sse_connection_duration_seconds histogram"
+  );
+
+  for (const { route, observation } of getSseDurationMetrics()) {
+    const routeLabel = `route="${escapeLabelValue(route)}"`;
+    for (let i = 0; i < SSE_DURATION_BUCKET_BOUNDS.length; i++) {
+      const le = SSE_DURATION_BUCKET_BOUNDS[i];
+      lines.push(
+        `ophirpay_sse_connection_duration_seconds_bucket{${routeLabel},le="${le}"} ${observation.buckets[i]}`
+      );
+    }
+    lines.push(
+      `ophirpay_sse_connection_duration_seconds_bucket{${routeLabel},le="+Inf"} ${observation.buckets[SSE_DURATION_BUCKET_BOUNDS.length]}`
+    );
+    lines.push(
+      `ophirpay_sse_connection_duration_seconds_sum{${routeLabel}} ${observation.sum}`
+    );
+    lines.push(
+      `ophirpay_sse_connection_duration_seconds_count{${routeLabel}} ${observation.count}`
+    );
+  }
 
   return lines.join("\n") + "\n";
 }

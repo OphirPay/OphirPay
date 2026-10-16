@@ -20,6 +20,7 @@ on:
       - "package-lock.json"
       - "next.config.ts"
       - "docker-compose.yml"
+      - "docker-compose.dev.yml"
       - "scripts/check-node.mjs"
 
 permissions:
@@ -79,17 +80,9 @@ jobs:
           DATABASE_URL=postgresql://ophirpay:ophirpay@127.0.0.1:5432/ophirpay \
             npx prisma db push --skip-generate
 
-      - name: Smoke test the container
+      - name: Smoke test the app via docker compose (issue #1340)
         run: |
-          docker run -d --rm --name app-smoke \
-            --network host \
-            -e DATABASE_URL=postgresql://ophirpay:ophirpay@127.0.0.1:5432/ophirpay \
-            -e REDIS_URL=redis://127.0.0.1:6379 \
-            -e HOSTNAME=0.0.0.0 \
-            -e AUTH_SECRET=ci-docker-smoke-secret-not-for-production \
-            -e NEXT_PUBLIC_CONTRACT_ID=CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET \
-            -e NEXT_PUBLIC_EMITTER_CONTRACT_ID=CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN \
-            ophirpay:smoke
+          docker compose -f docker-compose.yml up -d app
 
           status=""
           for _ in $(seq 1 60); do
@@ -102,7 +95,7 @@ jobs:
           done
 
           echo "::error::/api/health did not return 200 (last status: ${status:-<none>})"
-          docker logs app-smoke
+          docker compose -f docker-compose.yml logs app
           exit 1
 
       - name: Verify the image's HEALTHCHECK reports a health status (issue #738)
@@ -111,10 +104,11 @@ jobs:
         # actually wired, not just present. The probe targets the liveness
         # endpoint, so this passes even when a dependency is unreachable.
         run: |
+          container_id=$(docker compose -f docker-compose.yml ps -q app)
           for _ in $(seq 1 60); do
             status=$(docker inspect \
               --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}<none>{{end}}' \
-              app-smoke 2>/dev/null || true)
+              "${container_id}" 2>/dev/null || true)
             if [ "$status" = "healthy" ]; then
               echo "✅ docker inspect reports health status: ${status}"
               exit 0
@@ -123,6 +117,6 @@ jobs:
           done
 
           echo "::error::Container never became healthy (last status: ${status:-<none>})"
-          docker inspect --format '{{json .State.Health}}' app-smoke || true
-          docker logs app-smoke
+          docker inspect --format '{{json .State.Health}}' "${container_id}" || true
+          docker compose -f docker-compose.yml logs app
           exit 1

@@ -279,6 +279,8 @@ jobs:
           sudo mv kubeconform /usr/local/bin/kubeconform
       - name: Lint the chart with default values
         run: helm lint helm/ophirpay --strict
+      - name: Lint the chart with CI test values (issue #1307)
+        run: helm lint helm/ophirpay --strict -f helm/ophirpay/values.ci.yaml
       - name: Lint the chart with every feature flag enabled
         run: |
           helm lint helm/ophirpay --strict \
@@ -292,6 +294,9 @@ jobs:
 
           # Default values — the chart must render cleanly with nothing set.
           helm template ophirpay helm/ophirpay > /tmp/default.yaml
+
+          # CI test values — validate rendered template with test overrides (issue #1307).
+          helm template ophirpay helm/ophirpay -f helm/ophirpay/values.ci.yaml > /tmp/ci.yaml
 
           helm template ophirpay helm/ophirpay \
             --set autoscaling.enabled=true \
@@ -343,11 +348,12 @@ jobs:
 
           exit "$fail"
       
-      - name: Validate with kubeconform
+      - name: Validate with kubeconform (Kubernetes 1.28+)
         run: |
-          kubeconform -strict -summary /tmp/default.yaml
-          kubeconform -strict -summary /tmp/enabled.yaml
-          kubeconform -strict -summary /tmp/disabled.yaml
+          kubeconform -strict -summary -kubernetes-version 1.28.0 /tmp/default.yaml
+          kubeconform -strict -summary -kubernetes-version 1.28.0 /tmp/enabled.yaml
+          kubeconform -strict -summary -kubernetes-version 1.28.0 /tmp/disabled.yaml
+          kubeconform -strict -summary -kubernetes-version 1.28.0 /tmp/ci.yaml
 
       - name: Assert rendered config keys against .env.example
         # AC of #730: a broken template or an unknown config key must fail the

@@ -4,8 +4,11 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/ophirpay/ophirpay
-  tag: latest
-  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+  # Optional digest for immutable pinning (e.g. sha256:...)
+  digest: ""
+  pullPolicy: IfNotPresent
 
 imagePullSecrets: []
 nameOverride: ""

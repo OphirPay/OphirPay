@@ -43,8 +43,8 @@ spec:
       serviceAccountName: ophirpay
       containers:
         - name: ophirpay
-          image: ghcr.io/ophirpay/ophirpay:latest
-          imagePullPolicy: Always
+          image: ghcr.io/ophirpay/ophirpay:1.0.0
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
               name: http

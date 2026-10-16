@@ -59,6 +59,43 @@ with the message:
 UI surfaces render that message with a retry affordance, so a timeout is
 actionable rather than an opaque failure.
 
+## Soroban RPC Circuit Breaker & Fallback (Issue #1421)
+
+To protect serverless threads and background workers from blocking indefinitely against failing Soroban or Horizon RPC providers, OphirPay deploys an automated three-state Circuit Breaker (`src/lib/rpc-circuit-breaker.ts` and `src/lib/stellar-rpc.ts`):
+
+```
+         ┌───────────────────┐
+         │      CLOSED       │ ◄─────────────────────┐
+         │ (Normal Traffic)  │                       │
+         └─────────┬─────────┘                       │
+                   │ 5 Consecutive Failures          │
+                   ▼                                 │ Single Successful
+         ┌───────────────────┐                       │ Probe / Trial
+         │       OPEN        │                       │
+         │  (Fail-Fast Rej.) │                       │
+         └─────────┬─────────┘                       │
+                   │ 30s Cooldown Expires            │
+                   ▼                                 │
+         ┌───────────────────┐                       │
+         │     HALF_OPEN     │ ──────────────────────┘
+         │ (Probe Recovery)  │
+         └─────────┬─────────┘
+                   │ Probe Failure
+                   ▼
+               (Re-trip to OPEN)
+```
+
+### Operational Rules
+
+1. **Failure Threshold**: After **5 consecutive** network timeouts or HTTP 5xx responses, the endpoint circuit trips to `OPEN`.
+2. **Fail-Fast Rejection**: While `OPEN`, subsequent API requests to the endpoint immediately throw `RpcCircuitOpenError` with a non-zero `retryAfterMs` instead of waiting for a 10-second timeout budget.
+3. **Automated Secondary Failover**: `stellarRpcClient.executeWithFailover()` automatically routes incoming requests to configured secondary fallback RPC endpoints (`DEFAULT_FALLBACK_RPC_URLS` or `STELLAR_RPC_FALLBACK_URLS`).
+4. **Cooldown & Probe Recovery**: After **30 seconds** in `OPEN`, the circuit enters `HALF_OPEN`. A lightweight recovery probe query (`getLatestLedger`) tests upstream availability; when successful, the circuit returns to `CLOSED`.
+5. **Observability & Metrics**:
+   - Every trip to `OPEN` increments the Prometheus counter `rpc_circuit_breaker_trips_total`.
+   - The active circuit breaker status for all endpoints is surfaced by `GET /api/health` under `rpcCircuitBreaker`.
+   - If the primary RPC circuit trips `OPEN`, the overall system health state transitions to `degraded`.
+
 ---
 
 <div align="center">

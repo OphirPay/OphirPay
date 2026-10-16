@@ -202,21 +202,31 @@ services:
 
 ### Docker Build Only (Without Compose)
 
-```bash
-# Build the image
-docker build -t ophirpay .
+> ⚠️ **`NEXT_PUBLIC_*` variables are baked into the client bundle at `docker build` time.**
+> The `Dockerfile` `builder` stage defaults to the testnet values from `.env.example`. When building a staging or mainnet image, pass your `NEXT_PUBLIC_*` values via `--build-arg` so `next build` inlines them into the JavaScript chunks:
 
-# Run with environment variables
+```bash
+# Build a default testnet image (uses .env.example testnet defaults)
+docker build -t ophirpay:testnet .
+
+# Build a staging image with explicit build args
+docker build \
+  --build-arg NEXT_PUBLIC_STELLAR_NETWORK=TESTNET \
+  --build-arg NEXT_PUBLIC_STELLAR_RPC_URL="https://soroban-testnet.stellar.org:443" \
+  --build-arg NEXT_PUBLIC_STELLAR_HORIZON_URL="https://horizon-testnet.stellar.org" \
+  --build-arg NEXT_PUBLIC_CONTRACT_ID="CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET" \
+  --build-arg NEXT_PUBLIC_EMITTER_CONTRACT_ID="CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN" \
+  --build-arg NEXT_PUBLIC_APP_URL="https://staging.ophirpay.com" \
+  -t ophirpay:staging .
+
+# Run with runtime environment variables
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://..." \
-  -e NEXT_PUBLIC_STELLAR_NETWORK=TESTNET \
-  -e NEXT_PUBLIC_STELLAR_RPC_URL="https://soroban-testnet.stellar.org:443" \
-  -e NEXT_PUBLIC_STELLAR_HORIZON_URL="https://horizon-testnet.stellar.org" \
+  -e AUTH_SECRET="$(openssl rand -hex 32)" \
   -e STELLAR_NETWORK_PASSPHRASE="Test SDF Network ; September 2015" \
-  -e NEXT_PUBLIC_CONTRACT_ID="CCQGGU..." \
-  -e NEXT_PUBLIC_EMITTER_CONTRACT_ID="CDAVU2..." \
-  -e NEXT_PUBLIC_APP_URL="http://localhost:3000" \
-  ophirpay
+  -e NEXT_PUBLIC_CONTRACT_ID="CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET" \
+  -e NEXT_PUBLIC_EMITTER_CONTRACT_ID="CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN" \
+  ophirpay:staging
 ```
 
 ### Docker Image Details

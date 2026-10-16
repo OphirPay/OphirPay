@@ -1,3 +1,39 @@
+{{- $optional := dict
+  "DIRECT_DATABASE_URL" true
+  "RESEND_API_KEY" true
+  "EMAIL_FROM" true
+  "SCHEDULED_PAYMENTS_SOURCE_SECRET" true
+  "CRON_SECRET" true
+  "REDIS_URL" true
+  "REDIS_TOKEN" true
+  "NEXT_PUBLIC_GA_ID" true
+  "METRICS_TOKEN" true
+  "WEBHOOK_ALLOWED_PORTS" true
+  "ASSET_METADATA_TTL_MS" true
+  "HOME_DOMAIN_TTL_MS" true
+  "NEXT_PUBLIC_ANCHOR_DOMAIN" true
+  "NEXT_PUBLIC_ANCHOR_FIAT_CURRENCY" true
+  "ANCHOR_METADATA_TTL_MS" true
+  "ANCHOR_POLL_INTERVAL_MS" true
+  "ANCHOR_POLL_TIMEOUT_MS" true
+  "NEXT_PUBLIC_CHAIN_READ_SOURCE" true
+  "NEXT_PUBLIC_FEATURE_MULTI_ASSET" true
+  "NEXT_PUBLIC_FEATURE_RECURRING" true
+  "NEXT_PUBLIC_FEATURE_WEBHOOKS" true
+  "NEXT_PUBLIC_FEATURE_API_KEYS" true
+  "NEXT_PUBLIC_FEATURE_ADVANCED_ANALYTICS" true
+  "NEXT_PUBLIC_DEMO_MODE" true
+  "NEXT_PUBLIC_APP_VERSION" true
+  "NEXT_PUBLIC_FEE_AGGRESSIVENESS" true
+  "FEE_STATS_TTL_MS" true
+  "FEE_FALLBACK_BASE_FEE" true
+  "STELLAR_REQUEST_TIMEOUT_MS" true
+  "HORIZON_REQUEST_TIMEOUT_MS" true
+  "SOROBAN_RPC_TIMEOUT_MS" true
+  "PRICE_REQUEST_TIMEOUT_MS" true
+  "WEBHOOK_TIMEOUT_MS" true
+  "RPC_PROBE_TIMEOUT_MS" true
+-}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,7 +43,9 @@ metadata:
     {{- include "ophirpay.labels" . | nindent 4 }}
 data:
   {{- range $key, $val := .Values.config }}
+  {{- if or (ne (toString $val) "") (not (hasKey $optional $key)) }}
   {{ $key }}: {{ $val | quote }}
+  {{- end }}
   {{- end }}
 ---
 apiVersion: v1
@@ -20,5 +58,7 @@ metadata:
 type: Opaque
 stringData:
   {{- range $key, $val := .Values.secrets }}
+  {{- if or (ne (toString $val) "") (not (hasKey $optional $key)) }}
   {{ $key }}: {{ $val | quote }}
+  {{- end }}
   {{- end }}

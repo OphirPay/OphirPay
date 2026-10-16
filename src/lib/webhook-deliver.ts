@@ -10,6 +10,9 @@ import {
   isTimeoutError,
 } from "@/lib/timeout";
 import crypto from "crypto";
+import prisma from "@/lib/prisma";
+import { toWebhookPayload } from "@/lib/webhook-event-store";
+import type { DeliveryStatus } from "@prisma/client";
 
 export interface WebhookPayload {
   event: string;
@@ -354,3 +357,194 @@ export async function deliverWebhookWithDetails(
 ): Promise<WebhookDeliveryDetails> {
   return deliverWebhook(url, secret, payload, maxRetries);
 }
+
+// ── Dead-Letter Queue (DLQ) & Requeue Helpers ───────────────────
+
+export interface RequeueDeliveryOptions {
+  /**
+   * If true, immediately attempts delivery instead of leaving the row in PENDING state.
+   * Defaults to false (leaves row in PENDING with attempts: 0 for worker processing).
+   */
+  deliverImmediately?: boolean;
+}
+
+export interface RequeueResult {
+  id: string;
+  deliveryId: string;
+  status: DeliveryStatus;
+  attempts: number;
+  eventId: string;
+  eventTimestamp: string;
+  correlationId: string;
+  delivered: boolean;
+  statusCode?: number | null;
+  errorMessage?: string | null;
+}
+
+export interface RequeueFilterOptions {
+  webhookId?: string;
+  statusCode?: number | "timeout";
+  statusCodes?: number[];
+  timeoutOnly?: boolean;
+  deliveryIds?: string[];
+  deliverImmediately?: boolean;
+  limit?: number;
+}
+
+/**
+ * Requeue a single failed/dead-lettered webhook delivery.
+ * Resets attempt count to 0 and transitions status to PENDING.
+ * Preserves the original event timestamp and correlation ID.
+ */
+export async function requeueWebhookDelivery(
+  deliveryId: string,
+  options?: RequeueDeliveryOptions
+): Promise<RequeueResult> {
+  const delivery = await prisma.webhookDelivery.findUnique({
+    where: { id: deliveryId },
+    include: {
+      webhook: true,
+      event: true,
+    },
+  });
+
+  if (!delivery) {
+    throw new Error(`Webhook delivery not found: ${deliveryId}`);
+  }
+
+  // Reset attempt count and set status to PENDING upon requeue
+  await prisma.webhookDelivery.update({
+    where: { id: deliveryId },
+    data: {
+      status: "PENDING",
+      attempts: 0,
+      errorMessage: null,
+      error: null,
+    },
+  });
+
+  const correlationId = delivery.eventId;
+  const eventPayload = toWebhookPayload(delivery.event);
+
+  if (options?.deliverImmediately) {
+    const result = await deliverWebhook(
+      delivery.webhook.url,
+      delivery.webhook.secret,
+      eventPayload
+    );
+
+    const finalStatus: DeliveryStatus = result.success ? "SUCCESS" : "DEAD_LETTER";
+    await prisma.webhookDelivery.update({
+      where: { id: deliveryId },
+      data: {
+        status: finalStatus,
+        responseCode: result.statusCode ?? null,
+        latencyMs: result.latencyMs,
+        attempts: result.attempts,
+        errorMessage: result.errorMessage ?? null,
+        deliveredAt: new Date(),
+      },
+    });
+
+    return {
+      id: deliveryId,
+      deliveryId,
+      status: finalStatus,
+      attempts: result.attempts,
+      eventId: delivery.eventId,
+      eventTimestamp: delivery.event.timestamp.toISOString(),
+      correlationId,
+      delivered: result.success,
+      statusCode: result.statusCode ?? null,
+      errorMessage: result.errorMessage ?? null,
+    };
+  }
+
+  return {
+    id: deliveryId,
+    deliveryId,
+    status: "PENDING",
+    attempts: 0,
+    eventId: delivery.eventId,
+    eventTimestamp: delivery.event.timestamp.toISOString(),
+    correlationId,
+    delivered: false,
+    statusCode: null,
+    errorMessage: null,
+  };
+}
+
+/**
+ * Filter and requeue dead-lettered / failed deliveries for a webhook or system-wide.
+ * Supports filtering by HTTP status code, timeout errors, or specific IDs.
+ */
+export async function requeueFailedDeliveries(
+  options: RequeueFilterOptions
+): Promise<RequeueResult[]> {
+  const where: Record<string, unknown> = {
+    status: { in: ["DEAD_LETTER", "FAILED"] },
+  };
+
+  if (options.webhookId) {
+    where.webhookId = options.webhookId;
+  }
+
+  if (options.deliveryIds && options.deliveryIds.length > 0) {
+    where.id = { in: options.deliveryIds };
+  }
+
+  if (options.timeoutOnly || options.statusCode === "timeout") {
+    where.OR = [
+      { errorMessage: { contains: "timed out" } },
+      { error: { contains: "timed out" } },
+      { errorMessage: { contains: "timeout" } },
+      { error: { contains: "timeout" } },
+    ];
+  } else if (typeof options.statusCode === "number") {
+    where.responseCode = options.statusCode;
+  } else if (options.statusCodes && options.statusCodes.length > 0) {
+    where.responseCode = { in: options.statusCodes };
+  }
+
+  const deliveries = await prisma.webhookDelivery.findMany({
+    where,
+    orderBy: { deliveredAt: "desc" },
+    take: options.limit ?? 50,
+    select: { id: true },
+  });
+
+  const results: RequeueResult[] = [];
+  for (const del of deliveries) {
+    const res = await requeueWebhookDelivery(del.id, {
+      deliverImmediately: options.deliverImmediately,
+    });
+    results.push(res);
+  }
+
+  return results;
+}
+
+/**
+ * Retry worker: processes all PENDING webhook deliveries.
+ * Invoked by background workers or schedulers to drain the retry queue.
+ */
+export async function processPendingWebhookDeliveries(
+  limit = 50
+): Promise<RequeueResult[]> {
+  const pending = await prisma.webhookDelivery.findMany({
+    where: { status: "PENDING" },
+    include: { webhook: true, event: true },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
+
+  const results: RequeueResult[] = [];
+  for (const item of pending) {
+    if (!item.webhook.isActive) continue;
+    const res = await requeueWebhookDelivery(item.id, { deliverImmediately: true });
+    results.push(res);
+  }
+
+  return results;
+}
+

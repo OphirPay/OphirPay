@@ -220,7 +220,25 @@ export const webhookReplaySchema = z.object({
 
 export const webhookDeliveriesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  status: z.enum(["SUCCESS", "FAILED", "DEAD_LETTER", "PENDING"]).optional(),
+  statusCode: z.union([z.coerce.number().int(), z.literal("timeout")]).optional(),
+  dlq: z
+    .union([z.boolean(), z.enum(["true", "false"])])
+    .optional()
+    .transform((val) => (typeof val === "string" ? val === "true" : val)),
 });
+
+export const requeueWebhookDeliveriesSchema = z.object({
+  deliveryIds: z.array(z.string().min(1)).optional(),
+  statusCode: z.union([z.coerce.number().int(), z.literal("timeout")]).optional(),
+  statusCodes: z.array(z.coerce.number().int()).optional(),
+  timeoutOnly: z.boolean().optional(),
+  deliverImmediately: z.boolean().optional().default(false),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+});
+
+export type RequeueWebhookDeliveriesInput = z.infer<typeof requeueWebhookDeliveriesSchema>;
+
 
 // ── API Key Schemas ───────────────────────────────────────────
 

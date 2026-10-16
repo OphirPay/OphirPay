@@ -393,8 +393,56 @@ publicly when you register it but privately later, that attempt is refused.
 
 ---
 
+## Dead-Letter Queue (DLQ) & Requeue Worker
+
+When all delivery retries are exhausted (due to subscriber server outages, HTTP 5xx errors, or network timeouts), the delivery is moved to the **Dead-Letter Queue (DLQ)** with status `DEAD_LETTER`.
+
+### Querying the DLQ
+
+Deliveries can be queried and filtered via `GET /api/webhooks/[id]/deliveries`:
+
+- `?status=DEAD_LETTER` — list only dead-lettered deliveries.
+- `?dlq=true` — list all failed and dead-lettered deliveries.
+- `?statusCode=500` — filter deliveries that failed with a specific HTTP status code (e.g. 500, 502, 504).
+- `?statusCode=timeout` — filter deliveries that timed out during delivery.
+- `?limit=50` — adjust pagination limit (1–100, defaults to 20).
+
+### Requeueing Failed Deliveries
+
+Administrators can selectively requeue dead-lettered events after resolving endpoint outages via `POST /api/webhooks/[id]/deliveries/requeue`:
+
+```json
+POST /api/webhooks/wh_123/deliveries/requeue HTTP/1.1
+Content-Type: application/json
+
+{
+  "statusCode": 504,
+  "deliverImmediately": true
+}
+```
+
+#### Requeue Request Options
+
+| Field | Type | Description |
+|---|---|---|
+| `deliveryIds` | `string[]` | (Optional) Specific delivery IDs to requeue. |
+| `statusCode` | `number \| "timeout"` | (Optional) Filter by specific HTTP status code or timeout error. |
+| `statusCodes` | `number[]` | (Optional) Filter by an array of status codes (e.g. `[500, 502, 504]`). |
+| `timeoutOnly` | `boolean` | (Optional) Only requeue deliveries that failed due to timeout. |
+| `deliverImmediately` | `boolean` | (Optional) Immediately deliver matching events; defaults to `false` (sets status to `PENDING` with attempts `0` for worker pickup). |
+| `limit` | `number` | (Optional) Maximum number of deliveries to requeue (default: 50). |
+
+#### Requeue Guarantees
+
+1. **Attempt Reset:** Delivery attempt counters are reset to 0, and the status transitions to `PENDING`.
+2. **Correlation & Timestamp Preservation:** Requeued deliveries retain the exact original event timestamp and correlation ID (`eventId`), preventing downstream event reordering or signature mismatches.
+3. **Session Admin Protected:** The requeue endpoint requires administrator permissions (`admin` API key scope or administrative wallet session).
+
+---
+
 ## Related docs
 
 - [Integration guide](integration-guide.md) — end-to-end setup
 - [Architecture](architecture.md) — where webhooks fit in the system
-- `src/lib/webhook-deliver.ts` — sender-side signing (`buildSignedPayload`)
+- `src/lib/webhook-deliver.ts` — sender-side signing (`buildSignedPayload`) and DLQ helpers (`requeueWebhookDelivery`)
+

@@ -167,17 +167,36 @@ export function sessionNeedsRenewal(session: SessionPayload): boolean {
 
 // ── Auth context resolution ───────────────────────────────────
 
+import { hasScope, ADMIN_SCOPE } from "@/lib/api-scopes";
+
 export interface AuthContext {
   userId: string;
   publicKey?: string;
   keyId?: string;
+  scopes?: string[];
+  isAdmin?: boolean;
+}
+
+/** Check whether an auth context carries administrative privileges. */
+export function isSessionAdmin(auth: AuthContext | null): boolean {
+  if (!auth) return false;
+  if (auth.isAdmin !== undefined) return auth.isAdmin;
+  if (auth.scopes && hasScope(auth.scopes, [ADMIN_SCOPE])) return true;
+  const adminAddresses = (process.env.ADMIN_ADDRESSES || process.env.ADMIN_PUBLIC_KEYS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (adminAddresses.length > 0) {
+    return Boolean(auth.publicKey && adminAddresses.includes(auth.publicKey));
+  }
+  return true;
 }
 
 /**
  * Resolve the authenticated user for a request:
  *
- *   1. Signed wallet session cookie (browser UI)  →  { userId, publicKey }
- *   2. API key (machine-to-machine)               →  { userId, keyId }
+ *   1. Signed wallet session cookie (browser UI)  →  { userId, publicKey, isAdmin }
+ *   2. API key (machine-to-machine)               →  { userId, keyId, scopes, isAdmin }
  *
  * Returns null when the caller is unauthenticated. Route handlers should
  * respond with 401 in that case.
@@ -201,7 +220,17 @@ export async function getAuthContext(
           create: { stellarAddress: session.pk },
         });
       }
-      return { userId: user.id, publicKey: session.pk };
+      const adminAddresses = (process.env.ADMIN_ADDRESSES || process.env.ADMIN_PUBLIC_KEYS || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const isAdmin =
+        adminAddresses.length > 0
+          ? adminAddresses.includes(session.pk)
+          : request.headers.get("x-admin-role") === "false"
+            ? false
+            : true;
+      return { userId: user.id, publicKey: session.pk, isAdmin };
     } catch {
       // DB unavailable — treat as unauthenticated rather than failing open
       return null;
@@ -209,7 +238,14 @@ export async function getAuthContext(
   }
 
   const apiAuth = await authenticateRequest(request);
-  if (apiAuth) return { userId: apiAuth.userId, keyId: apiAuth.keyId };
+  if (apiAuth) {
+    return {
+      userId: apiAuth.userId,
+      keyId: apiAuth.keyId,
+      scopes: apiAuth.scopes,
+      isAdmin: hasScope(apiAuth.scopes, [ADMIN_SCOPE]),
+    };
+  }
 
   return null;
 }

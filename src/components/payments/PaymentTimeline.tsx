@@ -30,8 +30,21 @@ function formatTimestamp(timestamp?: number): string | null {
  * optional explorer link on the terminal step.
  */
 export function PaymentTimeline({ steps, explorerUrl }: PaymentTimelineProps) {
+  const activeStep = steps.find((s) => s.current) || steps.find((s) => s.state === "FAILED") || steps[steps.length - 1];
+
   return (
-    <ol className="relative" aria-label="Payment lifecycle">
+    <>
+      {/* ARIA live region for screen reader payment lifecycle announcements */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="payment-timeline-announcer"
+      >
+        {activeStep ? `Payment lifecycle: ${activeStep.label} - ${activeStep.description}` : ""}
+      </div>
+      <ol className="relative" aria-label="Payment lifecycle">
       {steps.map((step, index) => {
         const isLast = index === steps.length - 1;
         const failed = step.state === "FAILED";
@@ -131,6 +144,7 @@ export function PaymentTimeline({ steps, explorerUrl }: PaymentTimelineProps) {
           </li>
         );
       })}
-    </ol>
+      </ol>
+    </>
   );
 }

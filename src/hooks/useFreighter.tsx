@@ -12,6 +12,8 @@ import {
 } from "react";
 import type { WalletState, FreighterAPI } from "@/types";
 import { fetchXlmBalance } from "@/lib/stellar";
+import { ARIA } from "@/lib/aria-labels";
+import { shortenAddress } from "@/lib/utils";
 
 // ── Context ───────────────────────────────────────────────────
 
@@ -24,6 +26,7 @@ interface WalletContextType {
   fetchBalance: () => Promise<void>;
   isConnecting: boolean;
   error: string | null;
+  statusAnnouncement: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -47,6 +50,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [wallet, setWallet] = useState<WalletState>(initialWalletState);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusAnnouncement, setStatusAnnouncement] = useState<string | null>(null);
 
   const loadBalance = useCallback(async (publicKey: string) => {
     setWallet((prev) => ({ ...prev, balanceLoading: true }));
@@ -104,6 +108,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const connect = useCallback(async () => {
     setIsConnecting(true);
     setError(null);
+    setStatusAnnouncement(ARIA.WALLET_CONNECTING);
 
     try {
       const freighter = getFreighter();
@@ -127,17 +132,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
       if (publicKey) {
         loadBalance(publicKey);
+        setStatusAnnouncement(`${ARIA.WALLET_CONNECTED}: ${shortenAddress(publicKey)}`);
       }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to connect wallet";
       setError(message);
+      setStatusAnnouncement(`${ARIA.WALLET_CONNECTION_ERROR}: ${message}`);
     } finally {
       setIsConnecting(false);
     }
-  }, [loadBalance]);   const disconnect = useCallback(() => {
+  }, [loadBalance]);
+
+  const disconnect = useCallback(() => {
     setWallet(initialWalletState);
     setError(null);
+    setStatusAnnouncement(ARIA.WALLET_DISCONNECTED);
     if (typeof window !== "undefined") {
       localStorage.removeItem("ophirpay-wallet-connected");
     }
@@ -159,7 +169,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <WalletContext.Provider
-      value={{ wallet, connect, disconnect, fetchBalance, isConnecting, error }}
+      value={{
+        wallet,
+        connect,
+        disconnect,
+        fetchBalance,
+        isConnecting,
+        error,
+        statusAnnouncement,
+      }}
     >
       {children}
     </WalletContext.Provider>

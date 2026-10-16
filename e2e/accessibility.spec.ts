@@ -177,3 +177,14 @@ test("the accessibility matrix runs on every configured browser project", () => 
     expect.arrayContaining(["chromium", "firefox", "mobile-chrome"])
   );
 });
+
+test("ARIA live regions exist for asynchronous transaction and wallet announcements", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+
+  // Verify wallet status live region exists with aria-live polite and role status
+  const liveRegion = page.locator("[data-testid='wallet-status-announcer']");
+  await expect(liveRegion).toHaveAttribute("role", "status");
+  await expect(liveRegion).toHaveAttribute("aria-live", "polite");
+  await expect(liveRegion).toHaveAttribute("aria-atomic", "true");
+});

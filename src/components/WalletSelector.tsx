@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
 import { cn } from "@/lib/utils";
+import { ARIA } from "@/lib/aria-labels";
 
 interface WalletSelectorProps {
   availableWallets: WalletId[];
@@ -55,6 +56,21 @@ export function WalletSelector({
         </p>
       }
     >
+      {/* ARIA live region for screen reader announcements */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="wallet-selector-announcer"
+      >
+        {connectingWallet
+          ? `${ARIA.WALLET_CONNECTING} to ${WALLET_REGISTRY.find((w) => w.id === connectingWallet)?.name || connectingWallet}...`
+          : error
+            ? `${ARIA.WALLET_CONNECTION_ERROR}: ${error}`
+            : ""}
+      </div>
+
       {/* Wallet list */}
       <div className="space-y-1">
         {WALLET_REGISTRY.sort((a, b) => a.priority - b.priority).map((wallet) => {

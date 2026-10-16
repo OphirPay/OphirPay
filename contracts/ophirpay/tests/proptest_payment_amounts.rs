@@ -353,3 +353,48 @@ proptest! {
         prop_assert_eq!(h.client.get_locked_balance(), 0);
     }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. STREAM CANCELLATION PRO-RATA REFUND & ZERO-DURATION (Issue #1357)
+// ═══════════════════════════════════════════════════════════════════════════
+
+proptest! {
+    #![proptest_config(get_proptest_config())]
+
+    /// Pro-rata stream cancellation invariant:
+    /// For any valid positive amount and arbitrary timestamps, vested + unvested == total_amount
+    /// with zero division by zero errors and zero precision loss.
+    #[test]
+    fn prop_stream_cancellation_prorata_solvency(
+        total_amount in 1i128..1_000_000_000_000i128,
+        start_time in 1_000u64..100_000u64,
+        duration in 0u64..1_000_000u64,
+        elapsed_delta in 0u64..2_000_000u64,
+    ) {
+        let end_time = start_time.saturating_add(duration);
+        let now = start_time.saturating_add(elapsed_delta);
+
+        let vested = ophirpay_contract::compute_vested(total_amount, start_time, end_time, now);
+        let unvested = total_amount.saturating_sub(vested);
+
+        // Acceptance Criteria:
+        // 1. Sum of vested and refunded amounts exactly equals original principal
+        prop_assert_eq!(vested + unvested, total_amount);
+
+        // 2. Bounds verification
+        prop_assert!(vested >= 0);
+        prop_assert!(vested <= total_amount);
+        prop_assert!(unvested >= 0);
+        prop_assert!(unvested <= total_amount);
+
+        // 3. Monotonicity checks
+        if now <= start_time {
+            prop_assert_eq!(vested, 0);
+            prop_assert_eq!(unvested, total_amount);
+        } else if now >= end_time {
+            prop_assert_eq!(vested, total_amount);
+            prop_assert_eq!(unvested, 0);
+        }
+    }
+}

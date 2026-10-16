@@ -251,3 +251,58 @@ export function handleApiError(err: unknown, context?: string): NextResponse {
 
   return serverError(message);
 }
+
+// ── RFC 7807 Problem Details for HTTP APIs ───────────────────
+
+export interface ProblemDetails {
+  type: string;
+  title: string;
+  status: number;
+  detail?: string;
+  instance?: string;
+  invalid_params?: Array<{ name: string; reason: string }>;
+  [key: string]: unknown;
+}
+
+export function problemDetailsResponse(
+  problem: ProblemDetails,
+  headers?: Record<string, string>
+): NextResponse {
+  return NextResponse.json(problem, {
+    status: problem.status,
+    headers: {
+      "Content-Type": "application/problem+json",
+      ...(headers ?? {}),
+    },
+  });
+}
+
+export function problemValidationError(
+  issues: z.ZodIssue[],
+  instance?: string
+): NextResponse {
+  return problemDetailsResponse({
+    type: "urn:problem:validation-error",
+    title: "Validation Error",
+    status: 400,
+    detail: issues.map((i) => i.message).join("; "),
+    instance,
+    invalid_params: issues.map((i) => ({
+      name: i.path.join("."),
+      reason: i.message,
+    })),
+  });
+}
+
+export function problemNotFoundError(
+  resource = "Resource",
+  instance?: string
+): NextResponse {
+  return problemDetailsResponse({
+    type: "urn:problem:not-found",
+    title: "Resource Not Found",
+    status: 404,
+    detail: `${resource} not found`,
+    instance,
+  });
+}

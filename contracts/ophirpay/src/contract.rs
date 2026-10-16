@@ -2976,8 +2976,8 @@ impl OphirPayContract {
     /// Approve a refund request (owner only). Moves status to Approved.
     pub fn approve_refund(env: Env, caller: Address, refund_id: u64) -> Result<(), PaymentError> {
         caller.require_auth();
-        require_owner(&env, &caller)?;
         require_not_paused(&env, PauseScope::Refunds)?;
+        require_owner(&env, &caller)?;
 
         let mut refund: Refund = env
             .storage()
@@ -3012,8 +3012,8 @@ impl OphirPayContract {
     /// Reject a refund request (owner only).
     pub fn reject_refund(env: Env, caller: Address, refund_id: u64) -> Result<(), PaymentError> {
         caller.require_auth();
-        require_owner(&env, &caller)?;
         require_not_paused(&env, PauseScope::Refunds)?;
+        require_owner(&env, &caller)?;
 
         let mut refund: Refund = env
             .storage()
@@ -3049,8 +3049,8 @@ impl OphirPayContract {
     pub fn process_refund(env: Env, caller: Address, refund_id: u64) -> Result<(), PaymentError> {
         let _guard = acquire_reentrancy_lock(&env)?;
         caller.require_auth();
-        require_owner(&env, &caller)?;
         require_not_paused(&env, PauseScope::Refunds)?;
+        require_owner(&env, &caller)?;
 
         let mut refund: Refund = env
             .storage()

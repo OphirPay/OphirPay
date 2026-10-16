@@ -1,6 +1,6 @@
 version: 2
 
-# Issue #732 — keep dependency updates flowing without drowning reviewers.
+# Issue #732, #1320 — keep dependency updates flowing without drowning reviewers.
 #
 # Every ecosystem the repo actually pins is covered: the root npm lockfile,
 # both Cargo.lock files (contracts/ophirpay, contracts/emitter) and the pinned
@@ -9,11 +9,14 @@ version: 2
 # gets the attention it needs. `open-pull-requests-limit` caps the backlog a
 # busy week can create.
 #
-# See CONTRIBUTING.md → "Dependency Updates" for the review flow.
+# While batch mode is active and `integration/staging` exists, all entries target
+# `target-branch: "integration/staging"` so that PRs pass `enforce-integration-branch.yml`.
+# See CONTRIBUTING.md → "Dependency Updates" for the review flow and switch-back step.
 
 updates:
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "integration/staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -31,6 +34,7 @@ updates:
 
   - package-ecosystem: "cargo"
     directory: "/contracts/ophirpay"
+    target-branch: "integration/staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
@@ -48,6 +52,7 @@ updates:
 
   - package-ecosystem: "cargo"
     directory: "/contracts/emitter"
+    target-branch: "integration/staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
@@ -65,6 +70,7 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "integration/staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

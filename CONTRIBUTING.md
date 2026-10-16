@@ -116,6 +116,16 @@ ecosystems once a week.
   breaking changes or fails CI, coordinate with the team before merging instead
   of force-landing it.
 
+#### Batch mode & target branch
+
+While the repository is running in batch mode (indicated by the presence of the `integration/staging` branch), all Dependabot entries configure `target-branch: "integration/staging"` so that opened update PRs comply with the [`enforce-integration-branch.yml`](.github/workflows/enforce-integration-branch.yml) CI guard.
+
+**Reverting when batch mode ends:**
+When `integration/staging` is finally merged into `main` and deleted:
+1. Edit [`.github/dependabot.yml`](.github/dependabot.yml) to remove the `target-branch: "integration/staging"` lines (or set `target-branch: "main"`).
+2. Existing Dependabot PRs will retarget `main` on their next scheduled update or when triggered with `@dependabot recreate`.
+
+
 ### Issue triage & stale policy
 
 The [stale workflow](.github/workflows/stale.yml) runs every Monday and closes

@@ -71,12 +71,17 @@ export default async function RootLayout({
             __html: `
               (function () {
                 try {
-                  var stored = localStorage.getItem("ophirpay-theme");
+                  var stored = localStorage.getItem("theme") || localStorage.getItem("ophirpay-theme");
+                  var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
                   var dark = stored === "dark" ||
-                    ((stored === null || stored === "system") &&
-                      window.matchMedia("(prefers-color-scheme: dark)").matches);
-                  if (dark) document.documentElement.classList.add("dark");
+                    ((stored === null || stored === "system" || !stored) && prefersDark);
+                  if (dark) {
+                    document.documentElement.classList.add("dark");
+                  } else {
+                    document.documentElement.classList.remove("dark");
+                  }
                   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+                  document.documentElement.style.colorScheme = dark ? "dark" : "light";
                 } catch (e) {}
               })();
             `,

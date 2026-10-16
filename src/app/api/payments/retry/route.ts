@@ -1,29 +1,23 @@
 // SPDX-License-Identifier: MIT
-
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { retryPaymentSchema } from "@/lib/validation-schemas";
-import {
-  successResponse,
-  validationError,
-  notFoundError,
-  conflictError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+import { formatProblemDetails, zodToProblemErrors } from "@/lib/api-errors";
+import { successResponse, handleApiError } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 
+function problemResponse(title: string, status: number, detail: string, instance: string, errors?: Record<string, string[]>) {
+  const problem = formatProblemDetails({ title, status, detail, instance, errors });
+  return new Response(JSON.stringify(problem), {
+    status,
+    headers: { "Content-Type": "application/problem+json" },
+  });
+}
+
 /**
  * POST /api/payments/retry
- *
- * Retries a failed payment in place (issue #159): the original amount,
- * recipient and memo are reused — they live on the row — and the attempt is
- * stamped with a NEW idempotency key so the previous failed attempt is never
- * duplicated. The row returns to PENDING and flows through the normal submit
- * path (PENDING → SIGNED → SUBMITTED → … → COMPLETED) via the existing PATCH
- * transitions, which fire their usual webhooks.
  */
 export async function POST(request: Request) {
   try {
@@ -32,34 +26,28 @@ export async function POST(request: Request) {
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
+      return problemResponse("Unauthorized", 401, "Authentication required. Connect your wallet or provide an API key.", request.url);
     }
 
     const body = await request.json().catch(() => null);
     const parsed = retryPaymentSchema.safeParse(body ?? {});
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) {
+      return problemResponse("Validation Error", 400, "Invalid retry payload", request.url, zodToProblemErrors(parsed.error));
+    }
 
     const { id } = parsed.data;
 
-    // Owner-scoped lookup — no IDOR across users; soft-deleted payments are
-    // not retryable (they behave like they don't exist, consistent with #50).
     const payment = await prisma.payment.findFirst({
       where: { id, userId: auth.userId, deletedAt: null },
     });
-    if (!payment) return notFoundError("Payment");
-
-    if (payment.status !== "FAILED") {
-      return conflictError(
-        `Only failed payments can be retried (current status: ${payment.status})`
-      );
+    if (!payment) {
+      return problemResponse("Not Found", 404, "Payment not found", request.url);
     }
 
-    // updateMany scopes the write to the authenticated user's records. The
-    // row is reused — no new row is created, so the failed attempt is never
-    // duplicated. A fresh idempotency key marks this as a new attempt; the
-    // stale failure details are cleared for the next submit cycle.
+    if (payment.status !== "FAILED") {
+      return problemResponse("Conflict", 409, `Only failed payments can be retried (current status: ${payment.status})`, request.url);
+    }
+
     const updated = await prisma.payment.updateMany({
       where: { id, userId: auth.userId },
       data: {
@@ -69,10 +57,14 @@ export async function POST(request: Request) {
         idempotencyKey: crypto.randomUUID(),
       },
     });
-    if (updated.count === 0) return notFoundError("Payment");
+    if (updated.count === 0) {
+      return problemResponse("Not Found", 404, "Payment not found", request.url);
+    }
 
     const retried = await prisma.payment.findUnique({ where: { id } });
-    if (!retried) return notFoundError("Payment");
+    if (!retried) {
+      return problemResponse("Not Found", 404, "Payment not found", request.url);
+    }
 
     logger.info("Payment retried", {
       id,

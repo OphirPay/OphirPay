@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
-import { QrCode } from "@/components/ui/QrCode";
+import { QrCode, PaymentQrCode } from "@/components/ui/QrCode";
 
 const toDataURLMock = vi.fn();
 
@@ -72,5 +72,29 @@ describe("QrCode", () => {
     expect(
       await screen.findByRole("img", { name: /failed to generate/i })
     ).toBeInTheDocument();
+  });
+});
+
+describe("PaymentQrCode (SEP-0007)", () => {
+  const VALID_STELLAR = "G" + "A".repeat(55);
+
+  it("renders a SEP-7 payment request URI with configurable amount and memo", async () => {
+    toDataURLMock.mockResolvedValue("data:image/png;base64,AAAA");
+    render(
+      <PaymentQrCode
+        destination={VALID_STELLAR}
+        amount="25.50"
+        memo="invoice_101"
+        assetCode="USDC"
+        assetIssuer={VALID_STELLAR}
+      />
+    );
+
+    await waitFor(() =>
+      expect(toDataURLMock).toHaveBeenCalledWith(
+        expect.stringContaining("web%2Bstellar%3Apay"),
+        expect.any(Object)
+      )
+    );
   });
 });

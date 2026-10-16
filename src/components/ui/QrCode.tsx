@@ -100,3 +100,78 @@ export function QrCode({ value, size = 220, className, title = "QR code" }: QrCo
     />
   );
 }
+
+import { buildSep7PayUri, type Sep7PayParams } from "@/lib/stellar-uri";
+
+export interface PaymentQrCodeProps extends Sep7PayParams {
+  size?: number;
+  className?: string;
+  showActions?: boolean;
+}
+
+export function PaymentQrCode({
+  destination,
+  amount,
+  memo,
+  memoType,
+  assetCode,
+  assetIssuer,
+  msg,
+  size = 220,
+  className,
+  showActions = true,
+}: PaymentQrCodeProps) {
+  const [copied, setCopied] = useState(false);
+  const payUri = buildSep7PayUri({
+    destination,
+    amount,
+    memo,
+    memoType,
+    assetCode,
+    assetIssuer,
+    msg,
+  });
+
+  const handleCopy = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(payUri);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleDownload = () => {
+    QRCode.toDataURL(payUri, { width: 512, margin: 2 }).then((url) => {
+      if (typeof document !== "undefined") {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `stellar-payment-${destination.slice(0, 6)}.png`;
+        a.click();
+      }
+    });
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <QrCode value={payUri} size={size} className={className} title="Stellar SEP-0007 Payment QR" />
+      {showActions && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 transition"
+          >
+            {copied ? "✓ Copied URI" : "Copy Payment URI"}
+          </button>
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 transition"
+          >
+            Download QR PNG
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -367,11 +367,14 @@ jobs:
           expect "kind: NetworkPolicy" /tmp/enabled.yaml
           expect "kind: ServiceAccount" /tmp/enabled.yaml
           expect "policyTypes:" /tmp/enabled.yaml
+          expect "port: 6379" /tmp/enabled.yaml
+          expect "port: 6379" /tmp/default.yaml
 
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
           reject "kind: NetworkPolicy" /tmp/disabled.yaml
           reject "kind: ServiceAccount" /tmp/disabled.yaml
+          reject "port: 6379" /tmp/disabled.yaml
 
           exit "$fail"
       

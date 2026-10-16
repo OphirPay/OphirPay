@@ -91,6 +91,16 @@ pdb:
 
 networkPolicy:
   enabled: true
+  # Redis egress for distributed rate limiting (issue #1345).
+  redis:
+    enabled: true
+    port: 6379
+    # Optional namespace/pod selectors for scoping Redis egress.
+    namespaceSelector: {}
+    podSelector: {}
+  egress:
+    # Additional TCP ports to permit egress to.
+    extraPorts: []
 
 # ── Runtime configuration (rendered into a ConfigMap) ──────────
 # Every key here must be a real variable documented in `.env.example`;

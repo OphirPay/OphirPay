@@ -3,6 +3,7 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { retryPaymentSchema } from "@/lib/validation-schemas";
+import { formatZodProblemDetails, formatProblemDetails } from "@/lib/api-errors";
 import {
   successResponse,
   validationError,
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null);
     const parsed = retryPaymentSchema.safeParse(body ?? {});
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return formatZodProblemDetails(parsed.error, "/api/payments/retry");
 
     const { id } = parsed.data;
 

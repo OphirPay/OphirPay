@@ -2,6 +2,7 @@
 import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
+import { formatZodProblemDetails, formatProblemDetails } from "@/lib/api-errors";
 import {
   successResponse,
   validationError,
@@ -41,7 +42,7 @@ export const POST = withMetrics("POST /api/payments/cancel", withRequestLogging(
 
     const rawBody = await request.json();
     const parsed = cancelPaymentSchema.safeParse(rawBody);
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return formatZodProblemDetails(parsed.error, "/api/payments/cancel");
     const { txHash } = parsed.data;
 
     const updated = await prisma.payment.updateMany({

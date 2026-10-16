@@ -3,6 +3,7 @@ import { withMetrics } from "@/lib/metrics-middleware";
 
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
+import { formatZodProblemDetails } from "@/lib/api-errors";
 import {
   successResponse,
   validationError,
@@ -132,7 +133,7 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
 
     const body = await request.json();
     const parsed = createPaymentSchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return formatZodProblemDetails(parsed.error, "/api/payments");
 
     const payment = await prisma.payment.create({
       data: {

@@ -935,3 +935,64 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. STREAM CANCELLATION PRO-RATA REFUND VERIFICATION (Issue #1357)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_stream_cancellation_pro_rata_refunds_at_percent_intervals() {
+    let percentages = [0, 25, 50, 75, 100];
+    for pct in percentages {
+        let fix = TestFixture::new();
+        let creator = Address::generate(&fix.env);
+        let recipient = Address::generate(&fix.env);
+        let total = 10_000i128;
+        fix.mint(&creator, total);
+
+        let start = 1_000u64;
+        let duration = 100u64;
+        let end = start + duration;
+        fix.env.ledger().set_timestamp(start);
+
+        let stream_id = fix.client.create_stream(
+            &creator,
+            &recipient,
+            &total,
+            &fix.token_id,
+            &start,
+            &end,
+            &String::from_str(&fix.env, "pro-rata cancel test"),
+        );
+
+        let cancel_time = start + (duration * pct as u64) / 100;
+        fix.env.ledger().set_timestamp(cancel_time);
+
+        let refunded = fix.client.cancel_stream(&creator, &stream_id);
+        let recipient_bal = fix.token_client.balance(&recipient);
+        let creator_bal = fix.token_client.balance(&creator);
+
+        // Invariant: recipient received + creator refund must exactly equal original stream principal
+        assert_eq!(
+            recipient_bal + refunded,
+            total,
+            "solvency violation at pct={}",
+            pct
+        );
+        assert_eq!(
+            creator_bal,
+            refunded,
+            "creator balance must match refunded amount at pct={}",
+            pct
+        );
+
+        let expected_vested = (total * pct as i128) / 100;
+        let expected_refund = total - expected_vested;
+        assert_eq!(recipient_bal, expected_vested, "vested amount mismatch at pct={}", pct);
+        assert_eq!(refunded, expected_refund, "refunded amount mismatch at pct={}", pct);
+
+        let stream = fix.client.get_stream(&stream_id);
+        assert!(stream.cancelled);
+        assert_eq!(stream.claimed_amount, recipient_bal);
+    }
+}

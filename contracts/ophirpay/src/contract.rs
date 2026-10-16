@@ -2612,7 +2612,22 @@ impl OphirPayContract {
         let earned_unclaimed = vested
             .checked_sub(stream.claimed_amount)
             .ok_or(PaymentError::StreamInvariantViolated)?;
-        let unvested = stream.total_amount.saturating_sub(vested);
+        let unvested = stream
+            .total_amount
+            .checked_sub(vested)
+            .ok_or(PaymentError::StreamInvariantViolated)?;
+
+        // Ensure contract solvency: sum of already claimed, newly earned unclaimed, and
+        // unvested refund must exactly equal the total principal. Integer division in compute_vested
+        // floors vested, ensuring unvested absorbs the remainder so that no tokens are leaked or created.
+        if stream
+            .claimed_amount
+            .checked_add(earned_unclaimed)
+            .and_then(|sum| sum.checked_add(unvested))
+            != Some(stream.total_amount)
+        {
+            return Err(PaymentError::StreamInvariantViolated);
+        }
 
         stream.cancelled = true;
         stream.claimed_amount = vested;

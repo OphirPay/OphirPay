@@ -3,7 +3,7 @@
 
 use ophirpay_contract::{
     BatchCreateResult, OphirPayContract, OphirPayContractClient, Payment, PaymentError,
-    RefundReasonCode, RefundStatus,
+    RefundReasonCode, RefundStatus, MIN_STREAM_DURATION,
 };
 use ophirpay_emitter::{EmitterError, PaymentEventEmitter, PaymentEventEmitterClient};
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -775,26 +775,31 @@ fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
     fix.mint(&creator, total);
 
     let now = fix.env.ledger().timestamp();
+    // Use MIN_STREAM_DURATION (60) to satisfy the duration bounds (#1350)
+    // while still testing the overflow behavior with i128::MAX.
+    let duration = MIN_STREAM_DURATION;
+    let half = duration / 2;
+
     let stream_id = fix.client.create_stream(
         &creator,
         &recipient,
         &total,
         &fix.token_id,
         &now,
-        &(now + 4),
+        &(now + duration),
         &String::from_str(&fix.env, "overflow e2e"),
     );
     assert_eq!(stream_id, 1);
 
-    // Half-way through the schedule: `total * 2` overflows i128. Before the
+    // Half-way through the schedule: `total * elapsed` overflows i128. Before the
     // fix this vested 0, so the recipient could claim nothing at all.
-    fix.env.ledger().set_timestamp(now + 2);
+    fix.env.ledger().set_timestamp(now + half);
     let claimed = fix.client.claim_stream(&recipient, &stream_id);
     assert!(claimed > 0, "overflow must not collapse vesting to zero");
     assert_eq!(claimed, total / 2);
 
     // Past the end time the remainder is claimable and drains the stream.
-    fix.env.ledger().set_timestamp(now + 100);
+    fix.env.ledger().set_timestamp(now + duration + 100);
     let remainder = fix.client.claim_stream(&recipient, &stream_id);
     assert_eq!(remainder, total - (total / 2));
 

@@ -51,6 +51,17 @@ pub const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 // `get_reason_code_analytics`.
 pub const MAX_READER_ENTRIES: u32 = 100;
 
+// ── Stream Duration Bounds (#1350) ─────────────────────────────
+/// Minimum stream duration in seconds (1 minute).
+pub const MIN_STREAM_DURATION: u64 = 60;
+/// Maximum stream duration in seconds (5 years).
+pub const MAX_STREAM_DURATION: u64 = 157_766_400;
+
+// ── Dispute Period (#1353) ────────────────────────────────────
+/// Minimum seconds that must elapse after a dispute is initiated
+/// before the arbiter can resolve it (24 hours).
+pub const MIN_DISPUTE_PERIOD: u64 = 86_400;
+
 // ── Contract ───────────────────────────────────────────────────
 
 #[contract]
@@ -2229,6 +2240,7 @@ impl OphirPayContract {
             released: false,
             claimed: false,
             metadata,
+            dispute_initiated_at: 0,
         };
 
         env.storage()
@@ -2309,6 +2321,57 @@ impl OphirPayContract {
         Ok(())
     }
 
+    /// File a dispute on an escrow. Called by depositor or beneficiary.
+    /// Sets `dispute_initiated_at` to enforce MIN_DISPUTE_PERIOD before
+    /// the arbiter can resolve.
+    pub fn file_dispute(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), PaymentError> {
+        let _guard = acquire_reentrancy_lock(&env)?;
+        caller.require_auth();
+        require_not_paused(&env, PauseScope::Escrows)?;
+
+        let mut escrow: Escrow = env
+            .storage()
+            .persistent()
+            .get(&(ESCROW_KEY, escrow_id))
+            .ok_or(PaymentError::EscrowNotFound)?;
+
+        // Only depositor or beneficiary can file a dispute
+        if caller != escrow.depositor && caller != escrow.beneficiary {
+            return Err(PaymentError::Unauthorized);
+        }
+
+        if escrow.released || escrow.claimed {
+            return Err(PaymentError::EscrowAlreadyReleased);
+        }
+
+        // Only one dispute per escrow
+        if escrow.dispute_initiated_at > 0 {
+            return Err(PaymentError::DisputeAlreadyFiled);
+        }
+
+        escrow.dispute_initiated_at = env.ledger().timestamp();
+        env.storage()
+            .persistent()
+            .set(&(ESCROW_KEY, escrow_id), &escrow);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(ESCROW_KEY, escrow_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        record_audit(
+            &env,
+            "dispute_filed",
+            &caller,
+            escrow_id,
+            "Dispute filed",
+        );
+
+        Ok(())
+    }
+
     /// Arbiter releases escrow to either party (dispute resolution).
     /// Only the escrow's designated arbiter can call this.
     pub fn release_by_arbiter(
@@ -2335,6 +2398,15 @@ impl OphirPayContract {
 
         if escrow.released || escrow.claimed {
             return Err(PaymentError::EscrowAlreadyReleased);
+        }
+
+        // #1353: Enforce minimum dispute period before arbiter can resolve
+        if escrow.dispute_initiated_at > 0 {
+            let now = env.ledger().timestamp();
+            let elapsed = now.saturating_sub(escrow.dispute_initiated_at);
+            if elapsed < MIN_DISPUTE_PERIOD {
+                return Err(PaymentError::DisputeResolutionTimedOut);
+            }
         }
 
         let recipient = if release_to_beneficiary {
@@ -2460,6 +2532,14 @@ impl OphirPayContract {
             return Err(PaymentError::InvalidAmount);
         }
         if end_time <= start_time {
+            return Err(PaymentError::InvalidAmount);
+        }
+        // #1350: Enforce min/max stream duration bounds
+        let duration = end_time - start_time;
+        if duration < MIN_STREAM_DURATION {
+            return Err(PaymentError::InvalidAmount);
+        }
+        if duration > MAX_STREAM_DURATION {
             return Err(PaymentError::InvalidAmount);
         }
 
@@ -2608,6 +2688,15 @@ impl OphirPayContract {
         }
 
         let now = env.ledger().timestamp();
+
+        // #1357: Guard against zero-duration streams before division.
+        // create_stream enforces MIN_STREAM_DURATION so this should be
+        // unreachable, but defense-in-depth for any legacy or migrated streams.
+        let duration = stream.end_time.saturating_sub(stream.start_time);
+        if duration == 0 {
+            return Err(PaymentError::InvalidAmount);
+        }
+
         let vested = compute_vested(stream.total_amount, stream.start_time, stream.end_time, now);
         let earned_unclaimed = vested
             .checked_sub(stream.claimed_amount)
@@ -3500,4 +3589,4 @@ impl OphirPayContract {
         }
     }
 }
-
+

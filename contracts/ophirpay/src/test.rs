@@ -467,6 +467,294 @@ mod tests {
         assert!(client.try_claim_stream(&recipient, &1).is_err());
     }
 
+    // ── Bounty #1350: Stream Duration Bounds ─────────────────
+
+    #[test]
+    fn test_create_stream_rejects_too_short_duration() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        sac_client.mint(&creator, &10_000i128);
+
+        let now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+
+        // Duration of 30 seconds is below MIN_STREAM_DURATION (60)
+        let result = client.try_create_stream(
+            &creator,
+            &recipient,
+            &1000i128,
+            &sac,
+            &now,
+            &(now + 30),
+            &String::from_str(&env, "too short"),
+        );
+        assert_eq!(result, Err(Ok(PaymentError::InvalidAmount)));
+    }
+
+    #[test]
+    fn test_create_stream_rejects_too_long_duration() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        sac_client.mint(&creator, &10_000i128);
+
+        let now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+
+        // Duration exceeding MAX_STREAM_DURATION (157_766_400)
+        let result = client.try_create_stream(
+            &creator,
+            &recipient,
+            &1000i128,
+            &sac,
+            &now,
+            &(now + MAX_STREAM_DURATION + 1),
+            &String::from_str(&env, "too long"),
+        );
+        assert_eq!(result, Err(Ok(PaymentError::InvalidAmount)));
+    }
+
+    #[test]
+    fn test_create_stream_accepts_exact_min_duration() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        sac_client.mint(&creator, &10_000i128);
+
+        let now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+
+        // Exactly MIN_STREAM_DURATION should succeed
+        let stream_id = client.create_stream(
+            &creator,
+            &recipient,
+            &1000i128,
+            &sac,
+            &now,
+            &(now + MIN_STREAM_DURATION),
+            &String::from_str(&env, "min duration"),
+        );
+        assert_eq!(stream_id, 1);
+    }
+
+    #[test]
+    fn test_create_stream_accepts_exact_max_duration() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        sac_client.mint(&creator, &10_000i128);
+
+        let now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+
+        // Exactly MAX_STREAM_DURATION should succeed
+        let stream_id = client.create_stream(
+            &creator,
+            &recipient,
+            &1000i128,
+            &sac,
+            &now,
+            &(now + MAX_STREAM_DURATION),
+            &String::from_str(&env, "max duration"),
+        );
+        assert_eq!(stream_id, 1);
+    }
+
+    // ── Bounty #1353: Dispute Timeout ────────────────────────
+
+    #[test]
+    fn test_arbiter_cannot_resolve_before_min_dispute_period() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        sac_client.mint(&depositor, &10_000i128);
+
+        let now = 100_000u64;
+        env.ledger().set_timestamp(now);
+        let _ = client.init(&owner);
+
+        // Create escrow with arbiter
+        let _ = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Some(arbiter.clone()),
+            &1000i128,
+            &sac,
+            &(now + 86_400),
+            &String::from_str(&env, "dispute test"),
+        );
+
+        // File dispute — sets dispute_initiated_at to current timestamp
+        client.file_dispute(&depositor, &1);
+
+        // Arbiter tries to resolve immediately — should fail
+        let result = client.try_release_by_arbiter(&arbiter, &1, &true);
+        assert_eq!(result, Err(Ok(PaymentError::DisputeResolutionTimedOut)));
+    }
+
+    #[test]
+    fn test_arbiter_can_resolve_after_min_dispute_period() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        sac_client.mint(&depositor, &10_000i128);
+
+        let now = 100_000u64;
+        env.ledger().set_timestamp(now);
+        let _ = client.init(&owner);
+
+        // Create escrow with arbiter
+        let _ = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Some(arbiter.clone()),
+            &1000i128,
+            &sac,
+            &(now + MIN_DISPUTE_PERIOD + 100),
+            &String::from_str(&env, "dispute test 2"),
+        );
+
+        // File dispute
+        client.file_dispute(&depositor, &1);
+
+        // Advance time past MIN_DISPUTE_PERIOD
+        env.ledger().set_timestamp(now + MIN_DISPUTE_PERIOD + 1);
+
+        // Arbiter resolves after MIN_DISPUTE_PERIOD has elapsed
+        client.release_by_arbiter(&arbiter, &1, &true);
+        let escrow = client.get_escrow(&1);
+        assert!(escrow.released);
+        assert!(escrow.claimed);
+    }
+
+    #[test]
+    fn test_arbiter_can_resolve_without_dispute() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        sac_client.mint(&depositor, &10_000i128);
+
+        let now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+
+        // Create escrow with arbiter, no dispute initiated (dispute_initiated_at = 0)
+        let _ = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Some(arbiter.clone()),
+            &1000i128,
+            &sac,
+            &(now + 86_400),
+            &String::from_str(&env, "no dispute"),
+        );
+
+        // Arbiter resolves immediately — no dispute period to enforce
+        client.release_by_arbiter(&arbiter, &1, &true);
+        let escrow = client.get_escrow(&1);
+        assert!(escrow.released);
+    }
+
+    // ── Bounty #1357: Stream Zero-Duration Guard ──────────────
+
+    #[test]
+    fn test_cancel_stream_zero_duration_is_safe() {
+        // This test verifies that cancel_stream does not panic or divide by zero
+        // when given a stream with duration = 0 (start_time == end_time).
+        // In practice, create_stream rejects such streams, but cancel_stream
+        // has a defense-in-depth guard.
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        sac_client.mint(&creator, &10_000i128);
+
+        let _now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+
+        // Manually create a zero-duration stream in storage to test the guard
+        // (simulating a legacy or migrated stream with start_time == end_time)
+        let zero_stream = Stream {
+            id: 999,
+            creator: creator.clone(),
+            recipient: recipient.clone(),
+            total_amount: 500i128,
+            claimed_amount: 0i128,
+            asset: sac.clone(),
+            start_time: 1_000u64,
+            end_time: 1_000u64, // zero duration!
+            cancelled: false,
+            metadata: String::from_str(&env, "zero duration"),
+        };
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .persistent()
+                .set(&(STREAM_KEY, 999u64), &zero_stream);
+        });
+
+        // cancel_stream should return an error, not panic
+        let result = client.try_cancel_stream(&creator, &999);
+        assert_eq!(result, Err(Ok(PaymentError::InvalidAmount)));
+    }
+
     // ── Vesting Overflow (AUDIT LOW-1 / issue #691) ─────────
 
     /// `i128::MAX * 2` overflows. The old code returned `0` here, silently
@@ -533,25 +821,30 @@ mod tests {
         let now = env.ledger().timestamp();
         let _ = client.init(&owner);
 
+        // Use MIN_STREAM_DURATION (60) to satisfy the duration bounds (#1350)
+        // while still testing the overflow behavior with i128::MAX.
+        let duration = MIN_STREAM_DURATION;
+        let half = duration / 2;
+
         let stream_id = client.create_stream(
             &creator,
             &recipient,
             &i128::MAX,
             &sac,
             &now,
-            &(now + 4),
+            &(now + duration),
             &String::from_str(&env, "overflow"),
         );
         assert_eq!(stream_id, 1);
 
-        // 50% through: the multiply (`MAX * 2`) overflows i128.
-        env.ledger().set_timestamp(now + 2);
+        // 50% through: the multiply (`MAX * 30`) overflows i128.
+        env.ledger().set_timestamp(now + half);
         let first = client.claim_stream(&recipient, &1);
         assert_eq!(first, i128::MAX / 2, "half of the stream must be claimable");
         assert!(first > 0, "claim must not silently pay nothing");
 
         // Fully vested: the remainder is exactly what has not been claimed.
-        env.ledger().set_timestamp(now + 10);
+        env.ledger().set_timestamp(now + duration + 10);
         let second = client.claim_stream(&recipient, &1);
         assert_eq!(second, i128::MAX - (i128::MAX / 2));
 

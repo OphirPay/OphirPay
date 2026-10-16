@@ -51,6 +51,11 @@ pub const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 // `get_reason_code_analytics`.
 pub const MAX_READER_ENTRIES: u32 = 100;
 
+/// Minimum duration for a payment stream (60 seconds, issue #1350).
+pub const MIN_STREAM_DURATION: u64 = 60;
+/// Maximum duration for a payment stream (5 years in seconds: 5 * 365 * 86_400, issue #1350).
+pub const MAX_STREAM_DURATION: u64 = 157_680_000;
+
 // ── Contract ───────────────────────────────────────────────────
 
 #[contract]
@@ -2462,6 +2467,13 @@ impl OphirPayContract {
         if end_time <= start_time {
             return Err(PaymentError::InvalidAmount);
         }
+        let duration = end_time - start_time;
+        if duration < MIN_STREAM_DURATION {
+            return Err(PaymentError::StreamDurationTooShort);
+        }
+        if duration > MAX_STREAM_DURATION {
+            return Err(PaymentError::StreamDurationTooLong);
+        }
 
         // Transfer total amount from creator to contract (reentrancy-guarded, MEDIUM-4)
         let token_client = token::Client::new(&env, &asset);
@@ -3500,4 +3512,4 @@ impl OphirPayContract {
         }
     }
 }
-
+

@@ -66,9 +66,10 @@ COPY --chown=node:node --from=builder /app/public ./public
 COPY --chown=node:node --from=builder /app/.next/standalone ./
 COPY --chown=node:node --from=builder /app/.next/static ./.next/static
 # Prisma query engine — copy only the native binary, not the whole CLI.
-# The glob matches the openssl-3.x variant produced by `prisma generate` on
-# the node:24-slim (Debian) builder.  The destination mirrors where
-# standalone's own node_modules/.prisma/client/ expects to find the engine.
+# The glob matches the openssl-3.x variants produced by `prisma generate` on
+# the node:24-slim (Debian) builder across architectures (amd64 and arm64).
+# The destination mirrors where standalone's own node_modules/.prisma/client/
+# expects to find the engine.
 COPY --chown=node:node --from=builder /app/node_modules/.prisma/client/*.node ./node_modules/.prisma/client/
 COPY --chown=node:node --from=builder /app/node_modules/@prisma/engines-version ./node_modules/@prisma/engines-version
 

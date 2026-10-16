@@ -243,6 +243,38 @@ The `Dockerfile` uses a 3-stage build:
   defeating the purpose of standalone output.  The runner stage only copies the native
   Prisma query-engine binary, which the standalone tracer intentionally omits because it
   is platform-specific.
+- **Multi-architecture support (`linux/amd64` + `linux/arm64`)** (issue #1300):
+  The image supports both x86_64 and ARM64 platforms (Apple Silicon M-series, AWS Graviton,
+  Ampere) natively. Both architecture binaries are bundled and tested in CI via
+  Docker Buildx and QEMU.
+
+### Multi-Architecture Builds and CI Validation (Issue #1300)
+
+OphirPay builds and tests container images for both **`linux/amd64`** and **`linux/arm64`**.
+
+#### Building Multi-Arch Locally
+
+To build multi-architecture images locally using Docker Buildx:
+
+```bash
+# Create and use a multi-platform buildx builder
+docker buildx create --use --name ophirpay-builder
+
+# Build multi-architecture manifest without pushing
+docker buildx build --platform linux/amd64,linux/arm64 -t ophirpay:latest .
+
+# Build and load specific architecture into local Docker daemon
+docker buildx build --platform linux/arm64 --load -t ophirpay:arm64 .
+```
+
+#### Build Time Increase & Justification
+
+Cross-compiling `linux/arm64` under QEMU emulation in CI runners introduces an expected build time increase (~2–3x longer for the emulation stage compared to native x86 compilation). This trade-off is justified:
+
+1. **Native Runtime Performance**: Eliminates the severe runtime performance penalty and CPU overhead of running x86 emulation on ARM-based cloud hosts (AWS Graviton, Ampere) and developer laptops (Apple Silicon M1–M4).
+2. **Deterministic Architecture Verification**: CI verifies that both architectures compile cleanly, start up successfully, and satisfy container healthchecks (`GET /api/health/live`).
+3. **BuildKit Layer Caching**: GitHub Actions layer caching (`type=gha`) isolates dependencies per architecture scope, ensuring subsequent runs avoid repeating compilation for unchanged layers.
+4. **Platform-Agnostic Compose**: `docker-compose.yml` remains strictly platform-agnostic, pulling the native architecture for the host machine automatically without manual overrides.
 
 ### Liveness vs readiness
 

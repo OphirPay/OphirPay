@@ -165,3 +165,11 @@ describe("CsvBatchImport", () => {
     ).toBeInTheDocument();
   });
 });
+
+  it("rejects non-CSV files immediately with user-friendly error message", async () => {
+    setup();
+    const pdfFile = new File(["dummy pdf content"], "invoice.pdf", { type: "application/pdf" });
+    await uploadFile(screen.getByTestId("csv-file-input") as HTMLInputElement, pdfFile);
+
+    expect(await screen.findByText(/please upload a valid csv file/i)).toBeInTheDocument();
+  });

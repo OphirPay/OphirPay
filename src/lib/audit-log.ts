@@ -84,6 +84,7 @@ export const auditLogQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
+    cursor: z.string().trim().min(1).optional(),
     actor: z.string().trim().min(1).optional(),
     action: z.string().trim().min(1).optional(),
     resource: z.coerce.number().int().nonnegative().optional(),
@@ -104,6 +105,15 @@ export const auditLogQuerySchema = z
         code: z.ZodIssueCode.custom,
         path: ["until"],
         message: "until must be greater than or equal to since",
+      });
+    }
+    // Cursor and offset pagination are mutually exclusive — mixing them
+    // produces ambiguous results (issue #1361).
+    if (val.cursor != null && val.page != null && val.page !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["cursor"],
+        message: "cursor and page cannot both be used",
       });
     }
   });

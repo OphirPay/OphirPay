@@ -333,3 +333,16 @@ export const CSP_REPORT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 /** Maximum CSP violation reports allowed per client per minute (#1392). */
 export const CSP_REPORT_RATE_LIMIT_MAX = 60;
+
+export {
+  extractClientIp,
+  normalizeIpCandidate,
+  resolveTrustedProxyDepth,
+  isValidIpv4,
+  isValidIpv6,
+  isIpInCidr,
+  DEFAULT_TRUSTED_PROXY_DEPTH,
+  FALLBACK_CLIENT_IP,
+  type ExtractClientIpOptions,
+} from "@/lib/client-ip";
+

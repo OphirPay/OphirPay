@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import { extractClientIp, type ExtractClientIpOptions } from "@/lib/client-ip";
+
 export const RATE_LIMIT_WINDOW_MS = 60_000;
 export const DEFAULT_RATE_LIMIT_RPM = 120;
 
@@ -7,12 +9,11 @@ export function getRateLimitMax(value = process.env.RATE_LIMIT_RPM): number {
   return Math.max(1, parseInt(value || String(DEFAULT_RATE_LIMIT_RPM), 10) || DEFAULT_RATE_LIMIT_RPM);
 }
 
-export function getClientIp(headers: Pick<Headers, "get">): string {
-  return (
-    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    headers.get("x-real-ip") ||
-    "unknown"
-  );
+export function getClientIp(
+  headers: Pick<Headers, "get">,
+  options?: ExtractClientIpOptions
+): string {
+  return extractClientIp(headers, options);
 }
 
 export function generateRequestId(

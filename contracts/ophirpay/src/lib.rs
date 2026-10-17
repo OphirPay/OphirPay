@@ -8,7 +8,7 @@ pub mod errors;
 pub mod events;
 pub mod helpers;
 pub mod contract;
-mod spending_limit;
+pub mod spending_limit;
 
 #[cfg(test)]
 mod test;
@@ -21,6 +21,7 @@ pub use contract::*;
 pub use errors::*;
 pub use events::*;
 pub use helpers::*;
+pub use spending_limit::*;
 pub use storage::*;
 pub use types::*;
 

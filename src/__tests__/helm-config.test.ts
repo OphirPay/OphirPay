@@ -31,19 +31,64 @@ const values = load(
   readFileSync(join(chartDir, "values.yaml"), "utf8"),
 ) as ChartValues;
 
+const envExampleRaw = readFileSync(join(repoRoot, ".env.example"), "utf8");
+
+export function parseEnvExampleVars(envText: string): {
+  requiredEnvVars: Set<string>;
+  optionalEnvVars: Set<string>;
+  documentedEnvVars: Set<string>;
+} {
+  const requiredEnvVars = new Set(
+    Array.from(envText.matchAll(/^\s*([A-Z][A-Z0-9_]*)=/gm), (m) => m[1]),
+  );
+  const allEnvVars = new Set(
+    Array.from(envText.matchAll(/^\s*#?\s*([A-Z][A-Z0-9_]*)=/gm), (m) => m[1]),
+  );
+  const optionalEnvVars = new Set(
+    Array.from(allEnvVars).filter((k) => !requiredEnvVars.has(k)),
+  );
+  return {
+    requiredEnvVars,
+    optionalEnvVars,
+    documentedEnvVars: allEnvVars,
+  };
+}
+
+export function validateHelmEnvParity(
+  chartValues: ChartValues,
+  envText: string = envExampleRaw,
+): {
+  valid: boolean;
+  undocumentedKeys: string[];
+  missingRequiredKeys: string[];
+} {
+  const { requiredEnvVars, documentedEnvVars } = parseEnvExampleVars(envText);
+  const helmKeys = new Set([
+    ...Object.keys(chartValues.config),
+    ...Object.keys(chartValues.secrets),
+  ]);
+
+  const undocumentedKeys = Array.from(helmKeys).filter(
+    (key) => !documentedEnvVars.has(key),
+  );
+  const missingRequiredKeys = Array.from(requiredEnvVars).filter(
+    (key) => !helmKeys.has(key),
+  );
+
+  return {
+    valid: undocumentedKeys.length === 0 && missingRequiredKeys.length === 0,
+    undocumentedKeys,
+    missingRequiredKeys,
+  };
+}
+
 /**
  * Every variable name documented in `.env.example`, including the
  * commented-out optional/mainnet entries (they are still part of the
  * documented surface, e.g. `REDIS_URL`).
  */
-const documentedEnvVars = new Set(
-  Array.from(
-    readFileSync(join(repoRoot, ".env.example"), "utf8").matchAll(
-      /^\s*#?\s*([A-Z][A-Z0-9_]*)=/gm,
-    ),
-    (match) => match[1],
-  ),
-);
+const { requiredEnvVars, optionalEnvVars, documentedEnvVars } =
+  parseEnvExampleVars(envExampleRaw);
 
 function chartFiles(dir: string): { path: string; contents: string }[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -55,15 +100,18 @@ function chartFiles(dir: string): { path: string; contents: string }[] {
 }
 
 describe(".env.example parsing", () => {
-  it("collects documented variables, commented or not", () => {
+  it("collects documented variables, distinguishing required and optional (#1336)", () => {
     expect(documentedEnvVars.has("DATABASE_URL")).toBe(true);
+    expect(requiredEnvVars.has("DATABASE_URL")).toBe(true);
     expect(documentedEnvVars.has("NEXT_PUBLIC_STELLAR_RPC_URL")).toBe(true);
-    // Only present as a commented-out optional variable.
-    expect(documentedEnvVars.has("REDIS_URL")).toBe(true);
+    // Present as commented-out optional variables in .env.example:
+    expect(optionalEnvVars.has("REDIS_URL")).toBe(true);
+    expect(optionalEnvVars.has("METRICS_TOKEN")).toBe(true);
+    expect(optionalEnvVars.has("CRON_SECRET")).toBe(true);
   });
 });
 
-describe("helm/ophirpay config keys (#683)", () => {
+describe("helm/ophirpay config keys (#683, #1336)", () => {
   it.each(Object.keys(values.config))(
     "config key %s is a documented .env.example variable",
     (key) => {
@@ -84,6 +132,56 @@ describe("helm/ophirpay config keys (#683)", () => {
       expect(key).toMatch(/^[A-Z][A-Z0-9_]*$/);
     },
   );
+
+  it("allows configuring optional .env.example keys METRICS_TOKEN, CRON_SECRET, and REDIS_URL (#1336)", () => {
+    expect(values.secrets).toHaveProperty("METRICS_TOKEN");
+    expect(values.secrets).toHaveProperty("CRON_SECRET");
+    expect(values.secrets).toHaveProperty("REDIS_URL");
+    expect(values.secrets).toHaveProperty("REDIS_TOKEN");
+    expect(values.secrets).toHaveProperty("SCHEDULED_PAYMENTS_SOURCE_SECRET");
+
+    const parity = validateHelmEnvParity({
+      config: { ...values.config },
+      secrets: {
+        ...values.secrets,
+        METRICS_TOKEN: "prom-scrape-token",
+        CRON_SECRET: "cron-secret-value",
+        REDIS_URL: "redis://redis:6379",
+      },
+    });
+    expect(parity.valid).toBe(true);
+    expect(parity.undocumentedKeys).toEqual([]);
+    expect(parity.missingRequiredKeys).toEqual([]);
+  });
+
+  it("fails parity when an undocumented key is added or a required key is missing (#1336)", () => {
+    const withTypo = validateHelmEnvParity({
+      config: {
+        ...values.config,
+        NEXT_PUBLIC_TYPO_RPC_URL: "https://invalid.example",
+      },
+      secrets: { ...values.secrets },
+    });
+    expect(withTypo.valid).toBe(false);
+    expect(withTypo.undocumentedKeys).toEqual(["NEXT_PUBLIC_TYPO_RPC_URL"]);
+
+    const withoutDatabaseUrl = { ...values.secrets };
+    delete withoutDatabaseUrl.DATABASE_URL;
+    const missingRequired = validateHelmEnvParity({
+      config: { ...values.config },
+      secrets: withoutDatabaseUrl,
+    });
+    expect(missingRequired.valid).toBe(false);
+    expect(missingRequired.missingRequiredKeys).toContain("DATABASE_URL");
+  });
+
+  it("conditionally renders only non-empty entries in templates/config.yaml (#1336)", () => {
+    const configTemplate = readFileSync(
+      join(templatesDir, "config.yaml"),
+      "utf8",
+    );
+    expect(configTemplate).toContain('{{- if ne ($val | toString) "" }}');
+  });
 
   it("uses the Stellar variable names the application reads", () => {
     const envSchema = readFileSync(

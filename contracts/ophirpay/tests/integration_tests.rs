@@ -935,3 +935,56 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. MULTISIG POSITIVE THRESHOLD & SIGNERS VALIDATION (#1355)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_set_multisig_config_rejects_zero_threshold_and_empty_signers() {
+    let fix = TestFixture::new();
+    let s1 = Address::generate(&fix.env);
+    let s2 = Address::generate(&fix.env);
+
+    // 1. Empty signers list is rejected with EmptySignersList
+    let empty_signers: soroban_sdk::Vec<Address> = soroban_sdk::Vec::new(&fix.env);
+    assert_eq!(
+        fix.client
+            .try_set_multisig_config(&fix.owner, &1u32, &empty_signers, &true),
+        Err(Ok(PaymentError::EmptySignersList))
+    );
+    assert_eq!(
+        fix.client
+            .try_set_multisig_config(&fix.owner, &0u32, &empty_signers, &true),
+        Err(Ok(PaymentError::EmptySignersList))
+    );
+
+    // 2. Zero threshold with non-empty signers is rejected with InvalidThreshold
+    let signers = soroban_sdk::vec![&fix.env, s1.clone(), s2.clone()];
+    assert_eq!(
+        fix.client
+            .try_set_multisig_config(&fix.owner, &0u32, &signers, &true),
+        Err(Ok(PaymentError::InvalidThreshold))
+    );
+
+    // 3. Threshold exceeding unique signers count (including duplicates) is rejected with InvalidThreshold
+    let dup_signers = soroban_sdk::vec![&fix.env, s1.clone(), s1.clone()];
+    assert_eq!(
+        fix.client
+            .try_set_multisig_config(&fix.owner, &2u32, &dup_signers, &true),
+        Err(Ok(PaymentError::InvalidThreshold))
+    );
+    assert_eq!(
+        fix.client
+            .try_set_multisig_config(&fix.owner, &3u32, &signers, &true),
+        Err(Ok(PaymentError::InvalidThreshold))
+    );
+
+    // 4. Valid positive threshold <= unique signers count succeeds
+    fix.client
+        .set_multisig_config(&fix.owner, &2u32, &signers, &true);
+    let cfg = fix.client.get_multisig_config().unwrap();
+    assert_eq!(cfg.threshold, 2);
+    assert_eq!(cfg.signers.len(), 2);
+}
+

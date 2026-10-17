@@ -139,6 +139,13 @@ impl OphirPayContract {
         caller.require_auth();
         require_owner(&env, &caller)?;
 
+        if signers.is_empty() {
+            return Err(PaymentError::EmptySignersList);
+        }
+        if threshold == 0 {
+            return Err(PaymentError::InvalidThreshold);
+        }
+
         let mut unique_signers = Vec::new(&env);
         for signer in signers.into_iter() {
             if !unique_signers.contains(signer.clone()) {
@@ -146,12 +153,16 @@ impl OphirPayContract {
             }
         }
 
+        if unique_signers.is_empty() {
+            return Err(PaymentError::EmptySignersList);
+        }
+
         if unique_signers.len() > 50 {
             return Err(PaymentError::MaxSignersExceeded);
         }
 
         if threshold == 0 || threshold > unique_signers.len() {
-            return Err(PaymentError::InvalidAmount);
+            return Err(PaymentError::InvalidThreshold);
         }
 
         let config = MultisigConfig {
@@ -342,6 +353,13 @@ impl OphirPayContract {
             .instance()
             .get(&MULTISIG_CONFIG)
             .ok_or(PaymentError::MultisigNotConfigured)?;
+
+        if config.signers.is_empty() {
+            return Err(PaymentError::EmptySignersList);
+        }
+        if config.threshold == 0 || config.threshold > config.signers.len() {
+            return Err(PaymentError::InvalidThreshold);
+        }
 
         let mut request: ApprovalRequest = env
             .storage()

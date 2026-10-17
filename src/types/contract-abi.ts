@@ -346,6 +346,8 @@ export enum PaymentErrorCode {
   AlreadyVoted = 51,
   ReentrantCall = 52,
   PaymentIdempotencyConflict = 309,
+  InvalidThreshold = 310,
+  EmptySignersList = 311,
 }
 
 export const PAYMENT_ERROR_MESSAGES: Record<number, string> = {
@@ -402,4 +404,6 @@ export const PAYMENT_ERROR_MESSAGES: Record<number, string> = {
   51: "Voter has already voted on this proposal",
   52: "Reentrant call detected — execution rejected by reentrancy lock",
   309: "Idempotency key was reused for a different payment payload",
+  310: "Multisig threshold must be strictly positive and at most the signer count",
+  311: "Multisig signer list cannot be empty",
 };

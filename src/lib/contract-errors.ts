@@ -318,6 +318,8 @@ export const CONTRACT_ERROR_MAP: Record<string, string> = {
   "307": "Stream accounting invariant violated: refused to pay an inconsistent amount",
   "308": "Pause scope not recognized: unknown scope identifier",
   "309": "Idempotency key was reused for a different payment payload",
+  "310": "Multisig threshold must be strictly positive and at most the signer count",
+  "311": "Multisig signer list cannot be empty",
 };
 
 /**

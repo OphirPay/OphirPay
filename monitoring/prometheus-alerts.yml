@@ -95,4 +95,61 @@ groups:
             {{ printf "%.0f" $value }} failovers in the last 30 minutes — the
             primary endpoint is unstable. Verify the primary provider and the
             probe results logged by the failover module.
+
+      # ── Critical SLI Alerts (issue #1412) ────────────────────
+
+      - alert: OphirPayWebhookHighFailureRate
+        expr: |
+          (
+            rate(ophirpay_webhooks_failed_total[5m]) /
+            clamp_min(rate(ophirpay_webhooks_delivered_total[5m]) + rate(ophirpay_webhooks_failed_total[5m]), 1e-9)
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: critical
+          component: webhooks
+          sli: webhook_delivery_success_ratio
+        annotations:
+          summary: "OphirPay webhook failure rate > 10% over 5m"
+          description: |
+            Webhook failure ratio is {{ $value | humanizePercentage }} over the last 5 minutes
+            (threshold: 10%). Inspect dead-lettered webhook events, subscriber endpoint reachability,
+            and HMAC signing configuration.
+          runbook_url: "https://github.com/OphirPay/OphirPay/blob/main/docs/TROUBLESHOOTING.md#ophirpaywebhookhighfailurerate"
+
+      - alert: OphirPayRpcProviderDegraded
+        expr: increase(ophirpay_rpc_failover_total[15m]) > 3
+        for: 2m
+        labels:
+          severity: warning
+          component: rpc
+          sli: soroban_rpc_availability
+        annotations:
+          summary: "Soroban RPC provider degraded (> 3 failovers in 15m)"
+          description: |
+            Soroban RPC failover has triggered {{ printf "%.0f" $value }} times in the last 15 minutes
+            (threshold: > 3). Primary RPC node is experiencing error spikes or timeouts; verify
+            NEXT_PUBLIC_STELLAR_RPC_URL and fallback RPC health.
+          runbook_url: "https://github.com/OphirPay/OphirPay/blob/main/docs/TROUBLESHOOTING.md#ophirpayrpcproviderdegraded"
+
+      - alert: OphirPayDatabasePoolExhaustion
+        expr: |
+          (
+            histogram_quantile(0.95, sum(rate(ophirpay_db_query_duration_seconds_bucket[5m])) by (le)) > 2.0
+          ) or (
+            (rate(ophirpay_db_query_duration_seconds_sum[5m]) / clamp_min(rate(ophirpay_db_query_duration_seconds_count[5m]), 1e-9)) > 2.0
+          )
+        for: 5m
+        labels:
+          severity: critical
+          component: database
+          sli: database_query_latency_p95
+        annotations:
+          summary: "Database query p95 latency > 2.0s over 5m (pool exhaustion risk)"
+          description: |
+            Database query latency is {{ printf "%.2f" $value }}s over the last 5 minutes
+            (threshold: 2.0s). Check PostgreSQL connection pool saturation, PgBouncer queueing,
+            and long-running transactions.
+          runbook_url: "https://github.com/OphirPay/OphirPay/blob/main/docs/TROUBLESHOOTING.md#ophirpaydatabasepoolexhaustion"
+
 

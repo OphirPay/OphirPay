@@ -935,3 +935,107 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. GRANULAR SUBSYSTEM CAPABILITY PAUSE BITFLAGS (#1358)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_subsystem_pause_bitflags_isolate_payments_from_escrows_and_streams() {
+    use ophirpay_contract::{
+        PAUSE_ALL, PAUSE_ESCROWS, PAUSE_GOVERNANCE, PAUSE_PAYMENTS, PAUSE_STREAMS,
+    };
+
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    fix.mint(&payer, 10_000_000);
+
+    assert_eq!(fix.client.get_pause_flags(), 0);
+    assert_eq!(fix.client.is_paused(), false);
+
+    // 1. Pause Escrows (bitflag 2) and Streams (bitflag 4) simultaneously via bitwise OR (6)
+    fix.client
+        .set_subsystem_pause(&fix.owner, &(PAUSE_ESCROWS | PAUSE_STREAMS), &true);
+    assert_eq!(fix.client.get_pause_flags(), PAUSE_ESCROWS | PAUSE_STREAMS);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_ESCROWS), true);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_STREAMS), true);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_PAYMENTS), false);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_GOVERNANCE), false);
+    assert_eq!(fix.client.is_paused(), false);
+
+    // 2. Escrow and stream creation are blocked while direct payments succeed
+    let now = fix.env.ledger().timestamp();
+    let blocked_escrow = fix.client.try_create_escrow(
+        &payer,
+        &payee,
+        &Option::<Address>::None,
+        &1_000i128,
+        &fix.token_id,
+        &(now + 3600),
+        &String::from_str(&fix.env, "esc"),
+    );
+    assert_eq!(blocked_escrow, Err(Ok(PaymentError::ContractPaused)));
+
+    let blocked_stream = fix.client.try_create_stream(
+        &payer,
+        &payee,
+        &1_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 3600),
+        &String::from_str(&fix.env, "str"),
+    );
+    assert_eq!(blocked_stream, Err(Ok(PaymentError::ContractPaused)));
+
+    // Direct payment succeeds without global outage
+    let pid = fix.client.record_payment(
+        &payer,
+        &payee,
+        &2_500i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "0xsub_pay_ok"),
+        &String::from_str(&fix.env, "direct payment"),
+    );
+    assert_eq!(pid, 1);
+
+    // 3. Resume Escrows only; Streams remain paused
+    fix.client
+        .set_subsystem_pause(&fix.owner, &PAUSE_ESCROWS, &false);
+    assert_eq!(fix.client.get_pause_flags(), PAUSE_STREAMS);
+    let eid = fix.client.create_escrow(
+        &payer,
+        &payee,
+        &Option::<Address>::None,
+        &1_000i128,
+        &fix.token_id,
+        &(now + 3600),
+        &String::from_str(&fix.env, "esc_ok"),
+    );
+    assert_eq!(eid, 1);
+
+    // 4. Reject invalid/zero bitmasks and unauthorized callers
+    assert_eq!(
+        fix.client.try_set_subsystem_pause(&fix.owner, &0u32, &true),
+        Err(Ok(PaymentError::InvalidPauseScope))
+    );
+    assert_eq!(
+        fix.client.try_set_subsystem_pause(&fix.owner, &16u32, &true),
+        Err(Ok(PaymentError::InvalidPauseScope))
+    );
+    assert_eq!(
+        fix.client
+            .try_set_subsystem_pause(&payer, &PAUSE_PAYMENTS, &true),
+        Err(Ok(PaymentError::Unauthorized))
+    );
+
+    // 5. emergency_pause_all sets PAUSE_ALL (15) and emergency_unpause_all clears to 0
+    fix.client.emergency_pause_all(&fix.owner);
+    assert_eq!(fix.client.get_pause_flags(), PAUSE_ALL);
+    assert_eq!(fix.client.is_paused(), true);
+
+    fix.client.emergency_unpause_all(&fix.owner);
+    assert_eq!(fix.client.get_pause_flags(), 0);
+    assert_eq!(fix.client.is_paused(), false);
+}
+

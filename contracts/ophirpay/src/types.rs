@@ -378,4 +378,12 @@ pub struct HookList {
     pub total: u32,
     pub truncated: bool,
 }
+
+// ── Granular Subsystem Capability Pause Bitflags (#1358) ─────────
+pub const PAUSE_PAYMENTS: u32 = 1;
+pub const PAUSE_ESCROWS: u32 = 2;
+pub const PAUSE_STREAMS: u32 = 4;
+pub const PAUSE_GOVERNANCE: u32 = 8;
+pub const PAUSE_ALL: u32 = PAUSE_PAYMENTS | PAUSE_ESCROWS | PAUSE_STREAMS | PAUSE_GOVERNANCE;
+
 

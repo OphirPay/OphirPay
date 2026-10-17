@@ -1540,8 +1540,9 @@ impl OphirPayContract {
         caller.require_auth();
         require_owner(&env, &caller)?;
 
-        // Pause OphirPay
+        // Pause OphirPay (sets both PAUSED and all subsystem capability bitflags)
         env.storage().instance().set(&PAUSED, &true);
+        env.storage().instance().set(&PAUSE_FLAGS, &PAUSE_ALL);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
 
         // Cross-contract call: pause the Emitter if linked. The result is
@@ -1574,8 +1575,9 @@ impl OphirPayContract {
         caller.require_auth();
         require_owner(&env, &caller)?;
 
-        // Unpause OphirPay
+        // Unpause OphirPay (clears both PAUSED and all subsystem capability bitflags)
         env.storage().instance().set(&PAUSED, &false);
+        env.storage().instance().set(&PAUSE_FLAGS, &0u32);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
 
         // Cross-contract call: unpause the Emitter if linked. Result propagated
@@ -1601,7 +1603,70 @@ impl OphirPayContract {
 
     /// Check if the contract is paused.
     pub fn is_paused(env: Env) -> bool {
-        env.storage().instance().get(&PAUSED).unwrap_or(false)
+        let globally_paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
+        if globally_paused {
+            return true;
+        }
+        let flags: u32 = env.storage().instance().get(&PAUSE_FLAGS).unwrap_or(0);
+        flags == PAUSE_ALL
+    }
+
+    /// Owner-only: set or clear granular subsystem capability pause bitflags
+    /// (`PAUSE_PAYMENTS = 1`, `PAUSE_ESCROWS = 2`, `PAUSE_STREAMS = 4`,
+    /// `PAUSE_GOVERNANCE = 8`, or any bitwise combination up to `PAUSE_ALL = 15`).
+    /// Rejects unknown or zero bitflags with `InvalidPauseScope`.
+    pub fn set_subsystem_pause(
+        env: Env,
+        caller: Address,
+        subsystem: u32,
+        paused: bool,
+    ) -> Result<(), PaymentError> {
+        caller.require_auth();
+        require_owner(&env, &caller)?;
+
+        if subsystem == 0 || (subsystem & !PAUSE_ALL) != 0 {
+            return Err(PaymentError::InvalidPauseScope);
+        }
+
+        let current: u32 = get_stored_pause_flags(&env);
+        let updated: u32 = if paused {
+            current | subsystem
+        } else {
+            current & !subsystem
+        };
+
+        env.storage().instance().set(&PAUSE_FLAGS, &updated);
+        env.storage()
+            .instance()
+            .set(&PAUSED, &(updated == PAUSE_ALL));
+        env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        let action = if paused {
+            "subsystem_paused"
+        } else {
+            "subsystem_resumed"
+        };
+        let details = if paused {
+            "Subsystem capability paused"
+        } else {
+            "Subsystem capability resumed"
+        };
+        record_audit(&env, action, &caller, subsystem as u64, details);
+        Ok(())
+    }
+
+    /// Read-only: return the current `u32` subsystem capability pause bitmask.
+    pub fn get_pause_flags(env: Env) -> u32 {
+        get_stored_pause_flags(&env)
+    }
+
+    /// Read-only: check whether all bitflags in `subsystem` are currently paused.
+    pub fn is_subsystem_paused(env: Env, subsystem: u32) -> Result<bool, PaymentError> {
+        if subsystem == 0 || (subsystem & !PAUSE_ALL) != 0 {
+            return Err(PaymentError::InvalidPauseScope);
+        }
+        let flags = get_stored_pause_flags(&env);
+        Ok((flags & subsystem) == subsystem)
     }
 
     /// Owner-only: pause or resume a single feature scope. The global

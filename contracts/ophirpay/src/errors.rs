@@ -660,5 +660,11 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    // ── Multisig Threshold & Signers Validation (310-311) ──
+    /// Multisig threshold must be strictly positive and at most the signer count
+    InvalidThreshold = 310,
+    /// Multisig signer list cannot be empty
+    EmptySignersList = 311,
 }
+
 

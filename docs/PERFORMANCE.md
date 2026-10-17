@@ -347,3 +347,30 @@ user sees *why* a fee is higher than usual.
   fee, so the pre-sign preview matches what is signed.
 - `estimateTransactionFee()` / `estimateBatchFee()` (`src/lib/fee-estimator.ts`)
   — the UI-facing wrappers.
+
+## High-Concurrency `/api/payments` Ingestion Load Test (issue #1404)
+
+For stress-testing the payment ingestion pipeline under burst traffic, [`tests/load/payments-concurrency.js`](../tests/load/payments-concurrency.js) (`npm run test:load:payments`) simulates **200 concurrent users** executing a realistic mixed workload:
+
+- **70% status queries** (`GET /api/payments?limit=20&status=COMPLETED`)
+- **20% payment creations** (`POST /api/payments`)
+- **10% webhook polling** (`GET /api/webhooks?limit=20`)
+
+### Enforced SLA Thresholds (at 150 RPS)
+
+| Metric | Target / Ceiling |
+|---|---|
+| Concurrency | 200 virtual users |
+| Target throughput | ≥ 150 RPS |
+| `p95` latency | `< 350 ms` |
+| HTTP `5xx` error rate | `0%` |
+| Latency report | Structured JSON (`p50`, `p90`, `p95`, `p99`) |
+
+```bash
+# Run against a live local server
+LOAD_TEST_API_KEY=oph_... npm run test:load:payments
+
+# Run self-contained verification against an ephemeral local server
+node tests/load/payments-concurrency.js --self-test
+```
+

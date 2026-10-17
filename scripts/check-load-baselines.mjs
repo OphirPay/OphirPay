@@ -132,6 +132,42 @@ export function evaluateResult(result, thresholds, margin) {
   };
 }
 
+/**
+ * Evaluate a high-concurrency /api/payments summary (from tests/load/payments-concurrency.js)
+ * against the strict SLA ceilings (p95 < 350ms, 0% 5xx under 150 RPS).
+ */
+export function evaluateConcurrencySla(
+  summary,
+  sla = { maxP95Ms: 350, max5xxPct: 0, minRps: 150 }
+) {
+  const checks = [
+    {
+      metric: "p95 latency",
+      measured: Number(summary.latency?.p95 ?? 0),
+      allowed: sla.maxP95Ms,
+      ok: Number(summary.latency?.p95 ?? 0) < sla.maxP95Ms,
+    },
+    {
+      metric: "HTTP 5xx rate",
+      measured: Number(summary.http5xxPct ?? 0),
+      allowed: sla.max5xxPct,
+      ok: Number(summary.http5xxPct ?? 0) <= sla.max5xxPct,
+    },
+    {
+      metric: "throughput (RPS)",
+      measured: Number(summary.rps ?? 0),
+      allowed: sla.minRps,
+      ok: Number(summary.rps ?? 0) >= sla.minRps,
+    },
+  ];
+  return {
+    benchmark: summary.benchmark || "payments-high-concurrency",
+    connections: Number(summary.connections) || 200,
+    checks,
+    ok: checks.every((c) => c.ok),
+  };
+}
+
 // ── Reporting ──────────────────────────────────────────────────
 
 function fmt(value, metric) {

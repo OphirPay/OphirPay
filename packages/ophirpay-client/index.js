@@ -26,6 +26,11 @@ export class OphirPayError extends Error {
     this.status = options.status ?? null;
     this.code = options.code ?? null;
     this.details = options.details ?? null;
+    this.type = options.type ?? null;
+    this.title = options.title ?? null;
+    this.detail = options.detail ?? null;
+    this.instance = options.instance ?? null;
+    this.errors = options.errors ?? null;
   }
 }
 
@@ -162,14 +167,43 @@ export class OphirPayClient {
     }
 
     const text = await res.text();
-    const json = text ? JSON.parse(text) : {};
+    let json = {};
+    if (text) {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = {};
+      }
+    }
 
     if (!res.ok || json.success === false) {
       const error = json.error ?? {};
-      throw new OphirPayError(
-        error.message ?? `Request failed with status ${res.status}`,
-        { status: res.status, code: error.code ?? null, details: error.details ?? null }
-      );
+      const detail = typeof json.detail === "string" ? json.detail : null;
+      const title = typeof json.title === "string" ? json.title : null;
+      const type = typeof json.type === "string" ? json.type : null;
+      const instance = typeof json.instance === "string" ? json.instance : null;
+      const errors = Array.isArray(json.errors) ? json.errors : null;
+      const status = typeof json.status === "number" ? json.status : res.status;
+      const code =
+        (typeof json.code === "string" ? json.code : null) ??
+        error.code ??
+        null;
+      const message =
+        detail ??
+        error.message ??
+        title ??
+        `Request failed with status ${res.status}`;
+
+      throw new OphirPayError(message, {
+        status,
+        code,
+        details: errors ?? error.details ?? null,
+        type,
+        title,
+        detail: detail ?? error.message ?? null,
+        instance,
+        errors,
+      });
     }
 
     return json.data;

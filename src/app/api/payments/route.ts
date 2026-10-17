@@ -3,13 +3,14 @@ import { withMetrics } from "@/lib/metrics-middleware";
 
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
+import { successResponse } from "@/lib/api-response";
 import {
-  successResponse,
-  validationError,
-  badRequestError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+  validationProblem,
+  badRequestProblem,
+  unauthorizedProblem,
+  forbiddenProblem,
+  handleProblemApiError,
+} from "@/lib/api-errors";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -28,12 +29,15 @@ import {
   prismaPagination,
 } from "@/lib/pagination-utils";
 
+const INSTANCE_PATH = "/api/payments";
+
 export const GET = withMetrics("GET /api/payments", withRequestLogging(async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+      return unauthorizedProblem(
+        "Authentication required. Connect your wallet or provide an API key.",
+        INSTANCE_PATH
       );
     }
 
@@ -49,7 +53,7 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
       search: searchParams.get("search") ?? undefined,
     });
 
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return validationProblem(parsed.error, INSTANCE_PATH);
 
     const { page, limit, status, search, cursor: rawCursor } = parsed.data;
 
@@ -69,10 +73,10 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
     // pagination via an explicit `page` param is kept for legacy consumers.
     const cursor = rawCursor ? decodeCursor(rawCursor) : null;
     if (rawCursor && !cursor) {
-      return badRequestError("Invalid cursor");
+      return badRequestProblem("Invalid cursor", INSTANCE_PATH);
     }
     if (cursor !== null && explicitPage !== null) {
-      return badRequestError("page and cursor cannot both be used");
+      return badRequestProblem("page and cursor cannot both be used", INSTANCE_PATH);
     }
 
     // Keyset mode (default): fetch limit + 1 rows to learn whether another
@@ -114,25 +118,32 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
       hasMore: page * limit < total,
     });
   } catch (err) {
-    return handleApiError(err, "GET /api/payments");
+    return handleProblemApiError(err, "GET /api/payments", INSTANCE_PATH);
   }
 }));
 
 export const POST = withMetrics("POST /api/payments", withRequestLogging(async function POST(request: Request) {
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    if (csrfError) {
+      return forbiddenProblem(
+        "Invalid or missing CSRF token. Refresh the page and try again.",
+        INSTANCE_PATH,
+        "CSRF_INVALID"
+      );
+    }
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+      return unauthorizedProblem(
+        "Authentication required. Connect your wallet or provide an API key.",
+        INSTANCE_PATH
       );
     }
 
     const body = await request.json();
     const parsed = createPaymentSchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return validationProblem(parsed.error, INSTANCE_PATH);
 
     const payment = await prisma.payment.create({
       data: {
@@ -181,6 +192,6 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
 
     return successResponse(payment, undefined, 201);
   } catch (err) {
-    return handleApiError(err, "POST /api/payments");
+    return handleProblemApiError(err, "POST /api/payments", INSTANCE_PATH);
   }
 }));

@@ -3,13 +3,16 @@ import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
 import { updatePaymentSchema } from "@/lib/validation-schemas";
+import { successResponse } from "@/lib/api-response";
 import {
-  successResponse,
-  validationError,
-  notFoundError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+  validationProblem,
+  badRequestProblem,
+  notFoundProblem,
+  unauthorizedProblem,
+  forbiddenProblem,
+  handleProblemApiError,
+} from "@/lib/api-errors";
+import { ERROR_CODES } from "@/lib/error-codes";
 import { logger } from "@/lib/logger";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
@@ -25,23 +28,30 @@ export const GET = withMetrics("GET /api/payments/[id]", withRequestLogging(asyn
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+      return unauthorizedProblem(
+        "Authentication required. Connect your wallet or provide an API key.",
+        "/api/payments/[id]"
       );
     }
 
     const parsedId = await validateIdParam(params);
-    if (!parsedId.success) return parsedId.response;
+    if (!parsedId.success) {
+      return badRequestProblem(
+        "Invalid ID format",
+        "/api/payments/[id]",
+        ERROR_CODES.VALIDATION_ERROR
+      );
+    }
     const { id } = parsedId;
     // Only the owning user may read the payment (no IDOR across users), and
     // soft-deleted payments behave like they don't exist (consistent 404).
     const payment = await prisma.payment.findFirst({
       where: { id, userId: auth.userId, deletedAt: null },
     });
-    if (!payment) return notFoundError("Payment");
+    if (!payment) return notFoundProblem("Payment", `/api/payments/${id}`);
     return successResponse(payment);
   } catch (err) {
-    return handleApiError(err, `GET /api/payments/[id]`);
+    return handleProblemApiError(err, `GET /api/payments/[id]`, "/api/payments/[id]");
   }
 }));
 
@@ -51,22 +61,30 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
 ) {
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    if (csrfError) {
+      return forbiddenProblem(
+        "Invalid or missing CSRF token. Refresh the page and try again.",
+        "/api/payments/[id]",
+        "CSRF_INVALID"
+      );
+    }
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+      return unauthorizedProblem(
+        "Authentication required. Connect your wallet or provide an API key.",
+        "/api/payments/[id]"
       );
     }
 
     const { id } = await params;
+    const instance = `/api/payments/${id}`;
     const rawBody = await request.json();
     // Validate the whole update body (status enum, description, memo length /
     // charset) server-side so invalid memos never reach the database or the
     // webhook payloads.
     const parsed = updatePaymentSchema.safeParse(rawBody);
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return validationProblem(parsed.error, instance);
     const body = parsed.data;
 
     // updateMany scopes the write to the authenticated user's records and
@@ -79,10 +97,10 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
         ...(body.memo !== undefined && { memo: body.memo }),
       },
     });
-    if (updated.count === 0) return notFoundError("Payment");
+    if (updated.count === 0) return notFoundProblem("Payment", instance);
 
     const payment = await prisma.payment.findUnique({ where: { id } });
-    if (!payment) return notFoundError("Payment");
+    if (!payment) return notFoundProblem("Payment", instance);
 
     logger.info("Payment updated", { id, status: payment.status });
 
@@ -130,7 +148,7 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
 
     return successResponse(payment);
   } catch (err) {
-    return handleApiError(err, `PATCH /api/payments/[id]`);
+    return handleProblemApiError(err, `PATCH /api/payments/[id]`, "/api/payments/[id]");
   }
 }));
 
@@ -140,12 +158,19 @@ export const DELETE = withMetrics("DELETE /api/payments/[id]", withRequestLoggin
 ) {
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    if (csrfError) {
+      return forbiddenProblem(
+        "Invalid or missing CSRF token. Refresh the page and try again.",
+        "/api/payments/[id]",
+        "CSRF_INVALID"
+      );
+    }
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+      return unauthorizedProblem(
+        "Authentication required. Connect your wallet or provide an API key.",
+        "/api/payments/[id]"
       );
     }
 
@@ -157,10 +182,10 @@ export const DELETE = withMetrics("DELETE /api/payments/[id]", withRequestLoggin
       where: { id, userId: auth.userId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
-    if (deleted.count === 0) return notFoundError("Payment");
+    if (deleted.count === 0) return notFoundProblem("Payment", `/api/payments/${id}`);
     logger.info("Payment soft-deleted", { id });
     return successResponse({ deleted: true });
   } catch (err) {
-    return handleApiError(err, `DELETE /api/payments/[id]`);
+    return handleProblemApiError(err, `DELETE /api/payments/[id]`, "/api/payments/[id]");
   }
 }));

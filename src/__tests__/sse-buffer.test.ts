@@ -4,8 +4,11 @@ import { describe, it, expect, vi } from "vitest";
 import {
   createBoundedSseBuffer,
   encodeSseFrame,
+  SSE_PING_INTERVAL_MS,
   SSE_SLOW_CONSUMER_CODE,
 } from "@/lib/events/sse-buffer";
+import { GET as getEvents } from "@/app/api/events/route";
+import { GET as getAuditLogSse } from "@/app/api/audit-log/sse/route";
 
 const decoder = new TextDecoder();
 
@@ -149,15 +152,22 @@ describe("createBoundedSseBuffer — idle timeout", () => {
       maxEvents: 10,
       idleTimeoutMs: 100,
       now: () => clock,
+    });
+    // re-create with onDisconnect to verify reason
+    const buffer2 = createBoundedSseBuffer({
+      maxEvents: 10,
+      idleTimeoutMs: 100,
+      now: () => clock,
       onDisconnect,
     });
-    buffer.attach(harness.controller);
+    buffer.close();
+    buffer2.attach(harness.controller);
 
-    buffer.push("a", 1); // backlog created, no drain (desired = 0)
+    buffer2.push("a", 1); // backlog created, no drain (desired = 0)
     clock = 1_200; // beyond the idle budget
-    buffer.push("b", 2);
+    buffer2.push("b", 2);
 
-    expect(buffer.disconnected).toBe(true);
+    expect(buffer2.disconnected).toBe(true);
     expect(onDisconnect).toHaveBeenCalledWith("idle-timeout");
   });
 
@@ -178,5 +188,83 @@ describe("createBoundedSseBuffer — idle timeout", () => {
     }
 
     expect(buffer.disconnected).toBe(false);
+  });
+});
+
+describe("createBoundedSseBuffer — keep-alive ping comments", () => {
+  it("emits SSE `: ping\\n\\n` comments without counting toward queuedEvents", () => {
+    const harness = makeController(10);
+    const buffer = createBoundedSseBuffer({ idleTimeoutMs: 1_000_000 });
+    buffer.attach(harness.controller);
+
+    expect(SSE_PING_INTERVAL_MS).toBe(20_000);
+    buffer.ping();
+    buffer.comment("custom-heartbeat");
+
+    expect(buffer.queuedEvents).toBe(0);
+    expect(buffer.droppedEvents).toBe(0);
+    expect(harness.texts()).toEqual([": ping\n\n", ": custom-heartbeat\n\n"]);
+  });
+
+  it("emits at least one `: ping\\n\\n` over a 30s /api/events connection and clears timer on disconnect", async () => {
+    vi.useFakeTimers();
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+    try {
+      const abortController = new AbortController();
+      const res = await getEvents(
+        new Request("http://localhost/api/events", { signal: abortController.signal })
+      );
+      expect(res.status).toBe(200);
+      const reader = res.body!.getReader();
+
+      const collected: string[] = [];
+      // Read initial connected event
+      const first = await reader.read();
+      collected.push(decoder.decode(first.value));
+
+      // Advance 20 seconds -> 15s heartbeat + 20s ping interval fire
+      await vi.advanceTimersByTimeAsync(20_000);
+      const second = await reader.read();
+      collected.push(decoder.decode(second.value));
+      const third = await reader.read();
+      collected.push(decoder.decode(third.value));
+
+      expect(collected.some((chunk) => chunk.includes("event: connected"))).toBe(true);
+      expect(collected).toContain(": ping\n\n");
+
+      // Disconnect via abort and verify route intervals (heartbeat, ping, poll) are cleared
+      abortController.abort();
+      await reader.cancel();
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(3);
+    } finally {
+      clearIntervalSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits at least one `: ping\\n\\n` over a 30s /api/audit-log/sse connection and clears timer on cancel", async () => {
+    vi.useFakeTimers();
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+    try {
+      const res = await getAuditLogSse(new Request("http://localhost/api/audit-log/sse"));
+      expect(res.status).toBe(200);
+      const reader = res.body!.getReader();
+
+      // Read initial connected event
+      const first = await reader.read();
+      expect(decoder.decode(first.value)).toContain("event: connected");
+
+      // Advance 20 seconds -> 20s ping interval fires once
+      await vi.advanceTimersByTimeAsync(20_000);
+      const second = await reader.read();
+      expect(decoder.decode(second.value)).toBe(": ping\n\n");
+
+      // Cancel stream and verify both poll + ping intervals are cleaned up
+      await reader.cancel();
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      clearIntervalSpy.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

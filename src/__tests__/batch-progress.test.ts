@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   toBatchItemStatus,
   computeBatchProgress,
+  resolveBatchSseStage,
+  buildBatchProgressEvent,
+  subscribeBatchProgress,
+  emitBatchProgressEvent,
 } from "@/lib/batch-progress";
 
 describe("toBatchItemStatus", () => {
@@ -151,5 +155,45 @@ describe("computeBatchProgress", () => {
     expect(result.pending).toBe(1);
     expect(result.sent).toBe(1);
     expect(result.percentComplete).toBe(50);
+  });
+});
+
+describe("resolveBatchSseStage & pub/sub (#1315)", () => {
+  it("maps batch and payment states across queued, simulating, signing, processing, and completed", () => {
+    expect(resolveBatchSseStage("CREATED", [{ status: "CREATED" }])).toBe("queued");
+    expect(resolveBatchSseStage("PROCESSING", [{ status: "SIMULATING" }])).toBe("simulating");
+    expect(resolveBatchSseStage("PROCESSING", [{ status: "SIGNED" }])).toBe("signing");
+    expect(
+      resolveBatchSseStage("PROCESSING", [{ status: "COMPLETED" }, { status: "PENDING" }])
+    ).toBe("processing");
+    expect(
+      resolveBatchSseStage("COMPLETED", [{ status: "COMPLETED" }, { status: "FAILED" }])
+    ).toBe("completed");
+  });
+
+  it("publishes progress events to in-memory subscribers and Redis pub/sub", async () => {
+    const received: unknown[] = [];
+    const unsubscribe = subscribeBatchProgress("batch_1", (evt) => {
+      received.push(evt);
+    });
+    const redisMock = { publish: vi.fn().mockResolvedValue(1) };
+
+    const event = buildBatchProgressEvent("batch_1", "PROCESSING", [
+      { status: "COMPLETED" },
+      { status: "FAILED" },
+      { status: "PENDING" },
+    ]);
+
+    await emitBatchProgressEvent(event, redisMock);
+    unsubscribe();
+
+    expect(received).toHaveLength(1);
+    expect(event.processedCount).toBe(2);
+    expect(event.totalCount).toBe(3);
+    expect(event.failureCount).toBe(1);
+    expect(redisMock.publish).toHaveBeenCalledWith(
+      "ophirpay:batch-progress:batch_1",
+      expect.stringContaining('"batchId":"batch_1"')
+    );
   });
 });

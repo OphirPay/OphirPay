@@ -26,6 +26,10 @@ export class OphirPayError extends Error {
     this.status = options.status ?? null;
     this.code = options.code ?? null;
     this.details = options.details ?? null;
+    this.type = options.type ?? null;
+    this.instance = options.instance ?? null;
+    this.invalidParams = options.invalidParams ?? null;
+    this.problemDetails = options.problemDetails ?? null;
   }
 }
 
@@ -141,7 +145,7 @@ export class OphirPayClient {
         method,
         signal: controller.signal,
         headers: {
-          Accept: "application/json",
+          Accept: "application/json, application/problem+json",
           ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
           ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
           ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
@@ -162,14 +166,45 @@ export class OphirPayClient {
     }
 
     const text = await res.text();
-    const json = text ? JSON.parse(text) : {};
+    let json = {};
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      json = { detail: text };
+    }
 
-    if (!res.ok || json.success === false) {
-      const error = json.error ?? {};
-      throw new OphirPayError(
-        error.message ?? `Request failed with status ${res.status}`,
-        { status: res.status, code: error.code ?? null, details: error.details ?? null }
+    if (!res.ok || json.success === false || json.type !== undefined) {
+      const isRfc7807 = Boolean(
+        json &&
+          typeof json === "object" &&
+          (json.type !== undefined || json.title !== undefined || json.detail !== undefined)
       );
+
+      const message = isRfc7807
+        ? (json.detail ?? json.title ?? `Request failed with status ${res.status}`)
+        : (json.error?.message ?? `Request failed with status ${res.status}`);
+
+      const code = isRfc7807
+        ? (json.code ?? (typeof json.type === "string" ? json.type.split("/").pop() : null))
+        : (json.error?.code ?? null);
+
+      const invalidParams = isRfc7807
+        ? (json.invalidParams ?? json.invalid_params ?? null)
+        : null;
+
+      const details = isRfc7807
+        ? (invalidParams ?? json.details ?? null)
+        : (json.error?.details ?? null);
+
+      throw new OphirPayError(message, {
+        status: res.status ?? json.status ?? null,
+        code,
+        details,
+        type: isRfc7807 ? (json.type ?? null) : null,
+        instance: isRfc7807 ? (json.instance ?? null) : null,
+        invalidParams,
+        problemDetails: isRfc7807 ? json : null,
+      });
     }
 
     return json.data;

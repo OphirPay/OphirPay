@@ -333,3 +333,82 @@ export const CSP_REPORT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 /** Maximum CSP violation reports allowed per client per minute (#1392). */
 export const CSP_REPORT_RATE_LIMIT_MAX = 60;
+
+// ── API Key Lifecycle Rate Limiting & Quota (Issue #1370) ──────
+
+/** Sliding window for API key creation and rotation (1 hour in milliseconds). */
+export const API_KEY_MUTATION_WINDOW_MS = 60 * 60 * 1000;
+
+/** Maximum key creation + rotation operations per hour per organization/account. */
+export const API_KEY_MUTATION_MAX_PER_HOUR = 10;
+
+/** Maximum concurrent active (unrevoked, unrotated) API keys per account. */
+export const MAX_ACTIVE_API_KEYS_PER_ACCOUNT = 5;
+
+/**
+ * Increment and evaluate the per-account sliding-window rate limit for
+ * `/api/keys` creation and `/api/keys/[id]/rotate` rotation endpoints.
+ */
+export async function checkApiKeyRateLimit(
+  accountId: string
+): Promise<RateLimitResult> {
+  const key = `keys:lifecycle:${accountId}`;
+  return getRateLimitStore().increment(
+    key,
+    API_KEY_MUTATION_WINDOW_MS,
+    API_KEY_MUTATION_MAX_PER_HOUR
+  );
+}
+
+/**
+ * Attach standard `X-RateLimit-*` headers to a response for `/api/keys` mutations.
+ */
+export function applyKeyRateLimitHeaders<T extends Response>(
+  response: T,
+  result: RateLimitResult
+): T {
+  const resetEpochSeconds = Math.ceil(result.resetAt / 1000);
+  response.headers.set(
+    "X-RateLimit-Limit",
+    String(API_KEY_MUTATION_MAX_PER_HOUR)
+  );
+  response.headers.set("X-RateLimit-Remaining", String(result.remaining));
+  response.headers.set("X-RateLimit-Reset", String(resetEpochSeconds));
+  return response;
+}
+
+/**
+ * Build an HTTP 429 Too Many Requests response with `Retry-After`,
+ * `X-RateLimit-Reset`, and `resetAt` ISO timestamp in the JSON body.
+ */
+export function buildKeyRateLimitResponse(result: RateLimitResult): Response {
+  const retryAfterSeconds = getRetryAfterSeconds(result);
+  const resetEpochSeconds = Math.ceil(result.resetAt / 1000);
+  const resetAtIso = new Date(result.resetAt).toISOString();
+
+  const response = new Response(
+    JSON.stringify({
+      success: false,
+      error: {
+        code: "RATE_LIMITED",
+        message: `Rate limit exceeded for API key operations (max ${API_KEY_MUTATION_MAX_PER_HOUR} per hour). Try again after ${resetAtIso}.`,
+        resetAt: resetAtIso,
+        retryAfterSeconds,
+      },
+      resetAt: resetAtIso,
+      timestamp: new Date().toISOString(),
+    }),
+    {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": String(retryAfterSeconds),
+        "X-RateLimit-Limit": String(API_KEY_MUTATION_MAX_PER_HOUR),
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": String(resetEpochSeconds),
+      },
+    }
+  );
+  return response;
+}
+

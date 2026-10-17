@@ -15,6 +15,11 @@ import {
 } from "@/lib/api-auth";
 import { verifyCsrf } from "@/lib/csrf";
 import { logger } from "@/lib/logger";
+import {
+  applyKeyRateLimitHeaders,
+  buildKeyRateLimitResponse,
+  checkApiKeyRateLimit,
+} from "@/lib/rate-limit";
 
 const ROTATION_GRACE_MS = 24 * 60 * 60 * 1000;
 
@@ -23,6 +28,7 @@ const ROTATION_GRACE_MS = 24 * 60 * 60 * 1000;
  *
  * Atomically issues a replacement key and gives the previous key a 24-hour
  * overlap so consumers can deploy without an authentication outage.
+ * Rate-limited to 10 key operations/hour per account.
  */
 export async function POST(
   request: Request,
@@ -34,6 +40,15 @@ export async function POST(
 
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+
+    const rateLimit = await checkApiKeyRateLimit(auth.userId);
+    if (!rateLimit.allowed) {
+      logger.warn("API key rotation rate limit exceeded", {
+        userId: auth.userId,
+        resetAt: new Date(rateLimit.resetAt).toISOString(),
+      });
+      return buildKeyRateLimitResponse(rateLimit);
+    }
 
     const { id } = await params;
     const now = new Date();
@@ -102,6 +117,13 @@ export async function POST(
             previousPrefix: previous.prefix,
             replacementPrefix,
             graceUntil: graceUntil.toISOString(),
+            initiatorId: auth.userId,
+            ...("keyId" in auth && auth.keyId
+              ? { initiatorKeyId: auth.keyId }
+              : {}),
+            ...("publicKey" in auth && auth.publicKey
+              ? { initiatorPublicKey: auth.publicKey }
+              : {}),
           },
         },
       });
@@ -125,7 +147,7 @@ export async function POST(
       userId: auth.userId,
     });
 
-    return successResponse(
+    const response = successResponse(
       {
         id: rotated.id,
         name: rotated.name,
@@ -138,6 +160,7 @@ export async function POST(
       undefined,
       201,
     );
+    return applyKeyRateLimitHeaders(response, rateLimit);
   } catch (err) {
     return handleApiError(err, "POST /api/keys/[id]/rotate");
   }

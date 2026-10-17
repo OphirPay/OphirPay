@@ -32,3 +32,16 @@ export function getCorsHeaders(origin = "*"): Record<string, string> {
     "Access-Control-Max-Age": "86400",
   };
 }
+
+export {
+  STRICT_SECURITY_HEADERS,
+  STELLAR_CONNECT_ORIGINS,
+  WALLET_FRAME_ORIGINS,
+  generateCspNonce,
+  computeScriptSha256Hash,
+  verifyScriptHash,
+  buildStrictCspHeader,
+  getStrictSecurityHeaders,
+  applySecurityHeaders,
+} from "@/lib/security-headers";
+

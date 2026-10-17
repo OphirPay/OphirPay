@@ -86,6 +86,14 @@ The page CSP reports to `POST /api/csp-report`; the collector validates and
 limits reports before logging them. See `src/proxy.ts` and
 [AUDIT.md](AUDIT.md) for the implementation and tracked limitation.
 
+### Theme Blocking Script & CSP Nonce (#1376)
+
+To prevent Flash of Unstyled Content (FOUC) and theme flicker during initial page load:
+- An inline blocking script (`THEME_BLOCKING_SCRIPT` in `src/hooks/useTheme.tsx`) is injected into `<head>` in `src/app/layout.tsx`.
+- It executes synchronously before first paint, checking `localStorage.getItem("theme")` and `localStorage.getItem("ophirpay-theme")` with fallback to `prefers-color-scheme: dark`.
+- It dynamically updates `document.documentElement` (`.dark` class, `data-theme`, and `style.colorScheme`).
+- The script carries `nonce={nonce}` dynamically retrieved from `headers()`, ensuring strict compliance with the Content Security Policy `script-src` directive without violating security boundaries.
+
 ### CSP Report Collector Protections (#1392)
 
 To prevent denial-of-service floods, disk exhaustion, and inflated logging costs from synthetic or bursty violation reports, `POST /api/csp-report` enforces strict controls:

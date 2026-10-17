@@ -236,7 +236,26 @@ return the same rows for the same terms, and the API contract is unchanged.
 
 ---
 
-## 6. Summary Checklist for Pull Requests
+## 6. Automated Cron Job Log Pruning (Issue #1420)
+
+Every scheduled payment run (`/api/cron`) and Horizon status reconciliation job generates historical execution records in PostgreSQL (`ScheduledPayment` and `PaymentSyncRun`). To prevent unbounded table growth and index bloat while preserving auditability and active schedules:
+
+### Retention & Safety Policy
+- **Retention Window**: Completed cron execution logs older than **90 days** by default (configurable via `CRON_LOG_RETENTION_DAYS`) are automatically pruned at the end of each `/api/cron` run.
+- **Protected Records**:
+  - Active recurring schedules (`Recurrence` rows with `isActive = true`) are **never** touched.
+  - Pending or in-flight scheduled payments (`status IN ('SCHEDULED', 'PROCESSING')`) are **never** deleted.
+  - Failed scheduled payments (`status = 'FAILED'`) and errored sync runs (`status = 'error'`) are **never** deleted so operators retain full failure diagnostics.
+  - Only terminal completed/cancelled records (`ScheduledPayment.status IN ('EXECUTED', 'CANCELLED')` and `PaymentSyncRun.status = 'success'`) older than the retention cutoff are eligible.
+- **Bounded Batch Deletion (`LIMIT 1000`)**:
+  - Deletions are capped at `CRON_LOG_PRUNE_BATCH_SIZE = 1000` rows per cron invocation (`ORDER BY updatedAt ASC LIMIT 1000`) to avoid long-running PostgreSQL row/table locks and WAL spikes.
+  - Composite indexes `ScheduledPayment(status, updatedAt)` and `PaymentSyncRun(status, completedAt)` ensure candidate selection uses an index scan.
+- **Observability**:
+  - Each pruning pass logs the deleted row count and increments the Prometheus counter `cron_logs_pruned_total` exposed on `/api/metrics`.
+
+---
+
+## 7. Summary Checklist for Pull Requests
 
 Before submitting a PR with database changes:
 - [ ] `prisma/schema.prisma` contains clear doc comments (`///`) on all new models/fields.
@@ -244,3 +263,4 @@ Before submitting a PR with database changes:
 - [ ] No blocking locks on production tables (indexes reviewed for `CONCURRENTLY` requirements).
 - [ ] `npx prisma generate` builds clean TypeScript types without errors.
 - [ ] Seeding script (`prisma/seed.ts`) runs successfully.
+

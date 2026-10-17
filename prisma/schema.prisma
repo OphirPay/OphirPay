@@ -425,6 +425,8 @@ model ScheduledPayment {
 
   @@index([userId])
   @@index([status, scheduledAt])
+  /// Speeds up bounded-batch cron execution log pruning by terminal status + age (#1420).
+  @@index([status, updatedAt])
 }
 
 enum ScheduledPaymentStatus {
@@ -800,4 +802,6 @@ model PaymentSyncRun {
   @@index([status])
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
+  /// Speeds up bounded-batch cron sync log pruning by status + completion age (#1420).
+  @@index([status, completedAt])
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { successResponse } from "@/lib/api-response";
+import pkg from "../../../../../package.json";
 
 /**
  * Liveness probe — `GET /api/health/live` (issue #738).
@@ -25,10 +26,21 @@ import { successResponse } from "@/lib/api-response";
  * high frequency and cheap to cache in a log line.
  */
 export function GET() {
+  const version =
+    process.env.NEXT_PUBLIC_APP_VERSION?.trim() ||
+    process.env.npm_package_version?.trim() ||
+    pkg.version;
+  const commit =
+    process.env.GIT_SHA?.trim() ||
+    process.env.VERCEL_GIT_COMMIT_SHA?.trim() ||
+    process.env.NEXT_PUBLIC_GIT_SHA?.trim() ||
+    "unknown";
+
   return successResponse({
     status: "ok",
     probe: "liveness",
-    version: "0.1.0",
+    version,
+    commit,
     uptime: process.uptime(),
   });
 }

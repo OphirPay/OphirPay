@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
+import pkg from "../../../../package.json";
 
 import prisma from "@/lib/prisma";
 import { STELLAR_NETWORK, SOROBAN_RPC_URL, HORIZON_URL } from "@/lib/stellar";
@@ -11,6 +12,19 @@ import {
   isRpcFailoverDegraded,
   RPC_FAILOVER_DEGRADED_AFTER_MS,
 } from "@/lib/rpc-failover";
+
+export function resolveHealthBuildInfo(): { version: string; commit: string } {
+  const version =
+    process.env.NEXT_PUBLIC_APP_VERSION?.trim() ||
+    process.env.npm_package_version?.trim() ||
+    pkg.version;
+  const commit =
+    process.env.GIT_SHA?.trim() ||
+    process.env.VERCEL_GIT_COMMIT_SHA?.trim() ||
+    process.env.NEXT_PUBLIC_GIT_SHA?.trim() ||
+    "unknown";
+  return { version, commit };
+}
 
 // ── Check helpers ──────────────────────────────────────────────
 
@@ -139,10 +153,13 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     const isDegraded = dbStatus === "ok" && (hasOptionalError || failoverDegraded);
     const overallStatus = dbStatus === "error" ? "error" : isDegraded ? "degraded" : "ok";
 
+    const { version, commit } = resolveHealthBuildInfo();
+
     return successResponse(
       {
         status: overallStatus,
-        version: "0.1.0",
+        version,
+        commit,
         services: {
           database: { status: dbStatus, latencyMs: dbLatency },
           redis: { status: redisStatus, latencyMs: redisLatency },

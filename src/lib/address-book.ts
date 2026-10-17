@@ -12,7 +12,31 @@ export interface AddressEntry {
   publicKey: string;
   label: string;
   memo?: string;
+  federationAddress?: string;
+  untrusted?: boolean;
+  blacklisted?: boolean;
+  warningReason?: string;
   lastUsed?: number;
+}
+
+export interface ContactConflict {
+  type: "duplicate_address" | "duplicate_alias";
+  existing: AddressEntry;
+  message: string;
+}
+
+export interface AddContactResult {
+  ok: boolean;
+  entry?: AddressEntry;
+  conflict?: ContactConflict;
+  error?: string;
+}
+
+export interface AddressStatusWarning {
+  flagged: boolean;
+  status: "blacklisted" | "untrusted" | null;
+  reason: string | null;
+  contact: AddressEntry | null;
 }
 
 export interface AddressBookImportRejection {
@@ -27,6 +51,7 @@ export interface AddressBookImportResult {
 }
 
 const STORAGE_KEY = "ophirpay-address-book";
+const BLACKLIST_STORAGE_KEY = "ophirpay-blacklisted-addresses";
 const LABEL_MAX_LENGTH = 100;
 const CONTACT_MEMO_MAX_LENGTH = 28;
 
@@ -141,19 +166,200 @@ export function saveAddress(entry: AddressEntry): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(book));
 }
 
+/**
+ * Detect whether a candidate contact conflicts with an existing saved contact
+ * by public key or by alias/label (case-insensitive).
+ */
+export function detectContactConflict(
+  entry: Pick<AddressEntry, "publicKey" | "label">,
+  ignorePublicKey?: string
+): ContactConflict | null {
+  const targetKey = entry.publicKey.trim();
+  const targetLabel = entry.label.trim().toLowerCase();
+  const book = getAddressBook();
+
+  for (const existing of book) {
+    if (ignorePublicKey && existing.publicKey === ignorePublicKey.trim()) {
+      continue;
+    }
+    if (existing.publicKey === targetKey) {
+      return {
+        type: "duplicate_address",
+        existing,
+        message: `Address is already saved under "${existing.label}".`,
+      };
+    }
+    if (targetLabel && existing.label.trim().toLowerCase() === targetLabel) {
+      return {
+        type: "duplicate_alias",
+        existing,
+        message: `Alias "${entry.label.trim()}" is already used for ${existing.publicKey.slice(0, 6)}...${existing.publicKey.slice(-4)}.`,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Add a new contact while enforcing uniqueness on both public key and alias.
+ * Returns a structured conflict result instead of silently overwriting.
+ */
+export function addContactWithConflictCheck(
+  entry: AddressEntry
+): AddContactResult {
+  const publicKey = entry.publicKey.trim();
+  const label = entry.label.trim();
+
+  if (!label) {
+    return { ok: false, error: "Contact label is required." };
+  }
+  if (label.length > LABEL_MAX_LENGTH) {
+    return {
+      ok: false,
+      error: `Label must be ${LABEL_MAX_LENGTH} characters or fewer.`,
+    };
+  }
+  if (!publicKey || !isValidStellarAddress(publicKey)) {
+    return { ok: false, error: "Invalid Stellar address." };
+  }
+  if (entry.memo && entry.memo.trim().length > CONTACT_MEMO_MAX_LENGTH) {
+    return {
+      ok: false,
+      error: `Memo must be ${CONTACT_MEMO_MAX_LENGTH} characters or fewer.`,
+    };
+  }
+
+  const conflict = detectContactConflict({ publicKey, label });
+  if (conflict) {
+    return {
+      ok: false,
+      conflict,
+      error: conflict.message,
+    };
+  }
+
+  const saved: AddressEntry = {
+    ...entry,
+    publicKey,
+    label,
+    memo: entry.memo?.trim() || undefined,
+    federationAddress: entry.federationAddress?.trim() || undefined,
+    lastUsed: Date.now(),
+  };
+
+  const book = getAddressBook();
+  book.push(saved);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(book));
+
+  return { ok: true, entry: saved };
+}
+
+/** Look up a saved contact by exact Stellar public key. */
+export function findContactByAddress(publicKey: string): AddressEntry | null {
+  const key = publicKey.trim();
+  if (!key) return null;
+  return getAddressBook().find((entry) => entry.publicKey === key) ?? null;
+}
+
+/** Look up a saved contact by alias/label or federation address (case-insensitive). */
+export function findContactByAlias(alias: string): AddressEntry | null {
+  const normalized = alias.trim().toLowerCase();
+  if (!normalized) return null;
+  return (
+    getAddressBook().find(
+      (entry) =>
+        entry.label.trim().toLowerCase() === normalized ||
+        (entry.federationAddress &&
+          entry.federationAddress.trim().toLowerCase() === normalized)
+    ) ?? null
+  );
+}
+
+/** Add or update a standalone blacklisted address entry in localStorage. */
+export function markAddressBlacklisted(
+  publicKey: string,
+  reason = "Blacklisted account"
+): void {
+  try {
+    const raw = localStorage.getItem(BLACKLIST_STORAGE_KEY);
+    const map: Record<string, string> = raw ? JSON.parse(raw) : {};
+    map[publicKey.trim()] = reason;
+    localStorage.setItem(BLACKLIST_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+/**
+ * Check whether an address is marked as untrusted or blacklisted in the
+ * address book or standalone blacklist registry.
+ */
+export function checkAddressTrustStatus(
+  publicKey: string
+): AddressStatusWarning {
+  const key = publicKey.trim();
+  if (!key) {
+    return { flagged: false, status: null, reason: null, contact: null };
+  }
+
+  const contact = findContactByAddress(key);
+  if (contact?.blacklisted) {
+    return {
+      flagged: true,
+      status: "blacklisted",
+      reason:
+        contact.warningReason ||
+        `Warning: "${contact.label}" is marked as a blacklisted account.`,
+      contact,
+    };
+  }
+  if (contact?.untrusted) {
+    return {
+      flagged: true,
+      status: "untrusted",
+      reason:
+        contact.warningReason ||
+        `Caution: "${contact.label}" is marked as an untrusted account.`,
+      contact,
+    };
+  }
+
+  try {
+    const raw = localStorage.getItem(BLACKLIST_STORAGE_KEY);
+    if (raw) {
+      const map = JSON.parse(raw) as Record<string, string>;
+      if (map[key]) {
+        return {
+          flagged: true,
+          status: "blacklisted",
+          reason: map[key],
+          contact,
+        };
+      }
+    }
+  } catch {
+    // ignore corrupted blacklist storage
+  }
+
+  return { flagged: false, status: null, reason: null, contact };
+}
+
 /** Remove an address from the address book. */
 export function removeAddress(publicKey: string): void {
   const book = getAddressBook().filter((a) => a.publicKey !== publicKey);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(book));
 }
 
-/** Search address book by label or public key. */
+/** Search address book by label, federation address, or public key prefix/substring. */
 export function searchAddressBook(query: string): AddressEntry[] {
-  const q = query.toLowerCase();
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
   return getAddressBook().filter(
     (a) =>
       a.label.toLowerCase().includes(q) ||
-      a.publicKey.toLowerCase().includes(q)
+      a.publicKey.toLowerCase().includes(q) ||
+      Boolean(a.federationAddress && a.federationAddress.toLowerCase().includes(q))
   );
 }
 

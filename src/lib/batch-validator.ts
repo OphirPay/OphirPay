@@ -3,27 +3,38 @@
 import type { BatchRecipient } from "@/types";
 import { isValidStellarAddress } from "@/lib/stellar";
 
-interface BatchValidationResult {
+export const MAX_MEMO_BYTES = 28;
+const MEMO_CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/;
+
+export interface BatchValidationError {
+  index: number;
+  field: string;
+  message: string;
+}
+
+export interface BatchValidationResult {
   valid: boolean;
-  errors: { index: number; field: string; message: string }[];
+  errors: BatchValidationError[];
   totalAmount: number;
+  totalsByAsset: Record<string, number>;
 }
 
 /**
  * Validate a batch of payment recipients before building the transaction.
- * Checks addresses, amounts, duplicates, and total against balance.
+ * Checks addresses, amounts, memos, duplicates, and total against balance.
  */
 export function validateBatchRecipients(
   recipients: BatchRecipient[],
   availableBalance?: number
 ): BatchValidationResult {
-  const errors: { index: number; field: string; message: string }[] = [];
+  const errors: BatchValidationError[] = [];
   let totalAmount = 0;
+  const totalsByAsset: Record<string, number> = {};
   const addresses = new Set<string>();
 
   if (recipients.length === 0) {
     errors.push({ index: -1, field: "recipients", message: "At least one recipient is required." });
-    return { valid: false, errors, totalAmount: 0 };
+    return { valid: false, errors, totalAmount: 0, totalsByAsset };
   }
 
   if (recipients.length > 100) {
@@ -32,7 +43,7 @@ export function validateBatchRecipients(
       field: "recipients",
       message: "Maximum 100 recipients per batch.",
     });
-    return { valid: false, errors, totalAmount: 0 };
+    return { valid: false, errors, totalAmount: 0, totalsByAsset };
   }
 
   for (let i = 0; i < recipients.length; i++) {
@@ -50,12 +61,33 @@ export function validateBatchRecipients(
     addresses.add(r.address);
 
     const amount = typeof r.amount === "string" ? parseFloat(r.amount) : r.amount;
-    if (isNaN(amount) || amount <= 0) {
+    if (isNaN(amount) || !Number.isFinite(amount) || amount <= 0) {
       errors.push({ index: i, field: "amount", message: "Amount must be greater than 0." });
       continue;
     }
 
+    if (r.memo !== undefined && r.memo !== "") {
+      if (MEMO_CONTROL_CHARS.test(r.memo)) {
+        errors.push({
+          index: i,
+          field: "memo",
+          message: "Memo must not contain control characters.",
+        });
+        continue;
+      }
+      if (new TextEncoder().encode(r.memo).length > MAX_MEMO_BYTES) {
+        errors.push({
+          index: i,
+          field: "memo",
+          message: "Memo must be 28 bytes or fewer.",
+        });
+        continue;
+      }
+    }
+
     totalAmount += amount;
+    const asset = (r.assetCode || "XLM").toUpperCase();
+    totalsByAsset[asset] = (totalsByAsset[asset] ?? 0) + amount;
   }
 
   const MAX_I128 = 1.7014118346046923e38;
@@ -75,5 +107,5 @@ export function validateBatchRecipients(
     });
   }
 
-  return { valid: errors.length === 0, errors, totalAmount };
+  return { valid: errors.length === 0, errors, totalAmount, totalsByAsset };
 }

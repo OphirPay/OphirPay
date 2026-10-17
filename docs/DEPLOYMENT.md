@@ -180,6 +180,20 @@ curl http://localhost:3000/api/health
 | `db` | `postgres:16-alpine` | 5432 | PostgreSQL database |
 | `redis` | `redis:7-alpine` | 6379 | Rate limiting cache |
 
+### Production vs Development Compose
+
+- **Production Standalone (`docker-compose.yml`)**:
+  Builds and runs the multi-stage standalone runner image directly without mounting host checkout source files into `/app`. This guarantees that the compiled `.next/standalone` artifacts (`server.js`, pre-rendered static pages, and traced node modules) run in `NODE_ENV=production`.
+  ```bash
+  docker compose up -d
+  ```
+
+- **Local Development with Hot Reload (`docker-compose.dev.yml`)**:
+  Builds against the `deps` stage and bind-mounts the host repository into `/app` with `npm run dev` for live hot-reload during local development:
+  ```bash
+  docker compose -f docker-compose.dev.yml up
+  ```
+
 ### Customizing Docker Compose
 
 Override environment variables in `docker-compose.yml`:

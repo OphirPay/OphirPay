@@ -1,7 +1,6 @@
-version: "3.8"
-
 services:
   app:
+    image: ${OPHIRPAY_IMAGE:-ophirpay:latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -9,7 +8,9 @@ services:
       - "3000:3000"
     environment:
       - DATABASE_URL=postgresql://ophirpay:ophirpay@db:5432/ophirpay
-      - NODE_ENV=development
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
       # Redis-backed rate limiting over TCP (Node runtime).
       # NOTE: the global limiter in src/proxy.ts runs on the Edge runtime and
       # cannot use this TCP client, so in a multi-replica deployment it stays
@@ -17,12 +18,15 @@ services:
       # Upstash-compatible https:// REST endpoint instead (see .env.example).
       # With a single app container (as here) the redis:// form is sufficient.
       - REDIS_URL=redis://redis:6379
+      - AUTH_SECRET=${AUTH_SECRET:-ci-docker-smoke-secret-not-for-production}
+      - NEXT_PUBLIC_CONTRACT_ID=${NEXT_PUBLIC_CONTRACT_ID:-CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET}
+      - NEXT_PUBLIC_EMITTER_CONTRACT_ID=${NEXT_PUBLIC_EMITTER_CONTRACT_ID:-CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # ── Liveness (issue #738) ──────────────────────────────────
+    # ── Liveness (issue #738, #1340) ───────────────────────────
     # The image already ships a HEALTHCHECK (see Dockerfile) that probes
     # GET /api/health/live — no shell, no curl, just the bundled `node`. It is
     # restated here so `docker compose up` shows the app becoming healthy, and
@@ -45,10 +49,6 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
 
   db:
     image: postgres:16-alpine

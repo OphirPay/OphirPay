@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 # A nightly run and a manual dispatch must not overlap; the newer run wins.
 concurrency:
@@ -186,3 +187,75 @@ jobs:
           name: merged-html-report
           path: playwright-report
           retention-days: 14
+
+  report-status:
+    name: "📢 Report E2E Status"
+    if: always()
+    needs: [playwright-tests, merge-reports]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repo for scripts
+        uses: actions/checkout@v4
+
+      - name: Report Nightly E2E Status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TESTS_RESULT: ${{ needs.playwright-tests.result }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ISSUE_TITLE="Nightly E2E failing on ${REF_NAME}"
+          RUN_URL="${SERVER_URL}/${REPOSITORY}/actions/runs/${RUN_ID}"
+
+          # Search for an existing open tracking issue with label ci and exact title
+          EXISTING_ISSUE=$(gh issue list \
+            --repo "${REPOSITORY}" \
+            --state open \
+            --label "ci" \
+            --search "${ISSUE_TITLE} in:title" \
+            --json number,title \
+            --jq ".[] | select(.title == \"${ISSUE_TITLE}\") | .number" | head -n 1 || true)
+
+          if [ "${TESTS_RESULT}" = "success" ]; then
+            if [ -n "${EXISTING_ISSUE}" ]; then
+              echo "Closing resolved tracking issue #${EXISTING_ISSUE}..."
+              gh issue comment "${EXISTING_ISSUE}" \
+                --repo "${REPOSITORY}" \
+                --body "✅ Nightly E2E suite has recovered and passed on [Run #${RUN_ID}](${RUN_URL}). Closing tracking issue."
+              gh issue close "${EXISTING_ISSUE}" \
+                --repo "${REPOSITORY}" \
+                --reason "completed"
+            else
+              echo "Nightly E2E suite is green and no open tracking issue was found."
+            fi
+          else
+            BODY="## 🚨 Nightly E2E Failure Alert
+
+            The nightly E2E test run on branch \`${REF_NAME}\` has failed.
+
+            - **Workflow Run**: [Run #${RUN_ID}](${RUN_URL})
+            - **Artifacts**: Download the \`merged-html-report\` from the [Workflow Run Artifacts page](${RUN_URL}#artifacts) to inspect Playwright failure traces and screenshots.
+            - **Timestamp**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+            *This tracking issue will automatically close on the next successful nightly run.*"
+
+            if [ -n "${EXISTING_ISSUE}" ]; then
+              echo "Updating existing tracking issue #${EXISTING_ISSUE}..."
+              gh issue comment "${EXISTING_ISSUE}" \
+                --repo "${REPOSITORY}" \
+                --body "🔄 Nightly E2E failed again on [Run #${RUN_ID}](${RUN_URL}). View artifacts at [Artifacts page](${RUN_URL}#artifacts)."
+            else
+              echo "Creating new tracking issue..."
+              gh issue create \
+                --repo "${REPOSITORY}" \
+                --title "${ISSUE_TITLE}" \
+                --label "ci" \
+                --body "${BODY}"
+            fi
+            exit 1
+          fi
+

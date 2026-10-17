@@ -115,6 +115,21 @@ ecosystems once a week.
   Cargo bumps) and run it locally for security-sensitive packages. If a bump has
   breaking changes or fails CI, coordinate with the team before merging instead
   of force-landing it.
+- **Batch mode target branch (`integration/staging`)**: while the
+  `integration/staging` branch is active, `.github/workflows/enforce-integration-branch.yml`
+  rejects any PR targeting `main` unless its head branch starts with `release/`
+  or `hotfix/`. Because Dependabot always uses `dependabot/<ecosystem>/...`
+  branch names, every `updates` entry in [`.github/dependabot.yml`](.github/dependabot.yml)
+  sets `target-branch: "integration/staging"` so automated dependency PRs pass
+  the `enforce-base` merge gate.
+- **Recreating stuck Dependabot PRs**: if an existing Dependabot PR was opened
+  against `main` before `target-branch` was updated, comment `@dependabot recreate`
+  on the PR (or close it so the next weekly run re-opens it) to have Dependabot
+  recreate it against `integration/staging`.
+- **Switch-back when batch mode ends**: once `integration/staging` is merged into
+  `main` and retired, remove `target-branch: "integration/staging"` from all four
+  `updates` entries in `.github/dependabot.yml` in the same PR that retires
+  batch mode so Dependabot resumes targeting the default branch (`main`).
 
 ### Issue triage & stale policy
 

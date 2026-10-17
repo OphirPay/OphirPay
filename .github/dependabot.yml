@@ -9,11 +9,13 @@ version: 2
 # gets the attention it needs. `open-pull-requests-limit` caps the backlog a
 # busy week can create.
 #
-# See CONTRIBUTING.md → "Dependency Updates" for the review flow.
+# See CONTRIBUTING.md → "Dependency Updates" for the review flow and how to
+# remove `target-branch: "integration/staging"` once batch mode ends (#1320).
 
 updates:
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "integration/staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -31,6 +33,7 @@ updates:
 
   - package-ecosystem: "cargo"
     directory: "/contracts/ophirpay"
+    target-branch: "integration/staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
@@ -48,6 +51,7 @@ updates:
 
   - package-ecosystem: "cargo"
     directory: "/contracts/emitter"
+    target-branch: "integration/staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
@@ -65,6 +69,7 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "integration/staging"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

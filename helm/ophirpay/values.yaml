@@ -91,6 +91,15 @@ pdb:
 
 networkPolicy:
   enabled: true
+  # ── Prometheus metrics ingress (issue #1344) ───────────────────
+  # Allows in-cluster Prometheus scrapers in the configured monitoring
+  # namespace (and optional podSelector) to reach `service.targetPort`
+  # for `/api/metrics` while keeping all other namespaces blocked.
+  metrics:
+    enabled: true
+    namespaceSelector:
+      kubernetes.io/metadata.name: monitoring
+    podSelector: {}
 
 # ── Runtime configuration (rendered into a ConfigMap) ──────────
 # Every key here must be a real variable documented in `.env.example`;

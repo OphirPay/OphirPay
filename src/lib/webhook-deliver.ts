@@ -354,3 +354,118 @@ export async function deliverWebhookWithDetails(
 ): Promise<WebhookDeliveryDetails> {
   return deliverWebhook(url, secret, payload, maxRetries);
 }
+
+// ── Timing-safe signature verification (receiver side) ─────────
+
+/**
+ * Compare two HMAC signature hex strings in constant time to prevent
+ * timing side-channel attacks.
+ *
+ * Uses `crypto.timingSafeEqual` after verifying identical byte buffer
+ * lengths — a length mismatch returns false immediately without leaking
+ * the expected length through timing.
+ *
+ * @returns true if the signatures match, false otherwise (never throws).
+ */
+export function signaturesMatch(provided: string, expected: string): boolean {
+  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected);
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(providedBuf, expectedBuf);
+}
+
+export interface VerifyWebhookSignatureResult {
+  valid: boolean;
+  reason: string;
+}
+
+/**
+ * Verify an OphirPay webhook delivery on the receiver side.
+ *
+ * Reproduces the canonical body (empty the `signature` field, keep key
+ * order), recomputes the HMAC-SHA256 hex over `<timestamp>.<canonicalBody>`,
+ * and compares against the provided signature using a constant-time
+ * comparison. Also enforces a replay-protection freshness window.
+ *
+ * @param opts.body          raw request body (string)
+ * @param opts.signature     value of the X-OphirPay-Signature header
+ * @param opts.secret        your webhook signing secret
+ * @param opts.timestamp     value of the X-OphirPay-Timestamp header (falls
+ *                           back to body `timestamp` field when omitted)
+ * @param opts.maxAgeSeconds replay window (0 disables); default 300
+ * @param opts.now           reference time (defaults to current time)
+ */
+export function verifyWebhookSignature(opts: {
+  body: string;
+  signature: string;
+  secret: string;
+  timestamp?: string;
+  maxAgeSeconds?: number;
+  now?: Date;
+}): VerifyWebhookSignatureResult {
+  const {
+    body,
+    signature,
+    secret,
+    timestamp,
+    maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+    now = new Date(),
+  } = opts;
+
+  let parsed: Record<string, unknown>;
+  let canonical: string;
+  try {
+    const raw = JSON.parse(body);
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      return { valid: false, reason: "invalid body: not a JSON object" };
+    }
+    parsed = raw as Record<string, unknown>;
+    // Empty the signature field instead of deleting it — the canonical
+    // string must contain `"signature":""` as the last key.
+    canonical = JSON.stringify({ ...parsed, signature: "" });
+  } catch (err) {
+    return {
+      valid: false,
+      reason: `invalid body: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  // The timestamp is authenticated: it is prepended to the canonical body.
+  // Prefer the header; fall back to the body field (which is signed too).
+  const signedTimestamp = String(timestamp ?? (parsed as { timestamp?: string }).timestamp ?? "");
+  if (!signedTimestamp) {
+    return { valid: false, reason: "missing timestamp" };
+  }
+
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(webhookSignedInput(signedTimestamp, canonical))
+    .digest("hex");
+
+  if (!signaturesMatch(signature, expected)) {
+    return { valid: false, reason: "signature mismatch" };
+  }
+
+  // Replay protection: timestamp freshness window.
+  if (maxAgeSeconds > 0) {
+    const ts = Date.parse(signedTimestamp);
+    if (Number.isNaN(ts)) {
+      return { valid: false, reason: "invalid timestamp format" };
+    }
+    const ageSeconds = (now.getTime() - ts) / 1000;
+    if (ageSeconds > maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload too old (${Math.round(ageSeconds)}s > ${maxAgeSeconds}s) — possible replay`,
+      };
+    }
+    if (ageSeconds < -maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: `payload timestamp is in the future (${Math.round(-ageSeconds)}s ahead)`,
+      };
+    }
+  }
+
+  return { valid: true, reason: "valid" };
+}

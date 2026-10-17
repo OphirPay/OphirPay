@@ -8,6 +8,40 @@ use crate::storage::*;
 use crate::types::*;
 use crate::errors::*;
 use crate::events::*;
+/// Query the number of decimals supported by a SAC token contract.
+/// Returns `None` if the call fails (e.g. token doesn't implement SEP-41 decimals()).
+fn token_decimals(env: &Env, asset: &Address) -> Option<u32> {
+    let call_result = env.try_invoke_contract::<u32>(
+        asset.clone(),
+        &soroban_sdk::Symbol::new(env, "decimals"),
+        soroban_sdk::Vec::new(env),
+    );
+    call_result.ok().and_then(|r| r.ok())
+}
+
+/// Validate that a payment amount (in stroops) adheres to the token's decimal precision.
+/// For tokens with fewer than 7 decimal places, the amount must be a multiple of
+/// 10^(7 - token_decimals) to prevent precision loss in fee calculations.
+pub fn validate_decimal_precision(
+    env: &Env,
+    asset: &Address,
+    amount: i128,
+) -> Result<(), PaymentError> {
+    // Native XLM always has 7 decimal places
+    let decimals = token_decimals(env, asset).unwrap_or(7);
+    if decimals >= 7 {
+        // Token supports at least stroop-level precision; any amount is valid
+        return Ok(());
+    }
+    // Token has fewer decimals than the stroop granularity
+    let shift: u32 = 7 - decimals;
+    let divisor = 10i128.saturating_pow(shift);
+    if divisor > 1 && amount % divisor != 0 {
+        return Err(PaymentError::InvalidDecimalPrecision);
+    }
+    Ok(())
+}
+
 /// Release the reentrancy lock after cross-contract calls complete.
 /// Prefer using the [`ReentrancyGuard`] returned by [`acquire_reentrancy_lock`],
 /// which releases automatically on drop. This is only used internally by the guard.
@@ -64,4 +98,4 @@ pub fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u
     let fractional = ((amount % divisor) * multiplier) / divisor;
     (whole + fractional) as i128
 }
-
+

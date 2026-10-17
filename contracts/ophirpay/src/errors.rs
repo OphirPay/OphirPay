@@ -660,5 +660,7 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    /// Invalid decimal precision: amount does not comply with token's decimals
+    InvalidDecimalPrecision = 310,
 }
-
+

@@ -360,6 +360,42 @@ def webhook():
 
 ---
 
+## Server-side verification (receiver helper)
+
+The sender-side signing functions in `src/lib/webhook-deliver.ts` are
+accompanied by a receiver-side `verifyWebhookSignature` function that
+performs the full verification: canonical body reconstruction, HMAC
+recomputation, constant-time signature comparison, and replay-protection
+freshness window.
+
+```ts
+import { verifyWebhookSignature } from "@/lib/webhook-deliver";
+
+// Inside your webhook route handler:
+const result = verifyWebhookSignature({
+  body: rawBodyString,           // the raw request body (string)
+  signature: headers["x-ophirpay-signature"],
+  secret: process.env.WEBHOOK_SECRET!,
+  timestamp: headers["x-ophirpay-timestamp"], // falls back to body.timestamp
+  maxAgeSeconds: 300,             // replay window (0 disables)
+});
+
+if (!result.valid) {
+  return new Response(result.reason, { status: 401 });
+}
+// Process the event...
+```
+
+The function is also available as `signaturesMatch(provided, expected)` for
+callers that need to compare two hex HMAC values directly with constant-time
+guarantees.
+
+Both functions use `crypto.timingSafeEqual` (via `signaturesMatch`) and
+return `false` on length mismatch without throwing — the implementation is
+safe against timing side-channel attacks by design.
+
+---
+
 ## Delivery target policy (SSRF guard)
 
 OphirPay makes outbound `POST` requests to the URL you register, so the server

@@ -164,4 +164,39 @@ describe("CsvBatchImport", () => {
       await screen.findByText(/must have a header row and at least one data row/i)
     ).toBeInTheDocument();
   });
+
+  it("displays aggregate totals, row-level error tooltips, and disables submit while errors exist (#1294)", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <CsvBatchImport
+        onRowsChange={vi.fn()}
+        onValidityChange={vi.fn()}
+        onSubmit={onSubmit}
+      />
+    );
+
+    await uploadFile(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      csvFile(
+        `address,amount,assetCode,memo\n${VALID_ADDRESS},125.5,XLM,ok\nBAD_ADDR,50,USDC,bad\n`
+      )
+    );
+
+    expect(await screen.findByTestId("csv-aggregate-totals")).toHaveTextContent(
+      "Recipients: 1/2 · Total: 125.50 XLM"
+    );
+    const badInput = screen.getByDisplayValue("BAD_ADDR");
+    expect(badInput).toHaveAttribute("title", "Row 2: Invalid Stellar address.");
+
+    const submitBtn = screen.getByTestId("csv-submit-button");
+    expect(submitBtn).toBeDisabled();
+
+    fireEvent.change(badInput, { target: { value: OTHER_ADDRESS } });
+    await waitFor(() => {
+      expect(submitBtn).not.toBeDisabled();
+    });
+    expect(screen.getByTestId("csv-aggregate-totals")).toHaveTextContent(
+      "Recipients: 2/2 · Total: 125.50 XLM + 50.00 USDC"
+    );
+  });
 });

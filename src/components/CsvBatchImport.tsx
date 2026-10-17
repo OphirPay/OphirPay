@@ -1,11 +1,12 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   parseRecipientsCsvToRows,
   validateRecipientFields,
   applyDuplicateErrors,
+  computeCsvBatchSummary,
   downloadCsvTemplate,
   MAX_BATCH_RECIPIENTS,
   type CsvImportRow,
@@ -27,9 +28,11 @@ interface CsvBatchImportProps {
   onRowsChange: (rows: CsvRecipientRow[]) => void;
   /** Called with `true` only when every row is valid and the file parsed. */
   onValidityChange: (valid: boolean) => void;
+  /** Optional submit callback; renders a disabled-when-invalid submit button when provided. */
+  onSubmit?: (rows: CsvRecipientRow[]) => void;
 }
 
-type EditableField = keyof CsvImportRow["values"];
+type EditableField = "address" | "amount" | "memo";
 
 // ── Component ─────────────────────────────────────────────────
 
@@ -37,6 +40,7 @@ export function CsvBatchImport({
   selfAddress,
   onRowsChange,
   onValidityChange,
+  onSubmit,
 }: CsvBatchImportProps) {
   const [rows, setRows] = useState<CsvImportRow[]>([]);
   const [fileErrors, setFileErrors] = useState<string[]>([]);
@@ -44,26 +48,30 @@ export function CsvBatchImport({
   const [isDragActive, setIsDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const errorCount = rows.filter(
-    (r) => Object.keys(r.errors).length > 0
-  ).length;
+  const summary = useMemo(() => computeCsvBatchSummary(rows), [rows]);
+  const errorCount = summary.errorCount;
   const isValid =
     rows.length > 0 &&
     fileErrors.length === 0 &&
     errorCount === 0;
 
+  const validRows = useMemo(
+    () =>
+      rows
+        .filter((r) => Object.keys(r.errors).length === 0)
+        .map((r) => ({
+          address: r.values.address,
+          amount: r.values.amount,
+          memo: r.values.memo || undefined,
+        })),
+    [rows]
+  );
+
   // Notify the parent whenever the parsed state changes.
   useEffect(() => {
-    const validRows = rows
-      .filter((r) => Object.keys(r.errors).length === 0)
-      .map((r) => ({
-        address: r.values.address,
-        amount: r.values.amount,
-        memo: r.values.memo || undefined,
-      }));
     onRowsChange(validRows);
     onValidityChange(isValid);
-  }, [rows, fileErrors, isValid, onRowsChange, onValidityChange]);
+  }, [validRows, fileErrors, isValid, onRowsChange, onValidityChange]);
 
   const handleFiles = useCallback(
     async (files: FileList | File[] | null) => {
@@ -113,6 +121,14 @@ export function CsvBatchImport({
     setFileName(null);
     if (inputRef.current) inputRef.current.value = "";
   };
+
+  const assetTotalsLabel = useMemo(() => {
+    const entries = Object.entries(summary.totalsByAsset);
+    if (entries.length === 0) return "0.00 XLM";
+    return entries
+      .map(([asset, amt]) => `${amt.toFixed(2)} ${asset}`)
+      .join(" + ");
+  }, [summary.totalsByAsset]);
 
   return (
     <div className="space-y-4" data-testid="csv-batch-import">
@@ -214,6 +230,13 @@ export function CsvBatchImport({
                 ? ` · ${errorCount} with error${errorCount !== 1 ? "s" : ""}`
                 : " · all rows valid"}
             </p>
+            <p
+              className="text-xs text-gray-600 dark:text-gray-300 mt-1 font-mono"
+              data-testid="csv-aggregate-totals"
+            >
+              Recipients: {summary.validCount}/{summary.totalRows} · Total:{" "}
+              {assetTotalsLabel}
+            </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -279,6 +302,7 @@ export function CsvBatchImport({
                       </td>
                       <td className="py-3 px-3">
                         <CellInput
+                          rowNumber={r.sourceRow}
                           value={r.values.address}
                           error={r.errors.address}
                           placeholder="G... destination address"
@@ -288,6 +312,7 @@ export function CsvBatchImport({
                       </td>
                       <td className="py-3 px-3">
                         <CellInput
+                          rowNumber={r.sourceRow}
                           value={r.values.amount}
                           error={r.errors.amount}
                           placeholder="0.00"
@@ -298,6 +323,7 @@ export function CsvBatchImport({
                       </td>
                       <td className="py-3 px-3">
                         <CellInput
+                          rowNumber={r.sourceRow}
                           value={r.values.memo}
                           error={r.errors.memo}
                           placeholder="Optional"
@@ -328,50 +354,63 @@ export function CsvBatchImport({
       {fileName && (
         <div
           className={cn(
-            "flex items-center gap-2 px-4 py-3 rounded-lg border text-sm",
+            "flex items-center justify-between gap-2 px-4 py-3 rounded-lg border text-sm",
             isValid
               ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400"
               : "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400"
           )}
           data-testid="csv-status"
         >
-          {isValid ? (
-            <>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-4 h-4 shrink-0"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4.5 12.75l6 6 9-13.5"
-                />
-              </svg>
-              All {rows.length} row{rows.length !== 1 ? "s" : ""} valid —
-              ready to submit.
-            </>
-          ) : (
-            <>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-4 h-4 shrink-0"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-                />
-              </svg>
-              Fix the highlighted fields above to enable submission.
-            </>
+          <div className="flex items-center gap-2">
+            {isValid ? (
+              <>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-4 h-4 shrink-0"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4.5 12.75l6 6 9-13.5"
+                  />
+                </svg>
+                All {rows.length} row{rows.length !== 1 ? "s" : ""} valid —
+                ready to submit.
+              </>
+            ) : (
+              <>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-4 h-4 shrink-0"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
+                  />
+                </svg>
+                Fix the highlighted fields above to enable submission.
+              </>
+            )}
+          </div>
+          {onSubmit && (
+            <button
+              type="button"
+              disabled={!isValid}
+              onClick={() => isValid && onSubmit(validRows)}
+              data-testid="csv-submit-button"
+              className="px-4 py-1.5 rounded-lg bg-ophir-600 text-white text-xs font-medium hover:bg-ophir-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Submit Batch
+            </button>
           )}
         </div>
       )}
@@ -382,6 +421,7 @@ export function CsvBatchImport({
 // ── Editable cell ─────────────────────────────────────────────
 
 function CellInput({
+  rowNumber,
   value,
   error,
   placeholder,
@@ -390,6 +430,7 @@ function CellInput({
   maxLength,
   onChange,
 }: {
+  rowNumber: number;
   value: string;
   error?: string;
   placeholder?: string;
@@ -398,8 +439,9 @@ function CellInput({
   maxLength?: number;
   onChange: (value: string) => void;
 }) {
+  const tooltip = error ? `Row ${rowNumber}: ${error}` : undefined;
   return (
-    <div>
+    <div title={tooltip}>
       <input
         type="text"
         value={value}
@@ -409,10 +451,11 @@ function CellInput({
         maxLength={maxLength}
         aria-invalid={!!error}
         aria-label={placeholder ?? "field"}
+        title={tooltip}
         className={cn(
           "w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-ophir-500/40 focus:border-transparent transition-colors",
           error
-            ? "border-red-500 dark:border-red-500 focus:ring-red-500/30"
+            ? "border-red-500 dark:border-red-500 bg-red-50/40 dark:bg-red-950/30 focus:ring-red-500/30"
             : "border-gray-200 dark:border-gray-700",
           className
         )}
@@ -420,6 +463,7 @@ function CellInput({
       {error && (
         <p
           role="alert"
+          title={tooltip}
           className="mt-1 text-xs text-red-600 dark:text-red-400"
         >
           {error}

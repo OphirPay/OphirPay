@@ -129,7 +129,7 @@ export function validateRecipientFields(
     errors.amount = "Amount is required.";
   } else {
     const n = parseFloat(amt);
-    if (isNaN(n) || n <= 0) {
+    if (isNaN(n) || !Number.isFinite(n) || n <= 0) {
       errors.amount = "Amount must be a number greater than 0.";
     }
   }
@@ -137,6 +137,10 @@ export function validateRecipientFields(
   const mem = memo.trim();
   if (mem.length > 28) {
     errors.memo = "Memo must be 28 characters or fewer.";
+  } else if (/[\u0000-\u001F\u007F-\u009F]/.test(mem)) {
+    errors.memo = "Memo must not contain control characters.";
+  } else if (new TextEncoder().encode(mem).length > MEMO_MAX_BYTES) {
+    errors.memo = "Memo must be 28 bytes or fewer.";
   }
 
   return errors;
@@ -167,8 +171,49 @@ export interface CsvImportRow {
   id: number;
   /** 1-based row number in the file (excluding the header). */
   sourceRow: number;
-  values: { address: string; amount: string; memo: string };
+  values: { address: string; amount: string; memo: string; assetCode?: string };
   errors: RecipientFieldErrors;
+}
+
+export interface CsvBatchSummary {
+  totalRows: number;
+  validCount: number;
+  errorCount: number;
+  totalAmount: number;
+  totalsByAsset: Record<string, number>;
+}
+
+/**
+ * Compute aggregate recipient counts and total amounts (XLM/USDC) across rows (#1294).
+ */
+export function computeCsvBatchSummary(rows: CsvImportRow[]): CsvBatchSummary {
+  let validCount = 0;
+  let errorCount = 0;
+  let totalAmount = 0;
+  const totalsByAsset: Record<string, number> = {};
+
+  for (const row of rows) {
+    const hasErrors = Object.keys(row.errors).length > 0;
+    if (hasErrors) {
+      errorCount++;
+      continue;
+    }
+    validCount++;
+    const amount = parseFloat(row.values.amount);
+    if (!isNaN(amount) && Number.isFinite(amount) && amount > 0) {
+      totalAmount += amount;
+      const asset = (row.values.assetCode || "XLM").toUpperCase();
+      totalsByAsset[asset] = (totalsByAsset[asset] ?? 0) + amount;
+    }
+  }
+
+  return {
+    totalRows: rows.length,
+    validCount,
+    errorCount,
+    totalAmount,
+    totalsByAsset,
+  };
 }
 
 /**
@@ -176,7 +221,7 @@ export interface CsvImportRow {
  * preview UI. Columns are read by header name (`address`, `amount`, `memo`)
  * when present, falling back to positional columns 1–3. A legacy 4-column
  * template (`address,amount,assetCode,memo`) is supported — the assetCode
- * column is ignored because batch payments are native XLM.
+ * column is preserved for aggregate totals when present.
  */
 export async function parseRecipientsCsvToRows(
   file: File,
@@ -193,10 +238,11 @@ export async function parseRecipientsCsvToRows(
   const header = parsed[0].map((h) => h.trim().toLowerCase());
   const addressIdx = header.indexOf("address");
   const amountIdx = header.indexOf("amount");
+  const assetIdx = header.findIndex((h) => h === "assetcode" || h === "asset");
   const memoIdx = header.indexOf("memo");
   const addrI = addressIdx >= 0 ? addressIdx : 0;
   const amtI = amountIdx >= 0 ? amountIdx : 1;
-  const memoI = memoIdx >= 0 ? memoIdx : 2;
+  const memoI = memoIdx >= 0 ? memoIdx : assetIdx >= 0 ? 3 : 2;
 
   const dataRows = parsed.slice(1);
   if (dataRows.length > MAX_BATCH_RECIPIENTS) {
@@ -207,10 +253,12 @@ export async function parseRecipientsCsvToRows(
 
   const rows: CsvImportRow[] = dataRows.map((cells, idx) => {
     const get = (i: number) => (cells[i] ?? "").trim();
-    const values = {
+    const assetVal = assetIdx >= 0 ? get(assetIdx) : undefined;
+    const values: CsvImportRow["values"] = {
       address: get(addrI),
       amount: get(amtI),
       memo: get(memoI),
+      ...(assetVal ? { assetCode: assetVal.toUpperCase() } : {}),
     };
     return {
       id: idx + 1,

@@ -5,9 +5,13 @@ import { describe, it, expect } from "vitest";
 import {
   parseRecipientsCsv,
   parseRecipientsCsvText,
+  parseRecipientsCsvToRows,
+  validateRecipientFields,
+  computeCsvBatchSummary,
   splitCsvRow,
   generateRecipientsCsvTemplate,
 } from "@/lib/csv-import";
+import { validateBatchRecipients } from "@/lib/batch-validator";
 
 const VALID_ADDR_1 = "GA2C5RFPE6GCKMY3US5PAB6UZLKIGAHWKXX2G2CTRBIAP2W2QASXYZW1";
 const VALID_ADDR_2 = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
@@ -236,6 +240,46 @@ describe("CSV Batch Parser - Unit Tests", () => {
       const headerOnlyRes = parseRecipientsCsvText("address,amount,assetCode\n");
       expect(headerOnlyRes.errors).toHaveLength(1);
       expect(headerOnlyRes.errors[0].message).toContain("header row and at least one data row");
+    });
+
+    it("validates multi-byte memo limits, control characters, and aggregate totals (#1294)", async () => {
+      expect(
+        validateRecipientFields(VALID_ADDR_1, "10", "🚀🚀🚀🚀🚀🚀🚀🚀")
+      ).toEqual({
+        memo: "Memo must be 28 bytes or fewer.",
+      });
+      expect(
+        validateRecipientFields(VALID_ADDR_1, "10", "hello\u0007world")
+      ).toEqual({
+        memo: "Memo must not contain control characters.",
+      });
+
+      const file = csvFile(
+        [
+          "address,amount,assetCode,memo",
+          `${VALID_ADDR_1},100.5,XLM,ok`,
+          `${VALID_ADDR_2},250.25,USDC,bonus`,
+          `BAD_ADDR,50,XLM,skip`,
+        ].join("\n")
+      );
+      const { rows } = await parseRecipientsCsvToRows(file);
+      const summary = computeCsvBatchSummary(rows);
+      expect(summary.totalRows).toBe(3);
+      expect(summary.validCount).toBe(2);
+      expect(summary.errorCount).toBe(1);
+      expect(summary.totalsByAsset).toEqual({ XLM: 100.5, USDC: 250.25 });
+
+      const batchValidation = validateBatchRecipients([
+        { address: VALID_ADDR_1, amount: 100, assetCode: "XLM", memo: "ok" },
+        { address: VALID_ADDR_2, amount: 50, assetCode: "USDC", memo: "🚀🚀🚀🚀🚀🚀🚀🚀" },
+      ]);
+      expect(batchValidation.valid).toBe(false);
+      expect(batchValidation.errors).toContainEqual({
+        index: 1,
+        field: "memo",
+        message: "Memo must be 28 bytes or fewer.",
+      });
+      expect(batchValidation.totalsByAsset).toEqual({ XLM: 100 });
     });
   });
 });

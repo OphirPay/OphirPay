@@ -1,7 +1,6 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
 import { useState, useEffect, useCallback } from "react";
 
 /**
@@ -9,26 +8,6 @@ import { useState, useEffect, useCallback } from "react";
  * Useful for payment request expiration, session timeouts, etc.
  * Returns `remaining`, a formatted MM:SS string, running/expired flags,
  * and `start` / `reset` controls.
- *
- * @example
- * Show a payment-request expiration countdown that restarts when the user
- * refreshes the request:
- *
- * ```tsx
- * function PaymentRequestTimer({ validForSeconds }: { validForSeconds: number }) {
- *   const { formatted, isRunning, isExpired, start, reset } =
- *     useCountdown(validForSeconds, () => toast.success("Request expired"));
- *
- *   useEffect(() => start(), [start]);
- *
- *   return (
- *     <div>
- *       {isExpired ? <p>This request has expired.</p> : <p>{formatted}</p>}
- *       <button onClick={() => reset(validForSeconds)}>Restart timer</button>
- *     </div>
- *   );
- * }
- * ```
  */
 export function useCountdown(initialSeconds: number, onExpire?: () => void) {
   const [remaining, setRemaining] = useState(initialSeconds);
@@ -50,10 +29,13 @@ export function useCountdown(initialSeconds: number, onExpire?: () => void) {
   }, [isRunning, remaining, onExpire]);
 
   const start = useCallback(() => setIsRunning(true), []);
-  const reset = useCallback((seconds?: number) => {
-    setIsRunning(false);
-    setRemaining(seconds ?? initialSeconds);
-  }, [initialSeconds]);
+  const reset = useCallback(
+    (seconds?: number) => {
+      setIsRunning(false);
+      setRemaining(seconds ?? initialSeconds);
+    },
+    [initialSeconds]
+  );
 
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
@@ -67,5 +49,35 @@ export function useCountdown(initialSeconds: number, onExpire?: () => void) {
     isExpired: remaining === 0,
     start,
     reset,
+  };
+}
+
+/**
+ * Real-time clock hook for streaming payment vesting progression (Issue #1377).
+ */
+export function useStreamVestingClock(
+  endTimestampSec: number,
+  initialNowSec: number = Math.floor(Date.now() / 1000)
+) {
+  const [nowSec, setNowSec] = useState<number>(initialNowSec);
+  const remainingSec = Math.max(0, endTimestampSec - nowSec);
+  const countdown = useCountdown(remainingSec);
+
+  useEffect(() => {
+    countdown.start();
+  }, [countdown]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNowSec((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return {
+    nowSec,
+    remainingSec,
+    formattedRemaining: countdown.formatted,
+    isCompleted: remainingSec <= 0,
   };
 }

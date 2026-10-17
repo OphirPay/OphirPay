@@ -2,8 +2,8 @@
 #![cfg(test)]
 
 use ophirpay_contract::{
-    BatchCreateResult, OphirPayContract, OphirPayContractClient, Payment, PaymentError,
-    RefundReasonCode, RefundStatus,
+    BatchCreateResult, EscrowRecord, MIN_DISPUTE_PERIOD, OphirPayContract, OphirPayContractClient,
+    Payment, PaymentError, RefundReasonCode, RefundStatus,
 };
 use ophirpay_emitter::{EmitterError, PaymentEventEmitter, PaymentEventEmitterClient};
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -935,3 +935,208 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 9. ESCROW DISPUTE COOLING-OFF WINDOW TESTS (#1353)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Premature unilateral dispute resolution before `MIN_DISPUTE_PERIOD` elapses
+/// must fail with `PaymentError::DisputeCoolingOffActive`.
+#[test]
+fn test_resolve_dispute_premature_fails_with_cooling_off_active() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+    let escrow_amount = 10_000_000i128;
+
+    fix.mint(&depositor, escrow_amount);
+
+    let now = fix.env.ledger().timestamp();
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &escrow_amount,
+        &fix.token_id,
+        &(now + 604_800),
+        &String::from_str(&fix.env, "dispute_timeout_test"),
+    );
+
+    let initial_record: EscrowRecord = fix.client.get_escrow(&escrow_id);
+    assert_eq!(initial_record.dispute_initiated_at, 0);
+    assert_eq!(fix.client.get_min_dispute_period(), MIN_DISPUTE_PERIOD);
+
+    // Calling resolve_dispute before a dispute is initiated fails with DisputeNotOpen
+    let not_open = fix
+        .client
+        .try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert_eq!(not_open, Err(Ok(PaymentError::DisputeNotOpen)));
+
+    // Depositor initiates dispute at `now`
+    fix.client.initiate_dispute(&depositor, &escrow_id);
+    let disputed_record: EscrowRecord = fix.client.get_escrow(&escrow_id);
+    assert_eq!(disputed_record.dispute_initiated_at, now);
+
+    // Immediate unilateral resolution attempt fails with DisputeCoolingOffActive
+    let immediate = fix
+        .client
+        .try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert_eq!(immediate, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+
+    // 1 second before the 24-hour cooling-off window expires still fails
+    fix.env
+        .ledger()
+        .set_timestamp(now + MIN_DISPUTE_PERIOD - 1);
+    let one_sec_early = fix
+        .client
+        .try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert_eq!(
+        one_sec_early,
+        Err(Ok(PaymentError::DisputeCoolingOffActive))
+    );
+
+    // Direct release_by_arbiter also respects an active dispute cooling-off window
+    let bypass_attempt = fix
+        .client
+        .try_release_by_arbiter(&arbiter, &escrow_id, &true);
+    assert_eq!(
+        bypass_attempt,
+        Err(Ok(PaymentError::DisputeCoolingOffActive))
+    );
+
+    // Funds remain safely locked in escrow
+    let still_open = fix.client.get_escrow(&escrow_id);
+    assert!(!still_open.released);
+    assert!(!still_open.claimed);
+    assert_eq!(fix.client.get_locked_balance(), escrow_amount);
+}
+
+/// Once `MIN_DISPUTE_PERIOD` (24h) has elapsed since `dispute_initiated_at`,
+/// the arbiter can unilaterally finalize resolution.
+#[test]
+fn test_resolve_dispute_post_timeout_succeeds() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+    let escrow_amount = 10_000_000i128;
+
+    fix.mint(&depositor, escrow_amount);
+
+    let start_ts = fix.env.ledger().timestamp();
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &escrow_amount,
+        &fix.token_id,
+        &(start_ts + 604_800),
+        &String::from_str(&fix.env, "post_timeout_resolution"),
+    );
+
+    // Beneficiary files dispute
+    fix.client.initiate_dispute(&beneficiary, &escrow_id);
+    let record = fix.client.get_escrow(&escrow_id);
+    assert_eq!(record.dispute_initiated_at, start_ts);
+
+    // Advance ledger to the exact end of the 24-hour cooling-off period
+    fix.env
+        .ledger()
+        .set_timestamp(start_ts + MIN_DISPUTE_PERIOD);
+
+    fix.client
+        .resolve_dispute(&arbiter, &escrow_id, &true, &false);
+
+    let resolved = fix.client.get_escrow(&escrow_id);
+    assert!(resolved.released);
+    assert!(resolved.claimed);
+    assert_eq!(fix.token_client.balance(&beneficiary), escrow_amount);
+    assert_eq!(fix.client.get_locked_balance(), 0);
+}
+
+/// When both parties sign off (`both_parties_signed = true`), `resolve_dispute`
+/// can finalize immediately without waiting for `MIN_DISPUTE_PERIOD`.
+#[test]
+fn test_resolve_dispute_mutual_signoff_bypasses_cooling_off() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+    let escrow_amount = 5_000_000i128;
+
+    fix.mint(&depositor, escrow_amount);
+
+    let now = fix.env.ledger().timestamp();
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &escrow_amount,
+        &fix.token_id,
+        &(now + 604_800),
+        &String::from_str(&fix.env, "mutual_signoff"),
+    );
+
+    fix.client.initiate_dispute(&depositor, &escrow_id);
+
+    // Only 10 seconds after dispute initiation, mutual sign-off succeeds
+    fix.env.ledger().set_timestamp(now + 10);
+    fix.client
+        .resolve_dispute(&arbiter, &escrow_id, &false, &true);
+
+    let resolved = fix.client.get_escrow(&escrow_id);
+    assert!(resolved.released);
+    assert!(resolved.claimed);
+    assert_eq!(fix.token_client.balance(&depositor), escrow_amount);
+    assert_eq!(fix.client.get_locked_balance(), 0);
+}
+
+/// Owner can configure a custom `MIN_DISPUTE_PERIOD` and `resolve_dispute`
+/// enforces the updated duration.
+#[test]
+fn test_configurable_min_dispute_period_enforced() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+    let escrow_amount = 2_500_000i128;
+
+    fix.mint(&depositor, escrow_amount);
+
+    // Configure a 48-hour (172,800s) dispute cooling-off period
+    let custom_period = 172_800u64;
+    fix.client
+        .set_min_dispute_period(&fix.owner, &custom_period);
+    assert_eq!(fix.client.get_min_dispute_period(), custom_period);
+
+    let start_ts = fix.env.ledger().timestamp();
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &escrow_amount,
+        &fix.token_id,
+        &(start_ts + 604_800),
+        &String::from_str(&fix.env, "custom_period"),
+    );
+
+    fix.client.initiate_dispute(&depositor, &escrow_id);
+
+    // After 24h (less than custom 48h), resolution is still blocked
+    fix.env.ledger().set_timestamp(start_ts + 86_400);
+    let early = fix
+        .client
+        .try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert_eq!(early, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+
+    // After 48h, resolution succeeds
+    fix.env.ledger().set_timestamp(start_ts + custom_period);
+    fix.client
+        .resolve_dispute(&arbiter, &escrow_id, &true, &false);
+
+    let resolved = fix.client.get_escrow(&escrow_id);
+    assert!(resolved.released);
+    assert!(resolved.claimed);
+}
+

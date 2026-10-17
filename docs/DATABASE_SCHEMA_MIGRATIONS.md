@@ -234,9 +234,21 @@ now delegates to: case-insensitive `contains` on `memo`, plain `contains` on
 and prefix-matches whole lexemes, while SQLite performs a plain `LIKE` scan — but both
 return the same rows for the same terms, and the API contract is unchanged.
 
+## 6. Automated Cron Log Retention & Pruning Patterns (Issue #1420)
+
+High-frequency scheduled payment executions run every 5 minutes and record status logs in PostgreSQL. To prevent unbounded table bloat and index maintenance degradation:
+
+### 6.1 Retention Architecture
+
+- **Model:** `CronRunLog` captures execution metadata (`runId`, `startedAt`, `picked`, `executed`, `failed`, `durationMs`, `prunedLogs`, `status`).
+- **Retention Window:** Records older than **90 days** (`CRON_LOG_RETENTION_DAYS = 90`) are automatically pruned.
+- **Batching & Lock Mitigation:** Deletions execute in bounded batches of **1,000 rows** (`PRUNE_BATCH_SIZE = 1000`) inside scoped transactions to avoid table lock escalation and query queueing.
+- **Active Schedule Safety:** Retention pruning strictly targets ephemeral `CronRunLog` rows. Core payment ledgers, `ScheduledPayment`, and `Recurrence` schedules are **never** deleted.
+- **Telemetry:** Pruned counts are continuously tracked and exported via Prometheus counter `ophirpay_cron_logs_pruned_total`.
+
 ---
 
-## 6. Summary Checklist for Pull Requests
+## 7. Summary Checklist for Pull Requests
 
 Before submitting a PR with database changes:
 - [ ] `prisma/schema.prisma` contains clear doc comments (`///`) on all new models/fields.

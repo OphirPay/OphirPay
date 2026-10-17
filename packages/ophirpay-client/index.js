@@ -10,7 +10,14 @@
  */
 
 import crypto from "node:crypto";
-import { OPERATION_BY_NAME } from "./operations.generated.js";
+import {
+  API_OPERATIONS,
+  OPERATION_BY_NAME,
+  COMPONENT_SCHEMA_NAMES,
+} from "./operations.generated.js";
+
+export { API_OPERATIONS, OPERATION_BY_NAME, COMPONENT_SCHEMA_NAMES };
+
 
 /** Default request budget, in milliseconds. */
 export const DEFAULT_TIMEOUT_MS = 30_000;
@@ -127,6 +134,15 @@ export class OphirPayClient {
     if (!op) throw new OphirPayError(`Unknown operation: ${name}`);
     return op;
   }
+
+  /**
+   * Execute an operation by its generated OpenAPI operation name (`ApiOperationName`).
+   */
+  callOperation(name, options = {}) {
+    const op = this.operation(name);
+    return this.request(op.method, op.path, options);
+  }
+
 
   /** Raw request against the API, unwrapping the response envelope. */
   async request(method, path, options = {}) {

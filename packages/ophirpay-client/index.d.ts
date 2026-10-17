@@ -8,9 +8,26 @@
  * component schemas documented there.
  */
 
-import type { ApiOperation, ApiOperationName } from "./operations.generated.d.ts";
+import type {
+  ApiOperation,
+  ApiOperationName,
+  ApiOperationMap,
+  OpenApiSchemas,
+} from "./operations.generated.d.ts";
 
-export type { ApiOperation, ApiOperationName };
+export type {
+  ApiOperation,
+  ApiOperationName,
+  ApiOperationMap,
+  OpenApiSchemas,
+};
+
+export {
+  API_OPERATIONS,
+  OPERATION_BY_NAME,
+  COMPONENT_SCHEMA_NAMES,
+} from "./operations.generated.d.ts";
+
 
 export type PaymentStatus =
   | "CREATED"
@@ -91,6 +108,19 @@ export class OphirPayClient {
   timeoutMs: number;
   /** Resolve an operation from the generated OpenAPI catalogue. */
   operation(name: ApiOperationName): ApiOperation;
+  /** Execute an operation by its generated OpenAPI operation name (`ApiOperationName`). */
+  callOperation<K extends ApiOperationName>(
+    name: K,
+    options?: {
+      pathParams?: Record<string, string | number>;
+      query?: Record<string, string | number | boolean | undefined | null>;
+      body?: ApiOperationMap[K]["requestBody"] extends never
+        ? unknown
+        : ApiOperationMap[K]["requestBody"];
+      headers?: Record<string, string>;
+      idempotencyKey?: string;
+    }
+  ): Promise<ApiOperationMap[K]["response"]>;
   /** Raw request, unwrapping the `{ success, data }` envelope. */
   request<T = unknown>(
     method: string,

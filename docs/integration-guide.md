@@ -47,6 +47,40 @@ stellar contract invoke \
 
 ## Integration Patterns
 
+### Typed TypeScript SDK (`@ophirpay/client`)
+
+OphirPay ships a first-party, zero-dependency TypeScript SDK in [`packages/ophirpay-client`](../packages/ophirpay-client) whose operation catalogue, component schemas (`OpenApiSchemas`), and per-operation request/response maps (`ApiOperationMap`) are generated directly from [`docs/openapi.yaml`](./openapi.yaml).
+
+Regenerate or verify the SDK at any time:
+
+```bash
+npm run generate:sdk   # or: npm run client:generate
+npm run client:check   # fails CI if operations.generated.{js,d.ts} drift from docs/openapi.yaml
+```
+
+Example usage:
+
+```typescript
+import { OphirPayClient, type OpenApiSchemas } from "@ophirpay/client";
+
+const client = new OphirPayClient({
+  baseUrl: process.env.OPHIRPAY_BASE_URL,
+  apiKey: process.env.OPHIRPAY_API_KEY,
+});
+
+// High-level convenience methods
+const payment = await client.createPayment({
+  recipient: "G...",
+  amount: 25,
+  assetCode: "XLM",
+});
+
+// Or invoke any OpenAPI operation by its generated ApiOperationName
+const health = await client.callOperation("getApiHealth");
+```
+
+See [First-party Client, CLI & GitHub Action](./CLIENT_SDK.md) for CLI and GitHub Action usage.
+
 ## API Key Usage
 
 The dashboard's **API Keys** view shows request totals for each key and its last-used time. The same data is available to an authenticated browser session through:

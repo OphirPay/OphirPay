@@ -984,3 +984,22 @@ export const API_OPERATIONS = [
 export const OPERATION_BY_NAME = Object.fromEntries(
   API_OPERATIONS.map((op) => [op.name, op])
 );
+
+/** @type {ReadonlyArray<string>} */
+export const COMPONENT_SCHEMA_NAMES = [
+  "AssetMetadata",
+  "BatchResponse",
+  "BulkCancelBatchResponse",
+  "CreateBatchRequest",
+  "CreatePaymentRequest",
+  "CreatePaymentRequestSchema",
+  "CreateRecurrenceRequest",
+  "CreateWebhookRequest",
+  "ErrorResponse",
+  "HealthResponse",
+  "PaginatedBatches",
+  "PaginatedPayments",
+  "PaymentEnvelopeResponse",
+  "PaymentResponse",
+  "TestWebhookResponse"
+];

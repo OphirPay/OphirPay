@@ -14,10 +14,10 @@ permissions:
   contents: read
   pull-requests: write
 
-# ── Global Concurrency — cancel stale runs on same PR ────────
+# ── Global Concurrency — cancel stale runs on PRs, preserve branch push runs ──
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   docs-links:

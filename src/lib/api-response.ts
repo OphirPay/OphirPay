@@ -153,7 +153,8 @@ export function unauthorizedError(message = "Unauthorized") {
 export function rateLimitError(
   message = "Too many requests",
   retryAfterSeconds?: number,
-  extraHeaders?: Record<string, string>
+  extraHeaders?: Record<string, string>,
+  details?: unknown
 ) {
   const headers: Record<string, string> = { ...(extraHeaders ?? {}) };
   if (retryAfterSeconds !== undefined) {
@@ -162,7 +163,11 @@ export function rateLimitError(
   return NextResponse.json(
     {
       success: false,
-      error: { code: ERROR_CODES.RATE_LIMITED, message },
+      error: {
+        code: ERROR_CODES.RATE_LIMITED,
+        message,
+        ...(details === undefined ? {} : { details: jsonSafe(details) }),
+      },
       timestamp: new Date().toISOString(),
     } satisfies ApiError,
     { status: 429, headers }

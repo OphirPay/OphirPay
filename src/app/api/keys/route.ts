@@ -18,6 +18,17 @@ import {
 } from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
 import { verifyCsrf } from "@/lib/csrf";
+import {
+  activeApiKeyWhere,
+  apiKeyLimitError,
+  apiKeyQuotaError,
+  describeKeyInitiator,
+  isRetryableTransactionError,
+} from "@/lib/api-key-limits";
+import {
+  consumeApiKeyMutationQuota,
+  MAX_ACTIVE_API_KEYS,
+} from "@/lib/rate-limit";
 
 /** Validate an array of scopes against the known set. */
 function parseScopes(input: unknown): {
@@ -100,26 +111,79 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
       return badRequestError(parsed.error ?? "Invalid scopes");
     }
 
+    // Charge the hourly create/rotate quota before touching the database. A
+    // valid-looking request from a compromised session must not be able to
+    // mint credentials faster than a human can react.
+    const quota = await consumeApiKeyMutationQuota(auth.userId);
+    if (!quota.allowed) return apiKeyQuotaError(quota);
+
     // `generateApiKey` mints 32 CSPRNG bytes (issue #701) and fails closed if
     // the result ever drifts from the documented `oph_` + 64-hex format.
     const rawKey = generateApiKey();
     const keyHash = hashApiKeyV1(rawKey);
     const prefix = deriveKeyPrefix(rawKey);
+    const initiatedBy = describeKeyInitiator(auth);
 
-    const apiKey = await prisma.apiKey.create({
-      data: {
-        name,
-        keyHash,
-        prefix,
-        userId: auth.userId,
-        scopes: parsed.scopes,
-      },
-    });
+    // The cap is a count followed by an insert, so both must run in one
+    // Serializable transaction. Under the default isolation level two
+    // concurrent creates can each observe four keys and both insert, leaving
+    // the account with six. A serialization failure (P2034) means the other
+    // transaction won; retrying re-reads the count and rejects the loser.
+    let apiKey: { id: string; name: string } | null = null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        apiKey = await prisma.$transaction(
+          async (tx) => {
+            const activeKeys = await tx.apiKey.count({
+              where: activeApiKeyWhere(auth.userId),
+            });
+            if (activeKeys >= MAX_ACTIVE_API_KEYS) return null;
+
+            const created = await tx.apiKey.create({
+              data: {
+                name,
+                keyHash,
+                prefix,
+                userId: auth.userId,
+                scopes: parsed.scopes,
+              },
+            });
+
+            // Creation is a security-relevant event: a new credential can
+            // move money. Record it alongside the key so the audit trail can
+            // never be missing an entry for a key that exists.
+            await tx.auditLog.create({
+              data: {
+                action: "api_key:create",
+                actor: auth.userId,
+                target: created.id,
+                details: {
+                  name: created.name,
+                  prefix,
+                  scopes: parsed.scopes,
+                  initiatedBy,
+                },
+              },
+            });
+
+            return { id: created.id, name: created.name };
+          },
+          { isolationLevel: "Serializable" }
+        );
+        break;
+      } catch (err) {
+        if (isRetryableTransactionError(err) && attempt < 2) continue;
+        throw err;
+      }
+    }
+
+    if (!apiKey) return apiKeyLimitError();
 
     logger.info("API key generated", {
       id: apiKey.id,
       name,
       scopes: parsed.scopes,
+      initiatedBy,
     });
 
     return successResponse(

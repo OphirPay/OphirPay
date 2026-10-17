@@ -843,9 +843,10 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 | ✅ On-chain immutable audit log — full-stack + SSE streaming | **Done** |
 | ✅ Recurring payment scheduler — contract + API + dashboard UI | **Done** |
 | ✅ Fee configuration per operation — full-stack + version history | **Done** |
+| ✅ Live Horizon fee estimator — Low/Recommended/Fast tiers + custom override on the send form | **Done** |
 | ✅ Timelocked admin actions (24h delay) — full-stack | **Done** |
 | ✅ Escrow management — contract-backed dashboard UI | **Done** |
-| ✅ Payment streams — vesting, claims, and cancellation dashboard | **Done** |
+| ✅ Payment streams — vesting, claims, cancellation dashboard, per-stream timeline with live claim counter and future-date simulator | **Done** |
 | ✅ DAO governance (propose→vote→execute) — full-stack | **Done** |
 | ✅ Structured refund system (6 reason codes) — full-stack | **Done** |
 | ✅ On-chain notification hooks — contract + relayer + UI | **Done** |
@@ -929,7 +930,7 @@ OphirPay is designed with defense-in-depth across the contract, API, and web lay
 
 - **CSRF protection** — double-submit cookie pattern (`__Host-csrf`, HttpOnly, SameSite=Strict) with timing-safe comparison; the client mints the token once and retries once on `CSRF_INVALID`
 - **Session security** — HMAC-SHA256 signed session cookies with expiry, `HttpOnly; SameSite=Strict` (`Secure` in production), rolling renewal before expiry, and a Redis-backed logout revocation list that invalidates every tab and device at once; fail-closed on DB errors
-- **API keys** — SHA-256 hashed at rest, indexed prefix lookup, expiry support, `lastUsed` tracking
+- **API keys** — SHA-256 hashed at rest, indexed prefix lookup, expiry support, `lastUsed` tracking, a five-active-key cap, a shared 10-per-hour create/rotate quota per account, and audited creation/rotation (including the initiating credential)
 - **SSRF guard for webhooks** — blocks loopback/link-local/private IPs and hostnames, with DNS-rebinding re-validation at delivery time
 - **HMAC-signed webhook payloads** — receivers verify `X-OphirPay-Signature` (HMAC-SHA256); see [Webhook Signature Verification](docs/webhook-verification.md) for the canonical form, replay protection, and Node/Python reference implementations
 - **Input validation** — Zod schemas on all mutation routes; Stellar address regex, amount bounds, memo length limits

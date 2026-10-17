@@ -1432,6 +1432,14 @@ paths:
     post:
       tags: [API Keys]
       summary: Generate a new API key (raw key shown once)
+      description: |
+        Creates a key for the authenticated account and returns the raw value
+        exactly once. The account may hold at most five active keys; creation
+        is refused with 409 once the cap is reached.
+
+        Create and rotate share a sliding quota of 10 operations per account
+        per hour, beyond which the endpoint returns 429. Successful creation is
+        recorded in the audit log as `api_key:create`.
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       requestBody:
         required: true
@@ -1480,6 +1488,28 @@ paths:
                         description: Raw API key — shown only once
         "400":
           $ref: "#/components/responses/ValidationError"
+        "409":
+          description: >
+            The account already holds the maximum number of active API keys
+            (5). Revoke or rotate an existing key before creating another.
+        "429":
+          description: >
+            Hourly API-key create/rotate quota exhausted (10 operations per
+            account per hour). `Retry-After` and `error.details.resetAt` carry
+            the reset time.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+            X-RateLimit-Limit:
+              schema: { type: integer }
+            X-RateLimit-Remaining:
+              schema: { type: integer }
+            X-RateLimit-Reset:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     patch:
       tags: [API Keys]
       summary: Update the scopes of an existing API key
@@ -1536,7 +1566,12 @@ paths:
         The previous key keeps working until `previousKeyValidUntil`; after
         that it is rejected. Rotating an already-rotated, revoked, expired, or
         unknown key returns 400 rather than minting a second replacement, and
-        the rotation is recorded in the audit log as `api_key:rotate`.
+        the rotation is recorded in the audit log as `api_key:rotate`,
+        including `details.initiatedBy` (the wallet or API key that requested
+        it).
+
+        Rotation shares the create quota: 10 create/rotate operations per
+        account per hour, after which the endpoint returns 429.
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       parameters:
         - name: id
@@ -1580,6 +1615,23 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "429":
+          description: >
+            Hourly API-key create/rotate quota exhausted. `Retry-After` and
+            `error.details.resetAt` carry the reset time.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+            X-RateLimit-Limit:
+              schema: { type: integer }
+            X-RateLimit-Remaining:
+              schema: { type: integer }
+            X-RateLimit-Reset:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           $ref: "#/components/responses/ServerError"
 

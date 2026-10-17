@@ -364,16 +364,57 @@ function buildRecommendation(
   };
 }
 
-function fallbackRecommendation(): FeeRecommendation {
+/**
+ * Statistics plus provenance, shared by every consumer of `/fee_stats`.
+ *
+ * Centralising the cache/fallback ladder here is what lets the transaction
+ * builders and the fee-selector sit in the same browser tab without each
+ * firing its own Horizon request (and disagreeing when one succeeds).
+ */
+interface FeeStatsSnapshot {
+  stats: FeeStatistics;
+  source: FeeSource;
+  at: number;
+}
+
+function configuredFallbackStats(): FeeStatistics {
   const fee = getFallbackBaseFee();
-  const stats: FeeStatistics = {
+  return {
     baseFee: fee,
     ledgerCapacityUsage: 0,
     charged: parseDistribution(undefined, fee),
     maxFee: parseDistribution(undefined, fee),
     lastLedger: 0,
   };
-  return buildRecommendation(stats, "fallback", Date.now());
+}
+
+async function loadFeeStats(
+  fetcher: FeeStatsFetcher,
+  now: number,
+  forceRefresh = false
+): Promise<FeeStatsSnapshot> {
+  const ttl = getFeeStatsTtlMs();
+  if (!forceRefresh && cache && now - cache.at < ttl) {
+    return { stats: cache.stats, source: "cache", at: cache.at };
+  }
+
+  try {
+    const raw = await fetcher();
+    const stats = parseFeeStats(raw);
+    cache = { stats, at: now };
+    lastKnownGood = stats;
+    return { stats, source: "horizon", at: now };
+  } catch (err) {
+    logger.warn("Fee statistics unavailable — falling back", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+
+    const fallbackStats = lastKnownGood ?? cache?.stats;
+    if (fallbackStats) {
+      return { stats: fallbackStats, source: "cache", at: cache?.at ?? now };
+    }
+    return { stats: configuredFallbackStats(), source: "fallback", at: now };
+  }
 }
 
 /**
@@ -393,26 +434,100 @@ export async function getRecommendedFee(
   fetcher: FeeStatsFetcher = defaultFeeStatsFetcher,
   now: number = Date.now()
 ): Promise<FeeRecommendation> {
-  const ttl = getFeeStatsTtlMs();
-  if (cache && now - cache.at < ttl) {
-    return buildRecommendation(cache.stats, "cache", cache.at);
-  }
+  const { stats, source, at } = await loadFeeStats(fetcher, now);
+  return buildRecommendation(stats, source, at);
+}
 
-  try {
-    const raw = await fetcher();
-    const stats = parseFeeStats(raw);
-    cache = { stats, at: now };
-    lastKnownGood = stats;
-    return buildRecommendation(stats, "horizon", now);
-  } catch (err) {
-    logger.warn("Fee statistics unavailable — falling back", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+// ── Fee tiers for the transaction form (#1373) ─────────────────
 
-    const fallbackStats = lastKnownGood ?? cache?.stats;
-    if (fallbackStats) {
-      return buildRecommendation(fallbackStats, "cache", cache?.at ?? now);
-    }
-    return fallbackRecommendation();
-  }
+/** Tier names exposed by the fee selector. */
+export type FeeTierKey = "low" | "recommended" | "fast";
+
+/** Per-operation fee for each selectable tier, in stroops. */
+export interface FeeTiers {
+  /** Protocol minimum — the floor a custom fee may not go below. */
+  baseFee: number;
+  low: number;
+  recommended: number;
+  fast: number;
+  /** The `fee_charged` percentile behind each tier (e.g. "p50"). */
+  percentiles: Record<FeeTierKey, string>;
+}
+
+/** Everything the fee selector needs, in one payload. */
+export interface FeeSnapshot {
+  tiers: FeeTiers;
+  congestion: NetworkCongestion;
+  ledgerCapacityUsage: number;
+  source: FeeSource;
+  stale: boolean;
+  fetchedAt: string;
+  /** Explanation of the recommended tier, suitable for display. */
+  basis: string;
+}
+
+/**
+ * Build Low / Recommended / Fast per-operation fees from one statistics sample.
+ *
+ * - **Low** uses the median (`p50`) of recently charged fees — cheap, but may
+ *   wait behind a busy ledger.
+ * - **Recommended** follows the configured aggressiveness policy (default
+ *   `p90`), the same value the transaction builders would pick on their own.
+ * - **Fast** uses `p99`, bidding above almost every recent transaction.
+ *
+ * Every tier is floored at the network base fee, so none of them can produce
+ * an unsubmittable transaction.
+ */
+export async function getFeeSnapshot(
+  fetcher: FeeStatsFetcher = defaultFeeStatsFetcher,
+  now: number = Date.now(),
+  options: {
+    /**
+     * Skip the TTL cache read. The fee selector polls on a fixed interval and
+     * must observe a fresh sample each time; without this, a poll that lands a
+     * few milliseconds inside the TTL would silently serve the previous
+     * ledger's tiers and only refresh on the following tick.
+     */
+    forceRefresh?: boolean;
+  } = {}
+): Promise<FeeSnapshot> {
+  const { stats, source, at } = await loadFeeStats(
+    fetcher,
+    now,
+    options.forceRefresh === true
+  );
+  const aggressiveness = getFeeAggressiveness();
+
+  const low = recommendFee(stats, "low");
+  const recommended = recommendFee(stats, aggressiveness);
+  const fast = recommendFee(stats, "high");
+  const congestion = recommended.congestion;
+
+  return {
+    tiers: {
+      baseFee: stats.baseFee,
+      low: low.recommendedFee,
+      recommended: recommended.recommendedFee,
+      fast: fast.recommendedFee,
+      percentiles: {
+        low: low.percentile,
+        recommended: recommended.percentile,
+        fast: fast.percentile,
+      },
+    },
+    congestion,
+    ledgerCapacityUsage: stats.ledgerCapacityUsage,
+    source,
+    stale: source !== "horizon",
+    fetchedAt: new Date(at).toISOString(),
+    basis: buildFeeBasis({
+      percentile: recommended.percentile,
+      recommendedFee: recommended.recommendedFee,
+      baseFee: stats.baseFee,
+      aggressiveness,
+      congestion,
+      ledgerCapacityUsage: stats.ledgerCapacityUsage,
+      source,
+    }),
+  };
 }

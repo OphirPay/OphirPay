@@ -445,6 +445,12 @@ export async function buildPaymentTx(params: {
   destAssetIssuer?: string;
   destMin?: string;
   path?: Asset[];
+  /**
+   * Explicit per-operation fee in stroops (from the fee selector, #1373).
+   * When omitted or invalid the builder resolves a live recommendation, which
+   * keeps every other caller on the automatic path.
+   */
+  fee?: number;
 }): Promise<BuildTxResult> {
   const {
     sourcePublicKey,
@@ -459,6 +465,7 @@ export async function buildPaymentTx(params: {
     destAssetIssuer,
     destMin,
     path,
+    fee: feeOverride,
   } = params;
 
   const isCrossAsset =
@@ -485,7 +492,12 @@ export async function buildPaymentTx(params: {
   const now = Math.floor(Date.now() / 1000);
 
   const paymentAsset = createAsset(assetCode, assetIssuer);
-  const fee = await resolveTransactionFee(server);
+  const fee =
+    feeOverride !== undefined &&
+    Number.isSafeInteger(feeOverride) &&
+    feeOverride > 0
+      ? feeOverride
+      : await resolveTransactionFee(server);
 
   let builder = new TransactionBuilder(sourceAccount, {
     fee: fee.toString(),
@@ -540,6 +552,8 @@ export async function buildPathPaymentStrictSendTx(params: {
   destAssetIssuer?: string;
   path?: Asset[];
   memo?: string;
+  /** Explicit per-operation fee in stroops (from the fee selector, #1373). */
+  fee?: number;
 }): Promise<BuildTxResult> {
   const {
     sourcePublicKey,
@@ -552,6 +566,7 @@ export async function buildPathPaymentStrictSendTx(params: {
     destAssetIssuer,
     path = [],
     memo,
+    fee: feeOverride,
   } = params;
 
   const server = getHorizonServer();
@@ -560,7 +575,12 @@ export async function buildPathPaymentStrictSendTx(params: {
 
   const sendAsset = createAsset(sourceAssetCode, sourceAssetIssuer);
   const destAsset = createAsset(destAssetCode, destAssetIssuer);
-  const fee = await resolveTransactionFee(server);
+  const fee =
+    feeOverride !== undefined &&
+    Number.isSafeInteger(feeOverride) &&
+    feeOverride > 0
+      ? feeOverride
+      : await resolveTransactionFee(server);
 
   let builder = new TransactionBuilder(sourceAccount, {
     fee: fee.toString(),

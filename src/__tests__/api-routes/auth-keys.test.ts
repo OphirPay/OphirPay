@@ -4,18 +4,40 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHash } from "node:crypto";
 
 // Mock dependencies
+//
+// Key creation runs inside a Serializable transaction (issue #1370), so the
+// transaction client and the top-level client share the same record mocks —
+// assertions on `prisma.apiKey.create` still describe what happened inside
+// the transaction.
+const prismaMocks = vi.hoisted(() => {
+  const apiKeyCreate = vi.fn();
+  const apiKeyCount = vi.fn().mockResolvedValue(0);
+  const auditCreate = vi.fn().mockResolvedValue({});
+  const tx = {
+    apiKey: { count: apiKeyCount, create: apiKeyCreate },
+    auditLog: { create: auditCreate },
+  };
+  return { apiKeyCreate, apiKeyCount, auditCreate, tx };
+});
+
 vi.mock("@/lib/prisma", () => ({
   default: {
     apiKey: {
       findMany: vi.fn(),
-      create: vi.fn(),
+      create: prismaMocks.apiKeyCreate,
       deleteMany: vi.fn(),
       updateMany: vi.fn(),
+      count: prismaMocks.apiKeyCount,
     },
+    auditLog: { create: prismaMocks.auditCreate },
     user: {
       findUnique: vi.fn(),
       upsert: vi.fn(),
     },
+    $transaction: vi.fn(
+      (callback: (transaction: typeof prismaMocks.tx) => Promise<unknown>) =>
+        callback(prismaMocks.tx)
+    ),
   },
 }));
 

@@ -1,6 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -16,19 +17,9 @@ import { fetchRecentContractRecords } from "@/lib/on-chain-records";
 import { formatXlmStroops, parseXlmAmount } from "@/lib/stellar-amount";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { isValidStellarAddress } from "@/lib/stellar";
+import { computeVested, vestingPercent } from "@/lib/vesting";
 import { shortenAddress } from "@/lib/utils";
 import type { StreamData } from "@/types/contract-abi";
-
-function computeVested(total: bigint, start: bigint, end: bigint, now: bigint): bigint {
-  if (now <= start) return BigInt(0);
-  if (now >= end) return total;
-  return total * (now - start) / (end - start);
-}
-
-function progressPercent(vested: bigint, total: bigint): number {
-  if (total <= BigInt(0)) return 0;
-  return Number(vested * BigInt(10_000) / total) / 100;
-}
 
 function localDateTimeNow(): string {
   const now = new Date();
@@ -181,13 +172,17 @@ export default function StreamsPage() {
               ? claimed
               : computeVested(total, start, end, BigInt(now));
             const claimable = vested > claimed ? vested - claimed : BigInt(0);
-            const percent = progressPercent(vested, total);
+            const percent = vestingPercent(vested, total);
             const isCreator = wallet.publicKey === stream.creator;
             const isRecipient = wallet.publicKey === stream.recipient;
             return (
               <Card key={id} className="space-y-4 p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-semibold text-gray-900 dark:text-white">Stream #{id}</h2>
+                  <h2 className="font-semibold text-gray-900 dark:text-white">
+                    <Link href={`/streams/${id}`} className="hover:underline">
+                      Stream #{id}
+                    </Link>
+                  </h2>
                   <Badge variant={stream.cancelled ? "danger" : percent >= 100 ? "success" : "info"}>
                     {stream.cancelled ? "Cancelled" : percent >= 100 ? "Fully vested" : "Active"}
                   </Badge>
@@ -214,6 +209,12 @@ export default function StreamsPage() {
                   <div><dt className="inline font-medium">Ends: </dt><dd className="inline">{new Date(Number(end) * 1000).toLocaleString()}</dd></div>
                 </dl>
                 {stream.metadata && <p className="text-sm text-gray-500 dark:text-gray-400">{stream.metadata}</p>}
+                <Link
+                  href={`/streams/${id}`}
+                  className="inline-block text-sm font-medium text-ophir-600 hover:underline dark:text-ophir-400"
+                >
+                  View vesting timeline →
+                </Link>
                 {wallet.connected && !stream.cancelled && (
                   <div className="flex flex-wrap gap-2">
                     {isRecipient && claimable > BigInt(0) && (

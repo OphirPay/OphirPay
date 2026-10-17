@@ -46,6 +46,29 @@ vi.mock("@/lib/contracts", () => ({
   recordPaymentOnChain: vi.fn(),
 }));
 
+vi.mock("@/hooks/useFeeStats", () => ({
+  useFeeStats: () => ({
+    snapshot: {
+      tiers: {
+        baseFee: 100,
+        low: 100,
+        recommended: 100,
+        fast: 150,
+        percentiles: { low: "p50", recommended: "p90", fast: "p99" },
+      },
+      congestion: "low",
+      ledgerCapacityUsage: 0.1,
+      source: "horizon",
+      stale: false,
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+      basis: "p90 of recently charged fees",
+    },
+    isLoading: false,
+    error: null,
+    refresh: vi.fn(),
+  }),
+}));
+
 vi.mock("@/lib/fee-estimator", () => ({
   estimateTransactionFee: vi.fn().mockResolvedValue({
     baseFee: "100",

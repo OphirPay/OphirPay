@@ -15,6 +15,11 @@ import {
 } from "@/lib/api-auth";
 import { verifyCsrf } from "@/lib/csrf";
 import { logger } from "@/lib/logger";
+import {
+  apiKeyQuotaError,
+  describeKeyInitiator,
+} from "@/lib/api-key-limits";
+import { consumeApiKeyMutationQuota } from "@/lib/rate-limit";
 
 const ROTATION_GRACE_MS = 24 * 60 * 60 * 1000;
 
@@ -35,6 +40,13 @@ export async function POST(
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
 
+    // Rotation mints a replacement credential, so it shares the create quota.
+    // Charging it before the transaction also means a client that hammers
+    // this endpoint cannot keep opening write transactions on the key table.
+    const quota = await consumeApiKeyMutationQuota(auth.userId);
+    if (!quota.allowed) return apiKeyQuotaError(quota);
+
+    const initiatedBy = describeKeyInitiator(auth);
     const { id } = await params;
     const now = new Date();
     const rawKey = generateApiKey();
@@ -102,6 +114,9 @@ export async function POST(
             previousPrefix: previous.prefix,
             replacementPrefix,
             graceUntil: graceUntil.toISOString(),
+            // `actor` is always the owning userId; this records the specific
+            // credential/session that initiated the rotation.
+            initiatedBy,
           },
         },
       });

@@ -333,3 +333,64 @@ export const CSP_REPORT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 /** Maximum CSP violation reports allowed per client per minute (#1392). */
 export const CSP_REPORT_RATE_LIMIT_MAX = 60;
+
+// ── API key lifecycle quotas (#1370) ───────────────────────────
+//
+// Creating and rotating API keys are privileged, low-frequency operations.
+// Each call mints a credential and (for rotation) writes a replacement row, so
+// an authenticated client stuck in a retry loop can inflate the ApiKey table
+// and leave a trail of live credentials. A dedicated per-account bucket keeps
+// that blast radius small without throttling the rest of the API.
+//
+// The bucket is deliberately shared by create *and* rotate: they cost the same
+// and must not be usable as two independent escape hatches.
+
+/** Sliding window for API-key create/rotate operations (1 hour). */
+export const API_KEY_MUTATION_WINDOW_MS = 60 * 60 * 1000;
+
+/** Maximum create/rotate operations per account per window. */
+export const API_KEY_MUTATION_MAX = 10;
+
+/** Maximum simultaneously active (unrevoked, unrotated, unexpired) keys. */
+export const MAX_ACTIVE_API_KEYS = 5;
+
+export interface ApiKeyMutationQuota {
+  /** Whether the operation may proceed. */
+  allowed: boolean;
+  /** The configured per-window maximum. */
+  limit: number;
+  /** Operations left in the current window (0 once exhausted). */
+  remaining: number;
+  /** Unix-ms timestamp when the window resets. */
+  resetAt: number;
+}
+
+/**
+ * Charge one API-key mutation (create or rotate) against the account's
+ * hourly quota.
+ *
+ * Keyed by user id — the account is the tenant boundary in OphirPay, so two
+ * sessions or API keys belonging to the same user share one bucket. Callers
+ * must still authenticate first: the quota never replaces auth, it only
+ * bounds authenticated abuse.
+ *
+ * @param userId Account to charge.
+ * @param store  Injectable store (defaults to the process-wide backend).
+ */
+export async function consumeApiKeyMutationQuota(
+  userId: string,
+  store: RateLimitStore = getRateLimitStore()
+): Promise<ApiKeyMutationQuota> {
+  const result = await store.increment(
+    `apikeys:mutation:${userId}`,
+    API_KEY_MUTATION_WINDOW_MS,
+    API_KEY_MUTATION_MAX
+  );
+
+  return {
+    allowed: result.allowed,
+    limit: API_KEY_MUTATION_MAX,
+    remaining: result.remaining,
+    resetAt: result.resetAt,
+  };
+}

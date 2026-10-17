@@ -24,7 +24,11 @@ import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
 import { recordPaymentOnChain } from "@/lib/contracts";
 import { downloadReceiptPdf } from "@/lib/receipt-pdf";
-import { estimateTransactionFee } from "@/lib/fee-estimator";
+import { useFeeStats } from "@/hooks/useFeeStats";
+import {
+  FeeSelector,
+  type FeeSelection,
+} from "@/components/ui/FeeSelector";
 import { useToast } from "@/components/ui/Toast";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { useApiMutation } from "@/hooks/useApiQuery";
@@ -92,13 +96,13 @@ function SendPageClient() {
 
   const [destination, setDestination] = useState("");
   const [amount, setAmount] = useState("");
-  const [feeEstimate, setFeeEstimate] = useState<{
-    baseFee: string;
-    recommendedFee: string;
-    congestion: string;
-    basis: string;
-    stale: boolean;
-  } | null>(null);
+  // Live Horizon fee tiers (#1373). `selection.fee` is what the signed
+  // transaction will carry; a `null` custom fee blocks submission.
+  const { snapshot: feeSnapshot, isLoading: feeLoading } = useFeeStats();
+  const [feeSelection, setFeeSelection] = useState<FeeSelection>({
+    tier: "recommended",
+    fee: null,
+  });
   const [memo, setMemo] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<AssetInfo>(XLM_ASSET);
   const [destAsset, setDestAsset] = useState<AssetInfo>(XLM_ASSET);
@@ -185,20 +189,17 @@ function SendPageClient() {
     invalidateKeys: [["recurring"]],
   });
 
-  // Fetch live fee estimate on mount
+  // Keep the selected fee in sync with each 30-second refresh. Without this,
+  // a user who opens the form during calm conditions and submits five minutes
+  // later would sign the original (possibly underbid) fee.
   useEffect(() => {
-    estimateTransactionFee(1)
-      .then((fee) =>
-        setFeeEstimate({
-          baseFee: fee.baseFee,
-          recommendedFee: fee.recommendedFee,
-          congestion: fee.networkCongestion,
-          basis: fee.basis,
-          stale: fee.stale,
-        })
-      )
-      .catch(() => {});
-  }, []);
+    if (!feeSnapshot || feeSelection.tier === "custom") return;
+    const nextFee = feeSnapshot.tiers[feeSelection.tier];
+    if (feeSelection.fee === nextFee) return;
+    setFeeSelection((current) =>
+      current.tier === feeSelection.tier ? { ...current, fee: nextFee } : current
+    );
+  }, [feeSnapshot, feeSelection.tier, feeSelection.fee]);
 
   // Pre-fill the form from a shareable payment link (?dest=...&amount=...&memo=...&asset=...)
   useEffect(() => {
@@ -366,6 +367,16 @@ function SendPageClient() {
         return false;
       }
     }
+    // Only a *custom* fee can be invalid. If live statistics have not loaded
+    // yet, submission is not blocked: the transaction builder resolves the
+    // same recommendation itself, so a Horizon hiccup can never prevent a
+    // payment from being sent.
+    if (feeSelection.tier === "custom" && feeSelection.fee === null) {
+      setValidationError(
+        "Enter a custom network fee of at least the network base fee."
+      );
+      return false;
+    }
     return true;
   };
 
@@ -477,6 +488,7 @@ function SendPageClient() {
           destAssetIssuer: destAsset.issuer,
           path: pathEstimate.path,
           memo: memo.trim() || undefined,
+          fee: feeSelection.fee ?? undefined,
         });
         xdr = res.xdr;
       } else {
@@ -489,6 +501,7 @@ function SendPageClient() {
           assetCode: selectedAsset.code,
           assetIssuer: selectedAsset.issuer,
           sponsorCreate,
+          fee: feeSelection.fee ?? undefined,
         });
         xdr = res.xdr;
       }
@@ -1163,32 +1176,20 @@ function SendPageClient() {
             </span>
           </div>
 
-          {feeEstimate && (
-            <div className="mt-2 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 dark:text-gray-400">
-                  Network fee: ~{feeEstimate.recommendedFee} stroops
-                </span>
-                <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                  feeEstimate.congestion === "low" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                  feeEstimate.congestion === "medium" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" :
-                  "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                }`}>
-                  {feeEstimate.congestion}
-                </span>
-              </div>
-              {feeEstimate.basis && (
-                <p
-                  data-testid="send-fee-basis"
-                  className="mt-1 text-gray-400 dark:text-gray-500"
-                >
-                  {feeEstimate.stale ? "⚠ " : ""}Based on {feeEstimate.basis}
-                  {feeEstimate.stale ? " (may be stale)" : ""}
-                </p>
-              )}
-            </div>
-          )}
         </div>
+
+        {/* Network fee tiers (#1373) — hidden for flows that do not sign a
+            transaction now (scheduled / recurring). */}
+        {!scheduleEnabled && mode === "one-time" && (
+          <FeeSelector
+            snapshot={feeSnapshot}
+            selection={feeSelection}
+            onChange={setFeeSelection}
+            loading={feeLoading}
+            disabled={isSubmitting}
+            operations={isCrossAsset ? 1 : sponsorCreate ? 2 : 1}
+          />
+        )}
 
         {/* Cross-Asset Rate Preview Card */}
         {isCrossAsset && mode === "one-time" && (

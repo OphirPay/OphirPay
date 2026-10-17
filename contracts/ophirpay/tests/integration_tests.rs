@@ -935,3 +935,162 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MULTI-ASSET BATCH PAYMENT EXECUTION TESTS (issue #1403)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_multi_asset_batch_execution_across_three_tokens_and_conservation_invariant() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let fee_collector = Address::generate(&fix.env);
+
+    let recipient_xlm = Address::generate(&fix.env);
+    let recipient_usdc = Address::generate(&fix.env);
+    let recipient_eurc = Address::generate(&fix.env);
+
+    // Instantiate 3 distinct SAC token contracts: XLM (fix.token_id), USDC, and EURC
+    let token_xlm_id = fix.token_id.clone();
+    let token_xlm_client = token::Client::new(&fix.env, &token_xlm_id);
+
+    let usdc_admin = Address::generate(&fix.env);
+    let token_usdc_id = fix.env.register_stellar_asset_contract(usdc_admin.clone());
+    let token_usdc_client = token::Client::new(&fix.env, &token_usdc_id);
+    let token_usdc_admin = token::StellarAssetClient::new(&fix.env, &token_usdc_id);
+
+    let eurc_admin = Address::generate(&fix.env);
+    let token_eurc_id = fix.env.register_stellar_asset_contract(eurc_admin.clone());
+    let token_eurc_client = token::Client::new(&fix.env, &token_eurc_id);
+    let token_eurc_admin = token::StellarAssetClient::new(&fix.env, &token_eurc_id);
+
+    // Mint initial supplies to creator
+    let initial_xlm: i128 = 10_000_000;
+    let initial_usdc: i128 = 20_000_000;
+    let initial_eurc: i128 = 30_000_000;
+
+    fix.mint(&creator, initial_xlm);
+    token_usdc_admin.mint(&creator, &initial_usdc);
+    token_eurc_admin.mint(&creator, &initial_eurc);
+
+    // Configure 1% (100 bps) protocol payment fee and fee collector
+    fix.client.set_fee_collector(&fix.owner, &fee_collector);
+    fix.client
+        .set_fee_config(&fix.owner, &100u32, &0u32, &0u32, &0i128, &0i128, &true);
+
+    // Build multi-asset batch vectors across the 3 token contracts
+    let mut payees = Vec::new(&fix.env);
+    payees.push_back(recipient_xlm.clone());
+    payees.push_back(recipient_usdc.clone());
+    payees.push_back(recipient_eurc.clone());
+
+    let amount_xlm: i128 = 2_000_000;
+    let amount_usdc: i128 = 5_000_000;
+    let amount_eurc: i128 = 8_000_000;
+
+    let mut amounts = Vec::new(&fix.env);
+    amounts.push_back(amount_xlm);
+    amounts.push_back(amount_usdc);
+    amounts.push_back(amount_eurc);
+
+    let mut assets = Vec::new(&fix.env);
+    assets.push_back(token_xlm_id.clone());
+    assets.push_back(token_usdc_id.clone());
+    assets.push_back(token_eurc_id.clone());
+
+    let tx_hash = String::from_str(&fix.env, "0xmulti_asset_batch_1403");
+    let result = fix
+        .client
+        .execute_multi_asset_batch(&creator, &payees, &amounts, &assets, &tx_hash);
+
+    assert_eq!(result.batch_id, 1);
+    assert_eq!(result.total_requests, 3);
+    assert_eq!(result.successful, 3);
+    assert_eq!(result.failed, 0);
+    assert_eq!(result.total_amount, amount_xlm + amount_usdc + amount_eurc);
+
+    // Assert each recipient's balance in the respective token contract increased by exact amount
+    assert_eq!(token_xlm_client.balance(&recipient_xlm), amount_xlm);
+    assert_eq!(token_usdc_client.balance(&recipient_usdc), amount_usdc);
+    assert_eq!(token_eurc_client.balance(&recipient_eurc), amount_eurc);
+
+    // Assert protocol fee collected per token contract (1% = 100 bps)
+    let expected_fee_xlm = amount_xlm / 100; // 20_000
+    let expected_fee_usdc = amount_usdc / 100; // 50_000
+    let expected_fee_eurc = amount_eurc / 100; // 80_000
+
+    assert_eq!(token_xlm_client.balance(&fee_collector), expected_fee_xlm);
+    assert_eq!(token_usdc_client.balance(&fee_collector), expected_fee_usdc);
+    assert_eq!(token_eurc_client.balance(&fee_collector), expected_fee_eurc);
+
+    // Verify per-token conservation invariant:
+    // creator_balance + recipient_balance == initial_supply - fee_collected
+    assert_eq!(
+        token_xlm_client.balance(&creator) + token_xlm_client.balance(&recipient_xlm),
+        initial_xlm - expected_fee_xlm
+    );
+    assert_eq!(
+        token_usdc_client.balance(&creator) + token_usdc_client.balance(&recipient_usdc),
+        initial_usdc - expected_fee_usdc
+    );
+    assert_eq!(
+        token_eurc_client.balance(&creator) + token_eurc_client.balance(&recipient_eurc),
+        initial_eurc - expected_fee_eurc
+    );
+
+    // Verify stored payment records reflect their respective token contracts
+    let p1 = fix.client.get_payment(&1);
+    let p2 = fix.client.get_payment(&2);
+    let p3 = fix.client.get_payment(&3);
+    assert_eq!(p1.asset, token_xlm_id);
+    assert_eq!(p2.asset, token_usdc_id);
+    assert_eq!(p3.asset, token_eurc_id);
+}
+
+#[test]
+fn test_multi_asset_batch_partial_zero_amount_and_validation_guards() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let r1 = Address::generate(&fix.env);
+    let r2 = Address::generate(&fix.env);
+
+    fix.mint(&creator, 5_000_000);
+
+    // Mismatched assets length is rejected with InvalidAmount
+    let mut payees = Vec::new(&fix.env);
+    payees.push_back(r1.clone());
+    payees.push_back(r2.clone());
+
+    let mut amounts = Vec::new(&fix.env);
+    amounts.push_back(1_000_000i128);
+    amounts.push_back(0i128);
+
+    let mut mismatched_assets = Vec::new(&fix.env);
+    mismatched_assets.push_back(fix.token_id.clone());
+
+    let tx_hash = String::from_str(&fix.env, "0xmulti_guard");
+    let mismatch_res = fix.client.try_execute_multi_asset_batch(
+        &creator,
+        &payees,
+        &amounts,
+        &mismatched_assets,
+        &tx_hash,
+    );
+    assert_eq!(mismatch_res, Err(Ok(PaymentError::InvalidAmount)));
+
+    // Matching assets vector with one zero-amount entry settles valid entry and counts 1 failed
+    mismatched_assets.push_back(fix.token_id.clone());
+    let res = fix.client.execute_multi_asset_batch(
+        &creator,
+        &payees,
+        &amounts,
+        &mismatched_assets,
+        &tx_hash,
+    );
+    assert_eq!(res.successful, 1);
+    assert_eq!(res.failed, 1);
+    assert_eq!(res.total_amount, 1_000_000);
+    assert_eq!(fix.token_client.balance(&r1), 1_000_000);
+    assert_eq!(fix.token_client.balance(&r2), 0);
+}
+

@@ -10,63 +10,49 @@ export const stellarAddress = z
 
 export const apiKeyId = z.string().min(1, "API key ID is required");
 
+import {
+  STELLAR_MEMO_MAX_BYTES,
+  STELLAR_MEMO_ERROR_MESSAGES,
+  stellarMemoTextSchema,
+  stellarMemoTypeSchema,
+  validateStellarMemoSuperRefine,
+} from "@/lib/validation/stellar";
+
 // ── Memo Field ────────────────────────────────────────────────
 // Stellar MEMO_TEXT is limited to 28 UTF-8 *bytes* (not characters) and is
 // expected to be plain printable text. Enforced server-side on every route
-// that accepts a memo (payments, batches, multisig, updates) so invalid
-// memos are rejected with a user-facing validation error before they reach
-// persistence or transaction building.
-//
-// Charset: C0/C1 control characters (NUL, newlines, tabs, ESC, …) and Unicode
-// bidi-override / zero-width characters are rejected outright — they are never
-// legitimate memo content and rejecting them keeps memos safe to render, log,
-// and export (issue #397).
-export const MEMO_MAX_BYTES = 28;
-
-// Control chars (C0/C1), zero-width and bidi isolates/overrides/embeddings.
-// Covers: \u0000-\u001F \u007F-\u009F, ZWSP/ZWNJ/ZWJ/LRM/RLM (200B-200F),
-// LRE/RLE/PDF/LRO/RLO (202A-202E), LRI/RLI/FSI/PDI (2066-2069).
-const MEMO_CONTROL_CHARS =
-  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/;
+// that accepts a memo (payments, requests, batches, multisig, updates) so
+// invalid memos are rejected with a user-facing validation error before they
+// reach persistence or transaction building (issues #397, #1368).
+export const MEMO_MAX_BYTES = STELLAR_MEMO_MAX_BYTES;
 
 /** Error messages shown to users when a memo fails validation. */
-export const MEMO_ERROR_MESSAGES = {
-  tooLong: "Memo must be 28 characters or fewer",
-  tooManyBytes:
-    "Memo must be 28 bytes or fewer (non-ASCII characters count more)",
-  controlChars: "Memo must not contain control or invisible characters",
-} as const;
+export const MEMO_ERROR_MESSAGES = STELLAR_MEMO_ERROR_MESSAGES;
 
 /**
- * Shared optional memo field for every schema that accepts a memo.
- * Trims surrounding whitespace, then enforces the Stellar byte limit and a
- * printable-text charset.
+ * Shared optional memo field for every schema that accepts a plain text memo.
+ * Trims surrounding whitespace, rejects invalid UTF-8 sequences and control
+ * characters, and enforces the 28-byte Stellar MEMO_TEXT limit.
  */
-export const memoField = z
-  .string()
-  .trim()
-  .refine((v) => !MEMO_CONTROL_CHARS.test(v), {
-    message: MEMO_ERROR_MESSAGES.controlChars,
-  })
-  .refine((v) => v.length <= MEMO_MAX_BYTES, {
-    message: MEMO_ERROR_MESSAGES.tooLong,
-  })
-  .refine((v) => new TextEncoder().encode(v).length <= MEMO_MAX_BYTES, {
-    message: MEMO_ERROR_MESSAGES.tooManyBytes,
-  })
-  .optional();
+export const memoField = stellarMemoTextSchema.optional();
 
 // ── Payment Schemas ───────────────────────────────────────────
 
-export const createPaymentSchema = z.object({
-  amount: z.number().positive("Amount must be greater than zero"),
-  sourceAccountId: z.string().min(1, "Source account is required"),
-  destAddress: stellarAddress,
-  assetCode: z.string().default("XLM"),
-  assetIssuer: z.string().optional(),
-  description: z.string().max(200).optional(),
-  memo: memoField,
-});
+export const createPaymentSchema = z
+  .object({
+    amount: z.number().positive("Amount must be greater than zero"),
+    sourceAccountId: z.string().min(1, "Source account is required"),
+    destAddress: stellarAddress,
+    assetCode: z.string().default("XLM"),
+    assetIssuer: z.string().optional(),
+    description: z.string().max(200).optional(),
+    memo: z
+      .string()
+      .transform((v) => v.trim())
+      .optional(),
+    memoType: stellarMemoTypeSchema.optional(),
+  })
+  .superRefine(validateStellarMemoSuperRefine);
 
 /** Body for POST /api/payments/retry — which failed payment to retry. */
 export const retryPaymentSchema = z.object({
@@ -231,20 +217,27 @@ export const createApiKeySchema = z.object({
 
 // ── Payment Request Schemas (moved from validations.ts) ───────
 
-export const createPaymentRequestSchema = z.object({
-  amount: z.number().positive("Amount must be greater than 0"),
-  assetCode: z.string().default("XLM"),
-  assetIssuer: z.string().optional(),
-  description: z.string().max(500).optional(),
-  recipientAddress: stellarAddress.optional(),
-  recipientEmail: z.string().email().optional(),
-  notificationEmail: z.string().email().optional(),
-  dueDate: z
-    .string()
-    .refine((value) => !Number.isNaN(new Date(value).getTime()), "Due date must be valid")
-    .refine((value) => new Date(value).getTime() > Date.now(), "Due date must be in the future")
-    .optional(),
-});
+export const createPaymentRequestSchema = z
+  .object({
+    amount: z.number().positive("Amount must be greater than 0"),
+    assetCode: z.string().default("XLM"),
+    assetIssuer: z.string().optional(),
+    description: z.string().max(500).optional(),
+    recipientAddress: stellarAddress.optional(),
+    recipientEmail: z.string().email().optional(),
+    notificationEmail: z.string().email().optional(),
+    dueDate: z
+      .string()
+      .refine((value) => !Number.isNaN(new Date(value).getTime()), "Due date must be valid")
+      .refine((value) => new Date(value).getTime() > Date.now(), "Due date must be in the future")
+      .optional(),
+    memo: z
+      .string()
+      .transform((v) => v.trim())
+      .optional(),
+    memoType: stellarMemoTypeSchema.optional(),
+  })
+  .superRefine(validateStellarMemoSuperRefine);
 
 export const confirmPaymentRequestSchema = z.object({
   transactionHash: z.string().regex(/^[a-fA-F0-9]{64}$/, "Invalid Stellar transaction hash"),

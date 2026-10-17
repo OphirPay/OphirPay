@@ -24,6 +24,13 @@ import {
   prismaPagination,
 } from "@/lib/pagination-utils";
 import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
+import {
+  acquireIdempotencyLock,
+  buildIdempotentReplayResponse,
+  buildInFlightConflictResponse,
+  cacheIdempotencyResponse,
+  releaseIdempotencyLock,
+} from "@/lib/idempotency";
 
 // ── GET /api/batches — List batches with pagination ──────────
 
@@ -208,6 +215,30 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
       idempotencyKey = headerCheck.data;
     }
 
+    // Redis-backed atomic idempotency lock and 24-hour response cache (#1366):
+    // - Acquires `SET idempotency:${key} <lock> NX EX 120`.
+    // - If another request is in-flight with the same key, returns HTTP 409
+    //   Conflict with `Retry-After: 5`.
+    // - If a completed response is cached in Redis, replays the identical 201
+    //   response with `Idempotent-Replay: true`.
+    // - If Redis is unavailable, gracefully falls back to database-only
+    //   uniqueness checks below.
+    let lockAcquired = false;
+    if (idempotencyKey) {
+      const lockResult = await acquireIdempotencyLock(idempotencyKey, userId);
+      if (lockResult.status === "IN_FLIGHT") {
+        return buildInFlightConflictResponse(lockResult.retryAfterSeconds);
+      }
+      if (lockResult.status === "CACHED") {
+        incMetric("batches_processed_total");
+        return buildIdempotentReplayResponse({
+          statusCode: lockResult.statusCode,
+          body: lockResult.body,
+        });
+      }
+      lockAcquired = lockResult.status === "ACQUIRED";
+    }
+
     // Re-submission of an already-processed batch: same user + same key means
     // no new batch. If the first attempt created the batch row but crashed
     // before inserting its child payments (a partial write), the retry resumes
@@ -224,19 +255,45 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
             data: paymentCreateData(payments, existing.id, userId),
           });
           const resumed = await fetchBatchWithPayments(existing.id);
+          const timestamp = new Date().toISOString();
+          if (lockAcquired) {
+            await cacheIdempotencyResponse(idempotencyKey, {
+              statusCode: 201,
+              body: {
+                success: true,
+                data: resumed,
+                meta: { deduplicated: true, resumed: true, timestamp },
+              },
+              userId,
+            });
+          }
           incMetric("batches_processed_total");
           return successResponse(
             resumed,
-            { deduplicated: true, resumed: true, timestamp: new Date().toISOString() },
-            200
+            { deduplicated: true, resumed: true, timestamp },
+            200,
+            { "Idempotent-Replay": "true" }
           );
         }
 
+        const timestamp = new Date().toISOString();
+        if (lockAcquired) {
+          await cacheIdempotencyResponse(idempotencyKey, {
+            statusCode: 201,
+            body: {
+              success: true,
+              data: existing,
+              meta: { deduplicated: true, timestamp },
+            },
+            userId,
+          });
+        }
         incMetric("batches_processed_total");
         return successResponse(
           existing,
-          { deduplicated: true, timestamp: new Date().toISOString() },
-          200
+          { deduplicated: true, timestamp },
+          200,
+          { "Idempotent-Replay": "true" }
         );
       }
     }
@@ -277,12 +334,28 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
           include: { payments: true },
         });
         if (winner) {
+          const timestamp = new Date().toISOString();
+          if (lockAcquired) {
+            await cacheIdempotencyResponse(idempotencyKey, {
+              statusCode: 201,
+              body: {
+                success: true,
+                data: winner,
+                meta: { deduplicated: true, timestamp },
+              },
+              userId,
+            });
+          }
           incMetric("batches_processed_total");
           return successResponse(
             winner,
-            { deduplicated: true, timestamp: new Date().toISOString() },
-            200
+            { deduplicated: true, timestamp },
+            200,
+            { "Idempotent-Replay": "true" }
           );
+        }
+        if (lockAcquired) {
+          await releaseIdempotencyLock(idempotencyKey);
         }
         // A unique violation on the compound (userId, idempotencyKey) with no
         // recoverable winner is a genuine data conflict — surface a 409 rather
@@ -291,13 +364,30 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
           "A batch with this idempotency key already exists but could not be recovered."
         );
       }
+      if (lockAcquired && idempotencyKey) {
+        await releaseIdempotencyLock(idempotencyKey);
+      }
       throw err;
+    }
+
+    const timestamp = new Date().toISOString();
+    if (idempotencyKey) {
+      await cacheIdempotencyResponse(idempotencyKey, {
+        statusCode: 201,
+        body: {
+          success: true,
+          data: result,
+          meta: { timestamp },
+        },
+        userId,
+      });
     }
 
     incMetric("batches_processed_total");
 
-    return successResponse(result, { timestamp: new Date().toISOString() }, 201);
+    return successResponse(result, { timestamp }, 201);
   } catch (err) {
     return handleApiError(err, "POST /api/batches");
   }
 }));
+

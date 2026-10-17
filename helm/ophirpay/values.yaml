@@ -39,14 +39,33 @@ podAnnotations:
 
 podSecurityContext:
   fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 1001
   capabilities:
     drop:
       - ALL
+
+# ── Storage mounts for read-only root filesystem (Issue #1346) ──
+# Under the restricted Pod Security Standard (readOnlyRootFilesystem: true), Next.js
+# needs writable temporary storage for runtime ISR caching, image optimization and
+# temp files. Writable emptyDir volumes are mounted at /app/.next/cache and /tmp.
+volumeMounts:
+  - name: next-cache
+    mountPath: /app/.next/cache
+  - name: tmp
+    mountPath: /tmp
+
+volumes:
+  - name: next-cache
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
 
 service:
   type: ClusterIP

@@ -368,6 +368,21 @@ jobs:
           expect "kind: ServiceAccount" /tmp/enabled.yaml
           expect "policyTypes:" /tmp/enabled.yaml
 
+          # Issue #1346 — Restricted Pod Security Standard and writable cache/tmp mounts
+          expect "seccompProfile:" /tmp/default.yaml
+          expect "type: RuntimeDefault" /tmp/default.yaml
+          expect "readOnlyRootFilesystem: true" /tmp/default.yaml
+          expect "mountPath: /app/.next/cache" /tmp/default.yaml
+          expect "mountPath: /tmp" /tmp/default.yaml
+          expect "name: next-cache" /tmp/default.yaml
+
+          expect "seccompProfile:" /tmp/enabled.yaml
+          expect "type: RuntimeDefault" /tmp/enabled.yaml
+          expect "readOnlyRootFilesystem: true" /tmp/enabled.yaml
+          expect "mountPath: /app/.next/cache" /tmp/enabled.yaml
+          expect "mountPath: /tmp" /tmp/enabled.yaml
+          expect "name: next-cache" /tmp/enabled.yaml
+
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
           reject "kind: NetworkPolicy" /tmp/disabled.yaml

@@ -66,6 +66,10 @@ export interface BoundedSseBuffer {
   attach(controller: ReadableStreamDefaultController<Uint8Array>): void;
   /** Enqueue an SSE event (or buffer it, subject to the policy). */
   push(event: string, data: unknown): void;
+  /** Enqueue an SSE comment line (e.g. keep-alive ping). */
+  pushComment(comment: string): void;
+  /** Enqueue a standard keep-alive ping comment (': ping\n\n'). */
+  pushPing(): void;
   /** ReadableStream `pull` hook — drains on consumer demand. */
   pull(controller: ReadableStreamDefaultController<Uint8Array>): void;
   /** Stop buffering and close the stream (client already gone). */
@@ -243,11 +247,62 @@ export function createBoundedSseBuffer(
     drain();
   };
 
+  const pushComment = (comment: string): void => {
+    if (disconnected) return;
+
+    if (queue.length > 0 && now() - lastDrainAt > idleTimeoutMs) {
+      requestDisconnect("idle-timeout");
+      drain();
+      return;
+    }
+
+    const bytes = encodeSseComment(comment);
+
+    if (policy === "disconnect") {
+      if (queue.length + 1 > maxEvents || queuedBytes + bytes.length > maxBytes) {
+        requestDisconnect("buffer-overflow");
+        drain();
+        return;
+      }
+    } else {
+      while (
+        queue.length > 0 &&
+        (queue.length + 1 > maxEvents || queuedBytes + bytes.length > maxBytes)
+      ) {
+        const dropped = queue.shift() as Uint8Array;
+        queuedBytes -= dropped.length;
+        droppedEvents += 1;
+        pendingMarker += 1;
+      }
+      if (
+        queue.length + 1 > maxEvents ||
+        queuedBytes + bytes.length > maxBytes
+      ) {
+        droppedEvents += 1;
+        pendingMarker += 1;
+        options.onOverflow?.(overflowInfo());
+        drain();
+        return;
+      }
+    }
+
+    queue.push(bytes);
+    queuedBytes += bytes.length;
+    if (droppedEvents > 0) options.onOverflow?.(overflowInfo());
+    drain();
+  };
+
+  const pushPing = (): void => {
+    pushComment("ping");
+  };
+
   return {
     attach(controller) {
       controllerRef = controller;
     },
     push,
+    pushComment,
+    pushPing,
     pull(controller) {
       controllerRef = controller;
       lastDrainAt = now();

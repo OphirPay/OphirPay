@@ -77,4 +77,5 @@ pub const STAT_AMT_BATCHED: Symbol = symbol_short!("S_AB");
 /// Prevents the owner from draining user-deposited funds (critical invariant).
 pub const LOCKED_BALANCE: Symbol = symbol_short!("LOCKED");
 pub const REENTRANCY_LOCK: Symbol = symbol_short!("RE_LOCK");
+pub const TOKEN_DECIMALS_KEY: Symbol = symbol_short!("TOK_DEC");
 

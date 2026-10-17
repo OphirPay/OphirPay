@@ -325,6 +325,7 @@ fn all_variants() -> Vec<(&'static str, u32)> {
         ("StreamInvariantViolated", PaymentError::StreamInvariantViolated as u32),
         ("InvalidPauseScope", PaymentError::InvalidPauseScope as u32),
         ("PaymentIdempotencyConflict", PaymentError::PaymentIdempotencyConflict as u32),
+        ("InvalidDecimalPrecision", PaymentError::InvalidDecimalPrecision as u32),
     ]
 }
 
@@ -374,12 +375,10 @@ fn variant_count_matches_catalog() {
     let variants = all_variants();
     // The TypeScript catalog should have exactly as many entries as Rust variants.
     // This is verified by the TS-side test; here we just record the count.
-    // PaymentIdempotencyConflict = 309 (#804) was added without bumping this,
-    // which is what the sibling `max_code == variants.len()` assertion catches.
     assert_eq!(
         variants.len(),
-        309,
-        "Expected 309 PaymentError variants (codes 1..=309)"
+        310,
+        "Expected 310 PaymentError variants (codes 1..=310)"
     );
 }
 

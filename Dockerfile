@@ -26,6 +26,9 @@ RUN npm ci
 FROM node:24-slim AS builder
 WORKDIR /app
 
+ARG GIT_SHA=""
+ENV GIT_SHA=$GIT_SHA
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -47,6 +50,8 @@ RUN apt-get update -qq \
 USER node
 WORKDIR /app
 
+ARG GIT_SHA=""
+ENV GIT_SHA=$GIT_SHA
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 

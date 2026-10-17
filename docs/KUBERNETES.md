@@ -64,6 +64,14 @@ helm upgrade --install ophirpay helm/ophirpay \
   --set-file secrets.DATABASE_URL=/path/to/database-url \
   --set secrets.AUTH_SECRET="$(openssl rand -hex 32)" \
   --wait
+
+# Or using an externally managed secret (ExternalSecrets, SealedSecrets):
+helm upgrade --install ophirpay helm/ophirpay \
+  --namespace ophirpay --create-namespace \
+  --set image.repository=ghcr.io/example/ophirpay \
+  --set image.tag='2026-09-24' \
+  --set secrets.existingSecret=ophirpay-secrets \
+  --wait
 ```
 
 Run migrations as an explicit release step, using the same image and database

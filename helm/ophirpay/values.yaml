@@ -124,6 +124,10 @@ config:
 # ── Secrets (rendered into a Kubernetes Secret) ────────────────
 # Names must also exist in `.env.example` (same test as `config` above).
 secrets:
+  # Name of an existing Kubernetes Secret to use instead of creating one.
+  # When set, the ophirpay-secrets Secret is not rendered, and the Deployment
+  # references this secret directly (compatible with ExternalSecrets, SealedSecrets, Vault, etc.).
+  existingSecret: ""
   DATABASE_URL: ""
   NEXT_PUBLIC_CONTRACT_ID: ""
   NEXT_PUBLIC_EMITTER_CONTRACT_ID: ""

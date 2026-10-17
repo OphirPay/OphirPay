@@ -36,7 +36,7 @@ spec:
             - configMapRef:
                 name: {{ include "ophirpay.fullname" . }}-config
             - secretRef:
-                name: {{ include "ophirpay.fullname" . }}-secrets
+                name: {{ include "ophirpay.secretName" . }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:

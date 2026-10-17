@@ -72,7 +72,9 @@
     "generate-errors": "npx tsx scripts/regenerate-errors.ts",
     "client:generate": "node scripts/generate-api-client.mjs",
     "client:check": "node scripts/generate-api-client.mjs --check",
-    "cli": "node scripts/ophirpay-cli.mjs"
+    "cli": "node scripts/ophirpay-cli.mjs",
+    "test:load:concurrency": "node tests/load/payments-concurrency.js",
+    "test:load:concurrency:json": "node tests/load/payments-concurrency.js --json"
   },
   "dependencies": {
     "@ledgerhq/hw-app-str": "^7.8.0",

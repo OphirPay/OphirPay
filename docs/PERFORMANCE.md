@@ -347,3 +347,39 @@ user sees *why* a fee is higher than usual.
   fee, so the pre-sign preview matches what is signed.
 - `estimateTransactionFee()` / `estimateBatchFee()` (`src/lib/fee-estimator.ts`)
   — the UI-facing wrappers.
+
+---
+
+## High-Concurrency Payments Load Benchmark (Issue #1404)
+
+OphirPay provides a dedicated multi-user concurrency load suite simulating realistic traffic distribution across high-throughput payment routes:
+
+- **Target script**: [`tests/load/payments-concurrency.js`](../tests/load/payments-concurrency.js)
+- **Baseline entry**: `/api/payments-concurrency` in [`tests/load/baselines.json`](../tests/load/baselines.json)
+
+### Traffic Distribution Model
+
+The benchmark simulates 200 concurrent users generating sustained 150+ RPS with a realistic 70/20/10 traffic mix:
+1. **70% Status & History Queries**: Keyset-paginated `GET /api/payments?limit=20` and public `GET /api/health`.
+2. **20% Payment Ingestion & Submissions**: `POST /api/payments` payloads with random idempotency keys.
+3. **10% Webhook & Audit Polling**: Paginated queries to `GET /api/audit-log?limit=10`.
+
+### Target SLA Thresholds
+
+- **p95 Latency**: `< 350 ms` under 200 concurrent connections.
+- **Error Rate**: `0% HTTP 5xx` server-side errors under peak load.
+- **Reporting**: Full percentiles output (`p50`, `p90`, `p95`, `p99`, `mean`, `max`).
+
+### Running the Concurrency Benchmark
+
+```bash
+# Run 10-second benchmark with 200 concurrent connections
+npm run test:load:concurrency
+
+# Or run and generate structured JSON results for baseline gate check
+npm run test:load:concurrency:json
+
+# Verify results against CI baseline thresholds
+node scripts/check-load-baselines.mjs tests/load/results/payments-concurrency-latest.json
+```
+

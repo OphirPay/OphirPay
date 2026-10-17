@@ -15,25 +15,92 @@
 # (b) the build is non-deterministic (a bug that must be fixed).
 #
 # On failure the script prints BOTH the expected and the actual hash so the
-# mismatch can be diagnosed immediately (issue #405 acceptance criteria).
+# mismatch can be diagnosed immediately (issue #405 & #1418 acceptance criteria).
 #
 # Usage:
-#   ./scripts/verify-wasm-reproducibility.sh            # build + verify
-#   ./scripts/verify-wasm-reproducibility.sh --update   # rebuild & rewrite expected hashes
+#   ./scripts/verify-wasm-reproducibility.sh                    # build + verify
+#   ./scripts/verify-wasm-reproducibility.sh --update           # rebuild & rewrite expected hashes
+#   ./scripts/verify-wasm-reproducibility.sh --check-config     # validate & print build/hash config JSON
+#   ./scripts/verify-wasm-reproducibility.sh --verify-dir <dir> # verify pre-staged artifacts in <dir>
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HASH_FILE="$ROOT/contracts/expected-wasm-hashes.sha256"
+HASH_FILE="${WASM_HASH_FILE:-$ROOT/contracts/expected-wasm-hashes.sha256}"
+TOOLCHAIN_FILE="$ROOT/contracts/rust-toolchain.toml"
 TARGET="wasm32v1-none"
 
-# Build deterministically: `file!()`-style macros inside dependency sources
-# embed the absolute CARGO_HOME registry path (e.g. /home/runner/.cargo vs
-# /home/user/.cargo), which would make the WASM bytes differ between
-# machines. Remap CARGO_HOME to a fixed, environment-independent prefix so
-# every build produces identical bytes regardless of where cargo lives.
+# Build deterministically:
+# - `-C opt-level=z` enforces size-optimized codegen matching [profile.release]
+# - `-C link-arg=-s` strips symbol tables deterministically
+# - `--remap-path-prefix` normalizes CARGO_HOME registry paths so `file!()`
+#   macros inside dependencies produce identical WASM bytes across machines.
 REMAP_PREFIX="/cargo-home"
-RUSTFLAGS="-C link-arg=-s --remap-path-prefix=${CARGO_HOME:-"$HOME/.cargo"}=$REMAP_PREFIX"
+RUSTFLAGS="-C opt-level=z -C link-arg=-s --remap-path-prefix=${CARGO_HOME:-"$HOME/.cargo"}=$REMAP_PREFIX"
+
+if [[ "${1:-}" == "--check-config" ]]; then
+  if [[ ! -f "$HASH_FILE" ]]; then
+    echo "❌ Missing expected hash lockfile: $HASH_FILE" >&2
+    exit 1
+  fi
+  if [[ ! -f "$TOOLCHAIN_FILE" ]]; then
+    echo "❌ Missing toolchain file: $TOOLCHAIN_FILE" >&2
+    exit 1
+  fi
+  RUST_CHANNEL="$(grep -E '^channel\s*=' "$TOOLCHAIN_FILE" | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')"
+  OPHIRPAY_HASH="$(grep 'ophirpay_contract.wasm' "$HASH_FILE" | awk '{print $1}')"
+  EMITTER_HASH="$(grep 'ophirpay_emitter.wasm' "$HASH_FILE" | awk '{print $1}')"
+  cat <<EOF
+{
+  "rustChannel": "${RUST_CHANNEL:-1.91.0}",
+  "target": "$TARGET",
+  "cargoFlags": ["--locked", "--target", "$TARGET", "--release"],
+  "rustflags": "$RUSTFLAGS",
+  "hashFile": "contracts/expected-wasm-hashes.sha256",
+  "expectedHashes": {
+    "contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm": "$OPHIRPAY_HASH",
+    "contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm": "$EMITTER_HASH"
+  }
+}
+EOF
+  exit 0
+fi
+
+verify_staged_dir() {
+  local staged_dir="$1"
+  echo "==> Comparing WASM artifacts against committed expected hashes..."
+  if (cd "$staged_dir" && sha256sum -c "$HASH_FILE" 2>&1); then
+    echo "✅ WASM artifacts are reproducible — byte-for-byte identical to the committed expected hashes."
+    return 0
+  else
+    echo "❌ WASM reproducibility check FAILED."
+    echo ""
+    echo "    Expected hashes (committed in $HASH_FILE):"
+    sed 's/^/      /' "$HASH_FILE"
+    echo ""
+    echo "    Actual hashes (built/staged):"
+    (cd "$staged_dir" && sha256sum contracts/ophirpay/target/wasm32v1-none/release/*.wasm \
+                                   contracts/emitter/target/wasm32v1-none/release/*.wasm 2>/dev/null || true) | sed 's/^/      /'
+    echo ""
+    echo "    Remediation steps:"
+    echo "      1. Ensure your local toolchain matches CI by running:"
+    echo "         ./scripts/setup-soroban-env.sh"
+    echo "      2. If the contract sources changed intentionally, update the expected hashes with:"
+    echo "         ./scripts/verify-wasm-reproducibility.sh --update"
+    echo "      3. If the sources did NOT change, the build is non-deterministic — investigate!"
+    return 1
+  fi
+}
+
+if [[ "${1:-}" == "--verify-dir" ]]; then
+  VERIFY_DIR="${2:-}"
+  if [[ -z "$VERIFY_DIR" || ! -d "$VERIFY_DIR" ]]; then
+    echo "❌ Usage: ./scripts/verify-wasm-reproducibility.sh --verify-dir <dir>" >&2
+    exit 1
+  fi
+  verify_staged_dir "$VERIFY_DIR"
+  exit $?
+fi
 
 # A temp dir that mirrors the repo layout used in the hash file, so
 # sha256sum -c works against our committed file verbatim.
@@ -53,6 +120,7 @@ build() {
 
 echo "==> Toolchain: $(cd "$ROOT/contracts/ophirpay" && rustc --version)"
 echo "==> Target:    $TARGET"
+echo "==> RUSTFLAGS: $RUSTFLAGS"
 
 build "contracts/ophirpay"
 build "contracts/emitter"
@@ -77,22 +145,4 @@ if [[ "${1:-}" == "--update" ]]; then
   exit 0
 fi
 
-echo "==> Comparing freshly built artifacts against committed expected hashes..."
-if (cd "$TMP_ROOT" && sha256sum -c "$HASH_FILE" 2>&1); then
-  echo "✅ WASM artifacts are reproducible — byte-for-byte identical to the committed expected hashes."
-  exit 0
-else
-  echo "❌ WASM reproducibility check FAILED."
-  echo ""
-  echo "    Expected hashes (committed in $HASH_FILE):"
-  sed 's/^/      /' "$HASH_FILE"
-  echo ""
-  echo "    Actual hashes (freshly built):"
-  (cd "$TMP_ROOT" && sha256sum contracts/ophirpay/target/wasm32v1-none/release/*.wasm \
-                             contracts/emitter/target/wasm32v1-none/release/*.wasm) | sed 's/^/      /'
-  echo ""
-  echo "    If the contract sources changed intentionally, update the expected hashes with:"
-  echo "      ./scripts/verify-wasm-reproducibility.sh --update"
-  echo "    If the sources did NOT change, the build is non-deterministic — investigate!"
-  exit 1
-fi
+verify_staged_dir "$TMP_ROOT"

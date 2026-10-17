@@ -12,6 +12,65 @@ import { getRpcFailoverState } from "@/lib/rpc-failover";
 import { timingSafeEqual } from "@/lib/crypto";
 import { authenticateRequest } from "@/lib/api-auth";
 import { hasScope, ADMIN_SCOPE } from "@/lib/api-scopes";
+import prisma from "@/lib/prisma";
+
+interface PoolMetricsView {
+  busy: number;
+  idle: number;
+  waitDurationMs: number;
+}
+
+async function resolvePrismaPoolMetrics(): Promise<PoolMetricsView> {
+  const globalPool = (
+    globalThis as unknown as {
+      __ophirpayDbPoolMetrics?: PoolMetricsView;
+    }
+  ).__ophirpayDbPoolMetrics;
+
+  const snapshot: PoolMetricsView = {
+    busy: globalPool?.busy ?? 0,
+    idle: globalPool?.idle ?? 10,
+    waitDurationMs: globalPool?.waitDurationMs ?? 0,
+  };
+
+  const maybePrometheus = (
+    prisma as unknown as {
+      $metrics?: {
+        prometheus?: () => Promise<string>;
+      };
+    } | null
+  )?.$metrics?.prometheus;
+
+  if (typeof maybePrometheus === "function") {
+    try {
+      const raw = await maybePrometheus.call(
+        (prisma as unknown as { $metrics: unknown }).$metrics
+      );
+      if (typeof raw === "string" && raw.length > 0) {
+        const busyMatch =
+          /^prisma_pool_connections_busy(?:\{[^}]*\})?\s+([0-9.]+)/m.exec(raw);
+        if (busyMatch) snapshot.busy = Number(busyMatch[1]);
+
+        const idleMatch =
+          /^prisma_pool_connections_idle(?:\{[^}]*\})?\s+([0-9.]+)/m.exec(raw);
+        if (idleMatch) snapshot.idle = Number(idleMatch[1]);
+
+        const waitMatch =
+          /^prisma_pool_wait_duration_ms(?:_sum)?(?:\{[^}]*\})?\s+([0-9.]+)/m.exec(
+            raw
+          ) ??
+          /^prisma_client_queries_wait_histogram_ms_sum(?:\{[^}]*\})?\s+([0-9.]+)/m.exec(
+            raw
+          );
+        if (waitMatch) snapshot.waitDurationMs = Number(waitMatch[1]);
+      }
+    } catch {
+      // Fall back to in-process pool telemetry snapshot
+    }
+  }
+
+  return snapshot;
+}
 
 /**
  * /api/metrics — Prometheus exposition endpoint.
@@ -79,7 +138,7 @@ function labels(labels: Record<string, string | number>): string {
     .join(",");
 }
 
-function buildMetrics(): string {
+function buildMetrics(poolMetrics: PoolMetricsView): string {
   const c = getMetricsSnapshot();
 
   const lines: string[] = [
@@ -259,7 +318,19 @@ function buildMetrics(): string {
     "",
     "# HELP ophirpay_sse_dropped_events_total SSE events shed by the bounded slow-consumer buffer",
     "# TYPE ophirpay_sse_dropped_events_total counter",
-    `ophirpay_sse_dropped_events_total ${c.sse_dropped_events_total}`
+    `ophirpay_sse_dropped_events_total ${c.sse_dropped_events_total}`,
+    "",
+    "# HELP prisma_pool_connections_busy Number of currently busy database pool connections",
+    "# TYPE prisma_pool_connections_busy gauge",
+    `prisma_pool_connections_busy ${poolMetrics.busy}`,
+    "",
+    "# HELP prisma_pool_connections_idle Number of currently idle database pool connections",
+    "# TYPE prisma_pool_connections_idle gauge",
+    `prisma_pool_connections_idle ${poolMetrics.idle}`,
+    "",
+    "# HELP prisma_pool_wait_duration_ms Database connection pool acquisition wait duration in milliseconds",
+    "# TYPE prisma_pool_wait_duration_ms gauge",
+    `prisma_pool_wait_duration_ms ${poolMetrics.waitDurationMs}`
   );
 
   return lines.join("\n") + "\n";
@@ -294,7 +365,9 @@ export const GET = withMetrics("GET /api/metrics", async function GET(request: R
     return unauthorizedMetricsResponse();
   }
 
-  return new NextResponse(buildMetrics(), {
+  const poolMetrics = await resolvePrismaPoolMetrics();
+
+  return new NextResponse(buildMetrics(poolMetrics), {
     status: 200,
     headers: {
       "Content-Type": "text/plain; version=0.0.4",
@@ -302,3 +375,4 @@ export const GET = withMetrics("GET /api/metrics", async function GET(request: R
     },
   });
 });
+

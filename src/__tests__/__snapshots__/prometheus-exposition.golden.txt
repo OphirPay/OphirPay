@@ -122,3 +122,15 @@ ophirpay_sse_open_connections 0
 # HELP ophirpay_sse_dropped_events_total SSE events shed by the bounded slow-consumer buffer
 # TYPE ophirpay_sse_dropped_events_total counter
 ophirpay_sse_dropped_events_total 0
+
+# HELP prisma_pool_connections_busy Number of currently busy database pool connections
+# TYPE prisma_pool_connections_busy gauge
+prisma_pool_connections_busy 0
+
+# HELP prisma_pool_connections_idle Number of currently idle database pool connections
+# TYPE prisma_pool_connections_idle gauge
+prisma_pool_connections_idle 10
+
+# HELP prisma_pool_wait_duration_ms Database connection pool acquisition wait duration in milliseconds
+# TYPE prisma_pool_wait_duration_ms gauge
+prisma_pool_wait_duration_ms 0

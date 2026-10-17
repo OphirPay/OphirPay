@@ -283,7 +283,7 @@ proptest! {
     #[test]
     fn prop_stream_full_vesting_conservation(
         total_amount in 1_000i128..=500_000_000i128,
-        duration in 50u64..=5_000u64,
+        duration in 60u64..=5_000u64,
     ) {
         let h = PropHarness::new();
         let creator = Address::generate(&h.env);

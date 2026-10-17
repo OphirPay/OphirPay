@@ -1,13 +1,13 @@
 version: 2
 
-# Issue #732 — keep dependency updates flowing without drowning reviewers.
+# Issues #732, #1415 — keep dependency updates flowing without drowning reviewers.
 #
 # Every ecosystem the repo actually pins is covered: the root npm lockfile,
 # both Cargo.lock files (contracts/ophirpay, contracts/emitter) and the pinned
-# GitHub Actions. Each is checked once a week and minor/patch bumps are grouped
-# into a single PR per ecosystem; a major bump still arrives on its own so it
-# gets the attention it needs. `open-pull-requests-limit` caps the backlog a
-# busy week can create.
+# GitHub Actions. Minor and patch updates are organized into logical ecosystem
+# groups (`react-ecosystem`, `dev-tools`, `utilities`, `soroban-sdk`,
+# `rust-tooling`, and `github-actions`), while major bumps remain isolated in
+# individual PRs so breaking changes get dedicated review.
 #
 # See CONTRIBUTING.md → "Dependency Updates" for the review flow.
 
@@ -22,9 +22,32 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
-      npm-minor-patch:
+      react-ecosystem:
         patterns:
-          - "*"
+          - "next"
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+        update-types:
+          - "minor"
+          - "patch"
+      dev-tools:
+        patterns:
+          - "eslint*"
+          - "@eslint/*"
+          - "prettier*"
+          - "vitest*"
+          - "@vitest/*"
+          - "@playwright/*"
+          - "playwright*"
+          - "typescript*"
+        update-types:
+          - "minor"
+          - "patch"
+      utilities:
+        patterns:
+          - "zod"
+          - "date-fns*"
         update-types:
           - "minor"
           - "patch"
@@ -39,9 +62,19 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
-      cargo-ophirpay-minor-patch:
+      soroban-sdk:
+        patterns:
+          - "soroban-*"
+          - "stellar-*"
+        update-types:
+          - "minor"
+          - "patch"
+      rust-tooling:
         patterns:
           - "*"
+        exclude-patterns:
+          - "soroban-*"
+          - "stellar-*"
         update-types:
           - "minor"
           - "patch"
@@ -56,9 +89,19 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
-      cargo-emitter-minor-patch:
+      soroban-sdk:
+        patterns:
+          - "soroban-*"
+          - "stellar-*"
+        update-types:
+          - "minor"
+          - "patch"
+      rust-tooling:
         patterns:
           - "*"
+        exclude-patterns:
+          - "soroban-*"
+          - "stellar-*"
         update-types:
           - "minor"
           - "patch"
@@ -66,14 +109,14 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      actions-minor-patch:
+      github-actions:
         patterns:
           - "*"
         update-types:

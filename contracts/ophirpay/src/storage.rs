@@ -76,5 +76,14 @@ pub const STAT_AMT_BATCHED: Symbol = symbol_short!("S_AB");
 /// emergency_withdraw enforces: withdraw_amount <= contract_balance - LOCKED_BALANCE.
 /// Prevents the owner from draining user-deposited funds (critical invariant).
 pub const LOCKED_BALANCE: Symbol = symbol_short!("LOCKED");
+pub const TOKEN_LOCKED_BALANCE: Symbol = symbol_short!("T_LOCKED");
 pub const REENTRANCY_LOCK: Symbol = symbol_short!("RE_LOCK");
+
+/// Per-token storage key namespace for isolating locked escrow, stream,
+/// and governance proposal deposit balances by token contract address.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DataKey {
+    TokenLockedBalance(Address),
+}
 

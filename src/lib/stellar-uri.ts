@@ -131,3 +131,48 @@ export function buildSep7PayUri(params: Sep7PayParams): string {
 export function buildReceivePayload(address: string): string {
   return buildSep7PayUri({ destination: address });
 }
+
+/**
+ * Parse a SEP-7 `web+stellar:pay` URI into its component parameters.
+ * Returns null if the URI is not a valid SEP-7 pay operation or has an invalid destination.
+ */
+export function parseSep7PayUri(uri: string): Sep7PayParams | null {
+  if (typeof uri !== "string" || !uri.startsWith("web+stellar:pay")) {
+    return null;
+  }
+  try {
+    const url = new URL(uri);
+    const destination = url.searchParams.get("destination");
+    if (!destination || !isValidSep7Address(destination)) {
+      return null;
+    }
+    const params: Sep7PayParams = { destination };
+    const amount = url.searchParams.get("amount");
+    if (amount && isValidAmount(amount)) {
+      params.amount = amount;
+    }
+    const memo = url.searchParams.get("memo");
+    const memoType = url.searchParams.get("memo_type") as Sep7PayParams["memoType"] | null;
+    if (memo) {
+      params.memo = memo;
+      if (memoType && MEMO_TYPES.has(memoType)) {
+        params.memoType = memoType;
+      }
+    }
+    const assetCode = url.searchParams.get("asset_code");
+    if (assetCode && ASSET_CODE_PATTERN.test(assetCode)) {
+      params.assetCode = assetCode;
+      const assetIssuer = url.searchParams.get("asset_issuer");
+      if (assetIssuer && isValidSep7Address(assetIssuer)) {
+        params.assetIssuer = assetIssuer;
+      }
+    }
+    const msg = url.searchParams.get("msg");
+    if (msg) {
+      params.msg = msg;
+    }
+    return params;
+  } catch {
+    return null;
+  }
+}

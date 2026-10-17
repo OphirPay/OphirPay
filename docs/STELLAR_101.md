@@ -381,6 +381,13 @@ connect and sign, including Ledger hardware wallets.
 Ledger is available alongside **Freighter, xBull, Rabet, Albedo and Lobstr** in
 the wallet selector. If WebUSB is unavailable, use one of those connectors.
 
+### SEP-0007 Payment URI & QR Code Generation (#1375)
+
+OphirPay supports **SEP-0007** (`web+stellar:pay`) URI generation and QR code visualization:
+- **Mobile Wallet Interoperability**: Formats standard `web+stellar:pay` URIs readable by mobile wallets such as Lobstr and Vibrant.
+- **Configurable Parameters**: Encodes recipient account (`G...`), amount, custom assets (`asset_code` and `asset_issuer`), and transaction memos (`memo` / `memo_type`).
+- **Export & Feedback**: `PaymentRequestModal` and `QrCode` provide interactive live previews, quick-copy clipboard feedback, and high-resolution PNG download for in-person invoicing.
+
 ---
 
 

@@ -77,6 +77,8 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "DELETE", path: "/api/webhooks", routeFile: "webhooks/route.ts", description: "Revoke webhook" },
   { method: "POST", path: "/api/webhooks/[id]/replay", routeFile: "webhooks/[id]/replay/route.ts", description: "Replay stored webhook events" },
   { method: "POST", path: "/api/webhooks/[id]/test", routeFile: "webhooks/[id]/test/route.ts", description: "Send test webhook" },
+  { method: "POST", path: "/api/webhooks/[id]/deliveries", routeFile: "webhooks/[id]/deliveries/route.ts", description: "Requeue failed or dead-letter webhook deliveries" },
+  { method: "POST", path: "/api/webhooks/[id]/deliveries/requeue", routeFile: "webhooks/[id]/deliveries/requeue/route.ts", description: "Requeue dead-letter webhook deliveries with status filtering" },
   { method: "POST", path: "/api/webhooks/[id]/deliveries/[deliveryId]/redeliver", routeFile: "webhooks/[id]/deliveries/[deliveryId]/redeliver/route.ts", description: "Redeliver a webhook payload" },
   { method: "POST", path: "/api/hooks", routeFile: "hooks/route.ts", description: "Register notification hook" },
   { method: "PATCH", path: "/api/hooks/[id]", routeFile: "hooks/[id]/route.ts", description: "Deactivate notification hook" },

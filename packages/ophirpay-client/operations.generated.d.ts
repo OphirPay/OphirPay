@@ -106,7 +106,9 @@ export type ApiOperationName =
   | "postApiScheduledRun"
   | "postApiStreams"
   | "postApiWebhooks"
+  | "postApiWebhooksIdDeliveries"
   | "postApiWebhooksIdDeliveriesDeliveryIdRedeliver"
+  | "postApiWebhooksIdDeliveriesRequeue"
   | "postApiWebhooksIdReplay"
   | "postApiWebhooksIdTest";
 

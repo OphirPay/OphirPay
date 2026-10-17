@@ -220,7 +220,26 @@ export const webhookReplaySchema = z.object({
 
 export const webhookDeliveriesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  status: z
+    .enum(["SUCCESS", "FAILED", "DEAD_LETTER", "PENDING"])
+    .optional(),
+  statusCode: z.string().optional(),
+  statusCodes: z.string().optional(),
 });
+
+export const webhookDlqRequeueSchema = z.object({
+  deliveryId: z.string().min(1).optional(),
+  deliveryIds: z.array(z.string().min(1)).max(100).optional(),
+  statusCode: z.union([z.number().int().min(100).max(599), z.literal("timeout"), z.null()]).optional(),
+  statusCodes: z
+    .array(z.union([z.number().int().min(100).max(599), z.literal("timeout"), z.null()]))
+    .max(50)
+    .optional(),
+  includeTimeouts: z.boolean().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  deliverNow: z.boolean().optional().default(false),
+});
+
 
 // ── API Key Schemas ───────────────────────────────────────────
 

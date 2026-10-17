@@ -45,6 +45,13 @@
       "errorPct": 1,
       "non2xxPct": null,
       "note": "SSE streams never complete a request, so req/s, latency and non-2xx are n/a. Only transport errors (a failed stream open) are gated; connection leaks and heartbeat timing are asserted by scripts/sse-load-test.mjs itself."
+    },
+    "/api/payments-concurrency": {
+      "p95Ms": 350,
+      "p99Ms": 650,
+      "errorPct": 1,
+      "non2xxPct": 1,
+      "note": "200 concurrent users with 70% read / 20% create / 10% webhook polling mix (issue #1404). Evaluates p95 < 350ms and 0% 5xx under high throughput."
     }
   }
 }

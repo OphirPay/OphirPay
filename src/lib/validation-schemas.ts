@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: MIT
 
 import { z } from "zod";
+import {
+  STELLAR_MEMO_MAX_BYTES,
+  MEMO_ERROR_MESSAGES as STELLAR_MEMO_ERRORS,
+  stellarMemoTypeEnum,
+  type StellarMemoType,
+  validateStellarMemo,
+  memoInputSchema,
+  refineStellarMemo,
+} from "./validation/stellar";
 
 // ── Address / Identifier Schemas ──────────────────────────────
 
@@ -21,52 +30,65 @@ export const apiKeyId = z.string().min(1, "API key ID is required");
 // bidi-override / zero-width characters are rejected outright — they are never
 // legitimate memo content and rejecting them keeps memos safe to render, log,
 // and export (issue #397).
-export const MEMO_MAX_BYTES = 28;
-
-// Control chars (C0/C1), zero-width and bidi isolates/overrides/embeddings.
-// Covers: \u0000-\u001F \u007F-\u009F, ZWSP/ZWNJ/ZWJ/LRM/RLM (200B-200F),
-// LRE/RLE/PDF/LRO/RLO (202A-202E), LRI/RLI/FSI/PDI (2066-2069).
-const MEMO_CONTROL_CHARS =
-  /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/;
+export const MEMO_MAX_BYTES = STELLAR_MEMO_MAX_BYTES;
 
 /** Error messages shown to users when a memo fails validation. */
-export const MEMO_ERROR_MESSAGES = {
-  tooLong: "Memo must be 28 characters or fewer",
-  tooManyBytes:
-    "Memo must be 28 bytes or fewer (non-ASCII characters count more)",
-  controlChars: "Memo must not contain control or invisible characters",
-} as const;
+export const MEMO_ERROR_MESSAGES = STELLAR_MEMO_ERRORS;
+export { stellarMemoTypeEnum, type StellarMemoType };
 
 /**
  * Shared optional memo field for every schema that accepts a memo.
  * Trims surrounding whitespace, then enforces the Stellar byte limit and a
- * printable-text charset.
+ * printable-text charset or typed memo requirements.
  */
 export const memoField = z
-  .string()
-  .trim()
-  .refine((v) => !MEMO_CONTROL_CHARS.test(v), {
-    message: MEMO_ERROR_MESSAGES.controlChars,
+  .union([
+    z.string(),
+    z.object({
+      value: z.string(),
+      type: stellarMemoTypeEnum.optional(),
+    }),
+  ])
+  .optional()
+  .transform((raw) => {
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw === "string") {
+      return { value: raw.trim(), type: undefined as StellarMemoType | undefined };
+    }
+    return { value: raw.value.trim(), type: raw.type };
   })
-  .refine((v) => v.length <= MEMO_MAX_BYTES, {
-    message: MEMO_ERROR_MESSAGES.tooLong,
+  .superRefine((val, ctx) => {
+    if (val && val.value !== "") {
+      const type = val.type ?? "MEMO_TEXT";
+      const res = validateStellarMemo(val.value, type);
+      if (!res.valid && res.error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: res.error,
+        });
+      }
+    }
   })
-  .refine((v) => new TextEncoder().encode(v).length <= MEMO_MAX_BYTES, {
-    message: MEMO_ERROR_MESSAGES.tooManyBytes,
-  })
-  .optional();
+  .transform((val) => (val ? val.value : undefined));
 
 // ── Payment Schemas ───────────────────────────────────────────
 
-export const createPaymentSchema = z.object({
-  amount: z.number().positive("Amount must be greater than zero"),
-  sourceAccountId: z.string().min(1, "Source account is required"),
-  destAddress: stellarAddress,
-  assetCode: z.string().default("XLM"),
-  assetIssuer: z.string().optional(),
-  description: z.string().max(200).optional(),
-  memo: memoField,
-});
+export const createPaymentSchema = z
+  .object({
+    amount: z.number().positive("Amount must be greater than zero"),
+    sourceAccountId: z.string().min(1, "Source account is required"),
+    destAddress: stellarAddress,
+    assetCode: z.string().default("XLM"),
+    assetIssuer: z.string().optional(),
+    description: z.string().max(200).optional(),
+    memo: memoInputSchema,
+    memoType: stellarMemoTypeEnum.optional(),
+  })
+  .superRefine(refineStellarMemo)
+  .transform((data) => ({
+    ...data,
+    memo: data.memo ? data.memo.value : undefined,
+  }));
 
 /** Body for POST /api/payments/retry — which failed payment to retry. */
 export const retryPaymentSchema = z.object({
@@ -87,11 +109,19 @@ export const paymentUpdateStatusValues = [
   "CANCELLED",
 ] as const;
 
-export const updatePaymentSchema = z.object({
-  status: z.enum(paymentUpdateStatusValues).optional(),
-  description: z.string().max(500).optional(),
-  memo: memoField,
-});
+export const updatePaymentSchema = z
+  .object({
+    status: z.enum(paymentUpdateStatusValues).optional(),
+    description: z.string().max(500).optional(),
+    memo: memoInputSchema,
+    memoType: stellarMemoTypeEnum.optional(),
+  })
+  .superRefine(refineStellarMemo)
+  .transform((data) => ({
+    ...data,
+    memo: data.memo ? data.memo.value : undefined,
+  }));
+
 
 // Keep in sync with the PaymentStatus enum in prisma/schema.prisma.
 const paymentStatusValues = [
@@ -131,12 +161,19 @@ export const idempotencyKeySchema = z
   .min(8, "Idempotency key must be at least 8 characters")
   .max(255, "Idempotency key must be at most 255 characters");
 
-export const batchRecipientSchema = z.object({
-  address: stellarAddress,
-  amount: z.number().positive("Amount must be greater than zero"),
-  assetCode: z.string().default("XLM"),
-  memo: memoField,
-});
+export const batchRecipientSchema = z
+  .object({
+    address: stellarAddress,
+    amount: z.number().positive("Amount must be greater than zero"),
+    assetCode: z.string().default("XLM"),
+    memo: memoInputSchema,
+    memoType: stellarMemoTypeEnum.optional(),
+  })
+  .superRefine(refineStellarMemo)
+  .transform((data) => ({
+    ...data,
+    memo: data.memo ? data.memo.value : undefined,
+  }));
 
 export const createBatchSchema = z.object({
   name: z.string().min(1).max(100),
@@ -154,12 +191,20 @@ export const setMultisigConfigSchema = z.object({
   enabled: z.boolean(),
 });
 
-export const proposeMultisigPaymentSchema = z.object({
-  payee: z.string().min(1, "Payee address is required"),
-  amount: z.number().positive("Amount must be greater than zero"),
-  assetCode: z.string().optional(),
-  memo: memoField,
-});
+export const proposeMultisigPaymentSchema = z
+  .object({
+    payee: z.string().min(1, "Payee address is required"),
+    amount: z.number().positive("Amount must be greater than zero"),
+    assetCode: z.string().optional(),
+    memo: memoInputSchema,
+    memoType: stellarMemoTypeEnum.optional(),
+  })
+  .superRefine(refineStellarMemo)
+  .transform((data) => ({
+    ...data,
+    memo: data.memo ? data.memo.value : undefined,
+  }));
+
 
 export const approveMultisigSchema = z.object({
   requestId: z.number().int().positive(),
@@ -231,20 +276,29 @@ export const createApiKeySchema = z.object({
 
 // ── Payment Request Schemas (moved from validations.ts) ───────
 
-export const createPaymentRequestSchema = z.object({
-  amount: z.number().positive("Amount must be greater than 0"),
-  assetCode: z.string().default("XLM"),
-  assetIssuer: z.string().optional(),
-  description: z.string().max(500).optional(),
-  recipientAddress: stellarAddress.optional(),
-  recipientEmail: z.string().email().optional(),
-  notificationEmail: z.string().email().optional(),
-  dueDate: z
-    .string()
-    .refine((value) => !Number.isNaN(new Date(value).getTime()), "Due date must be valid")
-    .refine((value) => new Date(value).getTime() > Date.now(), "Due date must be in the future")
-    .optional(),
-});
+export const createPaymentRequestSchema = z
+  .object({
+    amount: z.number().positive("Amount must be greater than 0"),
+    assetCode: z.string().default("XLM"),
+    assetIssuer: z.string().optional(),
+    description: z.string().max(500).optional(),
+    recipientAddress: stellarAddress.optional(),
+    recipientEmail: z.string().email().optional(),
+    notificationEmail: z.string().email().optional(),
+    dueDate: z
+      .string()
+      .refine((value) => !Number.isNaN(new Date(value).getTime()), "Due date must be valid")
+      .refine((value) => new Date(value).getTime() > Date.now(), "Due date must be in the future")
+      .optional(),
+    memo: memoInputSchema,
+    memoType: stellarMemoTypeEnum.optional(),
+  })
+  .superRefine(refineStellarMemo)
+  .transform((data) => ({
+    ...data,
+    memo: data.memo ? data.memo.value : undefined,
+  }));
+
 
 export const confirmPaymentRequestSchema = z.object({
   transactionHash: z.string().regex(/^[a-fA-F0-9]{64}$/, "Invalid Stellar transaction hash"),

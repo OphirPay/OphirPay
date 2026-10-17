@@ -323,4 +323,38 @@ Optional extras:
 
 ---
 
+## 8. Soroban CLI Setup & WASM Reproducibility Verification
+
+When working on the Soroban smart contracts (`contracts/ophirpay` and `contracts/emitter`), local builds must use the exact pinned Rust toolchain (`1.91.0` in `contracts/rust-toolchain.toml`), WASM targets (`wasm32-unknown-unknown` and `wasm32v1-none`), and compiler flags so that the resulting `.wasm` bytecode matches CI byte-for-byte.
+
+### 8.1 Automated Toolchain & CLI Provisioning
+
+Run `./scripts/setup-soroban-env.sh` to automatically install and verify the pinned Rust toolchain, WASM targets, and `stellar-cli` (`soroban-cli`):
+
+```bash
+# Install pinned Rust toolchain (1.91.0), targets, and stellar-cli
+./scripts/setup-soroban-env.sh
+
+# Verify installed toolchain and CLI without making changes
+./scripts/setup-soroban-env.sh --verify
+
+# Print resolved toolchain configuration as JSON
+./scripts/setup-soroban-env.sh --print-config
+```
+
+### 8.2 Reproducible WASM Build & SHA-256 Verification
+
+Run `./scripts/verify-wasm-reproducibility.sh` to compile all workspace contracts with deterministic flags (`--locked`, `--target wasm32v1-none`, `--release`, `-C opt-level=z`, `-C link-arg=-s`, `--remap-path-prefix`) and compare their SHA-256 checksums against `contracts/expected-wasm-hashes.sha256`:
+
+```bash
+# Build contracts and verify SHA-256 hashes against contracts/expected-wasm-hashes.sha256
+./scripts/verify-wasm-reproducibility.sh
+
+# If you intentionally modified contract source code, update the committed hash lockfile:
+./scripts/verify-wasm-reproducibility.sh --update
+```
+
+---
+
 *Related docs: [Deployment Guide](DEPLOYMENT.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Stellar 101](STELLAR_101.md) · [Database Schema](SCHEMA.md) · [Mainnet Runbook](MAINNET_RUNBOOK.md)*
+

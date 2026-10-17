@@ -781,14 +781,14 @@ fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
         &total,
         &fix.token_id,
         &now,
-        &(now + 4),
+        &(now + 80),
         &String::from_str(&fix.env, "overflow e2e"),
     );
     assert_eq!(stream_id, 1);
 
-    // Half-way through the schedule: `total * 2` overflows i128. Before the
+    // Half-way through the schedule: `total * 40` overflows i128. Before the
     // fix this vested 0, so the recipient could claim nothing at all.
-    fix.env.ledger().set_timestamp(now + 2);
+    fix.env.ledger().set_timestamp(now + 40);
     let claimed = fix.client.claim_stream(&recipient, &stream_id);
     assert!(claimed > 0, "overflow must not collapse vesting to zero");
     assert_eq!(claimed, total / 2);
@@ -934,4 +934,67 @@ fn test_unknown_pause_scope_is_rejected() {
 
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STREAM DURATION BOUNDS TESTS (issue #1350)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_create_stream_enforces_min_and_max_duration_bounds() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 10_000_000);
+
+    let start = fix.env.ledger().timestamp();
+    let memo = String::from_str(&fix.env, "duration bounds");
+
+    // Below MIN_STREAM_DURATION (59s < 60s) -> StreamDurationTooShort
+    let too_short = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start,
+        &(start + 59),
+        &memo,
+    );
+    assert_eq!(too_short, Err(Ok(PaymentError::StreamDurationTooShort)));
+
+    // Above MAX_STREAM_DURATION (157_680_001s > 157_680_000s) -> StreamDurationTooLong
+    let too_long = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start,
+        &(start + 157_680_001),
+        &memo,
+    );
+    assert_eq!(too_long, Err(Ok(PaymentError::StreamDurationTooLong)));
+
+    // Exact MIN_STREAM_DURATION (60s) succeeds
+    let min_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start,
+        &(start + 60),
+        &memo,
+    );
+    assert_eq!(min_id, 1);
+
+    // Exact MAX_STREAM_DURATION (157_680_000s) succeeds
+    let max_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start,
+        &(start + 157_680_000),
+        &memo,
+    );
+    assert_eq!(max_id, 2);
 }

@@ -157,3 +157,19 @@ Invalid amount at row 3.
 - **Balance check:** the batch total is checked against the connected
   wallet's balance before signing, so a file that imports cleanly can still
   be rejected at submission time if the total is too large.
+
+---
+
+## Streaming CSV Exports (`/api/payments/export` & `/api/audit-log/export`, #1369)
+
+Both server-side CSV export endpoints stream data incrementally using a Web `ReadableStream` with `Transfer-Encoding: chunked` so large exports never buffer the entire dataset in server memory:
+
+| Endpoint | Batch Size | Headers |
+| --- | --- | --- |
+| `GET /api/payments/export` | `250` rows per Prisma cursor batch (`cursor: { id }, skip: 1, take: 250`) | `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="ophirpay-payments-YYYY-MM-DD.csv"`, `Transfer-Encoding: chunked` |
+| `GET /api/audit-log/export` | `250` rows per Prisma cursor batch (`source=db`) or streamed on-chain batches (`source=contract`) | `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="ophirpay-audit-log-YYYY-MM-DD.csv"`, `Transfer-Encoding: chunked` |
+
+- **Header First**: The CSV column header line is flushed immediately as the first chunk.
+- **Constant Memory**: Subsequent chunks are enqueued in 250-row cursor batches as they are read from Prisma, keeping memory overhead bounded at O(batch_size) even for 10,000+ row exports.
+- **Client Disconnect Cancellation**: Both routes listen to `request.signal` `"abort"` events and implement the `ReadableStream` `cancel()` callback, halting database cursor pagination or on-chain iteration immediately if the client cancels the download.
+

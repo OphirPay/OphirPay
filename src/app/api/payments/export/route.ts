@@ -16,15 +16,32 @@ import {
   paymentToCsvRow,
   buildPaymentExportFilename,
 } from "@/lib/payment-export";
-import { toCsvString, createCsvResponse } from "@/lib/export-csv";
+import { toCsvString } from "@/lib/export-csv";
+
+/** Number of rows fetched per Prisma cursor batch during streaming CSV export (#1369). */
+export const PAYMENT_EXPORT_BATCH_SIZE = 250;
+
+/**
+ * Format a batch of mapped payment rows into CSV data lines (without the header).
+ */
+function formatPaymentBatchToCsvLines(
+  rows: ReturnType<typeof paymentToCsvRow>[]
+): string {
+  if (rows.length === 0) return "";
+  const withHeader = toCsvString(rows, PAYMENT_EXPORT_COLUMNS);
+  const newlineIndex = withHeader.indexOf("\n");
+  if (newlineIndex === -1) return "";
+  return withHeader.slice(newlineIndex + 1) + "\n";
+}
 
 /**
  * GET /api/payments/export
  *
- * Server-side CSV export of the CURRENT filter results — every row matching
- * `status` / `search` (the same filters as GET /api/payments), not just the
- * page loaded in the browser. Returns a dated CSV attachment that includes
- * all key fields plus memo and transaction hash.
+ * Streaming chunked CSV export of the current filter results (`status` /
+ * `search`). Streams the CSV header immediately followed by 250-row cursor
+ * batches from Prisma so memory consumption stays constant O(batch_size)
+ * regardless of dataset size. Stops querying immediately if the client
+ * disconnects or cancels the stream (#1369).
  */
 export async function GET(request: Request) {
   try {
@@ -37,34 +54,114 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const parsed = paymentExportParamsSchema.safeParse({
-      // searchParams.get() returns null for absent params, which Zod's
-      // .optional() rejects — normalize to undefined first.
       status: searchParams.get("status") ?? undefined,
       search: searchParams.get("search") ?? undefined,
     });
     if (!parsed.success) return validationError(parsed.error);
 
     const { status, search } = parsed.data;
+    const where = buildPaymentWhere(auth.userId, { status, search });
+    const encoder = new TextEncoder();
+    const headerLine =
+      PAYMENT_EXPORT_COLUMNS.map((c) => c.header).join(",") + "\n";
 
-    // Fetch one row past the cap so truncation can be detected without a
-    // second count query. The file is materialised as a single string in
-    // memory, so the cap bounds memory usage and is never silently applied.
-    const payments = await prisma.payment.findMany({
-      where: buildPaymentWhere(auth.userId, { status, search }),
-      orderBy: { createdAt: "desc" },
-      take: MAX_EXPORT_ROWS + 1,
+    let cancelled = false;
+    const onAbort = () => {
+      cancelled = true;
+    };
+    request.signal?.addEventListener("abort", onAbort, { once: true });
+
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        let settled = false;
+        const settle = (fn: () => void) => {
+          if (settled) return;
+          settled = true;
+          try {
+            fn();
+          } catch {
+            /* stream already closed or cancelled by consumer */
+          }
+        };
+
+        controller.enqueue(encoder.encode(headerLine));
+
+        let cursorId: string | undefined;
+        let totalExported = 0;
+
+        try {
+          while (!cancelled && !request.signal?.aborted && totalExported < MAX_EXPORT_ROWS) {
+            const remainingBudget = MAX_EXPORT_ROWS - totalExported;
+            const takeCount = Math.min(PAYMENT_EXPORT_BATCH_SIZE, remainingBudget);
+
+            const batch = await prisma.payment.findMany({
+              where,
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+              take: takeCount,
+            });
+
+            if (cancelled || request.signal?.aborted || batch.length === 0) {
+              break;
+            }
+
+            const slice = batch.slice(0, takeCount);
+            const csvChunk = formatPaymentBatchToCsvLines(
+              slice.map(paymentToCsvRow)
+            );
+            if (csvChunk) {
+              controller.enqueue(encoder.encode(csvChunk));
+            }
+
+            totalExported += slice.length;
+            const nextCursorId = slice[slice.length - 1]?.id;
+
+            // Stop when fewer rows than a full batch were returned or cursor did not advance
+            if (
+              batch.length < PAYMENT_EXPORT_BATCH_SIZE ||
+              !nextCursorId ||
+              nextCursorId === cursorId
+            ) {
+              break;
+            }
+            cursorId = nextCursorId;
+          }
+
+          settle(() => controller.close());
+        } catch (err) {
+          if (cancelled || request.signal?.aborted) {
+            settle(() => controller.close());
+            return;
+          }
+          const failure = err instanceof Error ? err : new Error(String(err));
+          logger.error("Payment CSV export failed mid-stream", {
+            reason: failure.message,
+          });
+          settle(() => controller.error(failure));
+        } finally {
+          request.signal?.removeEventListener("abort", onAbort);
+        }
+      },
+      cancel() {
+        cancelled = true;
+        request.signal?.removeEventListener("abort", onAbort);
+      },
     });
-
-    const truncated = payments.length > MAX_EXPORT_ROWS;
-    const rows = payments.slice(0, MAX_EXPORT_ROWS).map(paymentToCsvRow);
-    const csv = toCsvString(rows, PAYMENT_EXPORT_COLUMNS);
 
     logger.request("GET", "/api/payments/export", 200, 0);
 
-    return createCsvResponse(buildPaymentExportFilename(), csv, {
-      "X-Export-Truncated": truncated ? "true" : "false",
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${buildPaymentExportFilename()}"`,
+        "Transfer-Encoding": "chunked",
+        "Cache-Control": "no-store",
+        "X-Export-Chunk-Size": String(PAYMENT_EXPORT_BATCH_SIZE),
+      },
     });
   } catch (err) {
     return handleApiError(err, "GET /api/payments/export");
   }
 }
+

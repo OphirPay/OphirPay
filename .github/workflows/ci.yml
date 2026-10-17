@@ -367,11 +367,30 @@ jobs:
           expect "kind: NetworkPolicy" /tmp/enabled.yaml
           expect "kind: ServiceAccount" /tmp/enabled.yaml
           expect "policyTypes:" /tmp/enabled.yaml
+          # Issue #1345 — Redis egress enabled by default with NetworkPolicy
+          expect "port: 6379" /tmp/enabled.yaml
 
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
           reject "kind: NetworkPolicy" /tmp/disabled.yaml
           reject "kind: ServiceAccount" /tmp/disabled.yaml
+          reject "port: 6379" /tmp/disabled.yaml
+
+          # Issue #1345 — Verify Redis egress can be toggled off or scoped
+          helm template ophirpay helm/ophirpay \
+            --set networkPolicy.enabled=true \
+            --set networkPolicy.redis.enabled=false \
+            > /tmp/no-redis.yaml
+          reject "port: 6379" /tmp/no-redis.yaml
+
+          helm template ophirpay helm/ophirpay \
+            --set networkPolicy.enabled=true \
+            --set networkPolicy.redis.namespaceSelector.matchLabels."kubernetes\.io/metadata\.name"=redis-ns \
+            --set networkPolicy.redis.podSelector.matchLabels."app\.kubernetes\.io/name"=redis \
+            > /tmp/scoped-redis.yaml
+          expect "port: 6379" /tmp/scoped-redis.yaml
+          expect "kubernetes.io/metadata.name: redis-ns" /tmp/scoped-redis.yaml
+          expect "app.kubernetes.io/name: redis" /tmp/scoped-redis.yaml
 
           exit "$fail"
       

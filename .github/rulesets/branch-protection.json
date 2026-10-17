@@ -1,0 +1,75 @@
+{
+  "name": "OphirPay Merge Gate (main & integration/staging)",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    }
+  ],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main",
+        "refs/heads/integration/staging"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_approving_review_count": 1,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": true,
+        "required_status_checks": [
+          {
+            "context": "1️⃣ Frontend — Lint (ESLint)"
+          },
+          {
+            "context": "2️⃣ Frontend — TypeCheck (tsc)"
+          },
+          {
+            "context": "3️⃣ Frontend — Unit Tests (Vitest)"
+          },
+          {
+            "context": "9️⃣ Frontend — Build (Next.js)"
+          },
+          {
+            "context": "1️⃣0️⃣ Deploy — Config Guards"
+          },
+          {
+            "context": "5️⃣ Backend — Contracts (WASM + Tests)"
+          },
+          {
+            "context": "1️⃣2️⃣ Security — Secrets (Gitleaks)"
+          },
+          {
+            "context": "1️⃣9️⃣ Infra — Helm (Lint + Render)"
+          },
+          {
+            "context": "🚧 Enforce Integration Branch"
+          }
+        ]
+      }
+    }
+  ]
+}

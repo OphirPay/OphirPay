@@ -36,10 +36,24 @@ checks for an ordinary pull request:
 - `stale.yml` — scheduled issue and PR housekeeping.
 
 `docker-smoke.yml` may run on pull requests, but it is an auxiliary deployment
-smoke test unless branch protection explicitly marks its check required. Review
-the repository’s branch-protection settings when changing the required list;
-this document describes the intended gate, not a replacement for GitHub
-settings.
+smoke test unless branch protection explicitly marks its check required.
+
+## Repository Ruleset Enforcement
+
+The merge gate is versioned as a GitHub Repository Ruleset in
+[`.github/rulesets/branch-protection.json`](../.github/rulesets/branch-protection.json)
+covering both `refs/heads/main` and `refs/heads/integration/staging`:
+
+- **Blocks direct pushes** (`pull_request` rule requires all changes to land via pull request with resolved review threads).
+- **Blocks force-pushes and branch deletion** (`non_fast_forward` and `deletion` rules protect `main` and `integration/staging` from accidental history rewrites or deletion, restricted to repository admins).
+- **Requires merge-gate status checks** (`required_status_checks` enforces Typecheck, ESLint, Unit tests, Next.js build, Deploy config guards, Contract WASM & Rust tests, Secrets scan, Helm lint/render, and Integration-branch policy before merging).
+
+Apply or sync the ruleset via the GitHub CLI:
+
+```bash
+gh api --method POST repos/OphirPay/OphirPay/rulesets \
+  --input .github/rulesets/branch-protection.json
+```
 
 ## One-command local gate
 

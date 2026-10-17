@@ -99,3 +99,20 @@ series can be used for latency SLOs and error-rate alerting per route.
   wrapped handler.
 - `src/lib/metrics-counters.ts` holds the storage and serialization helpers
   (`recordEndpointLatency`, `getEndpointMetrics`, `LATENCY_BUCKET_BOUNDS`).
+
+## Alerting Rules (Prometheus)
+
+Alert rules defined in `monitoring/prometheus-alerts.yml` enforce application SLIs and SLOs:
+
+| Alert Rule | Expression / Trigger | Severity | Component | Runbook |
+| --- | --- | --- | --- | --- |
+| `OphirPayWebhookHighFailureRate` | Webhook terminal failure rate > 5% over 5m | `warning` | `webhooks` | [Runbook](TROUBLESHOOTING.md#webhook-delivery-failures) |
+| `WebhookDeliveryFailureRateHigh` | Webhook terminal failure rate > 25% over 15m | `critical` | `webhooks` | [Runbook](TROUBLESHOOTING.md#webhook-delivery-failures) |
+| `OphirPayRpcProviderDegraded` | Soroban RPC p95 latency > 2.5s or 5xx errors for 3m | `critical` | `rpc` | [Runbook](TROUBLESHOOTING.md#soroban-rpc-degraded) |
+| `RpcFailoverDegraded` | Serving from fallback RPC endpoint > 2m | `warning` | `rpc` | [Runbook](TROUBLESHOOTING.md#soroban-rpc-degraded) |
+| `RpcFailoverFrequent` | Soroban RPC flapping >= 3 failovers in 30m | `warning` | `rpc` | [Runbook](TROUBLESHOOTING.md#soroban-rpc-degraded) |
+| `OphirPayDatabasePoolExhaustion` | Prisma database query / queue wait latency > 500ms for 2m | `warning` | `database` | [Runbook](TROUBLESHOOTING.md#database-pool-exhaustion) |
+| `PaymentProcessingLatencyHigh` | Payment p95 duration > 30s for 5m | `warning` | `payments` | [Runbook](TROUBLESHOOTING.md#payment-processing-latency) |
+| `ApiHighErrorRate` | API request error rate > 5% for 5m | `critical` | `api` | [Runbook](TROUBLESHOOTING.md#api-high-error-rate) |
+| `ApiDown` | Scrape target unreachable (`up == 0`) for 2m | `critical` | `api` | [Runbook](TROUBLESHOOTING.md#api-down) |
+

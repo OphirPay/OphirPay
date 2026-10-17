@@ -1,0 +1,57 @@
+# Production environment values for OphirPay Helm chart (#1330)
+# Usage: helm upgrade --install ophirpay ./helm/ophirpay -f ./helm/ophirpay/values-production.yaml
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/ophirpay/ophirpay
+  tag: latest
+  pullPolicy: IfNotPresent
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  hosts:
+    - host: ophirpay.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ophirpay-tls
+      hosts:
+        - ophirpay.com
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+config:
+  NEXT_PUBLIC_STELLAR_NETWORK: "PUBLIC"
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: "https://horizon.stellar.org"
+  NEXT_PUBLIC_STELLAR_RPC_URL: "https://soroban-rpc.mainnet.stellar.gateway.fm"
+  DATABASE_PROVIDER: "postgresql"
+  NODE_ENV: "production"
+  STELLAR_NETWORK_PASSPHRASE: "Public Global Stellar Network ; September 2015"
+  NEXT_PUBLIC_APP_URL: "https://ophirpay.com"
+  RATE_LIMIT_RPM: "120"
+  AUTH_RATE_LIMIT_IP_RPM: "30"
+  AUTH_RATE_LIMIT_WALLET_RPM: "10"

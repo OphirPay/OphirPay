@@ -66,6 +66,10 @@ export interface BoundedSseBuffer {
   attach(controller: ReadableStreamDefaultController<Uint8Array>): void;
   /** Enqueue an SSE event (or buffer it, subject to the policy). */
   push(event: string, data: unknown): void;
+  /** Enqueue an SSE comment frame (e.g. `: ping\n\n`) subject to buffer policy. */
+  comment(text: string): void;
+  /** Emit a standard keep-alive `: ping\n\n` comment frame. */
+  ping(): void;
   /** ReadableStream `pull` hook — drains on consumer demand. */
   pull(controller: ReadableStreamDefaultController<Uint8Array>): void;
   /** Stop buffering and close the stream (client already gone). */
@@ -79,6 +83,8 @@ export interface BoundedSseBuffer {
 export const SSE_DEFAULT_MAX_EVENTS = 100;
 export const SSE_DEFAULT_MAX_BYTES = 256 * 1024;
 export const SSE_DEFAULT_IDLE_TIMEOUT_MS = 60_000;
+/** Default SSE keep-alive ping interval (20 seconds) to prevent reverse proxy timeouts. */
+export const SSE_PING_INTERVAL_MS = 20_000;
 
 const encoder = new TextEncoder();
 
@@ -243,11 +249,31 @@ export function createBoundedSseBuffer(
     drain();
   };
 
+  const comment = (text: string): void => {
+    if (disconnected) return;
+    const bytes = encodeSseComment(text);
+    // If the queue is already full, skip queueing a redundant comment frame
+    // rather than evicting real data events or disconnecting the consumer.
+    if (queue.length + 1 > maxEvents || queuedBytes + bytes.length > maxBytes) {
+      drain();
+      return;
+    }
+    queue.push(bytes);
+    queuedBytes += bytes.length;
+    drain();
+  };
+
+  const ping = (): void => {
+    comment("ping");
+  };
+
   return {
     attach(controller) {
       controllerRef = controller;
     },
     push,
+    comment,
+    ping,
     pull(controller) {
       controllerRef = controller;
       lastDrainAt = now();

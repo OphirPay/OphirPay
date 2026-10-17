@@ -8,6 +8,7 @@ import { DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { withRequestLogging } from "@/lib/request-logging";
 import {
   createBoundedSseBuffer,
+  SSE_PING_INTERVAL_MS,
   type BoundedSseBuffer,
 } from "@/lib/events/sse-buffer";
 import { incMetric } from "@/lib/metrics-counters";
@@ -95,12 +96,13 @@ async function pollContractForAuditEntries(
   return { entries, newLastSeenId: end };
 }
 
-export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(async function GET() {
+export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(async function GET(request?: Request) {
   const clientId = ++clientCounter;
   const contractId = process.env.NEXT_PUBLIC_CONTRACT_ID || DEFAULT_CONTRACT_ID;
 
   let closed = false;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let pingInterval: ReturnType<typeof setInterval> | null = null;
   let safetyTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Cleanup on stream cancel / client disconnect / slow-consumer disconnect.
@@ -108,6 +110,7 @@ export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(asyn
     if (closed) return;
     closed = true;
     if (pollInterval) clearInterval(pollInterval);
+    if (pingInterval) clearInterval(pingInterval);
     if (safetyTimeout) clearTimeout(safetyTimeout);
     clients.delete(String(clientId));
     // Release the connection from the shared gauge exactly once.
@@ -142,9 +145,16 @@ export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(asyn
         message: "Audit log SSE stream connected",
       });
 
+      // Periodic `: ping\n\n` comment every 20s to prevent reverse proxy idle timeouts (#1289).
+      pingInterval = setInterval(() => {
+        if (!closed) buffer.ping();
+      }, SSE_PING_INTERVAL_MS);
+
       // Safety: auto-cleanup after 10 minutes even if the stream is abandoned
       // without a cancellation signal.
       safetyTimeout = setTimeout(cleanup, 10 * 60 * 1000);
+
+      request?.signal?.addEventListener("abort", cleanup, { once: true });
 
       // Poll contract every 15 seconds for new entries.
       pollInterval = setInterval(async () => {

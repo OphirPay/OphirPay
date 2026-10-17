@@ -25,7 +25,10 @@ import { withMetrics } from "@/lib/metrics-middleware";
  */
 
 import { createLiveEventSource } from "@/lib/events/event-source";
-import { createBoundedSseBuffer } from "@/lib/events/sse-buffer";
+import {
+  createBoundedSseBuffer,
+  SSE_PING_INTERVAL_MS,
+} from "@/lib/events/sse-buffer";
 import { incMetric } from "@/lib/metrics-counters";
 
 export const dynamic = "force-dynamic";
@@ -38,10 +41,12 @@ export const SSE_MAX_BUFFERED_BYTES = 256 * 1024;
 export const SSE_IDLE_TIMEOUT_MS = 60_000;
 /** Heartbeat cadence — also keeps proxies from closing an idle stream. */
 export const SSE_HEARTBEAT_MS = 15_000;
+export { SSE_PING_INTERVAL_MS };
 
 export const GET = withMetrics("GET /api/events", async function GET(request: Request) {
   let closed = false;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let pingInterval: ReturnType<typeof setInterval> | null = null;
   let source: ReturnType<typeof createLiveEventSource> | null = null;
 
   // Release the connection exactly once — from the client abort, an overflow
@@ -50,6 +55,7 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
     if (closed) return;
     closed = true;
     if (heartbeat) clearInterval(heartbeat);
+    if (pingInterval) clearInterval(pingInterval);
     if (source) source.stop();
     // Release the connection from the `ophirpay_sse_open_connections` gauge
     // (visible on /api/metrics) so operators and the SSE load test can verify
@@ -84,6 +90,11 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
       heartbeat = setInterval(() => {
         buffer.push("heartbeat", { timestamp: Date.now() });
       }, SSE_HEARTBEAT_MS);
+
+      // Periodic `: ping\n\n` comment every 20s to prevent reverse proxy idle timeouts (#1289).
+      pingInterval = setInterval(() => {
+        buffer.ping();
+      }, SSE_PING_INTERVAL_MS);
 
       // Poll the emitter contract and forward normalized events.
       source = createLiveEventSource();

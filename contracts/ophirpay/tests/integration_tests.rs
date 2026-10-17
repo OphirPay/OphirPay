@@ -935,3 +935,88 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. FEE CONFIG & COLLECTOR UPDATED EVENT EMISSION (#1349)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_fee_config_and_collector_update_emits_on_chain_event() {
+    use ophirpay_contract::FeeConfigUpdated;
+    use soroban_sdk::testutils::Events as _;
+    use soroban_sdk::{IntoVal, TryFromVal};
+
+    let fix = TestFixture::new();
+    let collector_1 = Address::generate(&fix.env);
+    let collector_2 = Address::generate(&fix.env);
+
+    // 1. Set initial fee collector (None -> Some(collector_1))
+    fix.client.set_fee_collector(&fix.owner, &collector_1);
+    assert_eq!(fix.client.get_fee_collector(), Some(collector_1.clone()));
+
+    // 2. Configure fees (0 -> 250 bps payment, 100 bps escrow, 150 bps stream)
+    fix.client.set_fee_config(
+        &fix.owner,
+        &250u32,
+        &100u32,
+        &150u32,
+        &1000i128,
+        &100i128,
+        &true,
+    );
+
+    // 3. Rotate fee collector (Some(collector_1) -> Some(collector_2))
+    fix.client.set_fee_collector(&fix.owner, &collector_2);
+    assert_eq!(fix.client.get_fee_collector(), Some(collector_2.clone()));
+
+    // Verify emitted ("fee_config", "updated") events and payload fields
+    let all_events = fix.env.events().all();
+    let topic_0: soroban_sdk::Val = Symbol::new(&fix.env, "fee_config").into_val(&fix.env);
+    let topic_1: soroban_sdk::Val = Symbol::new(&fix.env, "updated").into_val(&fix.env);
+
+    let mut matched_payloads: std::vec::Vec<FeeConfigUpdated> = std::vec::Vec::new();
+    for i in 0..all_events.len() {
+        if let Some((_contract, topics, data)) = all_events.get(i) {
+            if topics.len() == 2
+                && topics.get(0).map(|v| v.get_payload()) == Some(topic_0.get_payload())
+                && topics.get(1).map(|v| v.get_payload()) == Some(topic_1.get_payload())
+            {
+                if let Ok(payload) = FeeConfigUpdated::try_from_val(&fix.env, &data) {
+                    matched_payloads.push(payload);
+                }
+            }
+        }
+    }
+
+    assert_eq!(matched_payloads.len(), 3);
+
+    // Event 1: collector_1 set from None
+    assert_eq!(matched_payloads[0].previous_collector, None);
+    assert_eq!(
+        matched_payloads[0].new_collector,
+        Some(collector_1.clone())
+    );
+    assert_eq!(matched_payloads[0].caller, fix.owner);
+
+    // Event 2: fee rates updated while collector_1 is active
+    assert_eq!(
+        matched_payloads[1].previous_collector,
+        Some(collector_1.clone())
+    );
+    assert_eq!(matched_payloads[1].new_collector, Some(collector_1.clone()));
+    assert_eq!(matched_payloads[1].previous_payment_fee_bps, 0);
+    assert_eq!(matched_payloads[1].new_payment_fee_bps, 250);
+    assert_eq!(matched_payloads[1].new_escrow_fee_bps, 100);
+    assert_eq!(matched_payloads[1].new_stream_fee_bps, 150);
+    assert_eq!(matched_payloads[1].enabled, true);
+
+    // Event 3: collector rotated from collector_1 to collector_2
+    assert_eq!(
+        matched_payloads[2].previous_collector,
+        Some(collector_1)
+    );
+    assert_eq!(matched_payloads[2].new_collector, Some(collector_2));
+    assert_eq!(matched_payloads[2].new_payment_fee_bps, 250);
+    assert_eq!(matched_payloads[2].caller, fix.owner);
+}
+

@@ -432,6 +432,9 @@ impl OphirPayContract {
         if payment_fee_bps > 1000 || escrow_fee_bps > 1000 || stream_fee_bps > 1000 {
             return Err(PaymentError::FeeTooHigh);
         }
+        let previous_config: Option<FeeConfig> = env.storage().instance().get(&FEE_KEY);
+        let current_collector: Option<Address> = env.storage().instance().get(&FEE_COLL);
+
         let config = FeeConfig {
             payment_fee_bps,
             escrow_fee_bps,
@@ -460,6 +463,30 @@ impl OphirPayContract {
 
         env.storage().instance().set(&FEE_KEY, &config);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        let event_payload = FeeConfigUpdated {
+            previous_collector: current_collector.clone(),
+            new_collector: current_collector,
+            previous_payment_fee_bps: previous_config
+                .as_ref()
+                .map(|c| c.payment_fee_bps)
+                .unwrap_or(0),
+            new_payment_fee_bps: payment_fee_bps,
+            previous_escrow_fee_bps: previous_config
+                .as_ref()
+                .map(|c| c.escrow_fee_bps)
+                .unwrap_or(0),
+            new_escrow_fee_bps: escrow_fee_bps,
+            previous_stream_fee_bps: previous_config
+                .as_ref()
+                .map(|c| c.stream_fee_bps)
+                .unwrap_or(0),
+            new_stream_fee_bps: stream_fee_bps,
+            enabled,
+            caller: caller.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        emit_fee_config_updated(&env, &event_payload);
 
         record_audit(
             &env,
@@ -497,7 +524,7 @@ impl OphirPayContract {
         env.storage().persistent().get(&(FEE_VER_CNT, version))
     }
 
-    /// Set the fee collector address (owner only).
+    /// Set the fee collector address (owner only) and emit `FeeConfigUpdated`.
     pub fn set_fee_collector(
         env: Env,
         caller: Address,
@@ -505,8 +532,49 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
+        let previous_collector: Option<Address> = env.storage().instance().get(&FEE_COLL);
+        let current_config: Option<FeeConfig> = env.storage().instance().get(&FEE_KEY);
+
         env.storage().instance().set(&FEE_COLL, &collector);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        let payment_bps = current_config
+            .as_ref()
+            .map(|c| c.payment_fee_bps)
+            .unwrap_or(0);
+        let escrow_bps = current_config
+            .as_ref()
+            .map(|c| c.escrow_fee_bps)
+            .unwrap_or(0);
+        let stream_bps = current_config
+            .as_ref()
+            .map(|c| c.stream_fee_bps)
+            .unwrap_or(0);
+        let enabled = current_config.as_ref().map(|c| c.enabled).unwrap_or(false);
+
+        let event_payload = FeeConfigUpdated {
+            previous_collector,
+            new_collector: Some(collector),
+            previous_payment_fee_bps: payment_bps,
+            new_payment_fee_bps: payment_bps,
+            previous_escrow_fee_bps: escrow_bps,
+            new_escrow_fee_bps: escrow_bps,
+            previous_stream_fee_bps: stream_bps,
+            new_stream_fee_bps: stream_bps,
+            enabled,
+            caller: caller.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        emit_fee_config_updated(&env, &event_payload);
+
+        record_audit(
+            &env,
+            "fee_collector_set",
+            &caller,
+            0,
+            "Fee collector address updated",
+        );
+
         Ok(())
     }
 

@@ -61,6 +61,8 @@
     "test:watch": "vitest",
     "test:openapi": "vitest run src/__tests__/openapi-conformance.test.ts",
     "check:docs-links": "node scripts/check-markdown-links.mjs",
+    "changelog": "node scripts/generate-changelog.mjs",
+    "changelog:check": "node scripts/generate-changelog.mjs --check",
     "typecheck": "tsc --noEmit && npx tsx scripts/regenerate-errors.ts --check",
     "ci": "npm run typecheck && npm run lint -- --max-warnings 0 && npm run client:check && npm test && npm run build && bash scripts/validate-deploy-config.sh",
     "audit:deps": "node scripts/audit-dependencies.mjs",

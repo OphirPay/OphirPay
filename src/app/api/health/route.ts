@@ -16,21 +16,63 @@ import {
 
 type CheckStatus = "ok" | "error" | "unchecked" | "disabled" | "not_configured";
 
+/**
+ * Per-dependency timeout budget (ms). Must stay strictly smaller than
+ * Kubernetes `readinessProbe.timeoutSeconds` (5s) so a slow upstream never
+ * causes kubelet to abort the probe before `/api/health` responds (#1337).
+ */
+export const HEALTH_DEPENDENCY_TIMEOUT_MS = 2_000;
+
+interface CachedExternalChecks {
+  expiresAt: number;
+  rpcStatus: CheckStatus;
+  rpcLatency: number | null;
+  horizonStatus: "ok" | "error" | "unchecked";
+  horizonLatency: number | null;
+}
+
+let cachedExternalChecks: CachedExternalChecks | null = null;
+
+export function clearHealthCheckCache(): void {
+  cachedExternalChecks = null;
+}
+
+function getExternalCacheTtlMs(): number {
+  if (process.env.HEALTH_CACHE_TTL_MS !== undefined) {
+    const parsed = Number(process.env.HEALTH_CACHE_TTL_MS);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  }
+  return process.env.NODE_ENV === "test" ? 0 : 15_000;
+}
+
 /** GET a URL and report reachability + latency; null when it errors/times out. */
 async function pingUrl(
   url: string,
-  timeoutMs: number
+  timeoutMs: number = HEALTH_DEPENDENCY_TIMEOUT_MS,
+  headers?: Record<string, string>,
 ): Promise<{ ok: boolean; latencyMs: number } | null> {
   const start = Date.now();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await Promise.race([
+      fetch(url, {
+        signal: controller.signal,
+        ...(headers ? { headers } : {}),
+      }),
+      new Promise<null>((resolve) => {
+        timeout = setTimeout(() => {
+          controller.abort();
+          resolve(null);
+        }, timeoutMs);
+      }),
+    ]);
+    if (!res) return null;
     return { ok: res.ok, latencyMs: Date.now() - start };
   } catch {
     return null;
   } finally {
-    clearTimeout(timeout);
+    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -38,86 +80,125 @@ async function pingUrl(
 async function pingJsonRpc(
   url: string,
   body: unknown,
-  timeoutMs: number
+  timeoutMs: number = HEALTH_DEPENDENCY_TIMEOUT_MS,
 ): Promise<{ ok: boolean; latencyMs: number } | null> {
   const start = Date.now();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    const res = await Promise.race([
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      }),
+      new Promise<null>((resolve) => {
+        timeout = setTimeout(() => {
+          controller.abort();
+          resolve(null);
+        }, timeoutMs);
+      }),
+    ]);
+    if (!res) return null;
     return { ok: res.ok, latencyMs: Date.now() - start };
   } catch {
     return null;
   } finally {
-    clearTimeout(timeout);
+    if (timeout) clearTimeout(timeout);
   }
 }
 
 export const GET = withMetrics("GET /api/health", withRequestLogging(async function GET() {
   try {
-    // Critical check: database connectivity
-    let dbStatus: "ok" | "error" = "ok";
-    let dbLatency: number | null = null;
-    try {
-      const start = Date.now();
-      await prisma.$queryRaw`SELECT 1`;
-      dbLatency = Date.now() - start;
-    } catch (err) {
-      console.error("[HealthCheck] Database connection failed:", err);
-      dbStatus = "error";
-    }
+    const dbCheckPromise = (async (): Promise<{
+      status: "ok" | "error";
+      latencyMs: number | null;
+    }> => {
+      try {
+        const start = Date.now();
+        await prisma.$queryRaw`SELECT 1`;
+        return { status: "ok", latencyMs: Date.now() - start };
+      } catch (err) {
+        console.error("[HealthCheck] Database connection failed:", err);
+        return { status: "error", latencyMs: null };
+      }
+    })();
 
-    // Optional check: Soroban RPC reachability
-    let rpcStatus: CheckStatus = "unchecked";
-    let rpcLatency: number | null = null;
-    const rpc = await pingJsonRpc(
-      SOROBAN_RPC_URL,
-      { jsonrpc: "2.0", id: 1, method: "getHealth" },
-      5000
-    );
-    if (rpc) {
-      rpcStatus = rpc.ok ? "ok" : "error";
-      rpcLatency = rpc.latencyMs;
-    } else {
-      rpcStatus = "error";
-    }
+    const externalCheckPromise = (async (): Promise<
+      Omit<CachedExternalChecks, "expiresAt">
+    > => {
+      const ttlMs = getExternalCacheTtlMs();
+      const now = Date.now();
+      if (ttlMs > 0 && cachedExternalChecks && cachedExternalChecks.expiresAt > now) {
+        return {
+          rpcStatus: cachedExternalChecks.rpcStatus,
+          rpcLatency: cachedExternalChecks.rpcLatency,
+          horizonStatus: cachedExternalChecks.horizonStatus,
+          horizonLatency: cachedExternalChecks.horizonLatency,
+        };
+      }
 
-    // Check Horizon reachability
-    let horizonStatus: "ok" | "error" | "unchecked" = "unchecked";
-    let horizonLatency: number | null = null;
-    try {
-      const start = Date.now();
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(HORIZON_URL, { signal: controller.signal });
-      clearTimeout(timeout);
-      horizonLatency = Date.now() - start;
-      horizonStatus = res.ok ? "ok" : "error";
-    } catch {
-      horizonStatus = "error";
-    }
+      const [rpc, horizon] = await Promise.all([
+        pingJsonRpc(
+          SOROBAN_RPC_URL,
+          { jsonrpc: "2.0", id: 1, method: "getHealth" },
+          HEALTH_DEPENDENCY_TIMEOUT_MS,
+        ),
+        pingUrl(HORIZON_URL, HEALTH_DEPENDENCY_TIMEOUT_MS),
+      ]);
 
-    // Check Redis connectivity (if configured)
-    let redisStatus: "ok" | "error" | "disabled" = "disabled";
-    let redisLatency: number | null = null;
-    const redisUrl = process.env.REDIS_URL;
-    if (redisUrl) {
+      const result = {
+        rpcStatus: (rpc ? (rpc.ok ? "ok" : "error") : "error") as CheckStatus,
+        rpcLatency: rpc ? rpc.latencyMs : null,
+        horizonStatus: (horizon ? (horizon.ok ? "ok" : "error") : "error") as
+          | "ok"
+          | "error"
+          | "unchecked",
+        horizonLatency: horizon ? horizon.latencyMs : null,
+      };
+
+      if (ttlMs > 0) {
+        cachedExternalChecks = {
+          ...result,
+          expiresAt: Date.now() + ttlMs,
+        };
+      }
+      return result;
+    })();
+
+    const redisCheckPromise = (async (): Promise<{
+      status: "ok" | "error" | "disabled";
+      latencyMs: number | null;
+    }> => {
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) {
+        return { status: "disabled", latencyMs: null };
+      }
       const pingUrlStr =
         redisUrl.replace(/\/\/.*@/, "//health:@").replace(/\/\d+$/, "") +
         "/ping";
-      const redis = await pingUrl(pingUrlStr, 3000);
+      const redis = await pingUrl(pingUrlStr, HEALTH_DEPENDENCY_TIMEOUT_MS);
       if (redis) {
-        redisStatus = redis.ok ? "ok" : "error";
-        redisLatency = redis.latencyMs;
-      } else {
-        redisStatus = "error";
+        return { status: redis.ok ? "ok" : "error", latencyMs: redis.latencyMs };
       }
-    }
+      return { status: "error", latencyMs: null };
+    })();
+
+    const [dbCheck, externalCheck, redisCheck] = await Promise.all([
+      dbCheckPromise,
+      externalCheckPromise,
+      redisCheckPromise,
+    ]);
+
+    const dbStatus = dbCheck.status;
+    const dbLatency = dbCheck.latencyMs;
+    const rpcStatus = externalCheck.rpcStatus;
+    const rpcLatency = externalCheck.rpcLatency;
+    const horizonStatus = externalCheck.horizonStatus;
+    const horizonLatency = externalCheck.horizonLatency;
+    const redisStatus = redisCheck.status;
+    const redisLatency = redisCheck.latencyMs;
 
     // Check Contract-ID presence
     const contractStatus: "ok" | "error" =

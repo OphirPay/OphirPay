@@ -19,6 +19,8 @@ const publishedMetrics = new Set([
   "ophirpay_delivery_final_outcomes_total",
   "ophirpay_db_query_duration_seconds_sum",
   "ophirpay_db_query_duration_seconds_count",
+  "ophirpay_db_query_model_duration_seconds_bucket",
+  "ophirpay_rpc_call_duration_seconds_bucket",
   "ophirpay_endpoint_request_duration_seconds",
   "ophirpay_endpoint_errors_total",
   "ophirpay_info",

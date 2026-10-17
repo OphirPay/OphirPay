@@ -5,8 +5,15 @@ import {
   recordEndpointLatency,
   getEndpointMetrics,
   resetEndpointMetrics,
+  recordRpcCallLatency,
+  getRpcLatencyMetrics,
+  recordDbQueryLatency,
+  getDbQueryLatencyMetrics,
   LATENCY_BUCKET_BOUNDS,
+  RPC_LATENCY_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
+import { createPrismaMetricsMiddleware } from "@/lib/prisma";
+import { measureRpcCall } from "@/lib/rpc-failover";
 import { withMetrics } from "@/lib/metrics-middleware";
 import { GET } from "@/app/api/metrics/route";
 import { resetMetricsForTest } from "@/lib/metrics-counters";
@@ -246,5 +253,87 @@ describe("GET /api/metrics authentication (#699)", () => {
       })
     );
     expect(res.status).toBe(200);
+  });
+});
+
+describe("RPC and Prisma DB latency histograms (#1304)", () => {
+  beforeEach(() => {
+    resetMetricsForTest();
+    resetEndpointMetrics();
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
+  });
+
+  afterEach(() => {
+    delete process.env.METRICS_TOKEN;
+    resetMetricsForTest();
+    resetEndpointMetrics();
+  });
+
+  it("uses the documented RPC bucket bounds (100ms, 500ms, 1s, 3s, 5s, 10s)", () => {
+    expect(RPC_LATENCY_BUCKET_BOUNDS).toEqual([0.1, 0.5, 1, 3, 5, 10]);
+  });
+
+  it("records RPC call latency by endpoint and status and exposes it on /api/metrics", async () => {
+    recordRpcCallLatency("https://soroban-testnet.stellar.org:443", "success", 0.25);
+    recordRpcCallLatency("https://soroban-testnet.stellar.org:443", "failure", 3.5);
+
+    const entries = getRpcLatencyMetrics();
+    expect(entries).toHaveLength(2);
+
+    const res = await GET(authenticatedRequest());
+    const text = await res.text();
+
+    expect(text).toContain("# TYPE ophirpay_rpc_call_duration_seconds histogram");
+    expect(text).toContain(
+      'ophirpay_rpc_call_duration_seconds_bucket{endpoint="https://soroban-testnet.stellar.org:443",status="success",le="0.1"} 0'
+    );
+    expect(text).toContain(
+      'ophirpay_rpc_call_duration_seconds_bucket{endpoint="https://soroban-testnet.stellar.org:443",status="success",le="0.5"} 1'
+    );
+    expect(text).toContain(
+      'ophirpay_rpc_call_duration_seconds_count{endpoint="https://soroban-testnet.stellar.org:443",status="failure"} 1'
+    );
+  });
+
+  it("measureRpcCall records success and failure observations", async () => {
+    const ok = await measureRpcCall("https://rpc.example.com", async () => "done");
+    expect(ok).toBe("done");
+
+    await expect(
+      measureRpcCall("https://rpc.example.com", async () => {
+        throw new Error("rpc timeout");
+      })
+    ).rejects.toThrow("rpc timeout");
+
+    const statuses = getRpcLatencyMetrics().map((e) => e.status).sort();
+    expect(statuses).toEqual(["failure", "success"]);
+  });
+
+  it("Prisma metrics middleware records query duration by model and operation", async () => {
+    const middleware = createPrismaMetricsMiddleware();
+    const result = await middleware(
+      { model: "Payment", action: "findMany" },
+      async () => [{ id: "p_1" }]
+    );
+    expect(result).toEqual([{ id: "p_1" }]);
+
+    recordDbQueryLatency("Batch", "create", 0.02);
+
+    const entries = getDbQueryLatencyMetrics();
+    expect(entries).toHaveLength(2);
+    expect(entries.map((e) => `${e.model}.${e.operation}`).sort()).toEqual([
+      "Batch.create",
+      "Payment.findMany",
+    ]);
+
+    const res = await GET(authenticatedRequest());
+    const text = await res.text();
+    expect(text).toContain("# TYPE ophirpay_db_query_model_duration_seconds histogram");
+    expect(text).toContain(
+      'ophirpay_db_query_model_duration_seconds_count{model="Payment",operation="findMany"} 1'
+    );
+    expect(text).toContain(
+      'ophirpay_db_query_model_duration_seconds_bucket{model="Batch",operation="create",le="0.025"} 1'
+    );
   });
 });

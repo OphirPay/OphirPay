@@ -192,6 +192,8 @@ export function resetMetricsForTest(): void {
   }
   deliveryAttempts.clear();
   deliveryFinalOutcomes.clear();
+  rpcLatencyMetrics.clear();
+  dbQueryLatencyMetrics.clear();
   lastRpcFailover = null;
   for (const reason of ["rate_limited", "deduplicated", "oversized"] as CspReportDropReason[]) {
     cspReportsDropped.set(reason, 0);
@@ -294,4 +296,132 @@ export function getEndpointMetrics(): EndpointMetricEntry[] {
 /** Reset per-endpoint metrics. Intended for tests. */
 export function resetEndpointMetrics(): void {
   endpointMetrics.clear();
+  rpcLatencyMetrics.clear();
+  dbQueryLatencyMetrics.clear();
+}
+
+// ── Soroban RPC call latency histograms (issue #1304) ─────────
+
+export type RpcCallStatus = "success" | "failure";
+
+/** RPC latency histogram bucket upper bounds in seconds (100ms, 500ms, 1s, 3s, 5s, 10s). */
+export const RPC_LATENCY_BUCKET_BOUNDS = [0.1, 0.5, 1, 3, 5, 10];
+
+export interface HistogramObservation {
+  sum: number;
+  count: number;
+  /** Cumulative counts per bucket; length = bounds.length + 1 (+Inf). */
+  buckets: number[];
+}
+
+export interface RpcLatencyMetricEntry {
+  endpoint: string;
+  status: RpcCallStatus;
+  observation: HistogramObservation;
+}
+
+const rpcLatencyMetrics = new Map<string, HistogramObservation>();
+
+/** Record a Soroban RPC call duration by endpoint and outcome status. */
+export function recordRpcCallLatency(
+  endpoint: string,
+  status: RpcCallStatus,
+  durationSeconds: number
+): void {
+  const safeDuration = Math.max(0, durationSeconds);
+  const key = `${endpoint}|${status}`;
+  let obs = rpcLatencyMetrics.get(key);
+  if (!obs) {
+    obs = {
+      sum: 0,
+      count: 0,
+      buckets: new Array(RPC_LATENCY_BUCKET_BOUNDS.length + 1).fill(0),
+    };
+    rpcLatencyMetrics.set(key, obs);
+  }
+
+  obs.sum += safeDuration;
+  obs.count += 1;
+  for (let i = 0; i < RPC_LATENCY_BUCKET_BOUNDS.length; i++) {
+    if (safeDuration <= RPC_LATENCY_BUCKET_BOUNDS[i]) obs.buckets[i] += 1;
+  }
+  obs.buckets[RPC_LATENCY_BUCKET_BOUNDS.length] += 1;
+}
+
+/** Read all collected RPC call latency histogram observations. */
+export function getRpcLatencyMetrics(): RpcLatencyMetricEntry[] {
+  const entries: RpcLatencyMetricEntry[] = [];
+  for (const [key, observation] of rpcLatencyMetrics.entries()) {
+    const sepIdx = key.lastIndexOf("|");
+    const endpoint = key.slice(0, sepIdx);
+    const status = key.slice(sepIdx + 1) as RpcCallStatus;
+    entries.push({ endpoint, status, observation });
+  }
+  return entries;
+}
+
+export function resetRpcLatencyMetrics(): void {
+  rpcLatencyMetrics.clear();
+}
+
+// ── Prisma database query latency histograms by model (issue #1304) ──
+
+/** DB query latency histogram bucket upper bounds in seconds. */
+export const DB_LATENCY_BUCKET_BOUNDS = [
+  0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
+];
+
+export interface DbQueryLatencyMetricEntry {
+  model: string;
+  operation: string;
+  observation: HistogramObservation;
+}
+
+const dbQueryLatencyMetrics = new Map<string, HistogramObservation>();
+
+/**
+ * Record a Prisma query duration by model and operation, while also updating
+ * the aggregate `db_query_duration_seconds` summary counters.
+ */
+export function recordDbQueryLatency(
+  model: string,
+  operation: string,
+  durationSeconds: number
+): void {
+  const safeDuration = Math.max(0, durationSeconds);
+  observeDbQuery(safeDuration);
+
+  const normalizedModel = model || "raw";
+  const normalizedOp = operation || "unknown";
+  const key = `${normalizedModel}|${normalizedOp}`;
+  let obs = dbQueryLatencyMetrics.get(key);
+  if (!obs) {
+    obs = {
+      sum: 0,
+      count: 0,
+      buckets: new Array(DB_LATENCY_BUCKET_BOUNDS.length + 1).fill(0),
+    };
+    dbQueryLatencyMetrics.set(key, obs);
+  }
+
+  obs.sum += safeDuration;
+  obs.count += 1;
+  for (let i = 0; i < DB_LATENCY_BUCKET_BOUNDS.length; i++) {
+    if (safeDuration <= DB_LATENCY_BUCKET_BOUNDS[i]) obs.buckets[i] += 1;
+  }
+  obs.buckets[DB_LATENCY_BUCKET_BOUNDS.length] += 1;
+}
+
+/** Read all collected Prisma query latency histogram observations. */
+export function getDbQueryLatencyMetrics(): DbQueryLatencyMetricEntry[] {
+  const entries: DbQueryLatencyMetricEntry[] = [];
+  for (const [key, observation] of dbQueryLatencyMetrics.entries()) {
+    const [model, operation] = key.split("|");
+    entries.push({ model, operation, observation });
+  }
+  return entries;
+}
+
+export function resetDbQueryLatencyMetrics(): void {
+  dbQueryLatencyMetrics.clear();
 }

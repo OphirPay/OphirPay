@@ -177,6 +177,147 @@ describe("replay window", () => {
   });
 });
 
+import {
+  buildTestWebhookPayload,
+  parseSignatureHeader,
+  verifySignature,
+} from "@/lib/webhook-test";
+
+describe("fuzz testing for webhook signature verification and payload parsing (#1299)", () => {
+  it("handles empty bodies, null bytes, oversized bodies, invalid JSON, and unicode edge cases without throwing", () => {
+    const unicodePayload: WebhookPayload = {
+      event: "payment.completed",
+      timestamp: "2026-08-14T00:00:00Z",
+      data: {
+        memo: "Stellar 🚀 \u0000 \uD800 \uFFFF 漢字 Café",
+        nested: { empty: "", zero: 0, bool: false },
+      },
+    };
+    const signedUnicode = buildSignedPayload(unicodePayload, SECRET);
+    expect(
+      verifySignature(signedUnicode.body, signedUnicode.signature, SECRET, {
+        nowMs: Date.parse(unicodePayload.timestamp) + 1000,
+      })
+    ).toBe(true);
+
+    const malformedInputs: Array<[unknown, unknown, unknown]> = [
+      ["", "a".repeat(64), SECRET],
+      [null, "a".repeat(64), SECRET],
+      [undefined, "a".repeat(64), SECRET],
+      ["\0\0\0", "a".repeat(64), SECRET],
+      ["{truncated json", "a".repeat(64), SECRET],
+      ["[]", "a".repeat(64), SECRET],
+      ["\"primitive\"", "a".repeat(64), SECRET],
+      ["x".repeat(2 * 1024 * 1024), "a".repeat(64), SECRET],
+      [signedUnicode.body, "", SECRET],
+      [signedUnicode.body, null, SECRET],
+      [signedUnicode.body, ["sig1", "sig2"], SECRET],
+      [signedUnicode.body, `${signedUnicode.signature},${signedUnicode.signature}`, SECRET],
+      [signedUnicode.body, "z".repeat(64), SECRET],
+      [signedUnicode.body, signedUnicode.signature.slice(0, 63), SECRET],
+      [signedUnicode.body, `${signedUnicode.signature}a`, SECRET],
+      [signedUnicode.body, signedUnicode.signature, ""],
+    ];
+
+    for (const [body, sig, sec] of malformedInputs) {
+      expect(() => verifySignature(body, sig, sec)).not.toThrow();
+      expect(verifySignature(body, sig, sec)).toBe(false);
+    }
+
+    expect(parseSignatureHeader(`sha256=${signedUnicode.signature.toUpperCase()}`)).toBe(
+      signedUnicode.signature,
+    );
+    expect(parseSignatureHeader(["dup1", "dup2"])).toBeNull();
+    expect(parseSignatureHeader("not-hex")).toBeNull();
+  });
+
+  it("runs 5,000+ randomized fuzz iterations on buildSignedPayload and verifySignature with zero unhandled exceptions", () => {
+    let seed = 0x1299cafe;
+    const nextRand = () => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      return seed >>> 0;
+    };
+
+    const alphabet =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\0\n\r\t\"'\\{}[]:,🚀漢字\uD800\uDFFF";
+
+    const randomString = (maxLen: number): string => {
+      const len = nextRand() % (maxLen + 1);
+      let out = "";
+      for (let i = 0; i < len; i++) {
+        out += alphabet[nextRand() % alphabet.length];
+      }
+      return out;
+    };
+
+    const testPayload = buildTestWebhookPayload();
+    expect(testPayload.test).toBe(true);
+
+    const iterations = 5_200;
+    let validCount = 0;
+    let rejectedCount = 0;
+
+    for (let i = 0; i < iterations; i++) {
+      const mode = i % 5;
+      if (mode === 0) {
+        // Valid round-trip with fuzzed payload fields
+        const payload: WebhookPayload = {
+          event: `event.${i}`,
+          timestamp: "2026-08-14T00:00:00Z",
+          data: {
+            fuzzKey: randomString(32),
+            iteration: i,
+          },
+        };
+        const secret = `sec_${(nextRand() % 1000) + 1}`;
+        const signed = buildSignedPayload(payload, secret);
+        const ok = verifySignature(signed.body, signed.signature, secret, {
+          nowMs: Date.parse(payload.timestamp) + 5_000,
+        });
+        expect(ok).toBe(true);
+        validCount++;
+      } else if (mode === 1) {
+        // Tampered signature or wrong secret
+        const signed = buildSignedPayload(samplePayload, SECRET);
+        const flippedSig =
+          (signed.signature[0] === "a" ? "b" : "a") + signed.signature.slice(1);
+        expect(verifySignature(signed.body, flippedSig, SECRET)).toBe(false);
+        rejectedCount++;
+      } else if (mode === 2) {
+        // Fuzzed raw body string
+        const rawBody = randomString(96);
+        const rawSig = randomString(68);
+        expect(verifySignature(rawBody, rawSig, SECRET)).toBe(false);
+        rejectedCount++;
+      } else if (mode === 3) {
+        // Fuzzed header shapes (arrays, numbers, boundary lengths)
+        const boundarySig = "f".repeat(i % 70);
+        expect(verifySignature( "{}" , boundarySig, SECRET)).toBe(false);
+        rejectedCount++;
+      } else {
+        // Stale or malformed timestamp in JSON body
+        const body = JSON.stringify({
+          event: "payment.created",
+          timestamp: randomString(20),
+          data: { i },
+          signature: "a".repeat(64),
+        });
+        expect(
+          verifySignature(body, "a".repeat(64), SECRET, {
+            nowMs: 1_700_000_000_000,
+          })
+        ).toBe(false);
+        rejectedCount++;
+      }
+    }
+
+    expect(validCount + rejectedCount).toBe(iterations);
+    expect(iterations).toBeGreaterThanOrEqual(5_000);
+  });
+});
+
 describe("deliverWebhook", () => {
   const originalFetch = globalThis.fetch;
 

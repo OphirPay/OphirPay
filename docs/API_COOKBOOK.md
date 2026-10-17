@@ -112,6 +112,7 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/cron` | GET, POST |
 | `/api/jobs/process-due-recurring` | POST |
 | `/api/pause-state` | GET |
+| `/api/openapi.json` | GET |
 
 ---
 
@@ -822,6 +823,12 @@ ophirpay_http_requests_total{method="GET",route="/api/payments",status="200"} 89
 # HELP ophirpay_active_streams_count Current number of active payment streams
 # TYPE ophirpay_active_streams_count gauge
 ophirpay_active_streams_count 84
+```
+
+### Fetch OpenAPI 3.1 JSON Specification
+
+```bash
+curl "http://localhost:3000/api/openapi.json"
 ```
 
 ---

@@ -60,6 +60,20 @@ The public contract of every endpoint is documented in
 [`docs/openapi.yaml`](./openapi.yaml) — update it whenever you add or change a
 route (see the [checklist](#checklist)).
 
+### Interactive OpenAPI Documentation (`/docs/api`)
+
+OphirPay serves the parsed OpenAPI 3.1 specification as JSON at
+[`/api/openapi.json`](../src/app/api/openapi.json/route.ts) and renders an
+interactive API reference browser at
+[`/docs/api`](../src/app/docs/api/page.tsx) (locally at
+[http://localhost:3000/docs/api](http://localhost:3000/docs/api)).
+
+- **Browse all 40+ endpoints**: Filter by HTTP method, tag, or keyword and inspect
+  resolved request/response schemas.
+- **Interactive "Try it out" on Stellar Testnet**: Execute live requests pre-configured
+  for the Stellar Testnet environment (`https://horizon-testnet.stellar.org` and
+  `https://soroban-testnet.stellar.org`) with `Bearer` or `X-API-Key` authentication.
+
 ---
 
 ## 2. Route handler skeleton

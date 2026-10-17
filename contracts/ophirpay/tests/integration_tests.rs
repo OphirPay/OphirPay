@@ -935,3 +935,94 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOKEN DECIMAL PRECISION VALIDATION TESTS (issue #1347)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_record_payment_accepts_standard_7_decimal_sac_and_valid_custom_decimals() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    // 1. Standard 7-decimal SAC token (XLM / USDC) allows 1-stroop granularity
+    assert_eq!(fix.client.get_token_decimals(&fix.token_id), 7);
+    let pid_7 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &12_345_678i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx_7dec_ok"),
+        &String::from_str(&fix.env, "standard 7-decimal SAC"),
+    );
+    assert_eq!(pid_7, 1);
+
+    // 2. Configure a 6-decimal token (quantum step = 10 stroops)
+    let token_6dec = Address::generate(&fix.env);
+    fix.client
+        .set_token_decimals(&fix.owner, &token_6dec, &6u32);
+    assert_eq!(fix.client.get_token_decimals(&token_6dec), 6);
+
+    let pid_6 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &1_000_010i128,
+        &token_6dec,
+        &String::from_str(&fix.env, "tx_6dec_ok"),
+        &String::from_str(&fix.env, "aligned 6-decimal payment"),
+    );
+    assert_eq!(pid_6, 2);
+}
+
+#[test]
+fn test_record_payment_rejects_decimal_precision_mismatch_and_out_of_range_decimals() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    // 1. Rejects setting decimals > 18 (MAX_TOKEN_DECIMALS)
+    let custom_token = Address::generate(&fix.env);
+    let invalid_set = fix
+        .client
+        .try_set_token_decimals(&fix.owner, &custom_token, &19u32);
+    assert_eq!(invalid_set, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+    // 2. 6-decimal token (quantum step = 10 stroops) rejects unaligned sub-quantum dust (e.g. 1_000_005)
+    fix.client
+        .set_token_decimals(&fix.owner, &custom_token, &6u32);
+    let unaligned_6 = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &1_000_005i128,
+        &custom_token,
+        &String::from_str(&fix.env, "tx_6dec_bad"),
+        &String::from_str(&fix.env, "sub-quantum dust"),
+    );
+    assert_eq!(unaligned_6, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+    // 3. 2-decimal token (quantum step = 100_000 stroops) rejects 123_456 and accepts 500_000
+    let token_2dec = Address::generate(&fix.env);
+    fix.client
+        .set_token_decimals(&fix.owner, &token_2dec, &2u32);
+    let unaligned_2 = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &123_456i128,
+        &token_2dec,
+        &String::from_str(&fix.env, "tx_2dec_bad"),
+        &String::from_str(&fix.env, "unaligned 2-dec"),
+    );
+    assert_eq!(unaligned_2, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+    let aligned_2 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &500_000i128,
+        &token_2dec,
+        &String::from_str(&fix.env, "tx_2dec_ok"),
+        &String::from_str(&fix.env, "aligned 2-dec"),
+    );
+    assert_eq!(aligned_2, 1);
+}
+

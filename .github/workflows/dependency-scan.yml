@@ -18,18 +18,43 @@ on:
 permissions:
   contents: read
 
-
-# -- Global Concurrency � singleton group for scheduled runs --------
+# ── Global Concurrency — singleton group for scheduled runs ────────
 concurrency:
   group: ${{ github.workflow }}
 
 jobs:
+  resolve-refs:
+    name: "Resolve Target Refs"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Determine existing target branches
+        id: set-matrix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          matrix='[{"ref":"main","slug":"main"}]'
+          if gh api "repos/${REPO}/branches/integration/staging" --silent 2>/dev/null; then
+            matrix='[{"ref":"main","slug":"main"},{"ref":"integration/staging","slug":"integration-staging"}]'
+          fi
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+
   dependency-scan:
-    name: "Dependency Vulnerability Scan (fail on high/critical)"
+    name: "Dependency Vulnerability Scan (${{ matrix.target.ref }})"
+    needs: resolve-refs
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.resolve-refs.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.target.ref }}
       - uses: actions/setup-node@v4
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
@@ -39,6 +64,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dependency-audit-report
+          name: dependency-audit-report-${{ matrix.target.slug }}
           path: dependency-audit-report/
           retention-days: 30

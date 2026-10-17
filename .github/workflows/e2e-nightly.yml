@@ -52,8 +52,28 @@ env:
   AUTH_SECRET: ci-e2e-auth-secret-not-for-production
 
 jobs:
+  resolve-refs:
+    name: "Resolve Target Refs"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Determine existing target branches
+        id: set-matrix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          matrix='[{"ref":"main","slug":"main"}]'
+          if gh api "repos/${REPO}/branches/integration/staging" --silent 2>/dev/null; then
+            matrix='[{"ref":"main","slug":"main"},{"ref":"integration/staging","slug":"integration-staging"}]'
+          fi
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+
   playwright-tests:
-    name: "🧪 E2E — shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}"
+    name: "🧪 E2E — ${{ matrix.target.ref }} shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}"
+    needs: resolve-refs
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -61,6 +81,7 @@ jobs:
       matrix:
         shardIndex: [1, 2, 3]
         shardTotal: [3]
+        target: ${{ fromJson(needs.resolve-refs.outputs.matrix) }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -142,7 +163,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: blob-report-${{ matrix.shardIndex }}
+          name: blob-report-${{ matrix.target.slug }}-${{ matrix.shardIndex }}
           path: blob-report
           retention-days: 1
 
@@ -150,18 +171,24 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: next-server-log-${{ matrix.shardIndex }}
+          name: next-server-log-${{ matrix.target.slug }}-${{ matrix.shardIndex }}
           path: /tmp/next-server.log
           retention-days: 3
 
   merge-reports:
-    name: "📊 Merge reports"
+    name: "📊 Merge reports (${{ matrix.target.ref }})"
     if: always()
-    needs: playwright-tests
+    needs: [resolve-refs, playwright-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.resolve-refs.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.target.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -173,7 +200,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: all-blob-reports
-          pattern: blob-report-*
+          pattern: blob-report-${{ matrix.target.slug }}-*
           merge-multiple: true
 
       - name: Merge reports
@@ -183,6 +210,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: merged-html-report
+          name: merged-html-report-${{ matrix.target.slug }}
           path: playwright-report
           retention-days: 14

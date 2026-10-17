@@ -183,6 +183,15 @@ The client provides a toggle between native **XLM** and fiat **USD** displays ac
 
 Preferences are persisted in `localStorage` under `ophirpay-currency-display` (`STORAGE_KEYS.CURRENCY_DISPLAY`).
 
+## Graceful Shutdown & Connection Lifecycle (`#1311`)
+
+During rolling Kubernetes updates or Docker container restarts (`SIGTERM` / `SIGINT`), `src/lib/lifecycle.ts`, `src/lib/prisma.ts`, and `src/lib/redis.ts` coordinate an orderly teardown sequence:
+
+1. **Signal Interception**: `registerShutdownHandlers()` attaches `SIGTERM` and `SIGINT` listeners in production while skipping duplicate listener registration during `next dev` hot-module reloads.
+2. **Admission Stop**: `isShuttingDown()` flips to `true`, causing `trackInFlightOperation()` to reject new background work with `ShutdownInProgressError`.
+3. **In-Flight Drain Window**: Active operations tracked via `trackInFlightOperation()` are given up to `SHUTDOWN_GRACE_PERIOD_MS` (default `5000` ms) to settle before connections close.
+4. **Client Disconnection & Structured Logging**: The handler invokes `await prisma.$disconnect()` on registered Prisma clients and `await redis.quit()` on registered Redis clients, emitting structured JSON logs (`"Graceful shutdown initiated"` and `"Graceful shutdown completed"`).
+
 ## Tech Stack
 
 | Layer         | Technology                                                   |
@@ -196,3 +205,4 @@ Preferences are persisted in `localStorage` under `ophirpay-currency-display` (`
 | CI/CD         | GitHub Actions (21 jobs)                                     |
 | Orchestration | Kubernetes + Helm                                            |
 | Monitoring    | Prometheus + Grafana                                         |
+

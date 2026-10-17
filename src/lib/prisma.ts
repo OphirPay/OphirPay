@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { PrismaClient, Prisma } from "@prisma/client";
+import { registerPrismaClient, registerShutdownHandlers } from "@/lib/lifecycle";
 
 export { Prisma };
 
@@ -14,9 +15,13 @@ const globalForPrisma = globalThis as unknown as {
 
 const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
 
-export default prisma;
+// Register Prisma client for graceful SIGTERM/SIGINT disconnection (#1311).
+registerPrismaClient(prisma);
 
-if (process.env.NODE_ENV !== "production") {
+if (process.env.NODE_ENV === "production") {
+  registerShutdownHandlers();
+} else {
   globalForPrisma.prisma = prisma;
 }
 
+export default prisma;

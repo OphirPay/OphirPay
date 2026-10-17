@@ -91,6 +91,21 @@ pdb:
 
 networkPolicy:
   enabled: true
+  # ── Redis egress (issue #1345) ─────────────────────────────────
+  # Shared rate limiting, L2 API cache, and session revocation connect over TCP
+  # (default port 6379) when `REDIS_URL=redis://…` is configured. Scoped by
+  # podSelector / namespaceSelector so egress remains restricted to explicitly
+  # listed Redis destinations rather than opening 6379 cluster-wide.
+  redis:
+    enabled: true
+    port: 6379
+    namespaceSelector: {}
+    podSelector:
+      app: redis
+  egress:
+    # Additional explicit egress rules (each item may specify `port`, `protocol`,
+    # and optional `to` selectors).
+    extraPorts: []
 
 # ── Runtime configuration (rendered into a ConfigMap) ──────────
 # Every key here must be a real variable documented in `.env.example`;

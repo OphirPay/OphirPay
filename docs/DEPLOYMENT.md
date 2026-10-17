@@ -419,7 +419,7 @@ kubectl create secret generic ophirpay-secrets \
 # Install with Helm
 helm upgrade --install ophirpay ./helm/ophirpay \
   --namespace ophirpay \
-  --set image.tag=latest \
+  --set image.tag=1.0.0 \
   --set ingress.hosts[0].host=ophirpay.com \
   --set config.NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
   --set config.NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \

@@ -124,3 +124,47 @@ describe("helm/ophirpay config keys (#683)", () => {
     expect(rawValues).toMatch(/build\*?\*? time/i);
   });
 });
+
+describe("helm/ophirpay image tag and digest defaults (#1333)", () => {
+  const chartYaml = load(
+    readFileSync(join(chartDir, "Chart.yaml"), "utf8"),
+  ) as { appVersion: string };
+  const rawValues = load(
+    readFileSync(join(chartDir, "values.yaml"), "utf8"),
+  ) as { image: { repository: string; tag: string; digest?: string; pullPolicy: string } };
+
+  it("defaults image.tag to empty string and pullPolicy to IfNotPresent in values.yaml", () => {
+    expect(rawValues.image.tag).toBe("");
+    expect(rawValues.image.pullPolicy).toBe("IfNotPresent");
+    expect(rawValues.image.digest).toBe("");
+  });
+
+  it("declares appVersion in Chart.yaml", () => {
+    expect(chartYaml.appVersion).toBe("1.0.0");
+  });
+
+  it("supports image.digest and defaults image tag to Chart.AppVersion in deployment template", () => {
+    const deployment = readFileSync(
+      join(templatesDir, "deployment.yaml"),
+      "utf8",
+    );
+    expect(deployment).toContain(".Values.image.digest");
+    expect(deployment).toContain(
+      'image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"',
+    );
+    expect(deployment).toContain(
+      'image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"',
+    );
+  });
+
+  it("pins static image tag to 1.0.0 and uses IfNotPresent in k8s/deployment.yaml", () => {
+    const k8sDeployment = readFileSync(
+      join(repoRoot, "k8s", "deployment.yaml"),
+      "utf8",
+    );
+    expect(k8sDeployment).toContain("ghcr.io/ophirpay/ophirpay:1.0.0");
+    expect(k8sDeployment).not.toContain("ghcr.io/ophirpay/ophirpay:latest");
+    expect(k8sDeployment).toContain("imagePullPolicy: IfNotPresent");
+  });
+});
+

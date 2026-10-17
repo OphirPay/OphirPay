@@ -316,8 +316,43 @@ jobs:
           helm lint helm/ophirpay --strict \
             --set autoscaling.enabled=true \
             --set pdb.enabled=true \
-            --set networkPolicy.enabled=true \
-            --set serviceAccount.create=true
+      - name: Assert image tag and digest rendering (issue #1333)
+        run: |
+          set -euo pipefail
+
+          # 1. Default render produces :1.0.0, not :latest
+          default_image=$(helm template ophirpay helm/ophirpay | grep -E 'image: "ghcr\.io/ophirpay/ophirpay(:|@)' | head -n1)
+          if echo "$default_image" | grep -q "ghcr.io/ophirpay/ophirpay:1.0.0"; then
+            echo "✅ Default image renders pinned :1.0.0 tag"
+          else
+            echo "::error::Expected default image to use :1.0.0, got: $default_image"
+            exit 1
+          fi
+
+          if echo "$default_image" | grep -q ":latest"; then
+            echo "::error::Default image must not use :latest"
+            exit 1
+          fi
+
+          # 2. image.digest renders @sha256:...
+          digest="sha256:71131103d1d4d01f5f124164f92de3ab13229740044a4afb7057707fa1377132"
+          digest_image=$(helm template ophirpay helm/ophirpay --set image.digest="$digest" | grep -E 'image: "ghcr\.io/ophirpay/ophirpay(:|@)' | head -n1)
+          if echo "$digest_image" | grep -q "ghcr.io/ophirpay/ophirpay@$digest"; then
+            echo "✅ image.digest renders @sha256:... correctly"
+          else
+            echo "::error::Expected digest image to use @$digest, got: $digest_image"
+            exit 1
+          fi
+
+          # 3. Custom image.tag overrides default
+          custom_image=$(helm template ophirpay helm/ophirpay --set image.tag="v2.5.0" | grep -E 'image: "ghcr\.io/ophirpay/ophirpay(:|@)' | head -n1)
+          if echo "$custom_image" | grep -q "ghcr.io/ophirpay/ophirpay:v2.5.0"; then
+            echo "✅ Custom image.tag overrides default appVersion"
+          else
+            echo "::error::Expected custom image to use :v2.5.0, got: $custom_image"
+            exit 1
+          fi
+
       - name: Render and assert the flag-gated objects
         run: |
           set -euo pipefail
@@ -367,6 +402,8 @@ jobs:
           expect "kind: NetworkPolicy" /tmp/enabled.yaml
           expect "kind: ServiceAccount" /tmp/enabled.yaml
           expect "policyTypes:" /tmp/enabled.yaml
+          expect "ghcr.io/ophirpay/ophirpay:1.0.0" /tmp/default.yaml
+          reject "ghcr.io/ophirpay/ophirpay:latest" /tmp/default.yaml
 
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml

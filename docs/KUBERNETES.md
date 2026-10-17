@@ -85,11 +85,24 @@ Set `ingress.hosts` and `ingress.tls` to your hostname and certificate Secret.
 The default chart expects an nginx ingress class and cert-manager issuer
 `letsencrypt-prod`; change the annotation if your cluster uses another issuer.
 
-Both probes call `/api/health` on port 3000. Liveness restarts a pod that cannot
-serve health requests; readiness removes a pod from Service endpoints while it
-is starting or unavailable. Tune delays and thresholds for cold starts, but do
-not point probes at a database-only endpoint or make liveness depend on a
-transient external provider.
+Liveness probes call `/api/health/live` on port 3000 (process-only, no external
+dependency I/O) and readiness probes call `/api/health` on port 3000
+(dependency-aware). Liveness restarts a pod whose Node.js process is wedged;
+readiness removes a pod from Service endpoints while it is starting or while
+PostgreSQL is unreachable, without killing the container.
+
+Both `helm/ophirpay/values.yaml` and `k8s/deployment.yaml` ship with tuned
+defaults sized to absorb cold-start Prisma initialization and transient
+database latency:
+
+| Probe | Path | `initialDelaySeconds` | `periodSeconds` | `timeoutSeconds` | `failureThreshold` |
+| --- | --- | --- | --- | --- | --- |
+| `readinessProbe` | `/api/health` | `15` | `10` | `5` | `3` |
+| `livenessProbe` | `/api/health/live` | `30` | `10` | `5` | `3` |
+
+Override `readinessProbe.*` or `livenessProbe.*` in `values.yaml` when tuning
+for slower cluster nodes, but do not point `livenessProbe` at a dependency-aware
+endpoint.
 
 ## Pre-flight checklist
 

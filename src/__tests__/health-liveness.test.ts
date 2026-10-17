@@ -63,7 +63,15 @@ describe("GET /api/health/live — liveness", () => {
   });
 });
 
-describe("Kubernetes manifests — liveness vs readiness (issue #738)", () => {
+describe("Kubernetes manifests — liveness vs readiness (issues #738, #1426)", () => {
+  interface ProbeSpec {
+    httpGet: { path: string; port: number };
+    initialDelaySeconds: number;
+    periodSeconds: number;
+    timeoutSeconds: number;
+    failureThreshold: number;
+  }
+
   const containerOf = (file: string) => {
     const docs = loadAll(read(file)) as Array<Record<string, unknown>>;
     const deployment = docs.find(
@@ -74,30 +82,63 @@ describe("Kubernetes manifests — liveness vs readiness (issue #738)", () => {
       };
     };
     return deployment.spec.template.spec.containers[0] as {
-      livenessProbe: { httpGet: { path: string } };
-      readinessProbe: { httpGet: { path: string } };
+      livenessProbe: ProbeSpec;
+      readinessProbe: ProbeSpec;
     };
   };
 
-  it("k8s/deployment.yaml probes liveness and readiness separately", () => {
+  it("k8s/deployment.yaml probes liveness and readiness separately with tuned timings", () => {
     const container = containerOf("k8s/deployment.yaml");
-    expect(container.livenessProbe.httpGet.path).toBe("/api/health/live");
-    expect(container.readinessProbe.httpGet.path).toBe("/api/health");
+    expect(container.livenessProbe).toEqual({
+      httpGet: { path: "/api/health/live", port: 3000 },
+      initialDelaySeconds: 30,
+      periodSeconds: 10,
+      timeoutSeconds: 5,
+      failureThreshold: 3,
+    });
+    expect(container.readinessProbe).toEqual({
+      httpGet: { path: "/api/health", port: 3000 },
+      initialDelaySeconds: 15,
+      periodSeconds: 10,
+      timeoutSeconds: 5,
+      failureThreshold: 3,
+    });
   });
 
-  it("helm/ophirpay/values.yaml probes liveness and readiness separately", () => {
+  it("helm/ophirpay/values.yaml probes liveness and readiness separately with tuned timings", () => {
     const values = load(read("helm/ophirpay/values.yaml")) as {
-      livenessProbe: { httpGet: { path: string } };
-      readinessProbe: { httpGet: { path: string } };
+      livenessProbe: ProbeSpec;
+      readinessProbe: ProbeSpec;
     };
-    expect(values.livenessProbe.httpGet.path).toBe("/api/health/live");
-    expect(values.readinessProbe.httpGet.path).toBe("/api/health");
+    expect(values.livenessProbe).toEqual({
+      httpGet: { path: "/api/health/live", port: 3000 },
+      initialDelaySeconds: 30,
+      periodSeconds: 10,
+      timeoutSeconds: 5,
+      failureThreshold: 3,
+    });
+    expect(values.readinessProbe).toEqual({
+      httpGet: { path: "/api/health", port: 3000 },
+      initialDelaySeconds: 15,
+      periodSeconds: 10,
+      timeoutSeconds: 5,
+      failureThreshold: 3,
+    });
   });
 
   it("the Helm template still renders both probes from values", () => {
     const template = read("helm/ophirpay/templates/deployment.yaml");
     expect(template).toContain(".Values.livenessProbe");
     expect(template).toContain(".Values.readinessProbe");
+  });
+
+  it("documents tuned probe timings in docs/KUBERNETES.md", () => {
+    const k8sDoc = read("docs/KUBERNETES.md");
+    expect(k8sDoc).toContain("/api/health/live");
+    expect(k8sDoc).toContain("/api/health");
+    expect(k8sDoc).toContain("initialDelaySeconds");
+    expect(k8sDoc).toContain("timeoutSeconds");
+    expect(k8sDoc).toContain("failureThreshold");
   });
 });
 

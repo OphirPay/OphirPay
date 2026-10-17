@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT
+import net from "node:net";
+import tls from "node:tls";
 import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
@@ -19,19 +21,134 @@ type CheckStatus = "ok" | "error" | "unchecked" | "disabled" | "not_configured";
 /** GET a URL and report reachability + latency; null when it errors/times out. */
 async function pingUrl(
   url: string,
-  timeoutMs: number
+  timeoutMs: number,
+  headers?: Record<string, string>,
 ): Promise<{ ok: boolean; latencyMs: number } | null> {
   const start = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      ...(headers ? { headers } : {}),
+    });
     return { ok: res.ok, latencyMs: Date.now() - start };
   } catch {
     return null;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * Send a RESP PING over a raw TCP/TLS socket to a `redis://` or `rediss://` endpoint.
+ */
+async function pingTcpRedis(
+  redisUrl: string,
+  timeoutMs: number,
+): Promise<{ ok: boolean; latencyMs: number } | null> {
+  let parsed: URL;
+  try {
+    parsed = new URL(redisUrl);
+  } catch {
+    return null;
+  }
+
+  const isTls = parsed.protocol === "rediss:";
+  const host = parsed.hostname || "127.0.0.1";
+  const port = Number(parsed.port || 6379);
+  const username = parsed.username ? decodeURIComponent(parsed.username) : "";
+  const password = parsed.password ? decodeURIComponent(parsed.password) : "";
+
+  const start = Date.now();
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: { ok: boolean; latencyMs: number } | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(result);
+    };
+
+    const onConnect = () => {
+      const commands: string[] = [];
+      if (password) {
+        if (username && username !== "default") {
+          commands.push(
+            `*3\r\n$4\r\nAUTH\r\n$${Buffer.byteLength(username)}\r\n${username}\r\n$${Buffer.byteLength(password)}\r\n${password}\r\n`,
+          );
+        } else {
+          commands.push(
+            `*2\r\n$4\r\nAUTH\r\n$${Buffer.byteLength(password)}\r\n${password}\r\n`,
+          );
+        }
+      }
+      commands.push("*1\r\n$4\r\nPING\r\n");
+      socket.write(commands.join(""));
+    };
+
+    const socket = isTls
+      ? tls.connect({ host, port, servername: host }, onConnect)
+      : net.createConnection({ host, port }, onConnect);
+
+    const timer = setTimeout(() => finish(null), timeoutMs);
+
+    let buffer = "";
+    socket.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString("utf8");
+      if (buffer.includes("-ERR") || buffer.includes("-NOAUTH") || buffer.includes("-WRONGPASS")) {
+        finish({ ok: false, latencyMs: Date.now() - start });
+      } else if (buffer.includes("+PONG")) {
+        finish({ ok: true, latencyMs: Date.now() - start });
+      }
+    });
+
+    socket.on("error", () => finish(null));
+    socket.on("close", () => {
+      if (!settled) finish(null);
+    });
+  });
+}
+
+/**
+ * Ping Redis according to its configured URL scheme (#1338):
+ * - `https://` / `http://`: Upstash-compatible REST `/ping` with Bearer token
+ * - `redis://` / `rediss://`: RESP `PING` over TCP/TLS socket
+ */
+export async function pingRedis(
+  redisUrl: string,
+  timeoutMs = 3000,
+): Promise<{ ok: boolean; latencyMs: number } | null> {
+  if (/^https?:\/\//i.test(redisUrl)) {
+    let parsed: URL;
+    try {
+      parsed = new URL(redisUrl);
+    } catch {
+      return null;
+    }
+    const embeddedToken = parsed.password ? decodeURIComponent(parsed.password) : undefined;
+    parsed.username = "";
+    parsed.password = "";
+    const baseUrl = parsed.toString().replace(/\/+$/, "");
+    const token =
+      process.env.REDIS_TOKEN ||
+      process.env.REDIS_REST_TOKEN ||
+      process.env.UPSTASH_REDIS_REST_TOKEN ||
+      embeddedToken;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    return pingUrl(`${baseUrl}/ping`, timeoutMs, headers);
+  }
+
+  if (/^rediss?:\/\//i.test(redisUrl)) {
+    return pingTcpRedis(redisUrl, timeoutMs);
+  }
+
+  return null;
 }
 
 /** POST a JSON-RPC body and report reachability + latency; null on failure. */
@@ -107,10 +224,7 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     let redisLatency: number | null = null;
     const redisUrl = process.env.REDIS_URL;
     if (redisUrl) {
-      const pingUrlStr =
-        redisUrl.replace(/\/\/.*@/, "//health:@").replace(/\/\d+$/, "") +
-        "/ping";
-      const redis = await pingUrl(pingUrlStr, 3000);
+      const redis = await pingRedis(redisUrl, 3000);
       if (redis) {
         redisStatus = redis.ok ? "ok" : "error";
         redisLatency = redis.latencyMs;

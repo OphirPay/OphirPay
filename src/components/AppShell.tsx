@@ -9,6 +9,7 @@ import { QueryProvider } from "@/components/QueryProvider";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { usePathname } from "next/navigation";
@@ -23,6 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MultiWalletProvider>
         <ToastProvider>
           <OfflineBanner />
+          <NetworkStatusBanner />
           <InstallPrompt />
           <div className="flex min-h-screen">
             <Sidebar />

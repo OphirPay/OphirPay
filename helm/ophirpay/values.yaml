@@ -91,6 +91,23 @@ pdb:
 
 networkPolicy:
   enabled: true
+  # Redis egress for distributed multi-replica rate limiting (Issue #1345).
+  # When enabled, pods can reach the configured Redis port (default 6379) to share
+  # rate-limiting state across all HPA replicas instead of falling back to per-instance limits.
+  redis:
+    enabled: true
+    port: 6379
+    # Optional selector scoping: if provided, egress is locked down strictly to matching
+    # Redis namespaces and pods. If empty, port-level egress to Redis is permitted (e.g. for external Redis/Upstash).
+    namespaceSelector: {}
+      # matchLabels:
+      #   kubernetes.io/metadata.name: redis
+    podSelector: {}
+      # matchLabels:
+      #   app.kubernetes.io/name: redis
+  egress:
+    # Additional explicit destination TCP ports allowed through the default-deny egress policy
+    extraPorts: []
 
 # ── Runtime configuration (rendered into a ConfigMap) ──────────
 # Every key here must be a real variable documented in `.env.example`;

@@ -7,6 +7,7 @@ import {
   getEndpointMetrics,
   recordRpcFailoverState,
   LATENCY_BUCKET_BOUNDS,
+  SSE_DURATION_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
 import { getRpcFailoverState } from "@/lib/rpc-failover";
 import { timingSafeEqual } from "@/lib/crypto";
@@ -261,6 +262,42 @@ function buildMetrics(): string {
     "# TYPE ophirpay_sse_dropped_events_total counter",
     `ophirpay_sse_dropped_events_total ${c.sse_dropped_events_total}`
   );
+
+  const hasSseTelemetry =
+    Object.values(c.sse_active_by_route).some((v) => v > 0) ||
+    Object.keys(c.sse_duration_by_route).length > 0;
+
+  if (hasSseTelemetry) {
+    lines.push(
+      "",
+      "# HELP sse_active_connections Currently active SSE connections by route",
+      "# TYPE sse_active_connections gauge"
+    );
+    for (const [route, active] of Object.entries(c.sse_active_by_route)) {
+      lines.push(
+        `sse_active_connections{route="${escapeLabelValue(route)}"} ${active}`
+      );
+    }
+
+    lines.push(
+      "",
+      "# HELP sse_connection_duration_seconds Client SSE session duration in seconds",
+      "# TYPE sse_connection_duration_seconds histogram"
+    );
+    for (const [route, obs] of Object.entries(c.sse_duration_by_route)) {
+      const routeLabel = `route="${escapeLabelValue(route)}"`;
+      for (let i = 0; i < SSE_DURATION_BUCKET_BOUNDS.length; i++) {
+        lines.push(
+          `sse_connection_duration_seconds_bucket{${routeLabel},le="${SSE_DURATION_BUCKET_BOUNDS[i]}"} ${obs.buckets[i]}`
+        );
+      }
+      lines.push(
+        `sse_connection_duration_seconds_bucket{${routeLabel},le="+Inf"} ${obs.buckets[SSE_DURATION_BUCKET_BOUNDS.length]}`,
+        `sse_connection_duration_seconds_sum{${routeLabel}} ${obs.sum.toFixed(6)}`,
+        `sse_connection_duration_seconds_count{${routeLabel}} ${obs.count}`
+      );
+    }
+  }
 
   return lines.join("\n") + "\n";
 }

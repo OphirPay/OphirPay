@@ -26,7 +26,11 @@ import { withMetrics } from "@/lib/metrics-middleware";
 
 import { createLiveEventSource } from "@/lib/events/event-source";
 import { createBoundedSseBuffer } from "@/lib/events/sse-buffer";
-import { incMetric } from "@/lib/metrics-counters";
+import {
+  incMetric,
+  incSseActiveConnection,
+  decSseActiveConnection,
+} from "@/lib/metrics-counters";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +47,7 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
   let closed = false;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let source: ReturnType<typeof createLiveEventSource> | null = null;
+  const connectedAt = Date.now();
 
   // Release the connection exactly once — from the client abort, an overflow
   // disconnect, or a stream cancel.
@@ -52,9 +57,14 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
     if (heartbeat) clearInterval(heartbeat);
     if (source) source.stop();
     // Release the connection from the `ophirpay_sse_open_connections` gauge
-    // (visible on /api/metrics) so operators and the SSE load test can verify
-    // connections are released when clients disconnect.
+    // and route-labeled `sse_active_connections` gauge (visible on /api/metrics)
+    // so operators and the SSE load test can verify connections are released
+    // when clients disconnect.
     incMetric("sse_open_connections", -1);
+    decSseActiveConnection(
+      "/api/events",
+      Math.max(0, (Date.now() - connectedAt) / 1000)
+    );
   };
 
   let lastDropped = 0;
@@ -77,8 +87,9 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
       buffer.attach(controller);
 
       // Track the open connection on the `ophirpay_sse_open_connections`
-      // gauge (visible on /api/metrics).
+      // and route-labeled `sse_active_connections` gauges (visible on /api/metrics).
       incMetric("sse_open_connections");
+      incSseActiveConnection("/api/events");
 
       // Heartbeat every 15s to keep the connection alive through proxies.
       heartbeat = setInterval(() => {

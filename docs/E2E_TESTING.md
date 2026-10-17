@@ -93,9 +93,18 @@ navigation. The shared helpers currently cover these boundaries:
 | Helper | Mocked boundary |
 |---|---|
 | `installMultisigMocks` in `e2e/helpers/stellar-mock.ts` | Wallet-session endpoints, `GET /api/multisig` and `/api/multisig/requests`, Soroban RPC, and Horizon transaction confirmation |
+| `installOfflineSorobanMocks` in `e2e/helpers/stellar-mock.ts` | Pre-built deterministic Soroban RPC (`simulateTransaction`, `sendTransaction`, `getTransaction`, `getLedgerEntries`), Horizon confirmation, and Freighter wallet fixtures for `singlePayment`, `batchPayment`, `escrowCreation`, and `streamCreation` |
 | `installAdminMocks` in `e2e/helpers/admin-mocks.ts` | The multisig mocks plus CSRF, pause state, timelock, hooks, fee config, RBAC, and API-key routes |
 | `installRefundsMocks` in `e2e/helpers/refunds-mock.ts` | Wallet-session and CSRF endpoints, a stateful in-memory `/api/refunds` ledger, Soroban RPC, and Horizon transaction confirmation |
 | `installSseMock` in `e2e/helpers/sse-mock.ts` | `GET /api/events`, proxied to a local streaming HTTP server so the test can emit and reconnect to SSE events |
+
+### Running E2E in Offline Mode (`MOCK_TX_FIXTURES`)
+
+`e2e/helpers/stellar-mock.ts` exports `MOCK_TX_FIXTURES` (`singlePayment`, `batchPayment`, `escrowCreation`, `streamCreation`), `buildSorobanRpcResponse`, `signMockTransactionEnvelope`, and `installOfflineSorobanMocks(page, kind)`. All XDR payloads are synthesized with `@stellar/stellar-sdk` in Node so browser tests execute deterministically with zero external Stellar Testnet RPC or Horizon calls:
+
+```bash
+E2E_OFFLINE_MOCKS=1 npm run test:e2e -- --project=chromium
+```
 
 The UI tests that use these helpers exercise the browser UI and client
 integration against controlled responses; they do not verify a live database
@@ -115,3 +124,4 @@ Pull-request CI does not run Playwright. The separate
 and on manual dispatch; it builds and starts a local app against its
 PostgreSQL service before invoking Playwright. Local contributors must start
 their own server because the config deliberately does not do so.
+

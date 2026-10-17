@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { test, expect } from "@playwright/test";
+import { installOfflineSorobanMocks } from "./helpers/stellar-mock";
 
 const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 
@@ -14,6 +15,12 @@ const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 // ── Payment Flow (Critical Path) ───────────────────────────────
 
 test.describe("Payment Flow", () => {
+  test.beforeEach(async ({ page }) => {
+    if (process.env.E2E_OFFLINE_MOCKS !== "0") {
+      await installOfflineSorobanMocks(page, "singlePayment");
+    }
+  });
+
   test("send page loads with all required form elements", async ({ page }) => {
     await page.goto("/send");
     await expect(page.locator("main")).toBeVisible();

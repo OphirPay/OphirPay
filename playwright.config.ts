@@ -9,6 +9,8 @@ export default defineConfig({
   reporter: process.env.CI ? "blob" : [["html", { open: "never" }], ["list"]],
   use: {
     baseURL: process.env.E2E_BASE_URL || "http://localhost:3000",
+    actionTimeout: 10_000,
+    navigationTimeout: 15_000,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

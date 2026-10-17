@@ -327,6 +327,202 @@ export function randomAddress(): string {
   return Keypair.random().publicKey();
 }
 
+export type MockTransactionKind =
+  | "singlePayment"
+  | "batchPayment"
+  | "escrowCreation"
+  | "streamCreation";
+
+export interface MockTransactionFixture {
+  kind: MockTransactionKind;
+  hash: string;
+  ledger: number;
+  returnValueI128: string;
+  returnValueXdr: string;
+  transactionDataXdr: string;
+  resultMetaXdr: string;
+  cost: {
+    cpuInsns: string;
+    memBytes: string;
+  };
+}
+
+/**
+ * Deterministically derive a 64-character hex transaction hash from an input
+ * label or XDR envelope so offline E2E assertions are 100% repeatable.
+ */
+export function deterministicTxHash(seed: string): string {
+  let acc = "";
+  for (let i = 0; acc.length < 64; i++) {
+    let h = 2166136261 ^ i;
+    const input = `${seed}:${i}`;
+    for (let j = 0; j < input.length; j++) {
+      h ^= input.charCodeAt(j);
+      h = Math.imul(h, 16777619);
+    }
+    acc += (h >>> 0).toString(16).padStart(8, "0");
+  }
+  return acc.slice(0, 64);
+}
+
+/**
+ * Deterministic mock wallet signing helper: returns a signed envelope XDR and
+ * deterministic transaction hash without network or browser extension access.
+ */
+export function signMockTransactionEnvelope(
+  txXdr: string,
+  signerAddress: string = SIGNER_A,
+): { signedTxXdr: string; signerAddress: string; txHash: string } {
+  return {
+    signedTxXdr: txXdr,
+    signerAddress,
+    txHash: deterministicTxHash(`${signerAddress}:${txXdr}`),
+  };
+}
+
+function scValU64Base64(val: number): string {
+  return xdr.ScVal.scvU64(new xdr.Uint64(String(val))).toXDR("base64");
+}
+
+function buildMockFixture(
+  kind: MockTransactionKind,
+  idNum: number,
+  ledger: number,
+  cpuInsns: string,
+  memBytes: string,
+): MockTransactionFixture {
+  return {
+    kind,
+    hash: deterministicTxHash(`ophirpay:${kind}:${idNum}`),
+    ledger,
+    returnValueI128: String(idNum),
+    returnValueXdr: scValU64Base64(idNum),
+    transactionDataXdr: emptySorobanTransactionData(),
+    resultMetaXdr: badUnionSwitchTransactionMeta(),
+    cost: { cpuInsns, memBytes },
+  };
+}
+
+/**
+ * Pre-built deterministic Soroban transaction fixtures for common E2E flows:
+ * single payment, batch payment, escrow creation, and stream creation.
+ */
+export const MOCK_TX_FIXTURES: Record<MockTransactionKind, MockTransactionFixture> = {
+  singlePayment: buildMockFixture("singlePayment", 101, 42_101, "125000", "4096"),
+  batchPayment: buildMockFixture("batchPayment", 202, 42_202, "480000", "16384"),
+  escrowCreation: buildMockFixture("escrowCreation", 303, 42_303, "210000", "8192"),
+  streamCreation: buildMockFixture("streamCreation", 404, 42_404, "230000", "8192"),
+};
+
+/**
+ * Pure JSON-RPC response builder for `simulateTransaction`, `sendTransaction`,
+ * `getTransaction`, `getLedgerEntries`, and `getHealth` using a deterministic
+ * `MockTransactionFixture`.
+ */
+export function buildSorobanRpcResponse(
+  method: string,
+  options: {
+    fixture?: MockTransactionFixture;
+    signer?: string;
+    failSimulate?: boolean;
+    errorMessage?: string;
+  } = {},
+): Record<string, unknown> {
+  const fixture = options.fixture ?? MOCK_TX_FIXTURES.singlePayment;
+  const signer = options.signer ?? SIGNER_A;
+
+  switch (method) {
+    case "getLedgerEntries":
+      return {
+        latestLedger: fixture.ledger,
+        entries: [
+          {
+            key: accountLedgerKey(signer),
+            xdr: accountLedgerEntryData(signer),
+            lastModifiedLedgerSeq: fixture.ledger,
+          },
+        ],
+      };
+    case "simulateTransaction":
+      if (options.failSimulate) {
+        return {
+          latestLedger: fixture.ledger,
+          events: [],
+          error: options.errorMessage ?? "Simulation reverted",
+        };
+      }
+      return {
+        latestLedger: fixture.ledger,
+        transactionData: fixture.transactionDataXdr,
+        minResourceFee: "100",
+        events: [],
+        results: [{ auth: [], xdr: fixture.returnValueXdr }],
+        cost: fixture.cost,
+      };
+    case "sendTransaction":
+      return {
+        status: "PENDING",
+        hash: fixture.hash,
+        latestLedger: fixture.ledger,
+        latestLedgerCloseTime: 1,
+      };
+    case "getTransaction":
+      return {
+        status: "SUCCESS",
+        hash: fixture.hash,
+        latestLedger: fixture.ledger,
+        latestLedgerCloseTime: 1,
+        oldestLedger: fixture.ledger - 1_000,
+        oldestLedgerCloseTime: 1,
+        returnValue: fixture.returnValueXdr,
+        resultMetaXdr: fixture.resultMetaXdr,
+      };
+    case "getHealth":
+      return { status: "healthy", latestLedger: fixture.ledger };
+    default:
+      return {};
+  }
+}
+
+/**
+ * Install offline Soroban RPC + Horizon + Freighter wallet mocks for any
+ * transaction lifecycle (`singlePayment`, `batchPayment`, `escrowCreation`,
+ * or `streamCreation`).
+ */
+export async function installOfflineSorobanMocks(
+  page: Page,
+  kind: MockTransactionKind = "singlePayment",
+  signer: string = SIGNER_A,
+): Promise<MockTransactionFixture> {
+  const fixture = MOCK_TX_FIXTURES[kind];
+  await page.addInitScript(fakeFreighterInitScript(signer));
+
+  await page.route(
+    (url) => url.hostname.includes("soroban"),
+    jsonRpc((req) =>
+      buildSorobanRpcResponse(req.method, { fixture, signer }),
+    ),
+  );
+
+  await page.route(
+    (url) =>
+      url.hostname.includes("horizon") &&
+      /\/transactions\/[0-9a-f]+$/.test(url.pathname),
+    async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          successful: true,
+          _links: {},
+          hash: fixture.hash,
+        }),
+      });
+    },
+  );
+
+  return fixture;
+}
+
 /**
  * JavaScript to inject (via addInitScript) a fake `window.freighter` whose
  * address the test can flip with window.__setFreighterAddress(...). The
@@ -360,4 +556,4 @@ export function fakeFreighterInitScript(initialAddress: string): string {
       };
     })();
   `;
-}
+}

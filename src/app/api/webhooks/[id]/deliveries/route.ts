@@ -39,10 +39,13 @@ export async function GET(
       return badRequestError(parsed.error.issues.map((e) => e.message).join("; "));
     }
 
-    const { limit } = parsed.data;
+    const { limit, status } = parsed.data;
 
     const deliveries = await prisma.webhookDelivery.findMany({
-      where: { webhookId: webhook.id },
+      where: {
+        webhookId: webhook.id,
+        ...(status ? { status } : {}),
+      },
       orderBy: { deliveredAt: "desc" },
       take: limit,
       select: {

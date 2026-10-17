@@ -99,3 +99,12 @@ series can be used for latency SLOs and error-rate alerting per route.
   wrapped handler.
 - `src/lib/metrics-counters.ts` holds the storage and serialization helpers
   (`recordEndpointLatency`, `getEndpointMetrics`, `LATENCY_BUCKET_BOUNDS`).
+
+## Prometheus SLI Alert Rules (`monitoring/prometheus-alerts.yml`)
+
+| Alert Name | Condition | Window (`for`) | Severity | Runbook |
+| --- | --- | --- | --- | --- |
+| `OphirPayWebhookHighFailureRate` | Webhook failure ratio `> 10%` over `5m` | `5m` | `critical` | [`docs/TROUBLESHOOTING.md#ophirpaywebhookhighfailurerate`](TROUBLESHOOTING.md#ophirpaywebhookhighfailurerate) |
+| `OphirPayRpcProviderDegraded` | `increase(ophirpay_rpc_failover_total[15m]) > 3` | `2m` | `warning` | [`docs/TROUBLESHOOTING.md#ophirpayrpcproviderdegraded`](TROUBLESHOOTING.md#ophirpayrpcproviderdegraded) |
+| `OphirPayDatabasePoolExhaustion` | DB query p95 latency `> 2.0s` over `5m` | `5m` | `critical` | [`docs/TROUBLESHOOTING.md#ophirpaydatabasepoolexhaustion`](TROUBLESHOOTING.md#ophirpaydatabasepoolexhaustion) |
+

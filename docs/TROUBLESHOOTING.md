@@ -331,6 +331,43 @@ npm ci
 
 ---
 
+## 🚨 Prometheus SLI Alert Runbooks (Issue #1412)
+
+### `OphirPayWebhookHighFailureRate`
+
+**Symptom**: Alertmanager fires `OphirPayWebhookHighFailureRate` (`severity: critical`) when the webhook delivery failure ratio exceeds **10%** over a 5-minute window.
+
+**Cause**: Subscriber webhook endpoints are timing out or returning 5xx responses, outbound network egress is blocked, or webhook retries are exhausting their attempt budget.
+
+**Resolution**:
+1. Check `/api/metrics` for `ophirpay_webhooks_failed_total` and `ophirpay_delivery_final_outcomes_total{delivery_type="webhook",final_outcome="failure"}`.
+2. Inspect failing webhook URLs and recent `WebhookEvent` rows in the database for HTTP status codes and timeout errors.
+3. Pause or disable persistently failing subscriber hooks and replay dead-lettered events once the downstream endpoint recovers.
+
+### `OphirPayRpcProviderDegraded`
+
+**Symptom**: Alertmanager fires `OphirPayRpcProviderDegraded` (`severity: warning`) when `increase(ophirpay_rpc_failover_total[15m]) > 3`.
+
+**Cause**: The primary Soroban RPC endpoint (`NEXT_PUBLIC_STELLAR_RPC_URL`) is experiencing elevated 5xx error rates, rate limiting, or latency spikes, causing repeated failover transitions.
+
+**Resolution**:
+1. Inspect `GET /api/health` (`rpcFailover` block) and `/api/metrics` (`ophirpay_rpc_failover_active`, `ophirpay_rpc_failover_total`).
+2. Test the primary RPC directly using `curl -X POST $NEXT_PUBLIC_STELLAR_RPC_URL -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'`.
+3. Promote a healthy secondary RPC URL in `STELLAR_RPC_FALLBACK_URLS` if the primary provider outage persists.
+
+### `OphirPayDatabasePoolExhaustion`
+
+**Symptom**: Alertmanager fires `OphirPayDatabasePoolExhaustion` (`severity: critical`) when PostgreSQL query latency exceeds **2.0s** over a 5-minute window.
+
+**Cause**: Connection pool exhaustion in Prisma/PgBouncer, lock contention from unindexed queries, or database CPU/IO saturation.
+
+**Resolution**:
+1. Check `ophirpay_db_query_duration_seconds_sum / ophirpay_db_query_duration_seconds_count` on `/api/metrics`.
+2. Query `pg_stat_activity` in PostgreSQL to identify long-running queries or idle-in-transaction connections.
+3. Verify `DATABASE_URL` pool parameters (`connection_limit`, `pool_timeout`) and ensure cron log pruning (`CRON_LOG_RETENTION_DAYS`) is running cleanly.
+
+---
+
 ## Quick checks
 
 - `node -v` matches `.nvmrc` / `package.json` engines.

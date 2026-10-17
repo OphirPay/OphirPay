@@ -393,6 +393,66 @@ publicly when you register it but privately later, that attempt is refused.
 
 ---
 
+## Dead-Letter Queue (DLQ) and selective requeuing (#1362)
+
+When webhook deliveries fail across all retry intervals, they enter the Dead-Letter Queue (`FAILED` or `DEAD_LETTER` status). Once subscriber network or server issues are resolved, administrators and integrators can inspect, filter, and bulk-requeue dead-lettered events.
+
+### Inspecting dead-lettered deliveries
+
+Deliveries can be queried and filtered by status:
+
+```http
+GET /api/webhooks/{id}/deliveries?status=DEAD_LETTER&limit=50
+```
+
+Supported statuses: `SUCCESS`, `FAILED`, `DEAD_LETTER`, `PENDING`.
+
+### Bulk requeuing dead-lettered events
+
+The `/api/webhooks/{id}/deliveries/requeue` endpoint selectively re-enqueues failed events, resetting the attempt count to 0 and updating the status to `PENDING` while strictly preserving the original event timestamp, data, and correlation linkage:
+
+```http
+POST /api/webhooks/{id}/deliveries/requeue
+Content-Type: application/json
+
+{
+  "statusCodes": [500, 502, 504],
+  "onlyTimeouts": true,
+  "limit": 50
+}
+```
+
+#### Request body parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `statusCodes` | `number[]` | Optional. Filter DLQ entries by upstream HTTP response status code (e.g. `[500, 502, 504]`). |
+| `onlyTimeouts` | `boolean` | Optional. Filter entries where the failure was caused by delivery timeouts. |
+| `deliveryIds` | `string[]` | Optional. Array of explicit delivery IDs to requeue. |
+| `limit` | `number` | Optional. Maximum number of events to requeue in this batch (default: 50, max: 100). |
+
+#### Response example
+
+```json
+{
+  "success": true,
+  "data": {
+    "webhookId": "wh_123456789",
+    "requeuedCount": 3,
+    "deliveries": [
+      {
+        "id": "del_001",
+        "eventId": "evt_abc123",
+        "status": "PENDING",
+        "attempts": 0
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## Related docs
 
 - [Integration guide](integration-guide.md) — end-to-end setup

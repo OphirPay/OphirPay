@@ -5,6 +5,7 @@ All notable changes to OphirPay will be documented in this file.
 ## [Unreleased] — 2026-09-25
 
 ### Added
+- **Automated conventional commit changelog generator ([#1414](https://github.com/OphirPay/OphirPay/pull/1414))**: `scripts/generate-changelog.mjs` (`npm run changelog`) parses git commit history between tags/refs, groups commits into `Breaking Changes` (`!` / `BREAKING CHANGE`), `Features` (`feat`), `Bug Fixes` (`fix`), and `Performance` (`perf`), links PR numbers and contributor handles, and prepends formatted Markdown sections to `CHANGELOG.md`.
 - **Scoped pause controls (#826)**: the circuit breaker is no longer all-or-nothing. `PauseScope` exposes eight feature domains (payments, escrows, streams, recurring, refunds, governance, hooks, batches) through `set_scope_paused` / `is_scope_paused` / `get_paused_scopes`; the global `emergency_pause_all` still overrides every scope, unknown scope ids return `InvalidPauseScope` (308), and `/api/pause-state` plus the pause-controls page surface the per-scope state with an explicit confirmation step.
 
 ### Security

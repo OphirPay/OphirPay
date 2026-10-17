@@ -288,3 +288,19 @@ user-facing:
 - [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) — the convention this guide implements
 - [Semantic Versioning](https://semver.org/) — the versioning scheme
 - [Contributing Guide](../CONTRIBUTING.md) — the general contribution workflow
+
+## 9. Automated Conventional Commit Changelog Generator
+
+To streamline release preparation, `scripts/generate-changelog.mjs` (`npm run changelog`) parses git commit history between tags or refs, categorizes Conventional Commits into **Breaking Changes** (`!` / `BREAKING CHANGE`), **Features** (`feat`), **Bug Fixes** (`fix`), and **Performance** (`perf`), links pull request numbers (`#123`) and contributor handles (`@author`), and prepends the formatted release section to `CHANGELOG.md`:
+
+```bash
+# Preview the generated release notes for commits since the last tag
+npm run changelog -- --dry-run
+
+# Generate and prepend a new release section to CHANGELOG.md
+npm run changelog -- --version 0.2.0 --date 2026-10-17 --write
+
+# Specify an explicit commit range
+node scripts/generate-changelog.mjs --from v0.1.0 --to HEAD --dry-run
+```
+

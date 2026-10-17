@@ -13,6 +13,8 @@ import { StrKey } from "@stellar/stellar-sdk";
  * Reference: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0007.md
  */
 
+export type Sep7MemoType = "MEMO_TEXT" | "MEMO_ID" | "MEMO_HASH" | "MEMO_RETURN";
+
 export interface Sep7PayParams {
   /** Required — the destination Stellar account (G...). */
   destination: string;
@@ -21,17 +23,23 @@ export interface Sep7PayParams {
   /** Optional — transaction memo. */
   memo?: string;
   /** Optional — memo type; defaults to MEMO_TEXT when a memo is provided. */
-  memoType?: "MEMO_TEXT" | "MEMO_ID" | "MEMO_HASH" | "MEMO_RETURN";
+  memoType?: Sep7MemoType;
+  /** Optional snake_case alias for memoType. */
+  memo_type?: Sep7MemoType;
   /** Optional — asset code; omitted (native XLM) when "XLM". */
   assetCode?: string;
+  /** Optional snake_case alias for assetCode. */
+  asset_code?: string;
   /** Optional — asset issuer for non-native assets. */
   assetIssuer?: string;
+  /** Optional snake_case alias for assetIssuer. */
+  asset_issuer?: string;
   /** Optional — human-readable message shown to the sender. */
   msg?: string;
 }
 
 const ASSET_CODE_PATTERN = /^[A-Za-z0-9]{1,12}$/;
-const MEMO_TYPES = new Set<Sep7PayParams["memoType"]>([
+const MEMO_TYPES = new Set<Sep7MemoType>([
   "MEMO_TEXT",
   "MEMO_ID",
   "MEMO_HASH",
@@ -52,7 +60,7 @@ function isValidAmount(amount: string): boolean {
   return whole !== "0" || /[1-9]/.test(fractionalPart);
 }
 
-function isValidMemo(memo: string, memoType: Sep7PayParams["memoType"]): boolean {
+function isValidMemo(memo: string, memoType: Sep7MemoType | undefined): boolean {
   if (typeof memo !== "string" || !memoType || !MEMO_TYPES.has(memoType)) {
     return false;
   }
@@ -92,25 +100,29 @@ export function buildSep7PayUri(params: Sep7PayParams): string {
     url.searchParams.set("amount", params.amount);
   }
   if (params.memo) {
-    const memoType = params.memoType ?? "MEMO_TEXT";
+    const memoType = params.memoType ?? params.memo_type ?? "MEMO_TEXT";
     if (isValidMemo(params.memo, memoType)) {
       url.searchParams.set("memo", params.memo);
       url.searchParams.set("memo_type", memoType);
     }
   }
+
+  const resolvedAssetCode = params.assetCode ?? params.asset_code;
+  const resolvedAssetIssuer = params.assetIssuer ?? params.asset_issuer;
+
   if (
-    typeof params.assetCode === "string" &&
-    params.assetCode &&
-    params.assetCode !== "XLM" &&
-    ASSET_CODE_PATTERN.test(params.assetCode)
+    typeof resolvedAssetCode === "string" &&
+    resolvedAssetCode &&
+    resolvedAssetCode !== "XLM" &&
+    ASSET_CODE_PATTERN.test(resolvedAssetCode)
   ) {
-    url.searchParams.set("asset_code", params.assetCode);
+    url.searchParams.set("asset_code", resolvedAssetCode);
     if (
-      typeof params.assetIssuer === "string" &&
-      params.assetIssuer &&
-      isValidSep7Address(params.assetIssuer)
+      typeof resolvedAssetIssuer === "string" &&
+      resolvedAssetIssuer &&
+      isValidSep7Address(resolvedAssetIssuer)
     ) {
-      url.searchParams.set("asset_issuer", params.assetIssuer);
+      url.searchParams.set("asset_issuer", resolvedAssetIssuer);
     }
   }
   if (
@@ -122,6 +134,37 @@ export function buildSep7PayUri(params: Sep7PayParams): string {
   }
 
   return url.toString();
+}
+
+/**
+ * Parse a SEP-7 `web+stellar:pay` URI back into structured parameters.
+ */
+export function parseSep7PayUri(uri: string): Sep7PayParams {
+  const parsed = new URL(uri);
+  if (parsed.protocol !== "web+stellar:" || parsed.pathname !== "pay") {
+    throw new Error("Invalid SEP-0007 pay URI scheme");
+  }
+  const destination = parsed.searchParams.get("destination") || "";
+  if (!isValidSep7Address(destination)) {
+    throw new Error("Invalid Stellar destination address");
+  }
+
+  const amount = parsed.searchParams.get("amount") || undefined;
+  const assetCode = parsed.searchParams.get("asset_code") || undefined;
+  const assetIssuer = parsed.searchParams.get("asset_issuer") || undefined;
+  const memo = parsed.searchParams.get("memo") || undefined;
+  const memoType = (parsed.searchParams.get("memo_type") as Sep7MemoType | null) || undefined;
+  const msg = parsed.searchParams.get("msg") || undefined;
+
+  return {
+    destination,
+    amount,
+    assetCode,
+    assetIssuer,
+    memo,
+    memoType,
+    msg,
+  };
 }
 
 /**

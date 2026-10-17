@@ -1,18 +1,19 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
 
-interface QrCodeProps {
+export interface QrCodeProps {
   /** The payload to encode. The QR regenerates whenever this changes. */
   value: string;
   size?: number;
   className?: string;
   /** Accessible label; also used as the image alt text. */
   title?: string;
+  /** Optional callback fired whenever a fresh QR data URL is ready. */
+  onDataUrlReady?: (dataUrl: string) => void;
 }
 
 /**
@@ -23,9 +24,17 @@ interface QrCodeProps {
  * changes. Shows a small loading placeholder and a graceful error state
  * instead of breaking the layout.
  */
-export function QrCode({ value, size = 220, className, title = "QR code" }: QrCodeProps) {
+export function QrCode({
+  value,
+  size = 220,
+  className,
+  title = "QR code",
+  onDataUrlReady,
+}: QrCodeProps) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const onReadyRef = useRef(onDataUrlReady);
+  onReadyRef.current = onDataUrlReady;
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +47,10 @@ export function QrCode({ value, size = 220, className, title = "QR code" }: QrCo
       errorCorrectionLevel: "M",
     })
       .then((url) => {
-        if (!cancelled) setDataUrl(url);
+        if (!cancelled) {
+          setDataUrl(url);
+          onReadyRef.current?.(url);
+        }
       })
       .catch(() => {
         if (!cancelled) setFailed(true);

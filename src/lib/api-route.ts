@@ -7,6 +7,11 @@ import { unauthorizedError, validationError, handleApiError } from "@/lib/api-re
 import { verifyCsrf } from "@/lib/csrf";
 import { withMetrics } from "@/lib/metrics-middleware";
 import { withRequestLogging } from "@/lib/request-logging";
+import {
+  checkIdempotencyKey,
+  storeIdempotencyResponse,
+  validateIdempotencyKeyHeader,
+} from "@/lib/idempotency";
 
 export interface ApiRouteOptions<TBody extends z.ZodTypeAny = any, TQuery extends z.ZodTypeAny = any> {
   /** The name of the route for metrics, e.g. "GET /api/payments" */
@@ -15,6 +20,8 @@ export interface ApiRouteOptions<TBody extends z.ZodTypeAny = any, TQuery extend
   auth?: boolean | "opt-out";
   /** Whether to verify CSRF for mutating methods (POST, PUT, PATCH, DELETE). Default is true. Use "opt-out" for exempt routes. */
   csrf?: boolean | "opt-out";
+  /** Whether to enforce Idempotency-Key validation and caching on POST requests (#1302). */
+  idempotency?: boolean | { scope?: string; ttlMs?: number };
   /** Schema to parse the request body. */
   bodySchema?: TBody;
   /** Schema to parse the search params. */
@@ -26,6 +33,7 @@ export interface ApiRouteContext<TBody = any, TQuery = any, TParams = any> {
   auth: NonNullable<Awaited<ReturnType<typeof getAuthContext>>> | null;
   body: TBody | undefined;
   query: TQuery | undefined;
+  idempotencyKey?: string | null;
 }
 
 export function apiRoute<
@@ -56,6 +64,16 @@ export function apiRoute<
         }
       }
 
+      // 2b. Idempotency-Key Header Validation on POST mutations (#1302)
+      let idempotencyKey: string | null = null;
+      if (request.method === "POST" && (options.idempotency || request.headers.has("idempotency-key"))) {
+        const keyValidation = validateIdempotencyKeyHeader(request.headers.get("idempotency-key"));
+        if (!keyValidation.ok) {
+          return keyValidation.errorResponse;
+        }
+        idempotencyKey = keyValidation.key;
+      }
+
       // 3. Body Parsing
       let parsedBody: any = undefined;
       if (options.bodySchema) {
@@ -70,6 +88,28 @@ export function apiRoute<
         parsedBody = parsed.data;
       }
 
+      const idempotencyScope =
+        typeof options.idempotency === "object" && options.idempotency.scope
+          ? options.idempotency.scope
+          : options.name || `${request.method} ${new URL(request.url).pathname}`;
+      const idempotencyTtlMs =
+        typeof options.idempotency === "object" ? options.idempotency.ttlMs : undefined;
+      const userIdScope = auth?.userId ?? "anonymous";
+
+      let payloadHash: string | null = null;
+      if (idempotencyKey) {
+        const check = checkIdempotencyKey({
+          scope: idempotencyScope,
+          userId: userIdScope,
+          key: idempotencyKey,
+          payload: parsedBody ?? null,
+        });
+        if (check.status === "hit" || check.status === "conflict") {
+          return check.response;
+        }
+        payloadHash = check.payloadHash;
+      }
+
       // 4. Query Parsing
       let parsedQuery: any = undefined;
       if (options.querySchema) {
@@ -82,12 +122,26 @@ export function apiRoute<
 
       const awaitedParams = params ? await params : undefined as any;
 
-      return await handler(request, {
+      const response = await handler(request, {
         params: awaitedParams,
         auth,
         body: parsedBody as z.infer<TBody>,
         query: parsedQuery as z.infer<TQuery>,
+        idempotencyKey,
       });
+
+      if (idempotencyKey && payloadHash) {
+        return await storeIdempotencyResponse({
+          scope: idempotencyScope,
+          userId: userIdScope,
+          key: idempotencyKey,
+          payloadHash,
+          response,
+          ttlMs: idempotencyTtlMs,
+        });
+      }
+
+      return response;
     } catch (err) {
       return handleApiError(err, options.name || `${request.method} ${request.url}`);
     }

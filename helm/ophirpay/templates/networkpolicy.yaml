@@ -43,4 +43,32 @@ spec:
     - ports:
         - protocol: TCP
           port: 5432
+    {{- if and .Values.networkPolicy.redis .Values.networkPolicy.redis.enabled }}
+    # Redis over TCP for shared multi-replica rate limiting and caching (#1345).
+    - to:
+        - {{- if .Values.networkPolicy.redis.namespaceSelector }}
+          namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.redis.namespaceSelector | nindent 14 }}
+          {{- end }}
+          {{- if .Values.networkPolicy.redis.podSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.redis.podSelector | nindent 14 }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.redis.port | default 6379 }}
+    {{- end }}
+    {{- if and .Values.networkPolicy.egress .Values.networkPolicy.egress.extraPorts }}
+    {{- range .Values.networkPolicy.egress.extraPorts }}
+    - {{- if .to }}
+      to:
+        {{- toYaml .to | nindent 8 }}
+      {{- end }}
+      ports:
+        - protocol: {{ .protocol | default "TCP" }}
+          port: {{ .port }}
+    {{- end }}
+    {{- end }}
 {{- end }}

@@ -11,6 +11,7 @@ import {
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyApiKeyScope } from "@/lib/api-auth";
 import { isSafeWebhookUrl } from "@/lib/webhook-url-guard";
 import { verifyCsrf } from "@/lib/csrf";
 import crypto from "crypto";
@@ -43,6 +44,8 @@ export const POST = withMetrics("POST /api/webhooks", withRequestLogging(async f
 
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+    const scopeError = verifyApiKeyScope(auth, "webhooks:write");
+    if (scopeError) return scopeError;
 
     const body = await request.json();
     const parsed = createWebhookSchema.safeParse(body);
@@ -84,6 +87,8 @@ export async function PATCH(request: Request) {
 
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+    const scopeError = verifyApiKeyScope(auth, "webhooks:write");
+    if (scopeError) return scopeError;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -117,6 +122,8 @@ export const DELETE = withMetrics("DELETE /api/webhooks", withRequestLogging(asy
 
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+    const scopeError = verifyApiKeyScope(auth, "webhooks:write");
+    if (scopeError) return scopeError;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");

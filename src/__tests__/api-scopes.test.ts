@@ -21,10 +21,13 @@ vi.mock("@/lib/prisma", () => ({
 
 import {
   hasScope,
+  requireScope,
   requireScopes,
+  verifyApiKeyScope,
   withApiAuth,
   type ApiScope,
 } from "@/lib/api-auth";
+import { POST as postEscrows } from "@/app/api/escrows/route";
 
 function makeKey(scopes: string[]) {
   return {
@@ -60,6 +63,10 @@ describe("hasScope", () => {
       "read:payments",
       "write:payments",
       "read:analytics",
+      "batches:create",
+      "escrow:write",
+      "escrow:release",
+      "webhooks:write",
       "admin",
     ];
     for (const scope of all) {
@@ -91,7 +98,7 @@ describe("hasScope", () => {
   });
 });
 
-describe("requireScopes", () => {
+describe("requireScopes / requireScope", () => {
   beforeEach(() => {
     mocks.findFirst.mockReset();
     mocks.update.mockReset();
@@ -102,13 +109,17 @@ describe("requireScopes", () => {
     "read:payments",
     "write:payments",
     "read:analytics",
+    "batches:create",
+    "escrow:write",
+    "escrow:release",
+    "webhooks:write",
     "admin",
   ] as const;
 
   for (const scope of scopes) {
     it(`grants a request whose key has the "${scope}" scope`, async () => {
       mocks.findFirst.mockResolvedValue(makeKey([scope]));
-      const result = await requireScopes(makeRequest(), scope);
+      const result = await requireScope(makeRequest(), scope);
       expect("userId" in result).toBe(true);
       if ("userId" in result) {
         expect(result.scopes).toContain(scope);
@@ -125,6 +136,7 @@ describe("requireScopes", () => {
         expect(result.status).toBe(403);
         const body = await result.json();
         expect(body.error.code).toBe("INSUFFICIENT_SCOPE");
+        expect(body.error.details.required).toEqual([scope]);
       }
     });
   }
@@ -143,6 +155,65 @@ describe("requireScopes", () => {
     if (!("userId" in result)) {
       expect(result.status).toBe(401);
     }
+  });
+});
+
+describe("verifyApiKeyScope & mutation route enforcement (#1312)", () => {
+  beforeEach(() => {
+    mocks.findFirst.mockReset();
+    mocks.update.mockReset();
+    mocks.update.mockResolvedValue(undefined);
+  });
+
+  it("allows wallet-session contexts without keyId/scopes", () => {
+    expect(verifyApiKeyScope({ userId: "user_1", publicKey: "GABC" } as never, "batches:create")).toBeNull();
+  });
+
+  it("returns 403 INSUFFICIENT_SCOPE with missing scope details when API key lacks scope", async () => {
+    const err = verifyApiKeyScope(
+      { keyId: "key_1", scopes: ["read:payments"] },
+      "batches:create"
+    );
+    expect(err).not.toBeNull();
+    expect(err?.status).toBe(403);
+    const body = await err!.json();
+    expect(body.error.code).toBe("INSUFFICIENT_SCOPE");
+    expect(body.error.message).toContain("batches:create");
+    expect(body.error.details).toEqual({
+      required: ["batches:create"],
+      has: ["read:payments"],
+    });
+  });
+
+  it("POST /api/escrows rejects an API key lacking escrow:write with 403 INSUFFICIENT_SCOPE", async () => {
+    mocks.findFirst.mockResolvedValue(makeKey(["read:payments"]));
+    const req = new Request("http://localhost/api/escrows", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": VALID_LOOKUP_KEY,
+      },
+      body: JSON.stringify({ depositor: "G1", beneficiary: "G2", amount: "100" }),
+    });
+    const res = await postEscrows(req);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error.code).toBe("INSUFFICIENT_SCOPE");
+    expect(body.error.details.required).toEqual(["escrow:write"]);
+  });
+
+  it("POST /api/escrows succeeds when API key carries escrow:write", async () => {
+    mocks.findFirst.mockResolvedValue(makeKey(["escrow:write"]));
+    const req = new Request("http://localhost/api/escrows", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": VALID_LOOKUP_KEY,
+      },
+      body: JSON.stringify({ depositor: "G1", beneficiary: "G2", amount: "100" }),
+    });
+    const res = await postEscrows(req);
+    expect(res.status).toBe(202);
   });
 });
 

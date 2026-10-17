@@ -240,6 +240,36 @@ export async function requireScopes(
   return auth;
 }
 
+/** Alias for `requireScopes` for single-scope route guards (issue #1312). */
+export const requireScope = requireScopes;
+
+/**
+ * Enforce that an API-key-authenticated `AuthContext` carries the required
+ * scope(s). Wallet-session contexts (`!auth.keyId && !Array.isArray(auth.scopes)`)
+ * represent the interactive account owner and pass through unchanged.
+ *
+ * Returns a 403 `INSUFFICIENT_SCOPE` `NextResponse` when the API key lacks the
+ * required permission, or `null` when authorized.
+ */
+export function verifyApiKeyScope(
+  auth: { keyId?: string; scopes?: string[] | null },
+  required: ApiScope | ApiScope[]
+): NextResponse | null {
+  if (!auth.keyId && !Array.isArray(auth.scopes)) {
+    return null;
+  }
+  const requiredList = Array.isArray(required) ? required : [required];
+  const effectiveScopes = auth.scopes ?? [];
+  if (!hasScope(effectiveScopes, requiredList)) {
+    return forbiddenError(
+      `This API key lacks the required scope(s): ${requiredList.join(", ")}. ` +
+        `Its effective scopes are: ${effectiveScopes.length ? effectiveScopes.join(", ") : "(none)"}`,
+      { required: requiredList, has: effectiveScopes }
+    );
+  }
+  return null;
+}
+
 /**
  * Require authentication and return user context to the caller.
  * Use inside a route handler when you need the authenticated user's identity.

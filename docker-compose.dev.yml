@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Hot-reload development override (issue #1340).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Keeps `docker-compose.yml` clean for the standalone production image
+# (`/app/server.js`), while providing bind mounts and `next dev` when local
+# container-based hot reload is desired.
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
+    command: ["npm", "run", "dev"]
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next

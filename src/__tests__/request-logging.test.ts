@@ -224,4 +224,54 @@ describe("request id in error logs", () => {
     const context = spy.mock.calls[0][1] as Record<string, unknown>;
     expect(context.requestId).toBeUndefined();
   });
+
+  it("automatically attaches correlation requestId to all logger entries within a request lifecycle", async () => {
+    const infoSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const handler = withRequestLogging(async () => {
+      logger.info("Fetching payment record", { paymentId: "pay_1" });
+      logger.warn("Slow RPC fallback");
+      return new Response("ok", { status: 200 });
+    });
+
+    const response = await handler(
+      new Request("https://example.com/api/payments", {
+        headers: { "X-Request-Id": "corr_uuid_999" },
+      })
+    );
+
+    expect(response.headers.get(REQUEST_ID_HEADER)).toBe("corr_uuid_999");
+    const infoLines = infoSpy.mock.calls.map((c) => JSON.parse(String(c[0])));
+    const warnLines = warnSpy.mock.calls.map((c) => JSON.parse(String(c[0])));
+
+    for (const entry of [...infoLines, ...warnLines]) {
+      expect(entry.requestId).toBe("corr_uuid_999");
+      expect(entry.context?.requestId).toBe("corr_uuid_999");
+    }
+  });
+
+  it("propagates correlation requestId to webhook delivery payloads and headers", async () => {
+    const { buildWebhookRequestPreview } = await import("@/lib/webhook-deliver");
+    let capturedPayloadRequestId: string | undefined;
+    let capturedHeaderRequestId: string | undefined;
+
+    await requestIdContext.run("req_webhook_trace_42", async () => {
+      const requestId = getCurrentRequestId();
+      const preview = buildWebhookRequestPreview(
+        {
+          event: "payment.created",
+          timestamp: "2026-08-14T00:00:00Z",
+          data: { id: "p_1" },
+          requestId,
+        },
+        "secret-123"
+      );
+      capturedPayloadRequestId = JSON.parse(preview.body).requestId;
+      capturedHeaderRequestId = preview.headers["X-Request-Id"];
+    });
+
+    expect(capturedPayloadRequestId).toBe("req_webhook_trace_42");
+    expect(capturedHeaderRequestId).toBe("req_webhook_trace_42");
+  });
 });

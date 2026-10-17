@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { logger } from "@/lib/logger";
-import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
+import { logger, setRequestIdProvider } from "@/lib/logger";
+import { extractRequestId, getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
 import { getCurrentSpan, REQUEST_ID_SPAN_ATTRIBUTE } from "@/lib/tracing";
 
 /**
@@ -18,6 +18,8 @@ export const requestIdContext = new AsyncLocalStorage<string>();
 export function getCurrentRequestId(): string | undefined {
   return requestIdContext.getStore();
 }
+
+setRequestIdProvider(getCurrentRequestId);
 
 /**
  * Loose constraint accepted by every App Router handler shape — zero, one, or
@@ -47,7 +49,7 @@ export function withRequestLogging<T extends RouteHandler>(handler: T): T & Hand
   const wrapped = async (request?: Request, context?: unknown): Promise<Response> => {
     const req = request ?? new Request("http://localhost");
     const startedAt = performance.now();
-    const requestId = req.headers?.get(REQUEST_ID_HEADER) ?? (await getRequestId());
+    const requestId = extractRequestId(req) ?? (await getRequestId(req));
 
     try {
       // Stamp the active span (when tracing is enabled) with the request id so

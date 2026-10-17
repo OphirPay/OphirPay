@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 import prisma from "@/lib/prisma";
-import { deliverWebhook } from "@/lib/webhook-deliver";
-import { logger } from "@/lib/logger";
+import { deliverWebhook, type WebhookPayload } from "@/lib/webhook-deliver";
+import { logger, getActiveRequestId } from "@/lib/logger";
 import type { WebhookEventType } from "@/app/api/webhooks/event-types";
 import {
   recordWebhookDelivery,
@@ -38,10 +38,12 @@ export async function dispatchWebhookEvent(
     );
     if (webhooks.length === 0) return;
 
-    const payload = {
+    const requestId = getActiveRequestId();
+    const payload: WebhookPayload = {
       event,
       timestamp: new Date().toISOString(),
       data,
+      ...(requestId ? { requestId } : {}),
     };
 
     logger.info("Dispatching webhooks", { event, count: webhooks.length });

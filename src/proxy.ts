@@ -28,7 +28,8 @@ const rateLimitStore = getRateLimitStore();
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const requestId = generateRequestId();
+  const inboundRequestId = request.headers.get("x-request-id")?.trim();
+  const requestId = inboundRequestId || generateRequestId();
   const startedAt = performance.now();
 
   // ── API routes: rate limiting + API headers ─────────────────

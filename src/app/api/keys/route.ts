@@ -18,6 +18,12 @@ import {
 } from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
 import { verifyCsrf } from "@/lib/csrf";
+import {
+  MAX_ACTIVE_API_KEYS_PER_ACCOUNT,
+  applyKeyRateLimitHeaders,
+  buildKeyRateLimitResponse,
+  checkApiKeyRateLimit,
+} from "@/lib/rate-limit";
 
 /** Validate an array of scopes against the known set. */
 function parseScopes(input: unknown): {
@@ -77,6 +83,7 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
  * POST /api/keys — generate a new API key for the authenticated user.
  * The raw key is returned only once; only the hash is stored.
  * Accepts an optional `scopes` array to restrict what the key can do.
+ * Rate-limited to 10 key operations/hour per account and capped at 5 active keys.
  */
 export const POST = withMetrics("POST /api/keys", withRequestLogging(async function POST(request: Request) {
   try {
@@ -85,6 +92,15 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
 
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+
+    const rateLimit = await checkApiKeyRateLimit(auth.userId);
+    if (!rateLimit.allowed) {
+      logger.warn("API key creation rate limit exceeded", {
+        userId: auth.userId,
+        resetAt: new Date(rateLimit.resetAt).toISOString(),
+      });
+      return buildKeyRateLimitResponse(rateLimit);
+    }
 
     const body = (await request.json().catch(() => ({}))) as {
       name?: string;
@@ -98,6 +114,22 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
     const parsed = parseScopes(body.scopes);
     if (!parsed.ok) {
       return badRequestError(parsed.error ?? "Invalid scopes");
+    }
+
+    const activeKeyCount =
+      typeof prisma.apiKey?.count === "function"
+        ? await prisma.apiKey.count({
+            where: {
+              userId: auth.userId,
+              revokedAt: null,
+              rotatedAt: null,
+            },
+          })
+        : 0;
+    if (activeKeyCount >= MAX_ACTIVE_API_KEYS_PER_ACCOUNT) {
+      return badRequestError(
+        `Maximum of ${MAX_ACTIVE_API_KEYS_PER_ACCOUNT} active API keys allowed per account. Revoke an unused key before creating a new one.`
+      );
     }
 
     // `generateApiKey` mints 32 CSPRNG bytes (issue #701) and fails closed if
@@ -116,13 +148,38 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
       },
     });
 
+    if (typeof prisma.auditLog?.create === "function") {
+      await prisma.auditLog.create({
+        data: {
+          action: "api_key:create",
+          actor: auth.userId,
+          target: apiKey.id,
+          ip:
+            request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+            null,
+          details: {
+            name: apiKey.name ?? name,
+            prefix,
+            scopes: parsed.scopes,
+            initiatorId: auth.userId,
+            ...("keyId" in auth && auth.keyId
+              ? { initiatorKeyId: auth.keyId }
+              : {}),
+            ...("publicKey" in auth && auth.publicKey
+              ? { initiatorPublicKey: auth.publicKey }
+              : {}),
+          },
+        },
+      });
+    }
+
     logger.info("API key generated", {
       id: apiKey.id,
       name,
       scopes: parsed.scopes,
     });
 
-    return successResponse(
+    const response = successResponse(
       {
         id: apiKey.id,
         name: apiKey.name,
@@ -133,6 +190,7 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
       undefined,
       201
     );
+    return applyKeyRateLimitHeaders(response, rateLimit);
   } catch (err) {
     return handleApiError(err, "POST /api/keys");
   }

@@ -69,6 +69,7 @@
     "generate-errors": "tsx scripts/regenerate-errors.ts",
     "client:generate": "node scripts/generate-api-client.mjs",
     "client:check": "node scripts/generate-api-client.mjs --check",
+    "generate:sdk": "node scripts/generate-api-client.mjs",
     "cli": "node scripts/ophirpay-cli.mjs"
   },
   "dependencies": {

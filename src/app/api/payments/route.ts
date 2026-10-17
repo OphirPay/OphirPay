@@ -27,6 +27,11 @@ import {
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
+import {
+  checkIdempotencyKey,
+  storeIdempotencyResponse,
+  validateIdempotencyKeyHeader,
+} from "@/lib/idempotency";
 
 export const GET = withMetrics("GET /api/payments", withRequestLogging(async function GET(request: Request) {
   try {
@@ -130,9 +135,31 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
       );
     }
 
+    const keyValidation = validateIdempotencyKeyHeader(
+      request.headers.get("idempotency-key")
+    );
+    if (!keyValidation.ok) {
+      return keyValidation.errorResponse;
+    }
+    const idempotencyKey = keyValidation.key;
+
     const body = await request.json();
     const parsed = createPaymentSchema.safeParse(body);
     if (!parsed.success) return validationError(parsed.error);
+
+    let payloadHash: string | null = null;
+    if (idempotencyKey) {
+      const check = checkIdempotencyKey({
+        scope: "POST /api/payments",
+        userId: auth.userId,
+        key: idempotencyKey,
+        payload: parsed.data,
+      });
+      if (check.status === "hit" || check.status === "conflict") {
+        return check.response;
+      }
+      payloadHash = check.payloadHash;
+    }
 
     const payment = await prisma.payment.create({
       data: {
@@ -141,9 +168,9 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
         assetIssuer: parsed.data.assetIssuer,
         description: parsed.data.description,
         memo: parsed.data.memo,
-        // Server-generated idempotency key — every attempt (original or
-        // retried) carries its own key, so attempts are never confused.
-        idempotencyKey: crypto.randomUUID(),
+        // Use the validated client Idempotency-Key when provided, or generate
+        // a server-side UUID v4 when absent (#1302).
+        idempotencyKey: idempotencyKey ?? crypto.randomUUID(),
         status: "CREATED",
         // The authenticated user owns the record; sourceAccountId is a
         // Stellar account reference, NOT the User FK (previously this
@@ -179,7 +206,17 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
       { scope: "audit-log" },
     ]);
 
-    return successResponse(payment, undefined, 201);
+    const response = successResponse(payment, undefined, 201);
+    if (idempotencyKey && payloadHash) {
+      return await storeIdempotencyResponse({
+        scope: "POST /api/payments",
+        userId: auth.userId,
+        key: idempotencyKey,
+        payloadHash,
+        response,
+      });
+    }
+    return response;
   } catch (err) {
     return handleApiError(err, "POST /api/payments");
   }

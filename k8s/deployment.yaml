@@ -60,7 +60,7 @@ spec:
             limits:
               cpu: 1000m
               memory: 512Mi
-          # ── Probes (issue #738) ──────────────────────────────
+          # ── Probes (issue #738, #1426) ───────────────────────
           # Liveness must NOT depend on a backing service: /api/health/live
           # only proves the process is serving, so a Postgres/Soroban/Redis
           # outage cannot restart-loop a healthy pod.
@@ -69,7 +69,7 @@ spec:
               path: /api/health/live
               port: 3000
             initialDelaySeconds: 30
-            periodSeconds: 15
+            periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           # Readiness is dependency-aware: /api/health returns 503 when the
@@ -79,10 +79,10 @@ spec:
             httpGet:
               path: /api/health
               port: 3000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 2
+            timeoutSeconds: 5
+            failureThreshold: 3
           securityContext:
             allowPrivilegeEscalation: false
             runAsNonRoot: true

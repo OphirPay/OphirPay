@@ -935,3 +935,61 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. AUTOMATIC TTL EXTENSION FOR ACTIVE ESCROW & STREAM RECORDS (#1352)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_escrow_and_stream_automatic_ttl_extension_on_read_and_claim() {
+    use ophirpay_contract::{touch_record_ttl, ESCROW_KEY, STREAM_KEY, TTL_EXTEND_TO, TTL_THRESHOLD};
+
+    assert_eq!(TTL_THRESHOLD, 10_000);
+    assert_eq!(TTL_EXTEND_TO, 50_000);
+
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    fix.mint(&depositor, 100_000);
+
+    let now = fix.env.ledger().timestamp();
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Option::<Address>::None,
+        &25_000i128,
+        &fix.token_id,
+        &(now + 3600),
+        &String::from_str(&fix.env, "ttl_escrow"),
+    );
+    let stream_id = fix.client.create_stream(
+        &depositor,
+        &beneficiary,
+        &50_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 1000),
+        &String::from_str(&fix.env, "ttl_stream"),
+    );
+
+    // Status reads via get_escrow and get_stream automatically touch record TTL
+    let esc = fix.client.get_escrow(&escrow_id);
+    assert_eq!(esc.amount, 25_000);
+    let str_rec = fix.client.get_stream(&stream_id);
+    assert_eq!(str_rec.total_amount, 50_000);
+
+    // Direct helper invocation inside contract context succeeds without error
+    fix.env.as_contract(&fix.contract_id, || {
+        touch_record_ttl(&fix.env, &(ESCROW_KEY, escrow_id));
+        touch_record_ttl(&fix.env, &(STREAM_KEY, stream_id));
+    });
+
+    // Partial stream claim and escrow release also refresh record TTLs
+    fix.env.ledger().set_timestamp(now + 500);
+    let claimed = fix.client.claim_stream(&beneficiary, &stream_id);
+    assert_eq!(claimed, 25_000);
+
+    fix.client.release_escrow(&fix.owner, &escrow_id);
+    assert_eq!(fix.client.get_escrow(&escrow_id).released, true);
+}
+

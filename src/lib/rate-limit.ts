@@ -32,6 +32,8 @@ export interface RateLimitResult {
   remaining: number;
   /** Unix-ms timestamp when the window resets */
   resetAt: number;
+  /** Maximum requests allowed in the window */
+  limit?: number;
 }
 
 export interface RateLimitStore {
@@ -90,7 +92,12 @@ export class InMemoryRateLimitStore implements RateLimitStore {
     }
 
     const remaining = Math.max(0, maxRequests - entry.count);
-    return { allowed: entry.count <= maxRequests, remaining, resetAt: entry.resetAt };
+    return {
+      allowed: entry.count <= maxRequests,
+      remaining,
+      resetAt: entry.resetAt,
+      limit: maxRequests,
+    };
   }
 
   async reset(key: string): Promise<void> {

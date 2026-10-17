@@ -139,3 +139,42 @@ PostgreSQL dump as SQLite SQL.
   supported by SQLite; use PostgreSQL whenever those features matter.
 - Before opening a database-related PR, run the migration validation and
   PostgreSQL tests described in [PRISMA-CI.md](PRISMA-CI.md).
+
+## Connection Pool Health Monitoring & Tuning (#1371)
+
+OphirPay collects database connection pool telemetry in `src/lib/prisma.ts` and
+exposes Prometheus gauges on `GET /api/metrics`:
+
+- `prisma_pool_connections_busy` — Number of database connections currently
+  executing queries or holding transactions.
+- `prisma_pool_connections_idle` — Number of idle connections available in the
+  Prisma pool.
+- `prisma_pool_wait_duration_ms` — Latest observed connection pool acquisition /
+  query wait duration in milliseconds.
+
+### Slow Acquisition Warning (`> 500ms`)
+
+Whenever connection pool acquisition or query wait exceeds `500ms`
+(`DB_POOL_WAIT_WARN_THRESHOLD_MS = 500`), `src/lib/prisma.ts` emits a structured
+warning log (`"Database connection pool acquisition wait exceeded 500ms"`)
+including `waitDurationMs`, `thresholdMs`, `busyConnections`, `idleConnections`,
+and `poolSize`.
+
+### Pool Tuning Recommendations
+
+Configure Prisma's pool parameters via `DATABASE_URL` query parameters:
+
+```text
+postgresql://user:pass@host:5432/ophirpay?connection_limit=20&pool_timeout=10
+```
+
+- **Serverless / Multi-Replica Node Deployments**: Set `connection_limit=5` to
+  `10` per replica when connecting through an external transaction pooler
+  (PgBouncer, Supabase Supavisor, or Neon pooled endpoint) with `pgbouncer=true`.
+- **Dedicated Long-Running Containers**: Set `connection_limit = (vCPUs * 2) + 1`
+  (typically `10`–`25`) and `pool_timeout=10`.
+- **Alerting in Prometheus / Grafana**:
+  - Alert when `prisma_pool_connections_idle == 0` and
+    `prisma_pool_connections_busy >= pool_size` for more than 1 minute.
+  - Alert when `prisma_pool_wait_duration_ms > 500`.
+

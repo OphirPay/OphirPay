@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 import { successResponse } from "@/lib/api-response";
+import { getAppVersion, getCommitSha } from "@/lib/build-info";
 
 /**
- * Liveness probe — `GET /api/health/live` (issue #738).
+ * Liveness probe — `GET /api/health/live` (issue #738, #1339).
  *
  * Answers exactly one question: **is this process alive and serving HTTP?**
  * It performs no I/O — no database ping, no Soroban RPC call, no Horizon or
@@ -28,7 +29,8 @@ export function GET() {
   return successResponse({
     status: "ok",
     probe: "liveness",
-    version: "0.1.0",
+    version: getAppVersion(),
+    commit: getCommitSha(),
     uptime: process.uptime(),
   });
 }

@@ -5,8 +5,12 @@ import { NextResponse } from "next/server";
 import {
   getMetricsSnapshot,
   getEndpointMetrics,
+  getRpcLatencyMetrics,
+  getDbQueryLatencyMetrics,
   recordRpcFailoverState,
   LATENCY_BUCKET_BOUNDS,
+  RPC_LATENCY_BUCKET_BOUNDS,
+  DB_LATENCY_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
 import { getRpcFailoverState } from "@/lib/rpc-failover";
 import { timingSafeEqual } from "@/lib/crypto";
@@ -135,6 +139,34 @@ function buildMetrics(): string {
     "",
   ];
 
+  const dbQueryEntries = getDbQueryLatencyMetrics();
+  if (dbQueryEntries.length > 0) {
+    lines.push(
+      "# HELP ophirpay_db_query_model_duration_seconds Prisma query latency histogram by model and operation",
+      "# TYPE ophirpay_db_query_model_duration_seconds histogram"
+    );
+    for (const entry of dbQueryEntries) {
+      const { model, operation, observation } = entry;
+      const baseLabels = `model="${escapeLabelValue(model)}",operation="${escapeLabelValue(operation)}"`;
+      for (let i = 0; i < DB_LATENCY_BUCKET_BOUNDS.length; i++) {
+        const le = DB_LATENCY_BUCKET_BOUNDS[i];
+        lines.push(
+          `ophirpay_db_query_model_duration_seconds_bucket{${baseLabels},le="${le}"} ${observation.buckets[i]}`
+        );
+      }
+      lines.push(
+        `ophirpay_db_query_model_duration_seconds_bucket{${baseLabels},le="+Inf"} ${observation.buckets[DB_LATENCY_BUCKET_BOUNDS.length]}`
+      );
+      lines.push(
+        `ophirpay_db_query_model_duration_seconds_sum{${baseLabels}} ${observation.sum}`
+      );
+      lines.push(
+        `ophirpay_db_query_model_duration_seconds_count{${baseLabels}} ${observation.count}`
+      );
+    }
+    lines.push("");
+  }
+
   // ── Per-endpoint latency histograms + error counts ──────────
   lines.push(
     "# HELP ophirpay_endpoint_request_duration_seconds Request latency histogram per endpoint and status class",
@@ -184,6 +216,34 @@ function buildMetrics(): string {
     "# TYPE ophirpay_info gauge",
     'ophirpay_info{version="1.0.0"} 1'
   );
+
+  const rpcLatencyEntries = getRpcLatencyMetrics();
+  if (rpcLatencyEntries.length > 0) {
+    lines.push(
+      "",
+      "# HELP ophirpay_rpc_call_duration_seconds Soroban RPC call latency histogram by endpoint and status",
+      "# TYPE ophirpay_rpc_call_duration_seconds histogram"
+    );
+    for (const entry of rpcLatencyEntries) {
+      const { endpoint, status, observation } = entry;
+      const baseLabels = `endpoint="${escapeLabelValue(endpoint)}",status="${status}"`;
+      for (let i = 0; i < RPC_LATENCY_BUCKET_BOUNDS.length; i++) {
+        const le = RPC_LATENCY_BUCKET_BOUNDS[i];
+        lines.push(
+          `ophirpay_rpc_call_duration_seconds_bucket{${baseLabels},le="${le}"} ${observation.buckets[i]}`
+        );
+      }
+      lines.push(
+        `ophirpay_rpc_call_duration_seconds_bucket{${baseLabels},le="+Inf"} ${observation.buckets[RPC_LATENCY_BUCKET_BOUNDS.length]}`
+      );
+      lines.push(
+        `ophirpay_rpc_call_duration_seconds_sum{${baseLabels}} ${observation.sum}`
+      );
+      lines.push(
+        `ophirpay_rpc_call_duration_seconds_count{${baseLabels}} ${observation.count}`
+      );
+    }
+  }
 
   // ── Soroban RPC failover (issue #820) ───────────────────────
   // Which endpoint is serving, whether we are on a fallback, how many

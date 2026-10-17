@@ -2,6 +2,7 @@
 
 import { rpc } from "@stellar/stellar-sdk";
 import { logger } from "@/lib/logger";
+import { recordRpcCallLatency } from "@/lib/metrics-counters";
 import { getFailoverProbeTimeoutMs, getSorobanTimeoutMs } from "@/lib/timeout";
 
 /**
@@ -210,11 +211,32 @@ function createRpcServer(url: string): rpc.Server {
   });
 }
 
+/**
+ * Measure an arbitrary Soroban RPC operation against `endpoint`, recording its
+ * latency and terminal status in the `ophirpay_rpc_call_duration_seconds`
+ * Prometheus histogram (issue #1304).
+ */
+export async function measureRpcCall<T>(
+  endpoint: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  const startedAt = performance.now();
+  try {
+    const result = await operation();
+    recordRpcCallLatency(endpoint, "success", (performance.now() - startedAt) / 1000);
+    return result;
+  } catch (err) {
+    recordRpcCallLatency(endpoint, "failure", (performance.now() - startedAt) / 1000);
+    throw err;
+  }
+}
+
 // ── Probe ──────────────────────────────────────────────────────
 
 async function probeHealth(url: string): Promise<boolean> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), probeTimeoutMs());
+  const startedAt = performance.now();
 
   try {
     const res = await fetch(url, {
@@ -223,14 +245,19 @@ async function probeHealth(url: string): Promise<boolean> {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
       signal: controller.signal,
     });
+    const durationSeconds = (performance.now() - startedAt) / 1000;
     if (!res.ok) {
       recordProbeFailure(url, `HTTP ${res.status}`);
+      recordRpcCallLatency(url, "failure", durationSeconds);
       return false;
     }
     recordProbeSuccess(url);
+    recordRpcCallLatency(url, "success", durationSeconds);
     return true;
   } catch (err) {
+    const durationSeconds = (performance.now() - startedAt) / 1000;
     recordProbeFailure(url, reasonFromError(err));
+    recordRpcCallLatency(url, "failure", durationSeconds);
     return false;
   } finally {
     clearTimeout(timeout);

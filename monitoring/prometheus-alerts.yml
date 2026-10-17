@@ -95,4 +95,32 @@ groups:
             {{ printf "%.0f" $value }} failovers in the last 30 minutes — the
             primary endpoint is unstable. Verify the primary provider and the
             probe results logged by the failover module.
+
+      # ── RPC & Database Latency SLO Alerts (issue #1304) ──────
+
+      - alert: SorobanRpcLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum(rate(ophirpay_rpc_call_duration_seconds_bucket[5m])) by (le)) > 3
+        for: 5m
+        labels:
+          severity: warning
+          component: rpc
+        annotations:
+          summary: "Soroban RPC p95 call latency > 3s"
+          description: |
+            P95 Soroban RPC call duration is {{ $value }}s, exceeding the 3s SLO.
+            Inspect per-endpoint latency breakdown and failover status.
+
+      - alert: DatabaseQueryLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum(rate(ophirpay_db_query_model_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Prisma database p95 query latency > 1s"
+          description: |
+            P95 Prisma query duration is {{ $value }}s, exceeding the 1s SLO.
+            Check slow queries by model and database connection pool saturation.
 

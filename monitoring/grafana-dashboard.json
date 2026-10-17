@@ -80,6 +80,36 @@
       "targets": [
         { "expr": "rate(ophirpay_batches_processed_total[5m])", "legendFormat": "Batches/min" }
       ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 7,
+      "options": {},
+      "title": "Soroban RPC Call Latency (p95)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(ophirpay_rpc_call_duration_seconds_bucket[5m])) by (le, endpoint))",
+          "legendFormat": "{{endpoint}} (p95)"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 8,
+      "options": {},
+      "title": "Database Query Latency by Model (p95)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(ophirpay_db_query_model_duration_seconds_bucket[5m])) by (le, model))",
+          "legendFormat": "{{model}} (p95)"
+        }
+      ]
     }
   ],
   "refresh": "30s",

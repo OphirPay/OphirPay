@@ -32,6 +32,7 @@ export const GET = withMetrics("GET /api/csrf", withRequestLogging(async functio
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
       "Set-Cookie": csrfCookieHeader(token, secure),
+      "X-CSRF-Token": token,
     },
   });
 }));

@@ -162,8 +162,11 @@ OphirPay includes a multi-stage `Dockerfile` and a `docker-compose.yml` with Pos
 # Clone the repo
 git clone https://github.com/OphirPay/OphirPay.git && cd OphirPay
 
-# Start all services (app + PostgreSQL + Redis)
+# Start all services (standalone production app + PostgreSQL + Redis)
 docker compose up -d
+
+# Or start with hot-reload in development mode using docker-compose.dev.yml
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 # Run database migrations
 docker compose exec app npx prisma migrate deploy

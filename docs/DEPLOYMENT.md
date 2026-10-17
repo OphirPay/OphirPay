@@ -286,9 +286,9 @@ livenessProbe:                     # process only — never restarts on a DB bli
   periodSeconds: 15
   timeoutSeconds: 5
   failureThreshold: 3
-readinessProbe:                    # dependency-aware — drains traffic on 503
+readinessProbe:                    # dependency-aware — drains traffic on 503 (#1337)
   httpGet:
-    path: /api/health
+    path: /api/health/ready
     port: 3000
   initialDelaySeconds: 10
   periodSeconds: 10

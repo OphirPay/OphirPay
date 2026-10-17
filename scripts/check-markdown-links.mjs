@@ -145,9 +145,21 @@ function resolveMarkdownTarget(sourceFile, rawDestination) {
   return { path: undefined, fragment };
 }
 
-collectMarkdownFiles(root);
+const explicitFiles = process.argv
+  .slice(2)
+  .filter((arg) => !arg.startsWith("-"))
+  .map((file) => path.resolve(root, file))
+  .filter((file) => fs.existsSync(file) && /\.mdx?$/i.test(file));
+
+if (explicitFiles.length > 0) {
+  markdownFiles.push(...explicitFiles);
+} else {
+  collectMarkdownFiles(root);
+}
 
 const failures = [];
+const isGitHubActions = process.env.GITHUB_ACTIONS === "true";
+
 for (const sourceFile of markdownFiles) {
   const markdown = fs.readFileSync(sourceFile, "utf8");
   const lineOffsets = [0];
@@ -169,7 +181,9 @@ for (const sourceFile of markdownFiles) {
         }
         if (!headingAnchors(markdown).has(fragment)) {
           const line = lineOffsets.filter((offset) => offset <= link.offset).length;
-          failures.push(`${path.relative(root, sourceFile)}:${line}: missing anchor #${fragment}`);
+          const relFile = path.relative(root, sourceFile).replace(/\\/g, "/");
+          const msg = `missing anchor #${fragment}`;
+          failures.push({ file: relFile, line, message: msg });
         }
       }
       continue;
@@ -177,16 +191,19 @@ for (const sourceFile of markdownFiles) {
 
     const { path: target, fragment } = resolveMarkdownTarget(sourceFile, destination);
     const line = lineOffsets.filter((offset) => offset <= link.offset).length;
+    const relFile = path.relative(root, sourceFile).replace(/\\/g, "/");
     if (!target) {
-      failures.push(`${path.relative(root, sourceFile)}:${line}: missing file ${destination}`);
+      failures.push({ file: relFile, line, message: `missing file ${destination}` });
       continue;
     }
     if (fragment && /\.mdx?$/i.test(target)) {
       const anchors = headingAnchors(fs.readFileSync(target, "utf8"));
       if (!anchors.has(fragment)) {
-        failures.push(
-          `${path.relative(root, sourceFile)}:${line}: missing anchor ${destination}`
-        );
+        failures.push({
+          file: relFile,
+          line,
+          message: `missing anchor ${destination}`,
+        });
       }
     }
   }
@@ -194,8 +211,13 @@ for (const sourceFile of markdownFiles) {
 
 if (failures.length > 0) {
   console.error(`Found ${failures.length} broken Markdown link(s):`);
-  for (const failure of failures) console.error(`  ${failure}`);
+  for (const failure of failures) {
+    console.error(`  ${failure.file}:${failure.line}: ${failure.message}`);
+    if (isGitHubActions) {
+      console.error(`::error file=${failure.file},line=${failure.line}::Broken markdown link: ${failure.message}`);
+    }
+  }
   process.exitCode = 1;
 } else {
-  console.log(`Checked Markdown links in ${markdownFiles.length} files; no broken links found.`);
+  console.log(`Checked Markdown links in ${markdownFiles.length} file(s); no broken links found.`);
 }

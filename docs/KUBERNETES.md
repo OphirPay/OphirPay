@@ -85,11 +85,9 @@ Set `ingress.hosts` and `ingress.tls` to your hostname and certificate Secret.
 The default chart expects an nginx ingress class and cert-manager issuer
 `letsencrypt-prod`; change the annotation if your cluster uses another issuer.
 
-Both probes call `/api/health` on port 3000. Liveness restarts a pod that cannot
-serve health requests; readiness removes a pod from Service endpoints while it
-is starting or unavailable. Tune delays and thresholds for cold starts, but do
-not point probes at a database-only endpoint or make liveness depend on a
-transient external provider.
+Liveness and readiness probes answer different operational questions and target dedicated endpoints on port 3000:
+- **Liveness probe** (`/api/health/live`): Process-only check decoupled from external backends (PostgreSQL, Soroban RPC, Redis). Configured with `initialDelaySeconds: 30`, `periodSeconds: 10`, `timeoutSeconds: 5`, and `failureThreshold: 3`. This ensures an unresponsive process is detected and restarted within 45 seconds while shielding healthy pods from restart loops during transient database disruptions.
+- **Readiness probe** (`/api/health`): Dependency-aware check that returns HTTP 503 when backing infrastructure is unavailable, safely draining ingress traffic without killing the container. Configured with `initialDelaySeconds: 15`, `periodSeconds: 10`, `timeoutSeconds: 5`, and `failureThreshold: 3` to accommodate Next.js initial route compilation and Prisma pool acquisition latency during cold starts, preventing premature CrashLoopBackOff.
 
 ## Pre-flight checklist
 

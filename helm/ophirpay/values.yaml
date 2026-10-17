@@ -129,7 +129,7 @@ secrets:
   NEXT_PUBLIC_EMITTER_CONTRACT_ID: ""
   AUTH_SECRET: ""
 
-# ── Probes (issue #738) ────────────────────────────────────────
+# ── Probes (issue #738, #1426) ─────────────────────────────────
 # Liveness and readiness answer different questions, so they hit different
 # endpoints:
 #   • liveness  → /api/health/live  — process-only, no DB/RPC/Redis I/O, so a
@@ -144,7 +144,7 @@ livenessProbe:
     path: /api/health/live
     port: 3000
   initialDelaySeconds: 30
-  periodSeconds: 15
+  periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
 
@@ -152,10 +152,10 @@ readinessProbe:
   httpGet:
     path: /api/health
     port: 3000
-  initialDelaySeconds: 10
+  initialDelaySeconds: 15
   periodSeconds: 10
-  timeoutSeconds: 3
-  failureThreshold: 2
+  timeoutSeconds: 5
+  failureThreshold: 3
 
 nodeSelector: {}
 tolerations: []

@@ -86,6 +86,7 @@ pub enum EmitterError {
     CrossContractCallFailed = 14,
     InvalidPageBounds = 15,
     PageLimitExceeded = 16,
+    OwnershipTransferNotProposed = 17,
     // Future Expansion Reserved (20-99) ─────────────────
 }
 
@@ -368,7 +369,7 @@ impl PaymentEventEmitter {
             .storage()
             .instance()
             .get(&PENDING_OWNER)
-            .ok_or(EmitterError::UpgradeNotProposed)?;
+            .ok_or(EmitterError::OwnershipTransferNotProposed)?;
         if caller != pending {
             return Err(EmitterError::Unauthorized);
         }

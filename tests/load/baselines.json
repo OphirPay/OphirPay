@@ -46,5 +46,16 @@
       "non2xxPct": null,
       "note": "SSE streams never complete a request, so req/s, latency and non-2xx are n/a. Only transport errors (a failed stream open) are gated; connection leaks and heartbeat timing are asserted by scripts/sse-load-test.mjs itself."
     }
+  },
+  "paymentsConcurrencySla": {
+    "connections": 200,
+    "targetRps": 150,
+    "maxP95Ms": 350,
+    "max5xxPct": 0,
+    "workloadMix": {
+      "statusQueries": 0.7,
+      "paymentCreations": 0.2,
+      "webhookPolling": 0.1
+    }
   }
 }

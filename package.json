@@ -72,6 +72,7 @@
     "generate-errors": "npx tsx scripts/regenerate-errors.ts",
     "client:generate": "node scripts/generate-api-client.mjs",
     "client:check": "node scripts/generate-api-client.mjs --check",
+    "test:load:payments": "node tests/load/payments-concurrency.js",
     "cli": "node scripts/ophirpay-cli.mjs"
   },
   "dependencies": {

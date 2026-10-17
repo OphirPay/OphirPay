@@ -257,4 +257,77 @@ pub fn acquire_reentrancy_lock<'a>(env: &'a Env) -> Result<ReentrancyGuard<'a>, 
     env.storage().instance().set(&REENTRANCY_LOCK, &true);
     Ok(ReentrancyGuard { env })
 }
-
+
+
+/// Structured payload emitted whenever the fee configuration or fee collector
+/// address is updated on-chain (#1349).
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeeConfigUpdated {
+    pub old_collector: Option<Address>,
+    pub new_collector: Address,
+    pub fee_bps: u32,
+    pub updated_by: Address,
+    pub timestamp: u64,
+}
+
+/// Publish a `(fee_config, updated)` Soroban event containing the old/new fee
+/// collector address and active fee basis points (#1349).
+pub fn emit_fee_config_updated(
+    env: &Env,
+    old_collector: Option<Address>,
+    new_collector: &Address,
+    fee_bps: u32,
+    updated_by: &Address,
+) -> FeeConfigUpdated {
+    let payload = FeeConfigUpdated {
+        old_collector,
+        new_collector: new_collector.clone(),
+        fee_bps,
+        updated_by: updated_by.clone(),
+        timestamp: env.ledger().timestamp(),
+    };
+    env.events().publish(
+        (Symbol::new(env, "fee_config"), Symbol::new(env, "updated")),
+        payload.clone(),
+    );
+    payload
+}
+
+/// Updates the fee collector address in instance storage and emits the
+/// `(fee_config, updated)` event plus an audit trail record (#1349).
+pub fn update_fee_collector_with_event(
+    env: &Env,
+    caller: &Address,
+    collector: &Address,
+) -> Result<FeeConfigUpdated, PaymentError> {
+    require_owner(env, caller)?;
+    let old_collector: Option<Address> = env.storage().instance().get(&FEE_COLL);
+    let fee_bps: u32 = env
+        .storage()
+        .instance()
+        .get::<_, FeeConfig>(&FEE_KEY)
+        .map(|cfg| cfg.payment_fee_bps)
+        .unwrap_or(0);
+
+    env.storage().instance().set(&FEE_COLL, collector);
+    env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+    let event_payload = emit_fee_config_updated(
+        env,
+        old_collector,
+        collector,
+        fee_bps,
+        caller,
+    );
+
+    record_audit(
+        env,
+        "fee_collector_updated",
+        caller,
+        fee_bps as u64,
+        "Fee collector address updated",
+    );
+
+    Ok(event_payload)
+}

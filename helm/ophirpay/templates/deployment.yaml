@@ -39,6 +39,9 @@ spec:
                 name: {{ include "ophirpay.fullname" . }}-secrets
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          # Probe timings tuned for Next.js cold start and Prisma pool initialization (#1426):
+          # readiness initialDelaySeconds=15s, liveness initialDelaySeconds=30s,
+          # periodSeconds=10s, timeoutSeconds=5s, failureThreshold=3.
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:

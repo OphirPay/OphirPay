@@ -48,6 +48,23 @@ default (see `.env.example`).
 | `WEBHOOK_TIMEOUT_MS` | `5000` | Each webhook delivery attempt |
 | `RPC_PROBE_TIMEOUT_MS` | `3000` | Failover health probes |
 
+## 🛡️ Soroban RPC Circuit Breaker & Health Probe Fallback
+
+To prevent API request thread starvation and serverless function timeouts during upstream node degradation, OphirPay enforces an automated circuit breaker pattern in `src/lib/rpc-circuit-breaker.ts` alongside multi-endpoint failover in `src/lib/rpc-failover.ts` and `src/lib/stellar-rpc.ts`:
+
+### Circuit State Transitions
+
+| State | Behavior | Next Transition Trigger |
+|---|---|---|
+| **CLOSED** | All requests and operations pass through to the primary provider. | **5 consecutive failures** (HTTP 5xx, network drops, or timeouts) trips the circuit to **OPEN**. |
+| **OPEN** | Immediate fast-failure via `RpcCircuitBreakerOpenError`. Incoming API requests fail fast without blocking connection pools or exhausting request budgets. Automatically fails over to configured secondary RPC URLs. | **30-second cooldown** elapses → transitions to **HALF_OPEN**. |
+| **HALF_OPEN** | Allows a controlled trial recovery probe (`getLatestLedger` / `getHealth`). | • **Probe succeeds:** Reset failure counters and recover to **CLOSED**.<br>• **Probe fails:** Immediately re-trip back to **OPEN** with a fresh 30s cooldown. |
+
+### Observability & Metrics
+
+- **Prometheus Counter:** `ophirpay_rpc_circuit_breaker_trips_total` tracks cumulative circuit trips across all RPC nodes.
+- **Health Endpoint:** GET `/api/health` returns `circuitBreakers` with active state (`CLOSED`/`OPEN`/`HALF_OPEN`), consecutive failures, and remaining cooldown seconds.
+
 ## Error surfacing
 
 `classifyContractError` maps a timeout to a `ContractError` of type `NETWORK`

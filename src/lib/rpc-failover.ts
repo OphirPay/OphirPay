@@ -3,6 +3,7 @@
 import { rpc } from "@stellar/stellar-sdk";
 import { logger } from "@/lib/logger";
 import { getFailoverProbeTimeoutMs, getSorobanTimeoutMs } from "@/lib/timeout";
+import { resetAllCircuitBreakers } from "@/lib/rpc-circuit-breaker";
 
 /**
  * Soroban RPC failover with caching and circuit breaking.
@@ -340,6 +341,7 @@ export function isRpcFailoverDegraded(): boolean {
  */
 export function resetRpcState(): void {
   circuitBreakers.clear();
+  resetAllCircuitBreakers();
   cachedUrl = null;
   cachedAt = 0;
   activeEndpoint = null;

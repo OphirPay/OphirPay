@@ -232,7 +232,11 @@ function buildMetrics(): string {
     "",
     "# HELP ophirpay_rpc_failover_longest_fallback_duration_seconds Longest fallback episode observed since process start",
     "# TYPE ophirpay_rpc_failover_longest_fallback_duration_seconds gauge",
-    `ophirpay_rpc_failover_longest_fallback_duration_seconds ${(failover.longestFallbackDurationMs / 1000).toFixed(3)}`
+    `ophirpay_rpc_failover_longest_fallback_duration_seconds ${(failover.longestFallbackDurationMs / 1000).toFixed(3)}`,
+    "",
+    "# HELP ophirpay_rpc_circuit_breaker_trips_total Cumulative Soroban RPC circuit breaker trip events",
+    "# TYPE ophirpay_rpc_circuit_breaker_trips_total counter",
+    `ophirpay_rpc_circuit_breaker_trips_total ${c.rpc_circuit_breaker_trips_total}`
   );
 
   // ── Live gauges: process memory + open SSE connections ──────

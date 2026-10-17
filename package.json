@@ -38,6 +38,9 @@
   ],
   "scripts": {
     "preinstall": "node scripts/check-node.mjs",
+    "prepare": "node scripts/install-git-hooks.mjs",
+    "secrets:scan": "gitleaks detect --config .gitleaks.toml --redact",
+    "secrets:precommit": "bash scripts/pre-commit-secrets.sh",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -58,7 +61,7 @@
     "test:watch": "vitest",
     "test:openapi": "vitest run src/__tests__/openapi-conformance.test.ts",
     "check:docs-links": "node scripts/check-markdown-links.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && npx tsx scripts/regenerate-errors.ts --check",
     "ci": "npm run typecheck && npm run lint -- --max-warnings 0 && npm run client:check && npm test && npm run build && bash scripts/validate-deploy-config.sh",
     "audit:deps": "node scripts/audit-dependencies.mjs",
     "test:e2e": "playwright test",
@@ -66,7 +69,7 @@
     "test:visual": "playwright test -c playwright.visual.config.ts",
     "test:visual:update": "playwright test -c playwright.visual.config.ts --update-snapshots",
     "test:a11y": "playwright test e2e/accessibility.spec.ts",
-    "generate-errors": "tsx scripts/regenerate-errors.ts",
+    "generate-errors": "npx tsx scripts/regenerate-errors.ts",
     "client:generate": "node scripts/generate-api-client.mjs",
     "client:check": "node scripts/generate-api-client.mjs --check",
     "cli": "node scripts/ophirpay-cli.mjs"

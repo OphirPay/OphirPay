@@ -8,7 +8,11 @@
 // `/api/rbac` reports the connected wallet's own role.
 
 import { test, expect } from "@playwright/test";
-import { installAdminMocks, VALID_ADDRESS_B } from "./helpers/admin-mocks";
+import {
+  installAdminMocks,
+  VALID_ADDRESS_A,
+  VALID_ADDRESS_B,
+} from "./helpers/admin-mocks";
 
 // The address list renders `GACNKEDGJYLL...NC4YWHU`.
 const SHORT_ADDRESS_B = /GACNKEDGJYLL/;
@@ -110,5 +114,79 @@ test.describe("RBAC admin page", () => {
       timeout: 20000,
     });
     await expect(page.getByText(SHORT_ADDRESS_B)).toHaveCount(0);
+  });
+
+  // Issue #1389 — sudo mode. A role change is a critical admin action, so the
+  // page must first pass a server-side step-up gate. When the server reports
+  // the session's cryptographic verification is stale (SUDO_REQUIRED), the
+  // re-authentication modal appears and the on-chain write only proceeds after
+  // the user re-signs.
+  test("requires wallet re-authentication before a role change (sudo mode)", async ({
+    page,
+  }) => {
+    await installAdminMocks(page, { ownRole: 0 });
+
+    // Replace the default /api/rbac mock with one that enforces step-up: the
+    // first mutation is refused with SUDO_REQUIRED + a challenge, and the retry
+    // carrying the challenge proof is authorized.
+    let reauthenticated = false;
+    await page.unroute("**/api/rbac**");
+    await page.route("**/api/rbac**", (route) => {
+      const request = route.request();
+      if (request.method().toUpperCase() !== "POST") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: { address: VALID_ADDRESS_A, role: 0 } }),
+        });
+      }
+      const body = (request.postDataJSON() ?? {}) as {
+        challenge?: string;
+        signature?: string;
+      };
+      if (!body.challenge || !body.signature) {
+        return route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({
+            success: false,
+            error: {
+              code: "SUDO_REQUIRED",
+              message: "Re-authentication required",
+              details: {
+                challenge: "sudo-challenge-token",
+                message: "ophirpay:login:op-challenge",
+                expiresInSeconds: 900,
+              },
+            },
+          }),
+        });
+      }
+      reauthenticated = true;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: { authorized: true } }),
+      });
+    });
+
+    await page.goto("/rbac");
+    await page.locator("button").filter({ hasText: "Grant Role" }).first().click();
+    const grantDialog = page.getByRole("dialog").filter({ hasText: "Grant Role" });
+    await grantDialog.getByPlaceholder("GABC...").fill(VALID_ADDRESS_B);
+    await grantDialog.getByRole("button", { name: "Grant Role On-Chain" }).click();
+
+    // Step-up prompt appears; the role is NOT granted yet.
+    await expect(
+      page.getByRole("button", { name: "Re-authenticate" })
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Role granted on-chain")).toHaveCount(0);
+
+    // Re-signing authorizes the mutation, and the on-chain write completes.
+    await page.getByRole("button", { name: "Re-authenticate" }).click();
+    await expect(page.getByText("Role granted on-chain")).toBeVisible({
+      timeout: 20000,
+    });
+    expect(reauthenticated).toBe(true);
   });
 });

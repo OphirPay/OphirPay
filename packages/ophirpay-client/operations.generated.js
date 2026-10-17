@@ -2,7 +2,7 @@
 // GENERATED FROM docs/openapi.yaml — DO NOT EDIT BY HAND.
 // Regenerate with: npm run client:generate
 //
-// 95 operations extracted from the committed OpenAPI spec.
+// 97 operations extracted from the committed OpenAPI spec.
 
 /** @typedef {{ name: string, method: string, path: string, summary: string, tags: string[], requestBody: boolean }} ApiOperation */
 
@@ -699,6 +699,16 @@ export const API_OPERATIONS = [
     "requestBody": true
   },
   {
+    "name": "postApiFeeConfig",
+    "method": "POST",
+    "path": "/api/fee-config",
+    "summary": "Authorize a fee-configuration change (sudo step-up)",
+    "tags": [
+      "Fee Config"
+    ],
+    "requestBody": true
+  },
+  {
     "name": "postApiGovernanceExecute",
     "method": "POST",
     "path": "/api/governance/execute",
@@ -835,6 +845,16 @@ export const API_OPERATIONS = [
     "summary": "Retry a failed payment",
     "tags": [
       "Payments"
+    ],
+    "requestBody": true
+  },
+  {
+    "name": "postApiRbac",
+    "method": "POST",
+    "path": "/api/rbac",
+    "summary": "Authorize a role change (sudo step-up)",
+    "tags": [
+      "RBAC"
     ],
     "requestBody": true
   },

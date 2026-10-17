@@ -17,6 +17,12 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@/lib/metrics-counters", () => ({
   incMetric: vi.fn(),
+  incCspReportsDropped: vi.fn(),
+  getCspReportsDroppedSnapshot: vi.fn(() => ({
+    rate_limited: 0,
+    deduplicated: 0,
+    oversized: 0,
+  })),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -192,5 +198,128 @@ describe("POST /api/csp-report — CSP directive in proxy.ts (issue #698)", () =
 
     expect(res?.headers?.get("Report-To")).toBeTruthy();
     expect(res?.headers?.get("Reporting-Endpoints")).toContain("csp-endpoint");
+  });
+});
+
+describe("POST /api/csp-report — Rate limiting, deduplication, and dropped metrics (#1392)", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    const { clearCspDedupeCacheForTests } = await import("@/app/api/csp-report/route");
+    clearCspDedupeCacheForTests();
+    const { setRateLimitStore, InMemoryRateLimitStore } = await import("@/lib/rate-limit");
+    setRateLimitStore(new InMemoryRateLimitStore());
+  });
+
+  it("suppresses identical reports within 5-minute sliding window and increments deduplicated metric", async () => {
+    const { incCspReportsDropped, incMetric } = await import("@/lib/metrics-counters");
+    const { logger } = await import("@/lib/logger");
+
+    const report = legacyReport({
+      "violated-directive": "connect-src",
+      "effective-directive": "connect-src",
+      "blocked-uri": "https://malicious-api.example.com/exfil",
+    });
+
+    // First delivery — unique, logged, counter incremented
+    const res1 = await postReport(report);
+    expect(res1.status).toBe(204);
+    expect(incMetric).toHaveBeenCalledWith("csp_violation_reports_total");
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+
+    // Second delivery with identical (directive, blocked-uri) — duplicate, suppressed
+    const res2 = await postReport(report);
+    expect(res2.status).toBe(204);
+    expect(incCspReportsDropped).toHaveBeenCalledWith("deduplicated");
+    // logger.warn and incMetric should not have been called again
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(incMetric).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs distinct reports with different directives or URIs without deduplication", async () => {
+    const { logger } = await import("@/lib/logger");
+    const { incCspReportsDropped } = await import("@/lib/metrics-counters");
+
+    const report1 = legacyReport({
+      "violated-directive": "script-src",
+      "blocked-uri": "https://evil1.com/a.js",
+    });
+    const report2 = legacyReport({
+      "violated-directive": "script-src",
+      "blocked-uri": "https://evil2.com/b.js",
+    });
+
+    const res1 = await postReport(report1);
+    const res2 = await postReport(report2);
+
+    expect(res1.status).toBe(204);
+    expect(res2.status).toBe(204);
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+    expect(incCspReportsDropped).not.toHaveBeenCalledWith("deduplicated");
+  });
+
+  it("enforces sliding-window rate limit (60 reports/min) and increments rate_limited metric", async () => {
+    const { incCspReportsDropped } = await import("@/lib/metrics-counters");
+    const { POST, clearCspDedupeCacheForTests } = await import("@/app/api/csp-report/route");
+    const { NextRequest: Req } = await import("next/server");
+
+    clearCspDedupeCacheForTests();
+
+    // Send 60 distinct reports from the same IP
+    for (let i = 0; i < 60; i++) {
+      const req = new Req("http://localhost/api/csp-report", {
+        method: "POST",
+        headers: {
+          "content-type": "application/csp-report",
+          "x-forwarded-for": "198.51.100.1",
+        },
+        body: JSON.stringify(
+          legacyReport({
+            "violated-directive": "script-src",
+            "blocked-uri": `https://evil.com/script-${i}.js`,
+          })
+        ),
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(204);
+    }
+
+    // 61st report should be throttled with 429
+    const req61 = new Req("http://localhost/api/csp-report", {
+      method: "POST",
+      headers: {
+        "content-type": "application/csp-report",
+        "x-forwarded-for": "198.51.100.1",
+      },
+      body: JSON.stringify(
+        legacyReport({
+          "violated-directive": "script-src",
+          "blocked-uri": "https://evil.com/script-61.js",
+        })
+      ),
+    });
+    const res61 = await POST(req61);
+    expect(res61.status).toBe(429);
+    expect(res61.headers.get("Retry-After")).toBeTruthy();
+    expect(incCspReportsDropped).toHaveBeenCalledWith("rate_limited");
+  });
+
+  it("increments oversized dropped metric when request body exceeds 16 KiB", async () => {
+    const { incCspReportsDropped } = await import("@/lib/metrics-counters");
+    const { POST } = await import("@/app/api/csp-report/route");
+    const { NextRequest: Req } = await import("next/server");
+
+    const req = new Req("http://localhost/api/csp-report", {
+      method: "POST",
+      headers: {
+        "content-type": "application/csp-report",
+        "content-length": String(16 * 1024 + 50),
+      },
+      body: JSON.stringify({ large: "x".repeat(17000) }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(413);
+    expect(incCspReportsDropped).toHaveBeenCalledWith("oversized");
   });
 });

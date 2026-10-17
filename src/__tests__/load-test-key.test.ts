@@ -18,7 +18,7 @@ import {
   API_KEY_PREFIX,
   API_KEY_PREFIX_LENGTH,
   API_KEY_RANDOM_BYTES,
-  API_KEY_PATTERN,
+  API_KEY_LEGACY_PATTERN,
   deriveKeyPrefix,
   hashApiKey,
   hashApiKeyV1,
@@ -82,7 +82,7 @@ describe("scripts/create-load-test-key.mjs", () => {
     expect(keyScript.API_KEY_RANDOM_BYTES).toBe(API_KEY_RANDOM_BYTES);
 
     const rawKey = keyScript.generateApiKey();
-    expect(rawKey).toMatch(API_KEY_PATTERN);
+    expect(rawKey).toMatch(API_KEY_LEGACY_PATTERN);
     expect(keyScript.hashApiKeyV1(rawKey)).toBe(hashApiKeyV1(rawKey));
     expect(keyScript.hashApiKeyV1(rawKey)).toMatch(/^v1:[a-f0-9]{64}$/);
     // The version-tagged digest must never be the bare legacy digest.
@@ -97,7 +97,7 @@ describe("scripts/create-load-test-key.mjs", () => {
     const deterministic = Buffer.alloc(API_KEY_RANDOM_BYTES, 0xab);
     const rawKey = keyScript.generateApiKey(() => deterministic);
     expect(rawKey).toBe(`${API_KEY_PREFIX}${"ab".repeat(API_KEY_RANDOM_BYTES)}`);
-    expect(rawKey).toMatch(API_KEY_PATTERN);
+    expect(rawKey).toMatch(API_KEY_LEGACY_PATTERN);
   });
 
   it("stores a verifiable digest and read-only scope for the load-test user", async () => {
@@ -108,7 +108,7 @@ describe("scripts/create-load-test-key.mjs", () => {
     });
 
     expect(userId).toBe("user_load_test");
-    expect(rawKey).toMatch(API_KEY_PATTERN);
+    expect(rawKey).toMatch(API_KEY_LEGACY_PATTERN);
 
     const created = prisma.created[0]!;
     expect(created.userId).toBe("user_load_test");

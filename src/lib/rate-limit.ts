@@ -327,3 +327,9 @@ export async function initRateLimitStore(): Promise<void> {
   // 3. In-memory.
   _store = createRateLimitStoreFromEnv();
 }
+
+/** Rate limit window for CSP reports (1 minute in milliseconds, issue #1392). */
+export const CSP_REPORT_RATE_LIMIT_WINDOW_MS = 60_000;
+
+/** Maximum CSP violation reports allowed per client per minute (#1392). */
+export const CSP_REPORT_RATE_LIMIT_MAX = 60;

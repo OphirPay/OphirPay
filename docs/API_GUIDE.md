@@ -229,6 +229,27 @@ const auth = await requireAuth(request);
 if (!("userId" in auth)) return auth; // auth is an error Response
 ```
 
+#### API Key Format & Entropy (#1397)
+
+All generated API keys follow a standardized, cryptographically secure structure:
+```text
+op_{env}_{32_hex_bytes}_{4_byte_crc}
+```
+- **Prefix**: `op_live_` for production or `op_test_` for sandbox/test environments.
+- **Random Payload**: 32 cryptographically secure random bytes rendered as 64 hexadecimal characters, delivering 256 bits of Shannon entropy.
+- **Checksum**: 4-byte CRC32 (IEEE 802.3 standard) rendered as 8 hexadecimal characters, computed over `op_{env}_{payload}`.
+- **Edge Pre-Validation**: The edge middleware (`src/proxy.ts`) validates the key structure and CRC32 checksum before routing to database authentication, dropping malformed probes immediately with `401 Unauthorized` without database overhead.
+
+### Safe Database Queries & SQL Injection Prevention (#1396)
+
+All database operations must use parameterized queries:
+- **Prisma Client methods**: `prisma.<model>.findMany()`, `findUnique()`, `create()`, etc. are strongly preferred and fully parameterized.
+- **Raw SQL queries**: If raw SQL is required, always use tagged template literals (`prisma.$queryRaw`...`` or `Prisma.sql`...``). Variables passed into the template expressions are bound as SQL parameters by Prisma's query engine.
+- **Prohibited Patterns**:
+  - Never use `$queryRawUnsafe` or `$executeRawUnsafe` in application routes.
+  - Never concatenate raw strings inside SQL query builders (e.g. `prisma.$queryRaw("SELECT * WHERE date >= '" + date + "'")`).
+- **CI Gate**: Enforced on every PR via `npm run check:sql` and CI pipeline verification.
+
 ---
 
 ## 6. Response envelope

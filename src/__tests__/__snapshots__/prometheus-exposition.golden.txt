@@ -33,6 +33,16 @@ ophirpay_webhooks_failed_total 0
 ophirpay_db_query_duration_seconds_sum 0
 ophirpay_db_query_duration_seconds_count 0
 
+# HELP ophirpay_csp_violation_reports_total Total accepted CSP violation reports
+# TYPE ophirpay_csp_violation_reports_total counter
+ophirpay_csp_violation_reports_total 0
+
+# HELP ophirpay_csp_reports_dropped_total Total CSP violation reports dropped by reason
+# TYPE ophirpay_csp_reports_dropped_total counter
+ophirpay_csp_reports_dropped_total{reason="rate_limited"} 0
+ophirpay_csp_reports_dropped_total{reason="deduplicated"} 0
+ophirpay_csp_reports_dropped_total{reason="oversized"} 0
+
 # HELP ophirpay_endpoint_request_duration_seconds Request latency histogram per endpoint and status class
 # TYPE ophirpay_endpoint_request_duration_seconds histogram
 ophirpay_endpoint_request_duration_seconds_bucket{method="GET",endpoint="/api/payments",status_class="2xx",le="0.005"} 0

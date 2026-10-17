@@ -133,6 +133,16 @@ function buildMetrics(): string {
     `ophirpay_db_query_duration_seconds_sum ${c.db_query_duration_seconds_sum}`,
     `ophirpay_db_query_duration_seconds_count ${c.db_query_duration_seconds_count}`,
     "",
+    "# HELP ophirpay_csp_violation_reports_total Total accepted CSP violation reports",
+    "# TYPE ophirpay_csp_violation_reports_total counter",
+    `ophirpay_csp_violation_reports_total ${c.csp_violation_reports_total}`,
+    "",
+    "# HELP ophirpay_csp_reports_dropped_total Total CSP violation reports dropped by reason",
+    "# TYPE ophirpay_csp_reports_dropped_total counter",
+    `ophirpay_csp_reports_dropped_total{reason="rate_limited"} ${c.csp_reports_dropped.rate_limited}`,
+    `ophirpay_csp_reports_dropped_total{reason="deduplicated"} ${c.csp_reports_dropped.deduplicated}`,
+    `ophirpay_csp_reports_dropped_total{reason="oversized"} ${c.csp_reports_dropped.oversized}`,
+    "",
   ];
 
   // ── Per-endpoint latency histograms + error counts ──────────

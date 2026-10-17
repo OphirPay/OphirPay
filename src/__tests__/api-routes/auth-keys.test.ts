@@ -24,6 +24,9 @@ vi.mock("@/lib/auth-session", async (importOriginal) => {
   return {
     ...actual,
     getAuthContext: vi.fn(),
+    // Rolling renewal (#1399) is asserted directly; proxy through to the real
+    // implementation by default so unaffected cases keep real behaviour.
+    sessionNeedsRenewal: vi.fn(actual.sessionNeedsRenewal),
   };
 });
 
@@ -143,7 +146,26 @@ describe("API Routes: Auth, CSRF & Keys", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.data.authenticated).toBe(true);
-      expect(res.headers.get("Set-Cookie")).toContain("ophirpay_session");
+      // A session with more than half its TTL left is not reissued — rolling
+      // renewal only kicks in on the threshold (#1399).
+      expect(authSession.sessionNeedsRenewal).toHaveBeenCalled();
+      expect(res.headers.get("Set-Cookie")).toBeNull();
+    });
+
+    it("rolls the cookie forward once less than half the session TTL remains", async () => {
+      vi.mocked(authSession.sessionNeedsRenewal).mockReturnValueOnce(true);
+      const cookieHeader = `ophirpay_session=${authSession.createSessionToken(VALID_STELLAR_PK, "TESTNET")}`;
+      const req = new Request("http://localhost/api/auth/session", {
+        method: "POST",
+        headers: { cookie: cookieHeader },
+        body: JSON.stringify({ publicKey: VALID_STELLAR_PK, network: "TESTNET" }),
+      });
+      const res = await postSession(req);
+      expect(res.status).toBe(200);
+      const setCookie = res.headers.get("Set-Cookie");
+      expect(setCookie).toContain("ophirpay_session");
+      expect(setCookie).toContain("SameSite=Strict");
+      expect(setCookie).toContain("Max-Age=");
     });
 
     it("returns 401 when challenge verification fails", async () => {
@@ -279,8 +301,9 @@ describe("API Routes: Auth, CSRF & Keys", () => {
       expect(res.status).toBe(201);
       const data = await res.json();
       expect(data.data.id).toBe("key_created_1");
-      // Issue #701: 32 CSPRNG bytes (64 hex) behind the oph_ prefix.
-      expect(data.data.key).toMatch(/^oph_[a-f0-9]{64}$/);
+      expect(data.data.key).toMatch(
+        /^(op_(?:live|test)_[0-9a-f]{64}_[0-9a-f]{8}|oph_[a-f0-9]{64})$/
+      );
 
       const createArgs = vi.mocked(prisma.apiKey.create).mock.calls[0]![0] as {
         data: { keyHash: string; prefix: string };

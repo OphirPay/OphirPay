@@ -1,12 +1,50 @@
 # OphirPay Gitleaks Configuration
-# Ignores known false positives in test fixtures, snapshots, and demo seed data.
+#
+# Two things matter here, and both were missing before issue #1398:
+#
+# 1. `[extend] useDefault = true` is REQUIRED. A custom config with neither an
+#    `[extend]` block nor any `[[rules]]` *replaces* the built-in rule set
+#    instead of layering on it, so `gitleaks detect --config .gitleaks.toml`
+#    scanned with zero rules and reported every commit as clean — a silent
+#    no-op that looked green in CI. Extending keeps gitleaks' ~160 default
+#    rules (AWS keys, generic high-entropy API keys, PEM private keys, …).
+#
+# 2. A strict rule for Stellar *secret seeds* (the `S…` StrKey form). The
+#    default ruleset does not know the Stellar format, so without this a leaked
+#    `S…` seed — which lets anyone drain the account it controls — would pass.
+#
+# The allowlist below exempts known non-secret demo/test fixtures. The same
+# config backs the local `scripts/pre-commit-secrets.sh` hook and the CI
+# `secrets-scan` job, so a value blocked locally is blocked at the merge gate
+# too (and vice-versa).
 
 title = "OphirPay Gitleaks Config"
+
+# Inherit the built-in ruleset (issue #1398). Without this the file below is the
+# *entire* rule set.
+[extend]
+  useDefault = true
+
+# ── Stellar secret seeds ───────────────────────────────────────
+#
+# A Stellar secret seed is a 56-character StrKey that begins with `S`
+# (base32: A–Z, 2–7). Its public counterpart begins with `G` and is safe to
+# commit — only the `S` form is a credential. `[A-Z0-9]{55}` follows the issue's
+# specified pattern; real seeds are a subset of it, so recall is not reduced.
+[[rules]]
+  id = "stellar-secret-seed"
+  description = "Stellar secret seed (StrKey, S-prefix, 55 base32 chars)"
+  regex = '''\bS[A-Z0-9]{55}\b'''
+  tags = ["key", "stellar", "secret"]
 
 [allowlist]
   description = "Known non-sensitive values in test files and demos"
 
-  # Paths containing demo/test fixtures and public identifiers — NOT secrets
+  # Paths containing demo/test fixtures and public identifiers — NOT secrets.
+  #
+  # Enabling the default ruleset (above) surfaces the dummy credentials these
+  # files legitimately contain; each group is allowlisted deliberately and
+  # narrowly rather than by disabling a rule, so real keys elsewhere still trip.
   paths = [
     '''src/lib/contracts.ts''',
     '''README.md''',
@@ -15,6 +53,16 @@ title = "OphirPay Gitleaks Config"
     '''prisma/seed.ts''',
     '''scripts/mockups/''',
     '''public/''',
+    # Unit tests, E2E mocks and the Go example use obviously-fake values
+    # (dummy API keys, `test-secret-…`, an `S…` seed shaped string for argument
+    # validation). None is a credential; see the pre-commit test suite.
+    '''src/__tests__/''',
+    '''\.test\.tsx?$''',  # any colocated/historical *test* file — dummies only
+    '''e2e/''',
+    '''examples/''',
+    # Documentation intentionally shows example keys/tokens in request samples
+    # and the RFC 6455 `Sec-WebSocket-Key` illustration.
+    '''docs/''',
     # Scanner self-test fixtures (issue #393): these files contain FAKE,
     # publicly documented example secrets on purpose. They are excluded from
     # the repo-wide scan because the `secrets-scan` CI job scans this dir
@@ -22,6 +70,10 @@ title = "OphirPay Gitleaks Config"
     # flagged — proving the blocklist actually detects secrets. See
     # SECURITY.md → "Secrets Scanning in CI".
     '''tests/fixtures/secrets/''',
+    # Generates documentation payload examples; carries only a placeholder.
+    '''scripts/generate-automation-guide-payloads.mjs''',
+    # Demo mode ships a read-only sandbox wallet (a PUBLIC key, never a seed).
+    '''src/lib/demo-mode.ts''',
   ]
 
   # Demo/test private keys and public identifiers that are NOT real secrets
@@ -32,4 +84,8 @@ title = "OphirPay Gitleaks Config"
     '''GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU''',  # Testnet chain read source (public key)
     '''CAW7OORNGPRBRQJIXRXZOXEPZZO3Z5FKSCLBULGLBTVVPZYYVTK2UKIA''',  # OphirPay Testnet contract ID
     '''CCMXLNRPBTHVTEH7UEBXQVZ4YJZB5NN7LXJBAL465A6YFXJPJGV2CYPX''',  # Emitter Testnet contract ID
+    '''GBH3O5IHGJ6GUKZCINS3UZGHVKDKYDLVIRKZY7GYA27B54WT3Q7H4KXO''',  # demo-mode sandbox public key (NOT a seed)
+    # CI placeholder in .github/workflows/lighthouse.yml — a fixed 64-hex
+    # value with no relation to any environment, not the app's AUTH_SECRET.
+    '''0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef''',
   ]

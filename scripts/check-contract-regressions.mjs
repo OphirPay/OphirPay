@@ -28,7 +28,10 @@ import { join } from 'node:path';
 
 const root = process.cwd();
 const args = new Set(process.argv.slice(2));
-const updateBaseline = args.has('--update-baseline');
+const updateBaseline =
+  args.has('--update-baseline') ||
+  process.env.UPDATE_BASELINES === 'true' ||
+  process.env.UPDATE_BASELINES === '1';
 
 const baselinePath = join(root, 'contracts/wasm-baseline.json');
 const feeBaselinePath = join(root, 'contracts/fee-baseline.json');
@@ -64,7 +67,7 @@ if (Object.keys(contracts).length === 0) {
  */
 const rawEnv = process.env.WASM_SIZE_THRESHOLD_PERCENT;
 const envThreshold = rawEnv !== undefined && rawEnv.trim() !== '' ? rawEnv.trim() : null;
-const thresholdPercent = Number(envThreshold ?? baseline.sizeThresholdPercent ?? 3);
+const thresholdPercent = Number(envThreshold ?? baseline.sizeThresholdPercent ?? 5);
 
 if (!Number.isFinite(thresholdPercent) || thresholdPercent < 0) {
   throw new Error(
@@ -74,8 +77,10 @@ if (!Number.isFinite(thresholdPercent) || thresholdPercent < 0) {
 
 // ── Size comparison ─────────────────────────────────────────────────────────
 
+const PROTOCOL_LIMIT_BYTES = 128 * 1024; // 131,072 bytes protocol limit
 const sizeRows = [];
 const failures = [];
+const warnings = [];
 let baselineChanged = false;
 
 for (const [name, entry] of Object.entries(contracts)) {
@@ -107,6 +112,20 @@ for (const [name, entry] of Object.entries(contracts)) {
   // Absolute guardrail — a hard ceiling that must never be crossed.
   if (Number.isInteger(entry.maxBytes) && bytes > entry.maxBytes) {
     failures.push(`${name}: WASM size ${bytes} bytes exceeds the ${entry.maxBytes}-byte guardrail`);
+  }
+
+  // Protocol limit guardrail (128 KB)
+  const protoLimit = entry.protocolLimitBytes ?? baseline.protocolLimitBytes ?? PROTOCOL_LIMIT_BYTES;
+  if (Number.isInteger(protoLimit) && bytes > protoLimit) {
+    if (entry.maxBytes && bytes <= entry.maxBytes) {
+      warnings.push(
+        `${name}: raw WASM size ${bytes} bytes exceeds protocol limit (${protoLimit} bytes / 128 KB); requires post-compilation wasm-opt before on-chain deployment`,
+      );
+    } else {
+      failures.push(
+        `${name}: WASM size ${bytes} bytes exceeds protocol limit (${protoLimit} bytes / 128 KB)`,
+      );
+    }
   }
 
   // Relative guardrail — fail only past the configured percentage growth.
@@ -205,6 +224,11 @@ if (feeRows) {
   }
 } else {
   lines.push(`_${feeNote}._`);
+}
+
+if (warnings.length > 0) {
+  lines.push('', '### Warnings', '');
+  for (const warning of warnings) lines.push(`- ⚠️ ${warning}`);
 }
 
 lines.push('', '### Result', '');

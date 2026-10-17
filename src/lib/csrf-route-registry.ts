@@ -29,7 +29,7 @@ export interface CsrfRouteEntry {
 }
 
 /**
- * Every browser-reachable mutating route (37 handlers).
+ * Every browser-reachable mutating route.
  *
  * Machine-invoked endpoints live in CSRF_EXEMPT_ROUTES below.
  */
@@ -80,6 +80,11 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "POST", path: "/api/webhooks/[id]/deliveries/[deliveryId]/redeliver", routeFile: "webhooks/[id]/deliveries/[deliveryId]/redeliver/route.ts", description: "Redeliver a webhook payload" },
   { method: "POST", path: "/api/hooks", routeFile: "hooks/route.ts", description: "Register notification hook" },
   { method: "PATCH", path: "/api/hooks/[id]", routeFile: "hooks/[id]/route.ts", description: "Deactivate notification hook" },
+
+  // Admin step-up (issue #1389) — these routes authorize an on-chain admin
+  // mutation after a cryptographic re-verification newer than 15 minutes.
+  { method: "POST", path: "/api/fee-config", routeFile: "fee-config/route.ts", description: "Authorize a protocol fee-config change (sudo step-up)" },
+  { method: "POST", path: "/api/rbac", routeFile: "rbac/route.ts", description: "Authorize a role grant/revoke (sudo step-up)" },
 
   // Governance
   { method: "POST", path: "/api/governance/proposals", routeFile: "governance/proposals/route.ts", description: "Create governance proposal" },

@@ -28,8 +28,13 @@ export function OfflineBanner() {
   if (!offline) return null;
 
   return (
-    <div className="sticky top-0 z-50 w-full bg-amber-500 text-white text-center py-2 text-sm font-medium">
-      You are offline — some features may be unavailable.
+    <div
+      role="status"
+      data-testid="offline-banner"
+      aria-live="polite"
+      className="sticky top-0 z-50 w-full bg-amber-500 text-white text-center py-2 text-sm font-medium"
+    >
+      Offline - displaying cached data
     </div>
   );
 }

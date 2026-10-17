@@ -3,7 +3,6 @@
 
 
 import { useState, useEffect, useCallback } from "react";
-import { TransactionBuilder } from "@stellar/stellar-sdk";
 import { cn } from "@/lib/utils";
 import {
   XLM_ASSET,
@@ -11,15 +10,62 @@ import {
   USDC_MAINNET,
   type AssetInfo,
 } from "@/lib/assets";
-import { fetchAllBalances, getHorizonServer, NETWORK_PASSPHRASE, STELLAR_NETWORK, type AssetBalance } from "@/lib/stellar";
-import { buildTrustlineTransaction, checkTrustline, getTrustlineMessage, type TrustlineState } from "@/lib/trustline";
-import { getActiveWalletConnector } from "@/lib/wallets";
+import { fetchAllBalances, STELLAR_NETWORK, type AssetBalance } from "@/lib/stellar";
+import { checkTrustline, getTrustlineMessage, type TrustlineInfo, type TrustlineState } from "@/lib/trustline";
+import { TrustlineModal } from "@/components/wallet/TrustlineModal";
 import {
   fetchAssetMetadata,
   type ClientAssetMetadata,
 } from "@/lib/asset-metadata-client";
+import { sanitizeImageUrl } from "@/lib/sanitize-url";
 
 // ── Helpers ────────────────────────────────────────────────────
+
+/**
+ * Renders an issuer-supplied asset logo, or the two-letter badge when there is
+ * no logo or the URL failed the sanitizer (issue #1391).
+ *
+ * The URL is passed through `sanitizeImageUrl`, which permits only `https:` and
+ * safe base64 raster `data:` URIs — blocking `javascript:`/`vbscript:` schemes
+ * and script-bearing `image/svg+xml` payloads. It is rendered exclusively via
+ * `<img>` (never raw HTML), with `referrerPolicy="no-referrer"` so the issuer's
+ * host cannot see the referring page.
+ */
+function AssetMark({
+  code,
+  image,
+  className,
+}: {
+  code: string;
+  image?: string | null;
+  className?: string;
+}) {
+  const safe = sanitizeImageUrl(image);
+  if (safe) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- issuer logos are arbitrary remote hosts that cannot be allowlisted for next/image; the URL is sanitized above.
+      <img
+        src={safe}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        className={cn("rounded-full object-cover bg-white dark:bg-gray-800", className)}
+      />
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "rounded-full bg-ophir-100 dark:bg-ophir-900/30 flex items-center justify-center text-xs font-bold text-ophir-700 dark:text-ophir-300",
+        className,
+      )}
+    >
+      {code.slice(0, 2)}
+    </span>
+  );
+}
 
 const KNOWN_ASSETS: AssetInfo[] = [
   XLM_ASSET,
@@ -61,8 +107,8 @@ export function AssetSelector({
   const [trustlineStatus, setTrustlineStatus] = useState<
     Record<string, { hasTrustline: boolean; checking: boolean; state?: TrustlineState }>
   >({});
-  const [settingUpTrustline, setSettingUpTrustline] = useState(false);
-  const [trustlineError, setTrustlineError] = useState<string | null>(null);
+  // Non-null while the quick-action trustline dialog is open for that asset.
+  const [trustlineAsset, setTrustlineAsset] = useState<AssetInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   // Issuer-supplied display metadata (issue #824), keyed by `code:issuer`.
@@ -154,39 +200,29 @@ export function AssetSelector({
     setOpen(false);
   };
 
-  const handleSetupTrustline = async (asset: AssetInfo) => {
-    if (!publicKey || !asset.issuer) return;
-    setSettingUpTrustline(true);
-    setTrustlineError(null);
-    try {
-      const connector = getActiveWalletConnector();
-      if (!connector) throw new Error("Reconnect your wallet to create this trustline.");
-      const { xdr } = await buildTrustlineTransaction(publicKey, asset.code, asset.issuer);
-      const signedXdr = await connector.signTransaction(xdr, {
-        network: STELLAR_NETWORK,
-        networkPassphrase: NETWORK_PASSPHRASE,
-      });
-      const transaction = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
-      await getHorizonServer().submitTransaction(transaction);
-      const verifiedTrustline = await checkTrustline(publicKey, asset.code, asset.issuer);
-      const key = `${asset.code}:${asset.issuer}`;
+  /**
+   * Called by the trustline dialog after the changeTrust lands and Horizon
+   * confirms it: seed the row state from the verified result, select the asset
+   * and re-read balances so the new holding shows up without a page reload.
+   */
+  const handleTrustlineCreated = useCallback(
+    async (createdAsset: AssetInfo, info: TrustlineInfo) => {
+      if (!createdAsset.issuer) return;
+      const key = `${createdAsset.code}:${createdAsset.issuer}`;
       setTrustlineStatus((prev) => ({
         ...prev,
         [key]: {
-          hasTrustline: verifiedTrustline.hasTrustline,
+          hasTrustline: info.hasTrustline,
           checking: false,
-          state: verifiedTrustline.state,
+          state: info.state,
         },
       }));
-      onSelect(asset);
+      onSelect(createdAsset);
       await fetchBalances();
       setOpen(false);
-    } catch (error) {
-      setTrustlineError(error instanceof Error ? error.message : "Trustline setup failed.");
-    } finally {
-      setSettingUpTrustline(false);
-    }
-  };
+    },
+    [onSelect, fetchBalances],
+  );
 
   const balance = findAssetBalance(balances, selectedAsset);
 
@@ -213,9 +249,11 @@ export function AssetSelector({
         )}
       >
         <span className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-ophir-100 dark:bg-ophir-900/30 flex items-center justify-center text-xs font-bold text-ophir-700 dark:text-ophir-300">
-            {selectedAsset.code.slice(0, 2)}
-          </span>
+          <AssetMark
+            code={selectedAsset.code}
+            image={metadata[`${selectedAsset.code}:${selectedAsset.issuer}`]?.image}
+            className="w-6 h-6"
+          />
           <span className="text-gray-900 dark:text-white font-medium">
             {selectedAsset.code}
           </span>
@@ -267,9 +305,11 @@ export function AssetSelector({
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-ophir-100 dark:bg-ophir-900/30 flex items-center justify-center text-xs font-bold text-ophir-700 dark:text-ophir-300">
-                      {asset.code.slice(0, 2)}
-                    </span>
+                    <AssetMark
+                      code={asset.code}
+                      image={metadata[key]?.image}
+                      className="w-6 h-6"
+                    />
                     <div className="text-left">
                       <span className="text-gray-900 dark:text-white font-medium">
                         {asset.code}
@@ -288,24 +328,30 @@ export function AssetSelector({
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                       {bal}
                     </span>
-                    {asset.type !== "native" && (
-                      <span
-                        className={cn(
-                          "block text-xs",
-                          tl?.checking
-                            ? "text-gray-400"
-                            : tl?.state === "authorized"
+                    {asset.type !== "native" &&
+                      (tl?.checking ? (
+                        <span className="block text-xs text-gray-400">
+                          checking...
+                        </span>
+                      ) : tl?.state === "missing" ? (
+                        // Warning badge: a missing trustline is actionable, not
+                        // merely a status, so it reads as a badge the user can
+                        // act on below rather than a grey footnote.
+                        <span className="mt-0.5 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                          Trustline Required
+                        </span>
+                      ) : (
+                        <span
+                          className={cn(
+                            "block text-xs",
+                            tl?.state === "authorized"
                               ? "text-green-500"
                               : tl?.state === "frozen" || tl?.state === "unauthorized"
                                 ? "text-red-500"
-                                : tl?.state === "unavailable"
-                                  ? "text-gray-400"
-                                : "text-amber-500",
-                        )}
-                      >
-                        {tl?.checking
-                          ? "checking..."
-                          : tl?.state === "authorized"
+                                : "text-gray-400",
+                          )}
+                        >
+                          {tl?.state === "authorized"
                             ? "✓ authorized"
                             : tl?.state === "frozen"
                               ? "frozen"
@@ -313,9 +359,9 @@ export function AssetSelector({
                                 ? "not authorized"
                                 : tl?.state === "unavailable"
                                   ? "status unavailable"
-                                : "no trustline"}
-                      </span>
-                    )}
+                                  : ""}
+                        </span>
+                      ))}
                   </div>
                 </button>
               );
@@ -331,14 +377,13 @@ export function AssetSelector({
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       Creating a trustline lets this account hold the asset and requires additional XLM for the network reserve (currently 0.5 XLM), plus a small transaction fee.
                     </p>
-                    {trustlineError && <p role="alert" className="text-xs text-red-600 mt-2">{trustlineError}</p>}
                     <button
                       type="button"
-                      onClick={() => handleSetupTrustline(selectedAsset)}
-                      disabled={settingUpTrustline || !publicKey}
+                      onClick={() => setTrustlineAsset(selectedAsset)}
+                      disabled={!publicKey}
                       className="mt-3 px-3 py-2 rounded-lg bg-ophir-600 text-white text-xs font-semibold disabled:opacity-50"
                     >
-                      {settingUpTrustline ? "Waiting for wallet…" : "Set up trustline"}
+                      Create trustline
                     </button>
                   </>
                 )}
@@ -354,6 +399,14 @@ export function AssetSelector({
           </div>
         </>
       )}
+
+      <TrustlineModal
+        open={trustlineAsset !== null}
+        onClose={() => setTrustlineAsset(null)}
+        publicKey={publicKey}
+        asset={trustlineAsset}
+        onCreated={handleTrustlineCreated}
+      />
     </div>
   );
 }

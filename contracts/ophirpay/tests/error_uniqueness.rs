@@ -382,3 +382,71 @@ fn variant_count_matches_catalog() {
         "Expected 309 PaymentError variants (codes 1..=309)"
     );
 }
+
+#[test]
+fn rust_source_discriminants_are_unique_and_match_variant_list() {
+    let source = include_str!("../src/errors.rs");
+    let mut parsed_variants: Vec<(String, u32)> = Vec::new();
+    let mut in_enum = false;
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("pub enum PaymentError {") {
+            in_enum = true;
+            continue;
+        }
+        if in_enum && trimmed == "}" {
+            break;
+        }
+        if in_enum && !trimmed.starts_with("//") && trimmed.contains('=') {
+            let parts: Vec<&str> = trimmed.split('=').collect();
+            if parts.len() == 2 {
+                let name = parts[0].trim().to_string();
+                let code_part = parts[1].trim().trim_end_matches(',').trim();
+                if let Ok(code) = code_part.parse::<u32>() {
+                    parsed_variants.push((name, code));
+                }
+            }
+        }
+    }
+
+    assert!(
+        parsed_variants.len() >= 300,
+        "Expected at least 300 variants parsed from errors.rs, found {}",
+        parsed_variants.len()
+    );
+
+    // Verify uniqueness of parsed source codes
+    let mut seen_codes: HashMap<u32, &str> = HashMap::new();
+    let mut duplicates: Vec<String> = Vec::new();
+    for (name, code) in &parsed_variants {
+        if let Some(existing) = seen_codes.get(code) {
+            duplicates.push(format!(
+                "Source code {} is duplicated in '{}' and '{}'",
+                code, existing, name
+            ));
+        } else {
+            seen_codes.insert(*code, name);
+        }
+    }
+
+    assert!(
+        duplicates.is_empty(),
+        "Duplicate discriminants found directly in src/errors.rs:\n{}",
+        duplicates.join("\n")
+    );
+
+    let declared = all_variants();
+    let declared_map: HashMap<&str, u32> = declared.into_iter().collect();
+
+    for (name, code) in &parsed_variants {
+        assert_eq!(
+            declared_map.get(name.as_str()),
+            Some(code),
+            "Variant '{}' in errors.rs with code {} does not match all_variants()",
+            name,
+            code
+        );
+    }
+}
+

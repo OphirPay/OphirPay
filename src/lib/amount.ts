@@ -10,10 +10,41 @@
  *     to users paying with real money.
  *   • A non-finite value (`NaN`, `Infinity`) renders as {@link NON_FINITE_AMOUNT}
  *     rather than leaking `NaN`/`Infinity` into the UI.
+ *
+ * Parse contract:
+ *   • {@link parseAmount} accepts a *complete* decimal number and rejects
+ *     anything else. `parseFloat` reads a numeric prefix, so it silently turns
+ *     `"12px"` into `12` and `"1,234.50"` into `1` — a quiet money bug. Nothing
+ *     here ever partially parses.
  */
 
 /** Rendered in place of a value that is not a finite number. */
 export const NON_FINITE_AMOUNT = "—";
+
+/**
+ * A complete, optionally-signed decimal number — and nothing else. Anchored so
+ * a locale-formatted ("1,234.50") or partially-numeric ("12px") string is
+ * rejected rather than silently truncated. An optional scientific exponent is
+ * accepted, matching `Number()`.
+ */
+const NUMERIC_STRING = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+/**
+ * Strictly parse a number or numeric string into a finite number, or `null`.
+ *
+ * Unlike `parseFloat`, this never partially parses: `"12px"`, `"1,234.50"`,
+ * `""`, `"abc"` and `NaN`/`Infinity` all return `null`. Whitespace around a
+ * complete number is tolerated (including non-breaking Unicode whitespace).
+ */
+export function parseAmount(value: number | string): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  const trimmed = value.trim();
+  if (!NUMERIC_STRING.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 /** `toFixed` returns exponential notation for magnitudes at or above this. */
 const TO_FIXED_EXPONENTIAL_LIMIT = 1e21;

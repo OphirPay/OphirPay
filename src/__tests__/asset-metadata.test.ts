@@ -180,6 +180,35 @@ describe("resolveAssetMetadata", () => {
     expect(meta.name).toBeNull();
     expect(meta.source).toBe("fallback");
   });
+
+  // Issue #1391: issuer logos are attacker-controlled and must be sanitized
+  // before they leave the server.
+  it("keeps a safe https issuer logo", async () => {
+    const d = deps({
+      resolveToml: vi.fn(async () =>
+        tomlWith([
+          { code: "USDC", issuer: ISSUER, image: "https://cdn.example.com/usdc.png" },
+        ])
+      ),
+    });
+    const meta = await resolveAssetMetadata({ code: "USDC", issuer: ISSUER }, d);
+    expect(meta.image).toBe("https://cdn.example.com/usdc.png");
+  });
+
+  it("drops script-bearing issuer logos (javascript:, SVG data URI)", async () => {
+    for (const image of [
+      "javascript:alert(document.domain)",
+      "data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+",
+      "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+    ]) {
+      resetAssetMetadataCache();
+      const d = deps({
+        resolveToml: vi.fn(async () => tomlWith([{ code: "USDC", issuer: ISSUER, image }])),
+      });
+      const meta = await resolveAssetMetadata({ code: "USDC", issuer: ISSUER }, d);
+      expect(meta.image).toBeNull();
+    }
+  });
 });
 
 describe("formatAssetDisplay", () => {

@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { MEDIA } from "@/lib/responsive";
 import {
   DashboardIcon,
   SendIcon,
@@ -153,11 +155,62 @@ export function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Touch-only gesture detection. `useMediaQuery` is SSR-safe, so the swipe
+  // listeners are never installed on the server or in a non-touch browser.
+  const isTouch = useMediaQuery(MEDIA.hasTouch);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
   // Navigation can happen through router transitions, keyboard shortcuts, or
   // browser history. Keep the drawer closed after every route change.
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  // Swipe to open from the left edge and swipe left on the open drawer to
+  // dismiss it (issue #1385). Both gestures are plain `touchstart`/`touchend`
+  // listeners so they stay passive and never fight the browser's own
+  // scroll/back-swipe gestures; the drawer's CSS transition does the animating.
+  useEffect(() => {
+    if (!isTouch) return;
+
+    const EDGE_ZONE = 24; // px from the left edge that starts an open-swipe
+    const SWIPE_THRESHOLD = 60; // px of horizontal travel that commits
+
+    const onTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      // While closed, only an edge swipe opens the drawer — anywhere else the
+      // gesture belongs to the page content (horizontal scroll, carousels).
+      if (!mobileOpen && touch.clientX > EDGE_ZONE) {
+        touchStart.current = null;
+        return;
+      }
+      touchStart.current = { x: touch.clientX, y: touch.clientY };
+    };
+
+    const onTouchEnd = (event: TouchEvent) => {
+      const start = touchStart.current;
+      touchStart.current = null;
+      const touch = event.changedTouches[0];
+      if (!start || !touch) return;
+
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      // Ignore mostly-vertical gestures so scrolling the nav list never
+      // toggles the drawer.
+      if (Math.abs(dx) <= Math.abs(dy)) return;
+
+      if (!mobileOpen && dx >= SWIPE_THRESHOLD) setMobileOpen(true);
+      else if (mobileOpen && dx <= -SWIPE_THRESHOLD) setMobileOpen(false);
+    };
+
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [isTouch, mobileOpen]);
 
   // Keyboard navigation: Ctrl+1..9 for nav items
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -211,7 +264,11 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile hamburger */}
+      {/* Drawer trigger.
+          `lg:hidden` deliberately spans *both* phone (<640px) and tablet
+          (768–1024px): on tablets the static sidebar used to squeeze data
+          grids, so above `sm` and below `lg` the navigation is an on-demand
+          slide-out drawer and the content keeps the full viewport width. */}
       <button
         onClick={() => setMobileOpen(!mobileOpen)}
         className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-md"
@@ -224,12 +281,18 @@ export function Sidebar() {
         </div>
       </button>
 
-      {/* Mobile overlay */}
-      {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setMobileOpen(false)} />
-      )}
+      {/* Drawer backdrop. Kept mounted so the opacity transition can animate
+          both ways; while closed it is inert to pointer events. */}
+      <div
+        aria-hidden="true"
+        onClick={() => setMobileOpen(false)}
+        className={cn(
+          "lg:hidden fixed inset-0 z-40 bg-black/40 transition-opacity duration-300",
+          mobileOpen ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+      />
 
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar (static from 1024px up) */}
       <aside aria-label="Desktop sidebar" className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 z-40 flex-col">
         <div className="flex items-center gap-3 px-6 h-16 border-b border-gray-200 dark:border-gray-800">
           <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-ophir-600 to-stellar flex items-center justify-center shadow-lg shadow-ophir-500/30">

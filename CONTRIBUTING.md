@@ -61,6 +61,40 @@ lockfile), but please install with the pinned manager to avoid lockfile churn.
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org)
 - **Before submitting**: Run `npm run ci` (typecheck → lint → test → build)
 
+### Local secret scanning (pre-commit hook)
+
+`npm install` (via the `prepare` script) points git at the committed
+`.githooks/` directory, so a pre-commit hook scans **staged** changes with
+[gitleaks](https://github.com/gitleaks/gitleaks) before they can reach a branch:
+
+```bash
+npm run prepare          # (re)enable the hook — also runs on `npm install`
+npm run secrets:precommit  # run the scan by hand against the staged changes
+npm run secrets:scan       # scan the whole repo with .gitleaks.toml
+```
+
+What it does:
+
+- Uses the same `.gitleaks.toml` as CI, which extends gitleaks' ~160 default
+  rules **and** adds a strict Stellar secret-seed rule (`S` + 55 base32 chars).
+- Blocks the commit (exit 1) when a seed, API key or private key is staged.
+- Skips with a warning when gitleaks is not installed — run one of
+  ```bash
+  brew install gitleaks                                   # macOS
+  # or grab a release binary: https://github.com/gitleaks/gitleaks/releases
+  ```
+  to enable it. CI still scans every PR regardless, so a bypassed hook never
+  reaches `main` unnoticed.
+
+If gitleaks flags a **documented, non-sensitive** demo value, add it (with a
+short reason) to the `[allowlist]` in `.gitleaks.toml` rather than committing
+with `--no-verify`. Never commit a real key or seed: remove it, rotate the
+credential, and re-stage.
+
+> The hook is committed at `.githooks/pre-commit` and wired via
+> `core.hooksPath` (set by `scripts/install-git-hooks.mjs`) — no husky
+> dependency, and the hook itself is reviewable in the repo.
+
 ### Type safety and lint suppressions
 
 Use `unknown` with a type guard or a narrower domain type instead of `any`.

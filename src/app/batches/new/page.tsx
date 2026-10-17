@@ -23,6 +23,11 @@ import { CopyButton } from "@/components/ui/CopyButton";
 import { AddressBookMultiSelect } from "@/components/batches/AddressBookMultiSelect";
 import { mergeAddressBookSelections } from "@/lib/address-book";
 import type { AddressEntry } from "@/lib/address-book";
+import {
+  setInFlightTransactions,
+  setUnsavedDrafts,
+  resetPendingWork,
+} from "@/lib/session-lifecycle";
 import dynamic from "next/dynamic";
 
 // The confirmation dialog is only rendered after the user hits "Send", so it is
@@ -105,6 +110,29 @@ export default function NewBatchPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Session-lifecycle reporting (issue #1379) ─────────────
+  // Publish this page's unsaved drafts / in-flight transaction so the wallet
+  // disconnect dialog can warn the user before throwing the work away.
+  useEffect(() => {
+    const draftCount = recipients.filter(
+      (r) => r.address.trim() !== "" || r.amount.trim() !== ""
+    ).length;
+    setUnsavedDrafts(step === "done" ? 0 : draftCount);
+  }, [recipients, step]);
+
+  useEffect(() => {
+    const inFlight =
+      step === "building" || step === "signing" || step === "submitting";
+    setInFlightTransactions(inFlight ? 1 : 0);
+  }, [step]);
+
+  useEffect(
+    () => () => {
+      resetPendingWork();
+    },
+    []
+  );
 
   // ── CSV import wiring ────────────────────────────────────
 

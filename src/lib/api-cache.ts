@@ -302,7 +302,19 @@ export async function invalidateCache(
   if (subject !== undefined) {
     const key = readCacheKey(scope, subject);
     store.delete(key);
-    await withRedis<unknown>((client) => client.del(key), null);
+    memoryDeleteByPrefix(`${key}:`);
+    await withRedis<unknown>(async (client) => {
+      await client.del(key);
+      const prefix = `${key}:`;
+      let cursor = "0";
+      for (let i = 0; i < MAX_SCAN_ITERATIONS; i++) {
+        const [next, keys] = await client.scan(cursor, "MATCH", `${prefix}*`, "COUNT", 100);
+        if (keys.length > 0) await client.del(...keys);
+        cursor = next;
+        if (cursor === "0") break;
+      }
+      return null;
+    }, null);
     return;
   }
 

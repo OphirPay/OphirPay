@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { onSessionRevoked } from "@/lib/session-lifecycle";
 
 function makeQueryClient() {
   return new QueryClient({
@@ -36,6 +37,15 @@ function getQueryClient() {
 
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(getQueryClient);
+
+  // Purge every cached query when the wallet session ends (issue #1379). The
+  // balance/transaction caches are keyed per query, not per wallet, so without
+  // this a subsequent wallet on a shared machine could read the previous
+  // account's cached data. `clear()` drops queries AND mutations.
+  useEffect(
+    () => onSessionRevoked(() => queryClient.clear()),
+    [queryClient]
+  );
 
   return (
     <QueryClientProvider client={queryClient}>

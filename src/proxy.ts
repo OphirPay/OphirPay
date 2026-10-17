@@ -14,6 +14,18 @@ import {
   RATE_LIMIT_WINDOW_MS,
 } from "@/lib/proxy-config";
 
+import {
+  handleCorsPreflight,
+  resolveCorsOrigin,
+  CORS_ALLOWED_METHODS,
+  CORS_ALLOWED_HEADERS,
+} from "@/lib/cors";
+import {
+  extractApiKey,
+  validateKeyFormat,
+  API_KEY_LOOKUP_PATTERN,
+} from "@/lib/api-key-format";
+
 const RATE_LIMIT_MAX = getRateLimitMax();
 
 // Global rate-limit store, resolved once per instance.
@@ -31,8 +43,37 @@ export async function proxy(request: NextRequest) {
   const requestId = generateRequestId();
   const startedAt = performance.now();
 
-  // ── API routes: rate limiting + API headers ─────────────────
+  // ── API routes: rate limiting + CORS + API key edge validation ─
   if (pathname.startsWith("/api/")) {
+    // 1. Strict CORS preflight handling (#1393)
+    if (request.method === "OPTIONS") {
+      return handleCorsPreflight(request, { allowCredentials: true });
+    }
+
+    // 2. Edge API key validation (#1397): reject malformed keys before DB lookup
+    const rawApiKey = extractApiKey(request);
+    if (rawApiKey && pathname !== "/api/metrics") {
+      const keyValidation = validateKeyFormat(rawApiKey);
+      const isLegacy = API_KEY_LOOKUP_PATTERN.test(rawApiKey);
+      if (!keyValidation.valid && !isLegacy) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "UNAUTHORIZED",
+              message: "Invalid API key format",
+            },
+          },
+          {
+            status: 401,
+            headers: {
+              "X-Request-Id": requestId,
+            },
+          }
+        );
+      }
+    }
+
     // Skip rate limiting for health checks and metrics (monitoring endpoints
     // are hit frequently by orchestrators and should never be throttled).
     // The whole `/api/health` subtree is exempt: the readiness probe lives at
@@ -101,25 +142,41 @@ export async function proxy(request: NextRequest) {
     response.headers.set("X-RateLimit-Remaining", String(remaining));
     response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetAt / 1000)));
 
-    // Production CORS — restrict origins in production
-    const origin = request.headers.get("origin") || "";
-    const allowedOrigins = [
-      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-    ].filter(Boolean);
-    if (
-      allowedOrigins.includes(origin) ||
-      process.env.NODE_ENV !== "production"
-    ) {
-      response.headers.set("Access-Control-Allow-Origin", origin || "*");
+    // Strict CORS resolution (#1393)
+    const origin = request.headers.get("origin");
+    if (origin) {
+      const resolution = resolveCorsOrigin(origin, true);
+      const method = request.method.toUpperCase();
+
+      // For mutation endpoints, reject disallowed cross-origin requests
+      if (!resolution.allowed && ["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "FORBIDDEN",
+              message: "Cross-origin request blocked: origin not allowed",
+            },
+          },
+          {
+            status: 403,
+            headers: {
+              "X-Request-Id": requestId,
+            },
+          }
+        );
+      }
+
+      if (resolution.allowed && resolution.originHeader) {
+        response.headers.set("Access-Control-Allow-Origin", resolution.originHeader);
+        response.headers.set("Access-Control-Allow-Methods", CORS_ALLOWED_METHODS);
+        response.headers.set("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
+        response.headers.set("Vary", "Origin");
+        if (resolution.allowCredentials && resolution.originHeader !== "*") {
+          response.headers.set("Access-Control-Allow-Credentials", "true");
+        }
+      }
     }
-    response.headers.set(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS"
-    );
-    response.headers.set(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-API-Key"
-    );
 
     return response;
   }
@@ -182,3 +239,5 @@ export const config = {
     },
   ],
 };
+
+export default proxy;

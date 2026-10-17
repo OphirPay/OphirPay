@@ -3,6 +3,7 @@
 
 
 import { cn } from "@/lib/utils";
+import { NON_FINITE_AMOUNT, parseAmount } from "@/lib/amount";
 
 interface AmountProps {
   value: number | string;
@@ -23,9 +24,15 @@ export function Amount({
   className,
   showSign = false,
 }: AmountProps) {
-  const num = typeof value === "string" ? parseFloat(value) : value;
+  // Strict parse: `parseFloat` would read the numeric *prefix* of a malformed
+  // amount ("12abc" → 12, "1,234.50" → 1) and render an amount the user never
+  // entered. A value that is not a complete, finite number renders the
+  // documented placeholder instead.
+  const num = parseAmount(value);
 
-  if (isNaN(num)) return <span className={cn("text-gray-400", className)}>—</span>;
+  if (num === null) {
+    return <span className={cn("text-gray-400", className)}>{NON_FINITE_AMOUNT}</span>;
+  }
 
   const formatted = compact
     ? formatCompact(num)

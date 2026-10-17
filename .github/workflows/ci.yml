@@ -148,6 +148,15 @@ jobs:
         env:
           RUSTFLAGS: "-C link-arg=-s"
         run: cd contracts/emitter && cargo build --target wasm32v1-none --release
+      - name: Run fee assertions and emit fee report
+        run: cargo test --manifest-path contracts/ophirpay/Cargo.toml --test fee_report -- --nocapture
+        env:
+          OPHIRPAY_FEE_REPORT_PATH: ${{ github.workspace }}/fee-report.json
+      - name: Check contract regressions against baseline
+        run: node scripts/check-contract-regressions.mjs
+        env:
+          FEE_REPORT_PATH: fee-report.json
+          REGRESSION_REPORT_PATH: contract-regression-report.md
       - name: Optimize WASM (OphirPay + Emitter)
         run: |
           set -e
@@ -197,6 +206,29 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
       - name: Run Gitleaks detect
         run: gitleaks detect --config .gitleaks.toml --verbose --redact
+      # Stellar seed self-test (issue #1398): the config must extend the default
+      # rules AND catch a Stellar `S…` secret seed. A config that silently
+      # replaces the defaults (no `[extend]`) would pass the scan above while
+      # detecting nothing, so this positive control is what keeps the gate real.
+      - name: Self-test — the Stellar seed rule catches a sample seed
+        run: |
+          set -e
+          tmp="$(mktemp -d)"
+          printf 'STELLAR_SECRET_KEY=S%s\n' "$(printf 'A%.0s' $(seq 1 55))" > "$tmp/sample.txt"
+          set +e
+          # --verbose is required: without it gitleaks prints only the finding
+          # count, not the RuleID this step greps for.
+          gitleaks detect --no-git --source "$tmp" --config .gitleaks.toml \
+            --no-banner --redact --verbose >/tmp/gitleaks-stellar.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ] && grep -q "stellar-secret-seed" /tmp/gitleaks-stellar.log; then
+            echo "✅ Stellar seed rule caught the sample seed (rule: stellar-secret-seed)"
+          else
+            echo "::error::Stellar seed rule did NOT flag a sample seed (exit $rc)"
+            cat /tmp/gitleaks-stellar.log
+            exit 1
+          fi
       # Scanner self-test (issue #393): prove the blocklist catches a sample
       # secret and does not false-positive on clean text. The fixture
       # directory is allowlisted for the repo-wide scan above, so these

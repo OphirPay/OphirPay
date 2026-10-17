@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import FeeConfigPage from "@/app/fee-config/page";
 
@@ -62,13 +62,34 @@ describe("FeeConfigPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
+    // The page authorizes each admin mutation through the sudo step-up gate
+    // (issue #1389) before the on-chain write, so it makes CSRF + POST calls.
+    // Answer both as "authorized" so these cases exercise the existing flow.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const body = url.includes("/api/csrf")
+          ? { token: "csrf-test-token" }
+          : { success: true, data: { authorized: true } };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
     mocks.useWallet.mockReturnValue({ wallet: mockWallet });
     mocks.useApiQuery.mockReturnValue({
       data: mockConfig,
       isLoading: false,
       error: null,
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("renders fee configuration with on-chain values", () => {

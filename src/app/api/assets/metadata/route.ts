@@ -11,6 +11,7 @@ import {
 import { withRequestLogging } from "@/lib/request-logging";
 import { isValidAssetIssuer } from "@/lib/assets";
 import { resolveAssetMetadata } from "@/lib/asset-metadata";
+import { sanitizeImageUrl } from "@/lib/sanitize-url";
 
 /**
  * GET /api/assets/metadata?code=<CODE>&issuer=<G...>
@@ -49,7 +50,11 @@ export const GET = withMetrics(
       }
 
       const metadata = await resolveAssetMetadata({ code, issuer });
-      return successResponse(metadata);
+      // Defense in depth (issue #1391): resolveAssetMetadata already sanitizes
+      // the issuer-supplied logo, but this route is the trust boundary that
+      // ships data to the browser, so re-assert it here. A URL that fails the
+      // guard is returned as `null` and the UI falls back to the text badge.
+      return successResponse({ ...metadata, image: sanitizeImageUrl(metadata.image) });
     } catch (err) {
       return handleApiError(err, "GET /api/assets/metadata");
     }

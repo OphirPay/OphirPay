@@ -27,6 +27,7 @@ import { StellarToml } from "@stellar/stellar-sdk";
 import { getHorizonServer } from "@/lib/stellar";
 import { getStellarTimeoutMs } from "@/lib/timeout";
 import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
+import { sanitizeImageUrl } from "@/lib/sanitize-url";
 import { logger } from "@/lib/logger";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -263,7 +264,11 @@ export async function resolveAssetMetadata(
       issuer,
       name: currency.name ?? null,
       description: currency.desc ?? null,
-      image: currency.image ?? null,
+      // Issuer-supplied logos are attacker-controlled: drop anything that is not
+      // an https URL or a safe base64 raster data URI before it leaves the
+      // server (issue #1391). A rejected logo degrades to `null`, so the UI
+      // renders the text badge instead.
+      image: sanitizeImageUrl(currency.image),
       decimals:
         typeof currency.display_decimals === "number"
           ? currency.display_decimals

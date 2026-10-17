@@ -17,6 +17,7 @@ export default defineConfig({
     // Guarded against regression by src/__tests__/repo-hygiene.test.ts.
     include: [
       "src/__tests__/**/*.test.{ts,tsx}",
+      "src/tests/**/*.test.{ts,tsx}",
       "scripts/**/*.test.{ts,tsx}",
       "tests/**/*.test.{ts,tsx}",
     ],

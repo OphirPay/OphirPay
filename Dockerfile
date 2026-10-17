@@ -11,7 +11,11 @@ RUN apt-get update -qq \
 WORKDIR /app
 
 COPY package.json package-lock.json* .nvmrc ./
-COPY scripts/check-node.mjs ./scripts/
+# Only the scripts `npm ci` actually invokes are copied here — `preinstall`
+# (`check-node.mjs`) and `prepare` (`install-git-hooks.mjs`). Keeping the copy
+# minimal preserves layer caching; any new lifecycle script must be added here
+# too or `npm ci` fails with "Cannot find module".
+COPY scripts/check-node.mjs scripts/install-git-hooks.mjs ./scripts/
 # Puppeteer (dev-only demo/screenshot scripts) downloads Chrome in its
 # postinstall; skip it — it isn't needed to build or run the server and the
 # download is a flaky network dependency in Docker.

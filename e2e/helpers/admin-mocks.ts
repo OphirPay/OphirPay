@@ -157,10 +157,13 @@ export async function installAdminMocks(
   );
 
   await page.route("**/api/fee-config**", (route) => {
-    if (route.request().method().toUpperCase() !== "GET") {
-      return route.continue();
+    // GET returns the current config; a mutation is the sudo step-up gate
+    // (issue #1389) that authorizes the on-chain write, so answer it as
+    // authorized rather than letting it reach the dev server.
+    if (route.request().method().toUpperCase() === "GET") {
+      return fulfillJson(route, { data: state.feeConfig });
     }
-    return fulfillJson(route, { data: state.feeConfig });
+    return fulfillJson(route, { data: { authorized: true, action: "set_fee_config" } });
   });
 
   await page.route("**/api/rbac**", (route) =>

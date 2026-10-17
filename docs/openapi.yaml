@@ -530,6 +530,37 @@ paths:
           description: Role assignment(s)
         "401":
           $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [RBAC]
+      summary: Authorize a role change (sudo step-up)
+      description: >
+        Server-side step-up gate for role grants and revocations (issue #1389).
+        The on-chain write is performed by the connected wallet, but it must be
+        authorized here first. Returns 403 SUDO_REQUIRED with a wallet challenge
+        when the session's last cryptographic verification is older than 15
+        minutes; retry with the signed challenge to authorize the mutation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, address]
+              properties:
+                action: { type: string, enum: [grant, revoke] }
+                address: { type: string, description: "Stellar account address (G…, 56 characters)" }
+                role: { type: integer, minimum: 0, maximum: 2, description: "0 Admin, 1 Operator, 2 Auditor; required for grant" }
+                challenge: { type: string, description: "Step-up challenge, present only on the retry" }
+                signature: { type: string, description: "Wallet signature over the challenge message, present only on the retry" }
+      responses:
+        "200":
+          description: Action authorized
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   # ── Fee Config ────────────────────────────────────────────
   /api/fee-config:
@@ -542,6 +573,42 @@ paths:
           description: Fee configuration
         "401":
           $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Fee Config]
+      summary: Authorize a fee-configuration change (sudo step-up)
+      description: >
+        Server-side step-up gate for fee-config changes (issue #1389). The
+        on-chain write is performed by the connected wallet, but it must be
+        authorized here first. Returns 403 SUDO_REQUIRED with a wallet challenge
+        when the session's last cryptographic verification is older than 15
+        minutes; retry with the signed challenge to authorize the mutation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [set_fee_config, set_fee_collector] }
+                paymentFeeBps: { type: integer, minimum: 0, maximum: 1000 }
+                escrowFeeBps: { type: integer, minimum: 0, maximum: 1000 }
+                streamFeeBps: { type: integer, minimum: 0, maximum: 1000 }
+                batchBaseFee: { type: integer, minimum: 0 }
+                batchPerItemFee: { type: integer, minimum: 0 }
+                enabled: { type: boolean }
+                collector: { type: string, description: "Fee collector address; required for set_fee_collector" }
+                challenge: { type: string, description: "Step-up challenge, present only on the retry" }
+                signature: { type: string, description: "Wallet signature over the challenge message, present only on the retry" }
+      responses:
+        "200":
+          description: Action authorized
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/fee-config/collector:
     get:

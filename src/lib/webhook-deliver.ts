@@ -28,6 +28,7 @@ export interface WebhookDeliveryResult {
 }
 
 export const WEBHOOK_TIMESTAMP_HEADER = "X-OphirPay-Timestamp";
+export const WEBHOOK_SIGNATURE_HEADER = "X-OphirPay-Signature";
 export const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
 
 export function webhookSignedInput(
@@ -43,6 +44,138 @@ export function canonicalizeWebhookBody(payload: WebhookPayload): string {
 
 export const BLOCKED_WEBHOOK_TARGET_ERROR =
   "Webhook target rejected by the SSRF guard — URL resolves to a private/internal address or a disallowed port";
+
+/**
+ * Compare two signature strings in constant time (issue #1386).
+ *
+ * A plain `===` comparison short-circuits on the first differing byte, which
+ * lets an attacker recover a valid signature byte-by-byte from response-timing
+ * differences. `crypto.timingSafeEqual` does not, but it *throws* on unequal
+ * buffer lengths — so equal encoded length is checked first and a mismatch
+ * returns `false` rather than raising. The comparison is over the UTF-8 bytes
+ * of each string (the hex digests the sender transmits).
+ */
+export function constantTimeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a, "utf8");
+  const bBuf = Buffer.from(b, "utf8");
+  // Length is not secret (the digest length is fixed), and equal-byte-length
+  // is a hard precondition for timingSafeEqual. Bailing here keeps a malformed
+  // or truncated signature from throwing an uncaught RangeError.
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+/** Why a delivery was accepted or rejected by {@link verifyWebhookSignature}. */
+export type WebhookVerificationReason =
+  | "valid"
+  | "invalid body"
+  | "signature mismatch"
+  | "missing or invalid timestamp"
+  | "payload too old — possible replay"
+  | "payload timestamp is in the future";
+
+export interface WebhookVerificationInput {
+  /** Raw request body, exactly as received. */
+  body: string;
+  /** `X-OphirPay-Signature` header value (the body field is informational). */
+  signature: string | null | undefined;
+  /** The webhook signing secret. */
+  secret: string;
+  /**
+   * `X-OphirPay-Timestamp` header value. Falls back to the (also-signed)
+   * body `timestamp` field when absent.
+   */
+  timestamp?: string | null;
+  /** Replay window in seconds; `0` disables the freshness check. */
+  maxAgeSeconds?: number;
+  /** Reference time in ms epoch for the freshness check (injectable in tests). */
+  now?: number;
+}
+
+export interface WebhookVerificationResult {
+  valid: boolean;
+  reason: WebhookVerificationReason;
+}
+
+/**
+ * Receiver-side verification of an OphirPay webhook delivery (issue #1386).
+ *
+ * Reproduces the exact signed material `buildSignedPayload` produces —
+ * `<timestamp>.<canonical body>` with the `signature` field emptied, not
+ * deleted — then compares the recomputed hex digest against the supplied
+ * signature with a constant-time comparison.
+ *
+ * This is the canonical in-repo receiver: subscriber examples in
+ * `examples/webhook-verification/` mirror it, and the contract is documented in
+ * `docs/webhook-verification.md`. It never throws on malformed input — a
+ * truncated/oversized signature, a non-JSON body or an unparseable timestamp
+ * all yield `{ valid: false, reason }`.
+ *
+ * @example
+ * ```ts
+ * const result = verifyWebhookSignature({
+ *   body: await request.text(),
+ *   signature: request.headers.get("X-OphirPay-Signature"),
+ *   timestamp: request.headers.get("X-OphirPay-Timestamp"),
+ *   secret: process.env.WEBHOOK_SECRET!,
+ * });
+ * if (!result.valid) return new Response("unauthorized", { status: 401 });
+ * ```
+ */
+export function verifyWebhookSignature({
+  body,
+  signature,
+  secret,
+  timestamp,
+  maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+  now = Date.now(),
+}: WebhookVerificationInput): WebhookVerificationResult {
+  let parsed: WebhookPayload;
+  let canonical: string;
+  try {
+    const raw: unknown = JSON.parse(body);
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      return { valid: false, reason: "invalid body" };
+    }
+    parsed = raw as WebhookPayload;
+    // Empty the signature field (do NOT delete the key) — the HMAC covers
+    // `"signature":""` as the last member.
+    canonical = JSON.stringify({ ...parsed, signature: "" });
+  } catch {
+    return { valid: false, reason: "invalid body" };
+  }
+
+  // The timestamp is authenticated (it is prepended to the canonical body), so
+  // the header is safe to trust for replay protection. Prefer the header, fall
+  // back to the body field, which is signed too.
+  const signedTimestamp = String(timestamp ?? parsed.timestamp ?? "");
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(webhookSignedInput(signedTimestamp, canonical))
+    .digest("hex");
+
+  // Constant-time comparison — see constantTimeEqual. Length mismatches return
+  // false without throwing (acceptance criterion of issue #1386).
+  if (!constantTimeEqual(String(signature ?? ""), expected)) {
+    return { valid: false, reason: "signature mismatch" };
+  }
+
+  if (maxAgeSeconds > 0) {
+    const ts = Date.parse(signedTimestamp);
+    if (Number.isNaN(ts)) {
+      return { valid: false, reason: "missing or invalid timestamp" };
+    }
+    const ageSeconds = (now - ts) / 1000;
+    if (ageSeconds > maxAgeSeconds) {
+      return { valid: false, reason: "payload too old — possible replay" };
+    }
+    if (ageSeconds < -maxAgeSeconds) {
+      return { valid: false, reason: "payload timestamp is in the future" };
+    }
+  }
+
+  return { valid: true, reason: "valid" };
+}
 
 export function signWebhookPayload(payload: WebhookPayload, secret: string): string {
   const canonical = canonicalizeWebhookBody(payload);
@@ -93,7 +226,7 @@ export function buildWebhookRequestPreview(
     signature,
     headers: {
       "Content-Type": "application/json",
-      "X-OphirPay-Signature": signature,
+      [WEBHOOK_SIGNATURE_HEADER]: signature,
       "X-OphirPay-Event": payload.event,
       [WEBHOOK_TIMESTAMP_HEADER]: timestamp,
     },

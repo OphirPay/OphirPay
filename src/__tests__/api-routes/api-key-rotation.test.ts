@@ -71,7 +71,7 @@ describe("POST /api/keys/[id]/rotate", () => {
       scopes: ["read:payments", "write:payments"],
       previousPrefix: "oph_old",
     });
-    expect(body.data.key).toMatch(/^oph_[a-f0-9]{64}$/);
+    expect(body.data.key).toMatch(/^(op_(?:live|test)_[0-9a-f]{64}_[0-9a-f]{8}|oph_[a-f0-9]{64})$/);
     expect(new Date(body.data.previousKeyValidUntil).getTime()).toBeGreaterThanOrEqual(
       before + 24 * 60 * 60 * 1000 - 1000,
     );

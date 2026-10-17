@@ -38,6 +38,28 @@ const counters = {
   csp_violation_reports_total: 0,
 };
 
+export type CspReportDropReason = "rate_limited" | "deduplicated" | "oversized";
+
+const cspReportsDropped = new Map<CspReportDropReason, number>([
+  ["rate_limited", 0],
+  ["deduplicated", 0],
+  ["oversized", 0],
+]);
+
+/** Increment the counter for dropped CSP violation reports (#1392). */
+export function incCspReportsDropped(reason: CspReportDropReason, delta = 1): void {
+  cspReportsDropped.set(reason, (cspReportsDropped.get(reason) ?? 0) + delta);
+}
+
+/** Get a snapshot of dropped CSP report counts by reason. */
+export function getCspReportsDroppedSnapshot(): Record<CspReportDropReason, number> {
+  return {
+    rate_limited: cspReportsDropped.get("rate_limited") ?? 0,
+    deduplicated: cspReportsDropped.get("deduplicated") ?? 0,
+    oversized: cspReportsDropped.get("oversized") ?? 0,
+  };
+}
+
 /** Last failover snapshot read by a scrape, for diffing gauge/counter gauges. */
 let lastRpcFailover: {
   failoverCount: number;
@@ -145,6 +167,7 @@ export function observeDbQuery(durationSeconds: number): void {
 export function getMetricsSnapshot(): typeof counters & {
   delivery_attempts: DeliveryAttemptMetric[];
   delivery_final_outcomes: DeliveryFinalOutcomeMetric[];
+  csp_reports_dropped: Record<CspReportDropReason, number>;
 } {
   return {
     ...counters,
@@ -159,6 +182,7 @@ export function getMetricsSnapshot(): typeof counters & {
         a.attempt_number - b.attempt_number ||
         a.final_outcome.localeCompare(b.final_outcome)
     ),
+    csp_reports_dropped: getCspReportsDroppedSnapshot(),
   };
 }
 
@@ -169,6 +193,9 @@ export function resetMetricsForTest(): void {
   deliveryAttempts.clear();
   deliveryFinalOutcomes.clear();
   lastRpcFailover = null;
+  for (const reason of ["rate_limited", "deduplicated", "oversized"] as CspReportDropReason[]) {
+    cspReportsDropped.set(reason, 0);
+  }
 }
 
 // ── Per-endpoint latency histograms and error counts ──────────

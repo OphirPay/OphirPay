@@ -928,7 +928,7 @@ OphirPay is designed with defense-in-depth across the contract, API, and web lay
 ### Web & API Hardening
 
 - **CSRF protection** — double-submit cookie pattern (`__Host-csrf`, HttpOnly, SameSite=Strict) with timing-safe comparison; the client mints the token once and retries once on `CSRF_INVALID`
-- **Session security** — HMAC-SHA256 signed session cookies with expiry, `HttpOnly; SameSite=Lax`, fail-closed on DB errors
+- **Session security** — HMAC-SHA256 signed session cookies with expiry, `HttpOnly; SameSite=Strict` (`Secure` in production), rolling renewal before expiry, and a Redis-backed logout revocation list that invalidates every tab and device at once; fail-closed on DB errors
 - **API keys** — SHA-256 hashed at rest, indexed prefix lookup, expiry support, `lastUsed` tracking
 - **SSRF guard for webhooks** — blocks loopback/link-local/private IPs and hostnames, with DNS-rebinding re-validation at delivery time
 - **HMAC-signed webhook payloads** — receivers verify `X-OphirPay-Signature` (HMAC-SHA256); see [Webhook Signature Verification](docs/webhook-verification.md) for the canonical form, replay protection, and Node/Python reference implementations

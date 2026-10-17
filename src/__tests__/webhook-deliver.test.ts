@@ -16,12 +16,16 @@ import {
   buildSignedPayload,
   buildWebhookRequestPreview,
   deliverWebhook,
+  verifyWebhookSignature,
+  constantTimeEqual,
   BLOCKED_WEBHOOK_TARGET_ERROR,
   canonicalizeWebhookBody,
   webhookSignedInput,
+  WEBHOOK_SIGNATURE_HEADER,
   WEBHOOK_TIMESTAMP_HEADER,
   WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
   type WebhookPayload,
+  type WebhookVerificationResult,
 } from "@/lib/webhook-deliver";
 import {
   resetMetricsForTest,
@@ -290,5 +294,244 @@ describe("deliverWebhook", () => {
     expect(result.success).toBe(false);
     expect(result.attempts).toBe(1);
     expect(result.errorMessage).toBe("Webhook delivery timed out after 10ms");
+  });
+});
+
+// ── verifyWebhookSignature (issue #1386) ───────────────────────
+//
+// The receiver-side verifier must compare signatures in constant time and
+// return `false` (never throw) on any mismatch, including length mismatches
+// that would otherwise make `crypto.timingSafeEqual` raise a RangeError.
+
+describe("constantTimeEqual", () => {
+  it("returns true only for byte-identical strings", () => {
+    expect(constantTimeEqual("abc123", "abc123")).toBe(true);
+    expect(constantTimeEqual("", "")).toBe(true);
+    expect(constantTimeEqual("abc123", "abc124")).toBe(false);
+  });
+
+  it("returns false (without throwing) when the lengths differ", () => {
+    expect(constantTimeEqual("abc", "abcd")).toBe(false);
+    expect(constantTimeEqual("a", "")).toBe(false);
+    expect(constantTimeEqual("", "a")).toBe(false);
+  });
+
+  it("does not short-circuit on the first differing byte", () => {
+    // A `===` implementation would bail after comparing the first character.
+    // Both a leading-byte and a trailing-byte difference must reach the
+    // constant-time primitive.
+    const base = "0000000000000000000000000000000000000000000000000000000000000000";
+    const leading = `1${base.slice(1)}`;
+    const trailing = `${base.slice(0, -1)}1`;
+    const spy = vi.spyOn(crypto, "timingSafeEqual");
+    expect(constantTimeEqual(leading, base)).toBe(false);
+    expect(constantTimeEqual(trailing, base)).toBe(false);
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+});
+
+describe("verifyWebhookSignature", () => {
+  const receivedAt = Date.parse(samplePayload.timestamp) + 1000;
+
+  it("accepts a delivery produced by buildSignedPayload", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp: samplePayload.timestamp,
+      now: receivedAt,
+    });
+    expect(result).toEqual({ valid: true, reason: "valid" });
+  });
+
+  it("falls back to the signed body timestamp when the header is absent", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      now: receivedAt,
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects a non-matching digest", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const flipped = `${signature[0] === "0" ? "1" : "0"}${signature.slice(1)}`;
+    const result = verifyWebhookSignature({
+      body,
+      signature: flipped,
+      secret: SECRET,
+      timestamp: samplePayload.timestamp,
+      now: receivedAt,
+    });
+    expect(result).toEqual({ valid: false, reason: "signature mismatch" });
+  });
+
+  it("rejects a wrong secret", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: "wrong-secret",
+      timestamp: samplePayload.timestamp,
+      now: receivedAt,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("rejects a tampered body that still carries the original signature", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const tampered = body.replace('"amount":100', '"amount":999');
+    const result = verifyWebhookSignature({
+      body: tampered,
+      signature,
+      secret: SECRET,
+      timestamp: samplePayload.timestamp,
+      now: receivedAt,
+    });
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("re-dating the delivery via the timestamp header invalidates the signature", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp: "2026-08-14T01:00:00Z",
+      now: Date.parse("2026-08-14T01:00:00Z"),
+    });
+    expect(result.reason).toBe("signature mismatch");
+  });
+
+  it("returns false without throwing for truncated / empty / oversized signatures", () => {
+    const { body } = buildSignedPayload(samplePayload, SECRET);
+    const cases: Array<string | null | undefined> = [
+      null,
+      undefined,
+      "",
+      "abc",
+      "0".repeat(128), // wrong length (128 hex chars vs 64)
+    ];
+    for (const signature of cases) {
+      let result: WebhookVerificationResult | undefined;
+      expect(() => {
+        result = verifyWebhookSignature({
+          body,
+          signature,
+          secret: SECRET,
+          timestamp: samplePayload.timestamp,
+          now: receivedAt,
+        });
+      }).not.toThrow();
+      expect(result!.valid).toBe(false);
+      expect(result!.reason).toBe("signature mismatch");
+    }
+  });
+
+  it("does not invoke the constant-time primitive when lengths differ", () => {
+    const { body } = buildSignedPayload(samplePayload, SECRET);
+    const spy = vi.spyOn(crypto, "timingSafeEqual");
+    // `timingSafeEqual` throws on unequal lengths, so the guard must short-circuit
+    // on length (which is not secret) before reaching it.
+    expect(() =>
+      verifyWebhookSignature({
+        body,
+        signature: "short",
+        secret: SECRET,
+        timestamp: samplePayload.timestamp,
+        now: receivedAt,
+      })
+    ).not.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("invokes the constant-time primitive for equal-length mismatches", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const flipped = `${signature[0] === "0" ? "1" : "0"}${signature.slice(1)}`;
+    const spy = vi.spyOn(crypto, "timingSafeEqual");
+    verifyWebhookSignature({
+      body,
+      signature: flipped,
+      secret: SECRET,
+      timestamp: samplePayload.timestamp,
+      now: receivedAt,
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it("rejects a non-object JSON body", () => {
+    for (const body of ["not json", "[]", "null", '"str"']) {
+      const result = verifyWebhookSignature({
+        body,
+        signature: "0".repeat(64),
+        secret: SECRET,
+        now: receivedAt,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toBe("invalid body");
+    }
+  });
+
+  it("enforces the replay window on the signed timestamp", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const stale = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp: samplePayload.timestamp,
+      now: Date.parse(samplePayload.timestamp) + 3600_000,
+    });
+    expect(stale.reason).toBe("payload too old — possible replay");
+
+    const future = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp: samplePayload.timestamp,
+      now: Date.parse(samplePayload.timestamp) - 3600_000,
+    });
+    expect(future.reason).toBe("payload timestamp is in the future");
+  });
+
+  it("disables the freshness check when maxAgeSeconds is 0", () => {
+    const { body, signature } = buildSignedPayload(samplePayload, SECRET);
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp: samplePayload.timestamp,
+      maxAgeSeconds: 0,
+      now: Date.parse(samplePayload.timestamp) + 86_400_000,
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects an unparseable timestamp", () => {
+    const payload = { ...samplePayload, timestamp: "not-a-date" };
+    const { body } = buildSignedPayload(payload, SECRET);
+    const canonical = JSON.stringify({ ...payload, signature: "" });
+    const signature = crypto
+      .createHmac("sha256", SECRET)
+      .update(`${payload.timestamp}.${canonical}`)
+      .digest("hex");
+    const result = verifyWebhookSignature({
+      body,
+      signature,
+      secret: SECRET,
+      timestamp: payload.timestamp,
+      now: receivedAt,
+    });
+    expect(result.reason).toBe("missing or invalid timestamp");
+  });
+
+  it("exposes the signature header name used on the wire", () => {
+    expect(WEBHOOK_SIGNATURE_HEADER).toBe("X-OphirPay-Signature");
   });
 });

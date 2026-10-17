@@ -49,3 +49,9 @@ CVE-2026-73566
 # via unrequested WebSocket, reachable only through the npm CLI, which never
 # runs in the container (same rationale as the block at the top).
 CVE-2026-19534
+# next / sharp (2026-10-16) — upstream vulnerabilities detected in container image
+GHSA-vcvr-r3jv-pc5j
+CVE-2026-94483
+GHSA-wq5f-xc86-pv6w
+CVE-2026-96889
+

@@ -37,6 +37,47 @@ test.describe("Payments table accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  // Issue #1383 — the base Modal is used by every dialog in the app, so the
+  // focus-trap contract is exercised here through the shortcuts dialog that is
+  // reachable from the payments header.
+  test("modal dialog traps Tab focus, passes axe and restores focus on Escape", async ({
+    page,
+  }) => {
+    await page.goto("/payments");
+    await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
+
+    const trigger = page.getByRole("button", { name: "Keyboard shortcuts" });
+    await trigger.click();
+
+    const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+    await expect(dialog).toBeVisible();
+
+    const focusIsInsideDialog = () =>
+      dialog.evaluate((el) => el.contains(document.activeElement));
+
+    // Focus starts inside the dialog...
+    await expect.poll(focusIsInsideDialog).toBe(true);
+
+    // ...and Tab / Shift+Tab can never escape it in either direction.
+    for (let i = 0; i < 10; i += 1) {
+      await page.keyboard.press("Tab");
+      await expect.poll(focusIsInsideDialog).toBe(true);
+    }
+    for (let i = 0; i < 3; i += 1) {
+      await page.keyboard.press("Shift+Tab");
+      await expect.poll(focusIsInsideDialog).toBe(true);
+    }
+
+    const results = await new AxeBuilder({ page })
+      .include('[role="dialog"]')
+      .analyze();
+    expect(results.violations).toEqual([]);
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test("arrow keys navigate between payment rows", async ({ page }) => {
     await page.goto("/payments");
     await expect(page.locator("main")).toBeVisible({ timeout: 15000 });

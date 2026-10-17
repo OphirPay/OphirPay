@@ -57,7 +57,12 @@ function walk(relDir: string): string[] {
 
 describe("test file locations (#688)", () => {
   const TEST_FILE = /\.test\.(ts|tsx)$/;
-  const SANCTIONED_ROOTS = [/^src\/__tests__\//, /^scripts\//, /^tests\//];
+  const SANCTIONED_ROOTS = [
+    /^src\/__tests__\//,
+    /^src\/tests\//,
+    /^scripts\//,
+    /^tests\//,
+  ];
 
   it("keeps every Vitest file inside a sanctioned test root", () => {
     const testFiles = [...walk("src"), ...walk("scripts"), ...walk("tests")].filter((file) =>
@@ -90,6 +95,7 @@ describe("test file locations (#688)", () => {
     expect(testsInclude).toEqual(
       expect.arrayContaining([
         "src/__tests__/**/*.test.{ts,tsx}",
+        "src/tests/**/*.test.{ts,tsx}",
         "scripts/**/*.test.{ts,tsx}",
         "tests/**/*.test.{ts,tsx}",
       ])

@@ -11,32 +11,20 @@
  * payment UI.
  */
 
+import { parseAmount } from "@/lib/amount";
+
 const DEFAULT_LOCALE = "en-US";
 
 /** Rendered in place of a value that is not a finite number. */
 export const NON_FINITE_AMOUNT = "—";
 
 /**
- * A complete, optionally-signed decimal number — and nothing else. Anchored on
- * purpose: `parseFloat` accepts a numeric *prefix*, so it reads the locale
- * formatted "1,234.50" as `1` and "12px" as `12`, quietly formatting the wrong
- * amount. Money must never be partially parsed.
- */
-const NUMERIC_STRING = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
-
-/**
  * Parse a number-or-numeric-string, returning null when it is not a complete,
- * finite number.
+ * finite number. Delegates to {@link parseAmount} so every formatter in the app
+ * shares one definition of "a number" — `parseFloat`'s prefix parsing must
+ * never disagree with itself across modules.
  */
-function toFiniteNumber(amount: number | string): number | null {
-  if (typeof amount === "string") {
-    const trimmed = amount.trim();
-    if (!NUMERIC_STRING.test(trimmed)) return null;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return Number.isFinite(amount) ? amount : null;
-}
+const toFiniteNumber = parseAmount;
 
 /**
  * Format a raw stroop amount as a human-readable XLM string.

@@ -14,6 +14,11 @@ import type { MultiWalletState, WalletId } from "@/lib/wallets";
 import { getWalletConnector, getAvailableWallets, setActiveWalletId } from "@/lib/wallets";
 import { fetchXlmBalance } from "@/lib/stellar";
 import { establishSession, revokeSession } from "@/lib/client-auth";
+import { clearWalletSession } from "@/lib/session";
+import {
+  notifySessionRevoked,
+  resetPendingWork,
+} from "@/lib/session-lifecycle";
 
 // ── Context ───────────────────────────────────────────────────
 
@@ -201,6 +206,15 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     setActiveWalletId(null);
     setError(null);
 
+    // Issue #1379: a disconnect is a full session teardown, not just a UI
+    // reset. Clear the persisted wallet session, drop any pending-work flags,
+    // and announce the revocation so the QueryProvider purges every cached
+    // balance/transaction query — otherwise the next wallet (or a reload on a
+    // shared machine) could read the previous account's cached data.
+    clearWalletSession();
+    resetPendingWork();
+    notifySessionRevoked();
+
     if (walletId) {
       try {
         const connector = getWalletConnector(walletId);
@@ -209,7 +223,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
         // Best effort
       }
     }
-    // Revoke the server-side session cookie
+    // Revoke the server-side HTTP-only session cookie
     await revokeSession();
   }, [wallet.activeWalletId]);
 

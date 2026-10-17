@@ -86,6 +86,15 @@ The page CSP reports to `POST /api/csp-report`; the collector validates and
 limits reports before logging them. See `src/proxy.ts` and
 [AUDIT.md](AUDIT.md) for the implementation and tracked limitation.
 
+### CSP Report Collector Protections (#1392)
+
+To prevent denial-of-service floods, disk exhaustion, and inflated logging costs from synthetic or bursty violation reports, `POST /api/csp-report` enforces strict controls:
+
+- **Body Size Cap**: Request bodies are capped at 16 KiB (`MAX_BODY_BYTES = 16 * 1024`). Oversized requests are immediately rejected with `413 Payload Too Large` and counted under `csp_reports_dropped_total{reason="oversized"}`.
+- **Rate Limiting**: Enforces a sliding-window rate limit of **60 reports per minute** per client IP and session. Requests exceeding the quota receive `429 Too Many Requests` with a `Retry-After` header and are counted under `csp_reports_dropped_total{reason="rate_limited"}`.
+- **Payload Deduplication**: Reports sharing identical `violated-directive` (or `effective-directive`) and `blocked-uri` within a **5-minute sliding window** are suppressed from warning logs. Suppressed duplicates are tracked under `csp_reports_dropped_total{reason="deduplicated"}`.
+- **Metrics Observability**: Accepted reports increment `ophirpay_csp_violation_reports_total`, while dropped or throttled reports increment `ophirpay_csp_reports_dropped_total{reason="..."}` in Prometheus exposition.
+
 ## Checking a deployment
 
 Inspect both an HTML page and an API response at each deployment boundary; a

@@ -18,14 +18,63 @@
 //     entry before writing, so the line never contains a literal "undefined".
 //   • Each accepted report increments the csp_violation_reports_total metric
 //     so operators can observe report volume without replaying raw log lines.
-//   • Rate-limiting for this endpoint is handled globally by src/proxy.ts.
+//   • Rate-limiting for this endpoint is enforced per-IP and per-session (#1392).
 
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { logger } from "@/lib/logger";
-import { incMetric } from "@/lib/metrics-counters";
+import { incMetric, incCspReportsDropped } from "@/lib/metrics-counters";
+import {
+  getRateLimitStore,
+  getRetryAfterSeconds,
+  CSP_REPORT_RATE_LIMIT_MAX,
+  CSP_REPORT_RATE_LIMIT_WINDOW_MS,
+} from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/proxy-config";
 
 /** Maximum accepted request body size in bytes (16 KiB). */
 const MAX_BODY_BYTES = 16 * 1024;
+
+/** 5-minute sliding window for report deduplication (#1392). */
+export const CSP_DEDUPE_WINDOW_MS = 5 * 60 * 1000;
+
+/** In-memory cache tracking report hashes and expiration timestamp (#1392). */
+const dedupeCache = new Map<string, number>();
+
+/** Compute a stable SHA-256 hash from directive and blocked URI (#1392). */
+export function computeReportDedupeHash(
+  effectiveDirective?: string,
+  violatedDirective?: string,
+  blockedUri?: string
+): string {
+  const directive = (effectiveDirective || violatedDirective || "").trim().toLowerCase();
+  const uri = (blockedUri || "").trim().toLowerCase();
+  return crypto.createHash("sha256").update(`${directive}|${uri}`).digest("hex");
+}
+
+/** Check if a report hash has already been received within the 5-minute window (#1392). */
+export function isDuplicateCspReport(hash: string, now = Date.now()): boolean {
+  const expiresAt = dedupeCache.get(hash);
+  if (expiresAt !== undefined && expiresAt > now) {
+    return true;
+  }
+  return false;
+}
+
+/** Record report hash into deduplication cache with a 5-minute TTL (#1392). */
+export function recordCspReportDedupe(hash: string, now = Date.now()): void {
+  dedupeCache.set(hash, now + CSP_DEDUPE_WINDOW_MS);
+  if (dedupeCache.size > 10_000) {
+    for (const [k, exp] of dedupeCache.entries()) {
+      if (exp <= now) dedupeCache.delete(k);
+    }
+  }
+}
+
+/** Reset deduplication cache. Intended for tests. */
+export function clearCspDedupeCacheForTests(): void {
+  dedupeCache.clear();
+}
 
 // ── Type helpers ──────────────────────────────────────────────
 
@@ -121,9 +170,10 @@ function compact<T extends Record<string, unknown>>(obj: T): Partial<T> {
 // ── Route handler ─────────────────────────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // 1. Size-cap the body before reading it.
+  // 1. Size-cap the body before reading it (#1392).
   const contentLength = request.headers.get("content-length");
   if (contentLength !== null && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+    incCspReportsDropped("oversized");
     return new NextResponse(null, { status: 413 });
   }
 
@@ -132,6 +182,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const buffer = await request.arrayBuffer();
     if (buffer.byteLength > MAX_BODY_BYTES) {
+      incCspReportsDropped("oversized");
       return new NextResponse(null, { status: 413 });
     }
     rawText = new TextDecoder().decode(buffer);
@@ -139,7 +190,49 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse(null, { status: 400 });
   }
 
-  // 3. Determine the report format from Content-Type.
+  // 3. Rate-limit check per IP and per session (60 reports/min, #1392)
+  const rateLimitStore = getRateLimitStore();
+  const ip = getClientIp(request.headers);
+  const ipResult = await rateLimitStore.increment(
+    `csp:ip:${ip}`,
+    CSP_REPORT_RATE_LIMIT_WINDOW_MS,
+    CSP_REPORT_RATE_LIMIT_MAX
+  );
+
+  const sessionId =
+    request.cookies.get("ophirpay_session")?.value ||
+    request.headers.get("x-session-id");
+  let sessionAllowed = true;
+  if (sessionId) {
+    const sessionResult = await rateLimitStore.increment(
+      `csp:session:${sessionId}`,
+      CSP_REPORT_RATE_LIMIT_WINDOW_MS,
+      CSP_REPORT_RATE_LIMIT_MAX
+    );
+    sessionAllowed = sessionResult.allowed;
+  }
+
+  if (!ipResult.allowed || !sessionAllowed) {
+    incCspReportsDropped("rate_limited");
+    const retryAfter = getRetryAfterSeconds(ipResult);
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "RATE_LIMITED",
+          message: "Too many CSP violation reports. Please slow down.",
+        },
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfter),
+        },
+      }
+    );
+  }
+
+  // 4. Determine the report format from Content-Type.
   const contentType = request.headers.get("content-type") ?? "";
   const isLegacyFormat = contentType.includes("application/csp-report");
   const isReportingApi = contentType.includes("application/reports+json");
@@ -149,7 +242,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // if it parses as either format rather than rejecting a valid report.
   }
 
-  // 4. Parse the body — reject malformed JSON without logging the raw bytes.
+  // 5. Parse the body — reject malformed JSON without logging the raw bytes.
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawText);
@@ -157,7 +250,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse(null, { status: 400 });
   }
 
-  // 5. Extract the safe allow-listed fields and log one structured line.
+  // 6. Extract the safe allow-listed fields.
   const reports: SafeReportFields[] = [];
 
   if (isReportingApi && Array.isArray(parsed)) {
@@ -205,13 +298,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse(null, { status: 204 });
   }
 
-  // 6. Log and count each report.
+  // 7. Deduplicate and log reports within 5-minute sliding window (#1392).
   for (const report of reports) {
+    const dedupeHash = computeReportDedupeHash(
+      report.effectiveDirective,
+      report.violatedDirective,
+      report.blockedUri
+    );
+
+    if (isDuplicateCspReport(dedupeHash)) {
+      incCspReportsDropped("deduplicated");
+      continue;
+    }
+
+    recordCspReportDedupe(dedupeHash);
     logger.warn("csp_violation", compact(report as unknown as Record<string, unknown>));
     incMetric("csp_violation_reports_total");
   }
 
-  // 7. Respond with 204 No Content — the browser expects no body.
+  // 8. Respond with 204 No Content — the browser expects no body.
   return new NextResponse(null, { status: 204 });
 }
 

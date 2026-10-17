@@ -23,6 +23,17 @@ The path-scoped Prisma and contract checks are required when their files are
 changed. The integration-branch policy is required for every PR while the
 batch-integration branch exists.
 
+## Post-merge verification on integration/staging
+
+When a pull request is merged into `integration/staging`, a full post-merge run
+of `ci.yml` is triggered on the merge commit, alongside `prisma-ci.yml` (when
+`prisma/**` changes) and `lighthouse.yml`.
+
+This ensures that semantic regressions between independently passing PRs (e.g.
+one renaming a helper that another starts using) are caught immediately on the
+batch-integration branch rather than being deferred until the promotion PR to
+`main`.
+
 ## Scheduled or advisory workflows
 
 The following workflows are operational or advisory and are not merge-gate

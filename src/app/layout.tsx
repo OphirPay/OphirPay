@@ -49,6 +49,18 @@ export const metadata: Metadata = {
   colorScheme: "dark light",
 };
 
+export const THEME_INIT_SCRIPT = `(function () {
+  try {
+    var stored = localStorage.getItem("theme") || localStorage.getItem("ophirpay-theme");
+    var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var dark = stored === "dark" || ((stored === null || stored === "system") && prefersDark);
+    var resolved = dark ? "dark" : "light";
+    document.documentElement.classList.toggle("dark", dark);
+    document.documentElement.setAttribute("data-theme", resolved);
+    document.documentElement.style.colorScheme = resolved;
+  } catch (e) {}
+})();`;
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -57,29 +69,21 @@ export default async function RootLayout({
   // Per-request CSP nonce set by src/proxy.ts (issue #1257). Next stamps it on
   // its own framework scripts; our inline scripts below must carry it too or
   // the nonce-based script-src blocks them.
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const reqHeaders = await headers();
+  const nonce =
+    reqHeaders.get("x-nonce") ?? reqHeaders.get("csp-nonce") ?? undefined;
 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         {/* Blocking theme script — applies the saved theme class before the
             first paint to prevent a flash of the wrong theme (FOUC). Must stay
-            in sync with resolveTheme() in src/hooks/useTheme.tsx. */}
+            in sync with resolveTheme() in src/hooks/useTheme.tsx (#1376). */}
         <script
+          id="ophirpay-theme-init"
           nonce={nonce}
           dangerouslySetInnerHTML={{
-            __html: `
-              (function () {
-                try {
-                  var stored = localStorage.getItem("ophirpay-theme");
-                  var dark = stored === "dark" ||
-                    ((stored === null || stored === "system") &&
-                      window.matchMedia("(prefers-color-scheme: dark)").matches);
-                  if (dark) document.documentElement.classList.add("dark");
-                  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-                } catch (e) {}
-              })();
-            `,
+            __html: THEME_INIT_SCRIPT,
           }}
         />
         {/* JSON-LD structured data for SEO */}

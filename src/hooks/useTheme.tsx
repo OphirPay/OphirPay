@@ -1,27 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Theme context provider and useTheme hook.
- * Supports light/dark/system mode with localStorage persistence.
- *
- * @example
- * Wrap your app tree once, then read and toggle the theme anywhere:
- *
- * ```tsx
- * // app/layout.tsx (root layout)
- * export default function RootLayout({ children }) {
- *   return <ThemeProvider>{children}</ThemeProvider>;
- * }
- *
- * function ThemeToggle() {
- *   const { theme, resolved, toggle } = useTheme();
- *   return (
- *     <button onClick={toggle} aria-label="Toggle theme">
- *       {resolved === "dark" ? "🌙" : "☀️"} ({theme})
- *     </button>
- *   );
- * }
- * ```
+ * Theme context provider and useTheme hook (#1376).
+ * Supports light/dark/system mode with localStorage persistence and
+ * synchronous pre-hydration DOM state initialization to eliminate FOUC.
  */
 "use client";
 
@@ -34,40 +16,99 @@ import {
   type ReactNode,
 } from "react";
 
-type Theme = "light" | "dark" | "system";
+export type Theme = "light" | "dark" | "system";
 
-interface ThemeContextValue {
+export const THEME_STORAGE_KEY = "theme";
+export const LEGACY_THEME_STORAGE_KEY = "ophirpay-theme";
+
+export interface ThemeContextValue {
   theme: Theme;
   resolved: "light" | "dark";
+  mounted: boolean;
   setTheme: (theme: Theme) => void;
   toggle: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function resolveTheme(theme: Theme): "light" | "dark" {
+function isValidTheme(value: string | null): value is Theme {
+  return value === "light" || value === "dark" || value === "system";
+}
+
+export function readStoredTheme(): Theme {
+  if (typeof window === "undefined") return "system";
+  try {
+    const primary = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (isValidTheme(primary)) return primary;
+    const legacy = window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
+    if (isValidTheme(legacy)) return legacy;
+  } catch {
+    // Ignore storage access errors in restricted environments
+  }
+  return "system";
+}
+
+export function resolveTheme(theme: Theme): "light" | "dark" {
   if (theme !== "system") return theme;
   if (typeof window === "undefined") return "dark";
+  if (typeof window.matchMedia !== "function") return "dark";
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
 }
 
+/**
+ * Read the theme already applied to `document.documentElement` by the blocking
+ * `<head>` initialization script so React's first client render matches the
+ * pre-hydrated DOM without flashing (#1376).
+ */
+export function readPreHydratedResolvedTheme(): "light" | "dark" {
+  if (typeof document !== "undefined") {
+    const attr = document.documentElement.getAttribute("data-theme");
+    if (attr === "dark" || attr === "light") {
+      return attr;
+    }
+    if (document.documentElement.classList.contains("dark")) {
+      return "dark";
+    }
+  }
+  return resolveTheme(readStoredTheme());
+}
+
+export function applyThemeToDom(resolved: "light" | "dark"): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (resolved === "dark") {
+    root.classList.add("dark");
+  } else {
+    root.classList.remove("dark");
+  }
+  root.setAttribute("data-theme", resolved);
+  root.style.colorScheme = resolved;
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("system");
-  const [resolved, setResolved] = useState<"light" | "dark">("dark");
+  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme());
+  const [resolved, setResolved] = useState<"light" | "dark">(() =>
+    readPreHydratedResolvedTheme()
+  );
+  const [mounted, setMounted] = useState(false);
 
   const applyTheme = useCallback((t: Theme) => {
     const r = resolveTheme(t);
-    document.documentElement.classList.toggle("dark", r === "dark");
-    document.documentElement.setAttribute("data-theme", r);
+    applyThemeToDom(r);
     setResolved(r);
   }, []);
 
   const setTheme = useCallback(
     (t: Theme) => {
       setThemeState(t);
-      localStorage.setItem("ophirpay-theme", t);
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, t);
+        localStorage.setItem(LEGACY_THEME_STORAGE_KEY, t);
+      } catch {
+        // Ignore storage write errors
+      }
       applyTheme(t);
     },
     [applyTheme]
@@ -78,13 +119,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [resolved, setTheme]);
 
   useEffect(() => {
-    const stored = localStorage.getItem("ophirpay-theme") as Theme | null;
-    const initial = stored ?? "system";
+    const initial = readStoredTheme();
     setThemeState(initial);
     applyTheme(initial);
+    setMounted(true);
   }, [applyTheme]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = () => {
       if (theme === "system") applyTheme("system");
@@ -94,7 +138,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme, applyTheme]);
 
   return (
-    <ThemeContext.Provider value={{ theme, resolved, setTheme, toggle }}>
+    <ThemeContext.Provider value={{ theme, resolved, mounted, setTheme, toggle }}>
       {children}
     </ThemeContext.Provider>
   );

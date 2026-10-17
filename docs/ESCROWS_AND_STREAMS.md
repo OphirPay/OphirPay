@@ -634,6 +634,19 @@ The contract uses integer arithmetic; the result is rounded down.
 
 ---
 
+### Visual Vesting Progress & Future Claim Simulator (#1377)
+
+The OphirPay dashboard provides an interactive visual vesting chart and future date claim simulator:
+- **Component**: `VestingProgressChart` (`src/components/streams/VestingProgressChart.tsx`)
+- **Detail Route**: `/streams/[id]` (`src/app/streams/[id]/page.tsx`)
+- **Key Features**:
+  - **SVG Linear Slope Graph**: Renders the complete timeline with Start, Cliff (if applicable), Live/Simulated Progress pointer, and End Maturity markers.
+  - **Real-Time Ticker**: Live counter (`useVestingTicker` in `src/hooks/useCountdown.ts`) updating unlocked and claimable balances with smooth updates.
+  - **Simulate Future Date**: Interactive slider calculating future vested amounts, available claims, and percentage maturity based on the contract formula.
+  - **One-Click Sync**: "Reset to Live" button to instantly return from simulation to real-time state.
+
+---
+
 ### Stream error codes
 
 | Code | HTTP status | When it occurs |

@@ -11,10 +11,146 @@ import {
   isRpcFailoverDegraded,
   RPC_FAILOVER_DEGRADED_AFTER_MS,
 } from "@/lib/rpc-failover";
+import { getRedisRestConfig } from "@/lib/rate-limit";
 
 // ── Check helpers ──────────────────────────────────────────────
 
 type CheckStatus = "ok" | "error" | "unchecked" | "disabled" | "not_configured";
+
+const TCP_REDIS_URL = /^rediss?:\/\//i;
+
+let sharedTcpClient: {
+  status?: string;
+  ping: () => Promise<unknown>;
+  disconnect?: () => void;
+  on?: (event: string, cb: (...args: unknown[]) => void) => void;
+} | null = null;
+let sharedTcpUrl: string | null = null;
+
+export function resetRedisClientForTests(): void {
+  if (sharedTcpClient) {
+    try {
+      sharedTcpClient.disconnect?.();
+    } catch {
+      // ignore
+    }
+    sharedTcpClient = null;
+    sharedTcpUrl = null;
+  }
+}
+
+function parseRestRedisUrl(
+  rawUrl: string,
+  explicitToken?: string
+): { url: string; token?: string } {
+  try {
+    const parsed = new URL(rawUrl);
+    const token =
+      explicitToken ||
+      (parsed.password ? decodeURIComponent(parsed.password) : undefined);
+    parsed.username = "";
+    parsed.password = "";
+    return { url: parsed.toString().replace(/\/+$/, ""), token };
+  } catch {
+    return { url: rawUrl.replace(/\/+$/, ""), token: explicitToken };
+  }
+}
+
+/** Check Upstash / HTTP REST Redis connectivity by issuing PING (#1338). */
+async function pingRestRedis(
+  rawUrl: string,
+  rawToken: string | undefined,
+  timeoutMs: number
+): Promise<{ ok: boolean; latencyMs: number } | null> {
+  const { url, token } = parseRestRedisUrl(rawUrl, rawToken);
+  const start = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const headers: Record<string, string> = {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    // Upstash REST supports GET /ping or POST ["PING"]
+    const res = await fetch(`${url}/ping`, {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+    });
+    if (res.ok) {
+      return { ok: true, latencyMs: Date.now() - start };
+    }
+    const postRes = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...headers,
+      },
+      body: JSON.stringify(["PING"]),
+      signal: controller.signal,
+    });
+    return { ok: postRes.ok, latencyMs: Date.now() - start };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Check TCP Redis connectivity via ioredis on Node runtime by issuing PING (#1338). */
+async function pingTcpRedis(
+  url: string,
+  timeoutMs: number
+): Promise<{ ok: boolean; latencyMs: number } | null> {
+  const start = Date.now();
+  try {
+    if (
+      !sharedTcpClient ||
+      sharedTcpUrl !== url ||
+      (sharedTcpClient.status && sharedTcpClient.status !== "ready")
+    ) {
+      if (sharedTcpClient) {
+        try {
+          sharedTcpClient.disconnect?.();
+        } catch {
+          // ignore
+        }
+        sharedTcpClient = null;
+        sharedTcpUrl = null;
+      }
+
+      const mod = await import("ioredis");
+      const Redis = mod.Redis ?? mod.default;
+      const client = new Redis(url, {
+        lazyConnect: true,
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 0,
+        connectTimeout: timeoutMs,
+        commandTimeout: timeoutMs,
+      });
+      client.on?.("error", () => {});
+      if (typeof client.connect === "function") {
+        await client.connect();
+      }
+      sharedTcpClient = client;
+      sharedTcpUrl = url;
+    }
+
+    const pong = await sharedTcpClient.ping();
+    const ok = pong === "PONG" || typeof pong === "string";
+    return { ok, latencyMs: Date.now() - start };
+  } catch {
+    if (sharedTcpClient) {
+      try {
+        sharedTcpClient.disconnect?.();
+      } catch {
+        // ignore
+      }
+      sharedTcpClient = null;
+      sharedTcpUrl = null;
+    }
+    return null;
+  }
+}
 
 /** GET a URL and report reachability + latency; null when it errors/times out. */
 async function pingUrl(
@@ -102,21 +238,30 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
       horizonStatus = "error";
     }
 
-    // Check Redis connectivity (if configured)
+    // Check Redis connectivity (if configured) (issue #1338)
     let redisStatus: "ok" | "error" | "disabled" = "disabled";
     let redisLatency: number | null = null;
-    const redisUrl = process.env.REDIS_URL;
-    if (redisUrl) {
-      const pingUrlStr =
-        redisUrl.replace(/\/\/.*@/, "//health:@").replace(/\/\d+$/, "") +
-        "/ping";
-      const redis = await pingUrl(pingUrlStr, 3000);
-      if (redis) {
-        redisStatus = redis.ok ? "ok" : "error";
+    const restConfig = getRedisRestConfig();
+    const rawRedisUrl = process.env.REDIS_URL;
+
+    if (restConfig) {
+      const redis = await pingRestRedis(restConfig.url, restConfig.token, 3000);
+      if (redis && redis.ok) {
+        redisStatus = "ok";
         redisLatency = redis.latencyMs;
       } else {
         redisStatus = "error";
       }
+    } else if (rawRedisUrl && TCP_REDIS_URL.test(rawRedisUrl)) {
+      const redis = await pingTcpRedis(rawRedisUrl, 3000);
+      if (redis && redis.ok) {
+        redisStatus = "ok";
+        redisLatency = redis.latencyMs;
+      } else {
+        redisStatus = "error";
+      }
+    } else if (rawRedisUrl) {
+      redisStatus = "error";
     }
 
     // Check Contract-ID presence

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -188,6 +189,12 @@ export default function StreamsPage() {
               <Card key={id} className="space-y-4 p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-semibold text-gray-900 dark:text-white">Stream #{id}</h2>
+                  <Link
+                    href={`/streams/${id}`}
+                    className="text-xs text-ophir-600 dark:text-ophir-400 hover:underline"
+                  >
+                    (Timeline & Simulator →)
+                  </Link>
                   <Badge variant={stream.cancelled ? "danger" : percent >= 100 ? "success" : "info"}>
                     {stream.cancelled ? "Cancelled" : percent >= 100 ? "Fully vested" : "Active"}
                   </Badge>

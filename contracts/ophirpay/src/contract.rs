@@ -2608,11 +2608,36 @@ impl OphirPayContract {
         }
 
         let now = env.ledger().timestamp();
-        let vested = compute_vested(stream.total_amount, stream.start_time, stream.end_time, now);
+        // Explicit zero-check on duration prior to any vesting division (#1357).
+        let duration = stream.end_time.saturating_sub(stream.start_time);
+        let vested = if duration == 0 || now >= stream.end_time {
+            stream.total_amount
+        } else if now <= stream.start_time {
+            0
+        } else {
+            // Standardized linear floor division: vested = (total_amount * elapsed) / duration
+            // (overflow-safe via compute_vested).
+            compute_vested(stream.total_amount, stream.start_time, stream.end_time, now)
+        };
+
         let earned_unclaimed = vested
             .checked_sub(stream.claimed_amount)
             .ok_or(PaymentError::StreamInvariantViolated)?;
-        let unvested = stream.total_amount.saturating_sub(vested);
+        let unvested = stream
+            .total_amount
+            .checked_sub(vested)
+            .ok_or(PaymentError::StreamInvariantViolated)?;
+
+        // Solvency invariant (#1357): claimed + earned_unclaimed + unvested == total_amount
+        // (and vested + unvested == total_amount) so rounding always favors contract solvency.
+        let total_accounted = stream
+            .claimed_amount
+            .checked_add(earned_unclaimed)
+            .and_then(|v| v.checked_add(unvested))
+            .ok_or(PaymentError::StreamInvariantViolated)?;
+        if total_accounted != stream.total_amount || unvested < 0 {
+            return Err(PaymentError::StreamInvariantViolated);
+        }
 
         stream.cancelled = true;
         stream.claimed_amount = vested;

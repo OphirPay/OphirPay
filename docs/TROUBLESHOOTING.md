@@ -5,7 +5,7 @@
 > and open a new one with the error message, your network (`TESTNET`/`PUBLIC`),
 > and the commands you ran.
 
-**Quick links:** [Setup & environment](#-setup--environment) · [Funding (friendbot)](#-funding-friendbot) · [RPC & network](#-rpc--network) · [Trustlines](#-trustlines) · [Wallet rejections](#-wallet-rejections) · [App runtime](#-app-runtime) · [Live events (SSE)](#-live-events-sse)
+**Quick links:** [Setup & environment](#-setup--environment) · [Funding (friendbot)](#-funding-friendbot) · [RPC & network](#-rpc--network) · [Trustlines](#-trustlines) · [Wallet rejections](#-wallet-rejections) · [App runtime](#-app-runtime) · [Live events (SSE)](#-live-events-sse) · [Prometheus Alert Runbooks](#-prometheus-alert-runbooks)
 
 ---
 
@@ -328,6 +328,108 @@ npm ci
 2. The WebSocket server starts automatically on boot via `instrumentation.ts` (`EVENTS_WS_PORT`, default `8787`); check the startup log for `WebSocket event server listening`.
 3. Confirm `ws(s)://<host>:8787/api/events` connects.
 4. In production, make sure the port is exposed through the ingress/load balancer.
+
+---
+
+## 🚨 Prometheus Alert Runbooks
+
+### Payment processing latency
+<a id="payment-processing-latency"></a>
+
+**Alerts**: `PaymentProcessingLatencyHigh` (p95 latency > 30s for 5m).
+
+**Symptom**: Payment submission and verification requests take unusually long to complete.
+
+**Cause**:
+- Stellar RPC node experiencing congestion or ledger synchronization delays.
+- Heavy lock contention on the application database during batch execution.
+- High memory pressure causing garbage collection pauses.
+
+**Resolution**:
+1. Check Soroban RPC health via `GET /api/health` and review `rpcFailover` status.
+2. Inspect slow queries in PostgreSQL: `SELECT pid, query, age(clock_timestamp(), query_start) FROM pg_stat_activity WHERE state != 'idle';`.
+3. Check pod resource utilization (`kubectl top pods -n ophirpay`) and scale replicas if CPU/memory throttled.
+
+---
+
+### Webhook delivery failures
+<a id="webhook-delivery-failures"></a>
+
+**Alerts**: `OphirPayWebhookHighFailureRate` (> 5% failure rate over 5m), `WebhookDeliveryFailureRateHigh` (> 25% failure rate over 15m).
+
+**Symptom**: Webhook events fail terminal delivery attempts to subscriber endpoints.
+
+**Cause**:
+- Subscriber endpoint is offline, returning HTTP 5xx or timing out.
+- TLS/SSL certificate mismatch or invalid payload signature verification on client side.
+- Network partitions or DNS resolution failures on egress traffic.
+
+**Resolution**:
+1. Check webhook delivery logs via `GET /api/webhooks/[id]/deliveries`.
+2. Send test webhook payload via `POST /api/webhooks/[id]/test` to verify subscriber reachability.
+3. Verify endpoint health and inspect HTTP status code distribution.
+4. If failures persist on subscriber side, verify subscriber endpoint URL with customer or disable broken hooks to preserve queue capacity.
+
+---
+
+### API errors and availability
+<a id="api-high-error-rate"></a>
+<a id="api-down"></a>
+
+**Alerts**: `ApiHighErrorRate` (> 5% HTTP errors for 5m), `ApiDown` (metrics scrape unreachable for 2m).
+
+**Symptom**: Users receive 5xx errors or the application becomes completely unresponsive.
+
+**Cause**:
+- Unhandled exceptions in route handlers or runtime boot crash.
+- Next.js server out of memory (OOM) or crashed by upstream dependency timeout.
+- Ingress gateway misconfiguration or network routing failure.
+
+**Resolution**:
+1. Inspect container logs: `kubectl logs -n ophirpay -l app=ophirpay --tail=100`.
+2. Verify Next.js process health: `curl -v http://localhost:3000/api/health/live`.
+3. Check ingress controller and TLS certificate expiration status.
+4. If pods are in CrashLoopBackOff, check memory limits and recent deployment changes.
+
+---
+
+### Soroban RPC degraded
+<a id="soroban-rpc-degraded"></a>
+
+**Alerts**: `OphirPayRpcProviderDegraded` (> 2.5s latency or 5xx for 3m), `RpcFailoverDegraded` (running on fallback for > 2m), `RpcFailoverFrequent` (flapping between endpoints).
+
+**Symptom**: Contract calls, balance simulations, or payment submissions are slow or failing.
+
+**Cause**:
+- Upstream Stellar/Soroban RPC provider is rate-limiting requests or experiencing degraded performance.
+- Network latency or ISP routing degradation between server and RPC cluster.
+- Primary RPC node desynchronized from the Stellar Horizon consensus ledger.
+
+**Resolution**:
+1. Inspect `GET /api/health` — review the `rpcFailover` status block for current active endpoint and recent failure reasons.
+2. Check [status.stellar.org](https://status.stellar.org) for network-wide Stellar incidents.
+3. Verify connectivity: `curl -s -X POST https://soroban-testnet.stellar.org -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'`.
+4. If primary provider is unresponsive, update `SOROBAN_RPC_URL` in `.env.local` or let the automatic failover engine switch to configured fallback URLs.
+
+---
+
+### Database pool exhaustion
+<a id="database-pool-exhaustion"></a>
+
+**Alerts**: `OphirPayDatabasePoolExhaustion` (queue wait / query latency > 500ms for 2m).
+
+**Symptom**: API response times degrade, requests time out with connection pool wait errors (`P2024` Prisma connection timeout).
+
+**Cause**:
+- High concurrent mutation traffic exhausting available PostgreSQL connections.
+- Slow unindexed queries or long-running database transactions holding connections open.
+- Connection limit configured too low in `DATABASE_URL`.
+
+**Resolution**:
+1. Check active database connections: `SELECT count(*), state FROM pg_stat_activity GROUP BY state;`.
+2. Inspect Prisma metrics at `GET /api/metrics` — check `prisma_pool_connections_busy` and `prisma_pool_wait_duration_ms`.
+3. Increase `connection_limit` parameter in `DATABASE_URL` or scale PgBouncer connection pooler capacity.
+4. Kill hung or idle-in-transaction connections: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle in transaction' AND age(clock_timestamp(), query_start) > interval '5 minutes';`.
 
 ---
 

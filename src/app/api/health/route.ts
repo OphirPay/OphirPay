@@ -11,6 +11,10 @@ import {
   isRpcFailoverDegraded,
   RPC_FAILOVER_DEGRADED_AFTER_MS,
 } from "@/lib/rpc-failover";
+import {
+  getAllCircuitBreakerSnapshots,
+  getCircuitBreaker,
+} from "@/lib/rpc-circuit-breaker";
 
 // ── Check helpers ──────────────────────────────────────────────
 
@@ -136,7 +140,9 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
       (s: string) => s !== "disabled" && s !== "unchecked"
     );
     const hasOptionalError = optionalChecks.includes("error");
-    const isDegraded = dbStatus === "ok" && (hasOptionalError || failoverDegraded);
+    const primaryBreaker = getCircuitBreaker(SOROBAN_RPC_URL);
+    const isCircuitOpen = primaryBreaker.getState() === "OPEN";
+    const isDegraded = dbStatus === "ok" && (hasOptionalError || failoverDegraded || isCircuitOpen);
     const overallStatus = dbStatus === "error" ? "error" : isDegraded ? "degraded" : "ok";
 
     return successResponse(
@@ -171,6 +177,7 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
           degraded: failoverDegraded,
           lastFailureReasons: failover.lastFailureReasons,
         },
+        circuitBreakers: getAllCircuitBreakerSnapshots(),
         uptime: process.uptime(),
       },
       { timestamp: new Date().toISOString() },

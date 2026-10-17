@@ -30,6 +30,8 @@ const counters = {
   rpc_failover_total: 0,
   /** Counter: cumulative RPC recoveries to the primary endpoint (issue #820). */
   rpc_failover_recoveries_total: 0,
+  /** Counter: cumulative RPC circuit breaker trip events (issue #1421). */
+  rpc_circuit_breaker_trips_total: 0,
   /**
    * Counter: CSP violation reports received at POST /api/csp-report (issue #698).
    * Incremented once per accepted, parsed, and logged report.  Oversized or
@@ -81,6 +83,16 @@ export function recordRpcFailoverState(state: NonNullable<typeof lastRpcFailover
 /** Read the last recorded RPC failover state (null before the first record). */
 export function getRpcFailoverSnapshot(): typeof lastRpcFailover {
   return lastRpcFailover;
+}
+
+/** Increment the counter for Soroban RPC circuit breaker trip events (issue #1421). */
+export function incRpcCircuitBreakerTrips(delta = 1): void {
+  counters.rpc_circuit_breaker_trips_total += delta;
+}
+
+/** Get total Soroban RPC circuit breaker trips. */
+export function getRpcCircuitBreakerTripsTotal(): number {
+  return counters.rpc_circuit_breaker_trips_total;
 }
 
 export type MetricName = keyof typeof counters;

@@ -1,62 +1,57 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, RefObject } from "react";
 
-interface RowProps {
+export const FOCUS_VISIBLE_ROW_CLASS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ophir-500 focus-visible:ring-offset-2";
+
+export interface RowProps {
   tabIndex: number;
   onFocus: () => void;
+  "data-row-index": number;
 }
 
-interface UseTableKeyboardNavigationResult {
+export interface UseTableKeyboardNavigationOptions {
+  /** Called when the user presses Enter while focused on a row. */
+  onRowActivate?: (index: number) => void;
+}
+
+export interface UseTableKeyboardNavigationResult {
   /** Index of the row currently in the tab order (roving tabindex). */
   activeIndex: number;
   /**
-   * Props to spread onto each `<tr>` — mark it with `data-row-index={index}`
-   * so the handler can find rows inside the tbody.
+   * Props to spread onto each `<tr>` or row item — marks it with `data-row-index={index}`
+   * so the handler can find rows inside the container.
    */
   getRowProps: (index: number) => RowProps;
-  /** Attach to `<tbody>` to handle ArrowUp/ArrowDown/Home/End. */
+  /** Attach to `<tbody>` or list container to handle ArrowUp/ArrowDown/Home/End/Enter. */
   onRowsKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
   /** Attach to `<tbody>` as `ref` to scope row lookups. */
   tbodyRef: RefObject<HTMLTableSectionElement | null>;
 }
 
-const NAVIGATION_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End"]);
+const NAVIGATION_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End", "Enter"]);
 
 /**
- * Roving-tabindex keyboard navigation for table rows.
+ * Roving-tabindex keyboard navigation for table rows and list items (#1305).
  *
  * - The active row keeps `tabIndex={0}` so it is the only row reachable via
  *   Tab; all other rows get `tabIndex={-1}`.
  * - ArrowUp / ArrowDown / Home / End move the active row and shift focus to
  *   it, whether the row itself or an action button/link inside it has focus.
- * - The active index clamps when the row set shrinks (filtering/pagination)
- *   and resets to the first row when rows first appear.
- *
- * Usage:
- * ```tsx
- * const { activeIndex, getRowProps, onRowsKeyDown, tbodyRef } =
- *   useTableKeyboardNavigation(rows.length);
- *
- * <tbody ref={tbodyRef} onKeyDown={onRowsKeyDown}>
- *   {rows.map((row, i) => (
- *     <tr key={row.id} data-row-index={i} {...getRowProps(i)}>…</tr>
- *   ))}
- * </tbody>
- * ```
+ * - Enter triggers `onRowActivate(currentIndex)` (or clicks the row's primary
+ *   detail link) when pressed directly on a focused row.
  */
 export function useTableKeyboardNavigation(
-  rowCount: number
+  rowCount: number,
+  options: UseTableKeyboardNavigationOptions = {}
 ): UseTableKeyboardNavigationResult {
+  const { onRowActivate } = options;
   const [activeIndex, setActiveIndex] = useState(rowCount > 0 ? 0 : -1);
   const tbodyRef = useRef<HTMLTableSectionElement | null>(null);
 
-  // Keep the active row valid as the row set changes: reset to -1 when empty,
-  // clamp to the last row when the set shrinks, and default to the first row
-  // when rows first appear so the table is always reachable via Tab.
   useEffect(() => {
     if (rowCount === 0) {
       setActiveIndex(-1);
@@ -71,16 +66,39 @@ export function useTableKeyboardNavigation(
     (event: KeyboardEvent<HTMLElement>) => {
       if (!NAVIGATION_KEYS.has(event.key)) return;
 
-      const rows = tbodyRef.current?.querySelectorAll<HTMLTableRowElement>(
-        "tr[data-row-index]"
-      );
+      const container = tbodyRef.current ?? (event.currentTarget as HTMLElement | null);
+      if (!container) return;
+
+      const rows = container.querySelectorAll<HTMLElement>("[data-row-index]");
       if (!rows || rows.length === 0) return;
 
-      const row = (event.target as HTMLElement).closest("tr");
+      const target = event.target as HTMLElement;
+      const row = target.closest<HTMLElement>("[data-row-index]");
       if (!row) return;
 
       const currentIndex = Array.from(rows).indexOf(row);
       if (currentIndex === -1) return;
+
+      if (event.key === "Enter") {
+        // Do not hijack Enter when focus is inside an interactive child control
+        const isInteractiveChild =
+          target !== row &&
+          Boolean(target.closest("button, a, input, select, textarea"));
+        if (isInteractiveChild) return;
+
+        if (onRowActivate) {
+          event.preventDefault();
+          onRowActivate(currentIndex);
+          return;
+        }
+
+        const primaryLink = row.querySelector<HTMLElement>("a[href], [data-row-detail-trigger]");
+        if (primaryLink) {
+          event.preventDefault();
+          primaryLink.click();
+        }
+        return;
+      }
 
       let nextIndex = currentIndex;
       if (event.key === "ArrowUp") nextIndex -= 1;
@@ -95,13 +113,14 @@ export function useTableKeyboardNavigation(
       setActiveIndex(nextIndex);
       rows[nextIndex]?.focus();
     },
-    []
+    [onRowActivate]
   );
 
   const getRowProps = useCallback(
     (index: number): RowProps => ({
       tabIndex: index === activeIndex ? 0 : -1,
       onFocus: () => setActiveIndex(index),
+      "data-row-index": index,
     }),
     [activeIndex]
   );

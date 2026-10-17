@@ -1,7 +1,6 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 
@@ -17,8 +16,8 @@ interface PaginationProps {
 }
 
 /**
- * Pagination controls for tables and lists.
- * Shows prev/next buttons with page indicator and quick-jump.
+ * Pagination controls for tables and lists (#1305).
+ * Shows prev/next buttons with page indicator, quick-jump, and full keyboard accessibility.
  */
 export function Pagination({
   page,
@@ -47,22 +46,32 @@ export function Pagination({
       aria-label="Pagination"
       className={cn("flex items-center justify-between gap-4", className)}
     >
-      <Button variant="outline" size="sm" onClick={onPrev} disabled={!hasPrev}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={onPrev}
+        disabled={!hasPrev}
+        aria-label="Previous page"
+      >
         ← Previous
       </Button>
 
       <div className="hidden sm:flex items-center gap-1">
         {pages.map((p, i) =>
           p === "ellipsis" ? (
-            <span key={`e-${i}`} className="px-1 text-gray-400">
+            <span key={`e-${i}`} className="px-1 text-gray-400" aria-hidden="true">
               …
             </span>
           ) : (
             <button
               key={p}
+              type="button"
+              aria-label={`Page ${p}`}
+              aria-current={p === page ? "page" : undefined}
               onClick={() => onPage?.(p)}
               className={cn(
-                "w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors",
+                "w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ophir-500 focus-visible:ring-offset-1",
                 p === page
                   ? "bg-ophir-600 text-white"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -74,7 +83,14 @@ export function Pagination({
         )}
       </div>
 
-      <Button variant="outline" size="sm" onClick={onNext} disabled={!hasNext}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={onNext}
+        disabled={!hasNext}
+        aria-label="Next page"
+      >
         Next →
       </Button>
     </nav>

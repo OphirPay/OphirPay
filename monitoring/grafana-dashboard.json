@@ -80,6 +80,34 @@
       "targets": [
         { "expr": "rate(ophirpay_batches_processed_total[5m])", "legendFormat": "Batches/min" }
       ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 7,
+      "options": {},
+      "title": "Active SSE Connections",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "ophirpay_sse_active_connections", "legendFormat": "{{route}}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 8,
+      "options": {},
+      "title": "SSE Connection Duration",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(ophirpay_sse_connection_duration_seconds_sum[5m]) / rate(ophirpay_sse_connection_duration_seconds_count[5m])", "legendFormat": "{{route}} (avg duration)" }
+      ]
     }
   ],
   "refresh": "30s",

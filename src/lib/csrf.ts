@@ -27,10 +27,14 @@ export function generateCsrfToken(): string {
  * http origins, which would otherwise break every mutation for developers
  * running on a LAN IP.
  */
-export function csrfCookieHeader(token: string, secure = true): string {
+export function csrfCookieHeader(
+  token: string,
+  secure = true,
+  sameSite: "Strict" | "Lax" = "Strict"
+): string {
   const name = secure ? CSRF_COOKIE : CSRF_COOKIE_INSECURE;
   const secureAttr = secure ? "Secure; " : "";
-  return `${name}=${token}; Path=/; ${secureAttr}HttpOnly; SameSite=Strict; Max-Age=86400`;
+  return `${name}=${token}; Path=/; ${secureAttr}HttpOnly; SameSite=${sameSite}; Max-Age=86400`;
 }
 
 /**

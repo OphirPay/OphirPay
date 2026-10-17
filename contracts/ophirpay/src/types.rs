@@ -378,4 +378,199 @@ pub struct HookList {
     pub total: u32,
     pub truncated: bool,
 }
-
+
+
+/// Typed payload for timelocked administrative actions (#1306).
+///
+/// Connects `TimelockedAction` execution directly to on-chain state-changing
+/// administrative storage updates after the 24-hour `TMLOCK_DELAY` elapses.
+#[contracttype]
+#[derive(Clone)]
+pub enum AdminTimelockAction {
+    SetFeeConfig(FeeConfig),
+    SetFeeCollector(Address),
+    PauseContract(bool),
+    GrantRole(Address, Role),
+    RevokeRole(Address),
+    ConfigureGovernance(GovernanceConfig),
+    SetSpendingLimit(Address, i128, i128, u64, bool),
+}
+
+/// Dispatches a matured `TimelockedAction` to its target state-changing
+/// storage handler (#1306).
+///
+/// Rejects already-executed actions with `TimelockAlreadyExecuted`, premature
+/// execution attempts with `TimelockNotDue`, and unrecognized action types
+/// with `UnsupportedOperation`.
+pub fn dispatch_timelocked_action(
+    env: &Env,
+    action: &TimelockedAction,
+    payload: Option<AdminTimelockAction>,
+) -> Result<(), PaymentError> {
+    if action.executed {
+        return Err(PaymentError::TimelockAlreadyExecuted);
+    }
+
+    let now = env.ledger().timestamp();
+    if now < action.unlocks_at {
+        return Err(PaymentError::TimelockNotDue);
+    }
+
+    match payload {
+        Some(AdminTimelockAction::SetFeeConfig(config)) => {
+            if config.payment_fee_bps > 1000
+                || config.escrow_fee_bps > 1000
+                || config.stream_fee_bps > 1000
+            {
+                return Err(PaymentError::FeeTooHigh);
+            }
+            let mut ver_count: u32 = env.storage().instance().get(&FEE_VER_CNT).unwrap_or(0);
+            ver_count = ver_count.saturating_add(1);
+            let version_entry = FeeConfigVersion {
+                version: ver_count,
+                config: config.clone(),
+                changed_at: now,
+                changed_by: action.proposed_by.clone(),
+            };
+            env.storage()
+                .persistent()
+                .set(&(FEE_VER_CNT, ver_count), &version_entry);
+            env.storage()
+                .persistent()
+                .extend_ttl(&(FEE_VER_CNT, ver_count), BUMP_MIN_TTL, BUMP_MAX_TTL);
+            env.storage().instance().set(&FEE_VER_CNT, &ver_count);
+            env.storage().instance().set(&FEE_KEY, &config);
+            env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+            record_audit(
+                env,
+                "fee_config_set",
+                &action.proposed_by,
+                action.id,
+                "Fee configuration updated via timelock",
+            );
+            Ok(())
+        }
+        Some(AdminTimelockAction::SetFeeCollector(collector)) => {
+            env.storage().instance().set(&FEE_COLL, &collector);
+            env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+            record_audit(
+                env,
+                "fee_collector_set",
+                &action.proposed_by,
+                action.id,
+                "Fee collector updated via timelock",
+            );
+            Ok(())
+        }
+        Some(AdminTimelockAction::PauseContract(paused)) => {
+            env.storage().instance().set(&PAUSED, &paused);
+            env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+            record_audit(
+                env,
+                if paused { "contract_paused" } else { "contract_unpaused" },
+                &action.proposed_by,
+                action.id,
+                "Pause state updated via timelock",
+            );
+            Ok(())
+        }
+        Some(AdminTimelockAction::GrantRole(grantee, role)) => {
+            let key = (ROLE_KEY, grantee);
+            env.storage().persistent().set(&key, &role);
+            env.storage().persistent().extend_ttl(&key, BUMP_MIN_TTL, BUMP_MAX_TTL);
+            record_audit(
+                env,
+                "role_granted",
+                &action.proposed_by,
+                action.id,
+                "Role granted via timelock",
+            );
+            Ok(())
+        }
+        Some(AdminTimelockAction::RevokeRole(grantee)) => {
+            let key = (ROLE_KEY, grantee);
+            env.storage().persistent().remove(&key);
+            record_audit(
+                env,
+                "role_revoked",
+                &action.proposed_by,
+                action.id,
+                "Role revoked via timelock",
+            );
+            Ok(())
+        }
+        Some(AdminTimelockAction::ConfigureGovernance(config)) => {
+            if config.quorum_bps > 10000 {
+                return Err(PaymentError::InvalidAmount);
+            }
+            env.storage().instance().set(&GOV_CONF, &config);
+            env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+            record_audit(
+                env,
+                "governance_configured",
+                &action.proposed_by,
+                action.id,
+                "Governance configured via timelock",
+            );
+            Ok(())
+        }
+        Some(AdminTimelockAction::SetSpendingLimit(
+            user,
+            daily_limit,
+            monthly_limit,
+            expires_at,
+            is_active,
+        )) => {
+            let limit = SpendingLimit {
+                daily_limit,
+                monthly_limit,
+                current_daily_spend: 0,
+                current_monthly_spend: 0,
+                last_reset_day: now,
+                last_reset_month: now,
+                expires_at,
+                is_active,
+            };
+            let key = (SPEND_LIMIT_KEY, user);
+            env.storage().persistent().set(&key, &limit);
+            env.storage().persistent().extend_ttl(&key, BUMP_MIN_TTL, BUMP_MAX_TTL);
+            record_audit(
+                env,
+                "spending_limit_set",
+                &action.proposed_by,
+                action.id,
+                "Spending limit configured via timelock",
+            );
+            Ok(())
+        }
+        None => {
+            let pause_str = String::from_str(env, "pause");
+            let unpause_str = String::from_str(env, "unpause");
+            if action.action_type == pause_str {
+                env.storage().instance().set(&PAUSED, &true);
+                env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+                record_audit(
+                    env,
+                    "contract_paused",
+                    &action.proposed_by,
+                    action.id,
+                    "Contract paused via timelock",
+                );
+                Ok(())
+            } else if action.action_type == unpause_str {
+                env.storage().instance().set(&PAUSED, &false);
+                env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+                record_audit(
+                    env,
+                    "contract_unpaused",
+                    &action.proposed_by,
+                    action.id,
+                    "Contract unpaused via timelock",
+                );
+                Ok(())
+            } else {
+                Err(PaymentError::UnsupportedOperation)
+            }
+        }
+    }
+}

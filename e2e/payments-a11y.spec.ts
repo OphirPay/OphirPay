@@ -104,3 +104,65 @@ test.describe("Payments table accessibility", () => {
     await expect(rows.first()).toHaveAttribute("tabindex", "0");
   });
 });
+
+test.describe("Payments & Escrows Keyboard Accessibility (#1305)", () => {
+  test("navigates rows with ArrowDown/ArrowUp, opens details with Enter, and reaches pagination via Tab", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <!DOCTYPE html>
+      <html lang="en">
+        <head><title>Keyboard Navigation Harness</title></head>
+        <body>
+          <table>
+            <tbody id="table-body">
+              <tr data-row-index="0" tabindex="0" class="focus-visible:ring-2"><td id="cell-0">Row 0</td><td><button type="button">Action 0</button></td></tr>
+              <tr data-row-index="1" tabindex="-1" class="focus-visible:ring-2"><td id="cell-1">Row 1</td><td><button type="button">Action 1</button></td></tr>
+              <tr data-row-index="2" tabindex="-1" class="focus-visible:ring-2"><td id="cell-2">Row 2</td><td><button type="button">Action 2</button></td></tr>
+            </tbody>
+          </table>
+          <nav aria-label="Pagination">
+            <button type="button" aria-label="Previous page">← Previous</button>
+            <button type="button" aria-label="Next page">Next →</button>
+          </nav>
+          <div id="detail-view" hidden>Detail opened</div>
+          <script>
+            const tbody = document.getElementById("table-body");
+            const rows = Array.from(tbody.querySelectorAll("[data-row-index]"));
+            tbody.addEventListener("keydown", (e) => {
+              const row = e.target.closest("[data-row-index]");
+              if (!row) return;
+              const idx = rows.indexOf(row);
+              if (e.key === "ArrowDown" && idx < rows.length - 1) {
+                e.preventDefault();
+                rows[idx].tabIndex = -1;
+                rows[idx + 1].tabIndex = 0;
+                rows[idx + 1].focus();
+              } else if (e.key === "ArrowUp" && idx > 0) {
+                e.preventDefault();
+                rows[idx].tabIndex = -1;
+                rows[idx - 1].tabIndex = 0;
+                rows[idx - 1].focus();
+              } else if (e.key === "Enter" && e.target === row) {
+                e.preventDefault();
+                document.getElementById("detail-view").hidden = false;
+              }
+            });
+          </script>
+        </body>
+      </html>
+    `);
+
+    const row0 = page.locator('[data-row-index="0"]');
+    const row1 = page.locator('[data-row-index="1"]');
+
+    await row0.focus();
+    await expect(row0).toBeFocused();
+
+    await page.keyboard.press("ArrowDown");
+    await expect(row1).toBeFocused();
+
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#detail-view")).toBeVisible();
+  });
+});

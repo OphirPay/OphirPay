@@ -1,7 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -10,6 +10,10 @@ import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import {
+  FOCUS_VISIBLE_ROW_CLASS,
+  useTableKeyboardNavigation,
+} from "@/hooks/useTableKeyboardNavigation";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { createEscrow, claimEscrow, getContractOwner, releaseEscrow, releaseEscrowByArbiter } from "@/lib/contract-advanced";
 import { fetchRecentContractRecords } from "@/lib/on-chain-records";
@@ -24,6 +28,7 @@ export default function EscrowsPage() {
   const { wallet } = useWallet();
   const toast = useToast();
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedEscrow, setSelectedEscrow] = useState<EscrowData | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [beneficiary, setBeneficiary] = useState("");
   const [arbiter, setArbiter] = useState("");
@@ -48,6 +53,16 @@ export default function EscrowsPage() {
     undefined,
     undefined,
     () => fetchRecentContractRecords<EscrowData>("escrows"),
+  );
+
+  const { getRowProps, onRowsKeyDown, tbodyRef } = useTableKeyboardNavigation(
+    escrows.length,
+    {
+      onRowActivate: (index) => {
+        const target = escrows[index];
+        if (target) setSelectedEscrow(target);
+      },
+    },
   );
 
   const submit = async (action: () => Promise<{ success: boolean; error?: string }>, success: string) => {
@@ -151,53 +166,80 @@ export default function EscrowsPage() {
           </p>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {escrows.map((escrow) => {
+        <div
+          ref={tbodyRef as unknown as RefObject<HTMLDivElement>}
+          onKeyDown={onRowsKeyDown}
+          role="list"
+          aria-label="Escrow records"
+          className="space-y-3"
+        >
+          {escrows.map((escrow, index) => {
             const id = Number(escrow.id);
             const isSettled = escrow.released || escrow.claimed;
             const deadlineReached = Math.floor(Date.now() / 1000) >= Number(escrow.deadline);
             const isBeneficiary = wallet.publicKey === escrow.beneficiary;
             const isArbiter = Boolean(escrow.arbiter && wallet.publicKey === escrow.arbiter);
             return (
-              <Card key={id} className="space-y-3 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-semibold text-gray-900 dark:text-white">Escrow #{id}</h2>
-                  <Badge variant={isSettled ? "success" : "info"}>{isSettled ? "Settled" : "Locked"}</Badge>
-                  <span className="ml-auto text-lg font-semibold text-gray-900 dark:text-white">
-                    {formatXlmStroops(escrow.amount)}
-                  </span>
-                </div>
-                <dl className="grid gap-2 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">
-                  <div><dt className="inline font-medium">Depositor: </dt><dd className="inline font-mono">{shortenAddress(escrow.depositor, 12)}</dd></div>
-                  <div><dt className="inline font-medium">Beneficiary: </dt><dd className="inline font-mono">{shortenAddress(escrow.beneficiary, 12)}</dd></div>
-                  <div><dt className="inline font-medium">Arbiter: </dt><dd className="inline font-mono">{escrow.arbiter ? shortenAddress(escrow.arbiter, 12) : "Not set"}</dd></div>
-                  <div><dt className="inline font-medium">Claimable after: </dt><dd className="inline">{new Date(Number(escrow.deadline) * 1000).toLocaleString()}</dd></div>
-                </dl>
-                {escrow.metadata && <p className="text-sm text-gray-500">{escrow.metadata}</p>}
-                {!isSettled && wallet.connected && (
-                  <div className="flex flex-wrap gap-2">
-                    {isBeneficiary && deadlineReached && (
-                      <Button size="sm" onClick={() => void handleClaim(id)} loading={submitting}>Claim escrow</Button>
-                    )}
-                    {isArbiter && (
-                      <>
-                        <Button size="sm" onClick={() => void handleArbiterRelease(id, true)} loading={submitting}>Release to beneficiary</Button>
-                        <Button size="sm" variant="secondary" onClick={() => void handleArbiterRelease(id, false)} loading={submitting}>Return to depositor</Button>
-                      </>
-                    )}
-                    {wallet.publicKey === contractOwner && (
-                      <Button size="sm" onClick={() => void handleOwnerRelease(id)} loading={submitting}>Owner release</Button>
-                    )}
-                    {isBeneficiary && !deadlineReached && (
-                      <span className="self-center text-xs text-gray-500">Claim becomes available after the deadline.</span>
-                    )}
+              <div
+                key={id}
+                role="listitem"
+                {...getRowProps(index)}
+                className={`rounded-xl ${FOCUS_VISIBLE_ROW_CLASS}`}
+              >
+                <Card className="space-y-3 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-semibold text-gray-900 dark:text-white">Escrow #{id}</h2>
+                    <Badge variant={isSettled ? "success" : "info"}>{isSettled ? "Settled" : "Locked"}</Badge>
+                    <span className="ml-auto text-lg font-semibold text-gray-900 dark:text-white">
+                      {formatXlmStroops(escrow.amount)}
+                    </span>
                   </div>
-                )}
-              </Card>
+                  <dl className="grid gap-2 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">
+                    <div><dt className="inline font-medium">Depositor: </dt><dd className="inline font-mono">{shortenAddress(escrow.depositor, 12)}</dd></div>
+                    <div><dt className="inline font-medium">Beneficiary: </dt><dd className="inline font-mono">{shortenAddress(escrow.beneficiary, 12)}</dd></div>
+                    <div><dt className="inline font-medium">Arbiter: </dt><dd className="inline font-mono">{escrow.arbiter ? shortenAddress(escrow.arbiter, 12) : "Not set"}</dd></div>
+                    <div><dt className="inline font-medium">Claimable after: </dt><dd className="inline">{new Date(Number(escrow.deadline) * 1000).toLocaleString()}</dd></div>
+                  </dl>
+                  {escrow.metadata && <p className="text-sm text-gray-500">{escrow.metadata}</p>}
+                  {!isSettled && wallet.connected && (
+                    <div className="flex flex-wrap gap-2">
+                      {isBeneficiary && deadlineReached && (
+                        <Button size="sm" onClick={() => void handleClaim(id)} loading={submitting}>Claim escrow</Button>
+                      )}
+                      {isArbiter && (
+                        <>
+                          <Button size="sm" onClick={() => void handleArbiterRelease(id, true)} loading={submitting}>Release to beneficiary</Button>
+                          <Button size="sm" variant="secondary" onClick={() => void handleArbiterRelease(id, false)} loading={submitting}>Return to depositor</Button>
+                        </>
+                      )}
+                      {wallet.publicKey === contractOwner && (
+                        <Button size="sm" onClick={() => void handleOwnerRelease(id)} loading={submitting}>Owner release</Button>
+                      )}
+                      {isBeneficiary && !deadlineReached && (
+                        <span className="self-center text-xs text-gray-500">Claim becomes available after the deadline.</span>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              </div>
             );
           })}
         </div>
       )}
+
+      <Modal
+        open={Boolean(selectedEscrow)}
+        onClose={() => setSelectedEscrow(null)}
+        title={selectedEscrow ? `Escrow #${Number(selectedEscrow.id)} Details` : "Escrow Details"}
+      >
+        {selectedEscrow && (
+          <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300" data-testid="escrow-detail-modal">
+            <p><span className="font-medium">Depositor:</span> <span className="font-mono break-all">{selectedEscrow.depositor}</span></p>
+            <p><span className="font-medium">Beneficiary:</span> <span className="font-mono break-all">{selectedEscrow.beneficiary}</span></p>
+            <p><span className="font-medium">Amount:</span> {formatXlmStroops(selectedEscrow.amount)}</p>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create escrow" description="Deposit XLM into a contract escrow with an optional arbiter.">
         <div className="space-y-4">

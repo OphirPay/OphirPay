@@ -1,7 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -11,6 +11,10 @@ import { useToast } from "@/components/ui/Toast";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import {
+  FOCUS_VISIBLE_ROW_CLASS,
+  useTableKeyboardNavigation,
+} from "@/hooks/useTableKeyboardNavigation";
 import { cancelStream, claimStream, createStream } from "@/lib/contract-advanced";
 import { fetchRecentContractRecords } from "@/lib/on-chain-records";
 import { formatXlmStroops, parseXlmAmount } from "@/lib/stellar-amount";
@@ -42,6 +46,7 @@ export default function StreamsPage() {
   const toast = useToast();
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedStream, setSelectedStream] = useState<StreamData | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
@@ -59,6 +64,16 @@ export default function StreamsPage() {
     undefined,
     undefined,
     () => fetchRecentContractRecords<StreamData>("streams"),
+  );
+
+  const { getRowProps, onRowsKeyDown, tbodyRef } = useTableKeyboardNavigation(
+    streams.length,
+    {
+      onRowActivate: (index) => {
+        const target = streams[index];
+        if (target) setSelectedStream(target);
+      },
+    },
   );
 
   useEffect(() => {
@@ -170,8 +185,14 @@ export default function StreamsPage() {
           </p>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {streams.map((stream) => {
+        <div
+          ref={tbodyRef as unknown as RefObject<HTMLDivElement>}
+          onKeyDown={onRowsKeyDown}
+          role="list"
+          aria-label="Payment stream records"
+          className="space-y-3"
+        >
+          {streams.map((stream, index) => {
             const id = Number(stream.id);
             const total = BigInt(stream.total_amount);
             const claimed = BigInt(stream.claimed_amount);
@@ -185,50 +206,71 @@ export default function StreamsPage() {
             const isCreator = wallet.publicKey === stream.creator;
             const isRecipient = wallet.publicKey === stream.recipient;
             return (
-              <Card key={id} className="space-y-4 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-semibold text-gray-900 dark:text-white">Stream #{id}</h2>
-                  <Badge variant={stream.cancelled ? "danger" : percent >= 100 ? "success" : "info"}>
-                    {stream.cancelled ? "Cancelled" : percent >= 100 ? "Fully vested" : "Active"}
-                  </Badge>
-                  <span className="ml-auto text-lg font-semibold text-gray-900 dark:text-white">
-                    {formatXlmStroops(total)}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between gap-3 text-sm text-gray-600 dark:text-gray-400">
-                    <span>{stream.cancelled ? "Paid to recipient" : "Vested"}: {formatXlmStroops(vested)}</span>
-                    <span>Claimed: {formatXlmStroops(claimed)}</span>
+              <div
+                key={id}
+                role="listitem"
+                {...getRowProps(index)}
+                className={`rounded-xl ${FOCUS_VISIBLE_ROW_CLASS}`}
+              >
+                <Card className="space-y-4 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-semibold text-gray-900 dark:text-white">Stream #{id}</h2>
+                    <Badge variant={stream.cancelled ? "danger" : percent >= 100 ? "success" : "info"}>
+                      {stream.cancelled ? "Cancelled" : percent >= 100 ? "Fully vested" : "Active"}
+                    </Badge>
+                    <span className="ml-auto text-lg font-semibold text-gray-900 dark:text-white">
+                      {formatXlmStroops(total)}
+                    </span>
                   </div>
-                  <ProgressBar value={percent} showLabel />
-                  {isRecipient && claimable > BigInt(0) && !stream.cancelled && (
-                    <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                      Claimable now: {formatXlmStroops(claimable)}
-                    </p>
+                  <div className="space-y-1">
+                    <div className="flex justify-between gap-3 text-sm text-gray-600 dark:text-gray-400">
+                      <span>{stream.cancelled ? "Paid to recipient" : "Vested"}: {formatXlmStroops(vested)}</span>
+                      <span>Claimed: {formatXlmStroops(claimed)}</span>
+                    </div>
+                    <ProgressBar value={percent} showLabel />
+                    {isRecipient && claimable > BigInt(0) && !stream.cancelled && (
+                      <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                        Claimable now: {formatXlmStroops(claimable)}
+                      </p>
+                    )}
+                  </div>
+                  <dl className="grid gap-2 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">
+                    <div><dt className="inline font-medium">Creator: </dt><dd className="inline font-mono">{shortenAddress(stream.creator, 12)}</dd></div>
+                    <div><dt className="inline font-medium">Recipient: </dt><dd className="inline font-mono">{shortenAddress(stream.recipient, 12)}</dd></div>
+                    <div><dt className="inline font-medium">Starts: </dt><dd className="inline">{new Date(Number(start) * 1000).toLocaleString()}</dd></div>
+                    <div><dt className="inline font-medium">Ends: </dt><dd className="inline">{new Date(Number(end) * 1000).toLocaleString()}</dd></div>
+                  </dl>
+                  {stream.metadata && <p className="text-sm text-gray-500 dark:text-gray-400">{stream.metadata}</p>}
+                  {wallet.connected && !stream.cancelled && (
+                    <div className="flex flex-wrap gap-2">
+                      {isRecipient && claimable > BigInt(0) && (
+                        <Button size="sm" onClick={() => void handleClaim(id)} loading={submitting}>Claim vested tokens</Button>
+                      )}
+                      {isCreator && (
+                        <Button size="sm" variant="secondary" onClick={() => void handleCancel(id)} loading={submitting}>Cancel stream</Button>
+                      )}
+                    </div>
                   )}
-                </div>
-                <dl className="grid gap-2 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">
-                  <div><dt className="inline font-medium">Creator: </dt><dd className="inline font-mono">{shortenAddress(stream.creator, 12)}</dd></div>
-                  <div><dt className="inline font-medium">Recipient: </dt><dd className="inline font-mono">{shortenAddress(stream.recipient, 12)}</dd></div>
-                  <div><dt className="inline font-medium">Starts: </dt><dd className="inline">{new Date(Number(start) * 1000).toLocaleString()}</dd></div>
-                  <div><dt className="inline font-medium">Ends: </dt><dd className="inline">{new Date(Number(end) * 1000).toLocaleString()}</dd></div>
-                </dl>
-                {stream.metadata && <p className="text-sm text-gray-500 dark:text-gray-400">{stream.metadata}</p>}
-                {wallet.connected && !stream.cancelled && (
-                  <div className="flex flex-wrap gap-2">
-                    {isRecipient && claimable > BigInt(0) && (
-                      <Button size="sm" onClick={() => void handleClaim(id)} loading={submitting}>Claim vested tokens</Button>
-                    )}
-                    {isCreator && (
-                      <Button size="sm" variant="secondary" onClick={() => void handleCancel(id)} loading={submitting}>Cancel stream</Button>
-                    )}
-                  </div>
-                )}
-              </Card>
+                </Card>
+              </div>
             );
           })}
         </div>
       )}
+
+      <Modal
+        open={Boolean(selectedStream)}
+        onClose={() => setSelectedStream(null)}
+        title={selectedStream ? `Stream #${Number(selectedStream.id)} Details` : "Stream Details"}
+      >
+        {selectedStream && (
+          <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300" data-testid="stream-detail-modal">
+            <p><span className="font-medium">Creator:</span> <span className="font-mono break-all">{selectedStream.creator}</span></p>
+            <p><span className="font-medium">Recipient:</span> <span className="font-mono break-all">{selectedStream.recipient}</span></p>
+            <p><span className="font-medium">Total amount:</span> {formatXlmStroops(BigInt(selectedStream.total_amount))}</p>
+          </div>
+        )}
+      </Modal>
 
       <p className="text-xs text-gray-500 dark:text-gray-400">
         The dashboard currently creates XLM streams. Cancellation immediately pays any vested but unclaimed tokens to the recipient and returns the unvested balance to the creator.

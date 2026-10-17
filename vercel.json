@@ -12,10 +12,26 @@
       "permanent": true
     }
   ],
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "integration/staging": true
+    }
+  },
   "github": {
     "enabled": true,
     "autoAlias": true,
     "silent": false,
     "productionBranch": "main"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/requests/expire",
+      "schedule": "*/15 * * * *"
+    }
+  ]
 }

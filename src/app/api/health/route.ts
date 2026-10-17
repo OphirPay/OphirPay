@@ -11,6 +11,7 @@ import {
   isRpcFailoverDegraded,
   RPC_FAILOVER_DEGRADED_AFTER_MS,
 } from "@/lib/rpc-failover";
+import { getRpcCircuitBreakerSnapshot } from "@/lib/rpc-circuit-breaker";
 
 // ── Check helpers ──────────────────────────────────────────────
 
@@ -125,18 +126,21 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
         ? "ok"
         : "error";
 
-    // ── RPC failover state (issue #820) ─────────────────────
+    // ── RPC failover & circuit breaker state (issues #820, #1421) ─────
     // Which endpoint is currently serving, whether we are on a fallback,
-    // and how many failovers have occurred — the first questions an
-    // operator asks during an upstream RPC incident.
+    // how many failovers have occurred, and the per-endpoint circuit breaker
+    // state (`CLOSED` | `OPEN` | `HALF_OPEN`) + trip count.
     const failover = getRpcFailoverState();
     const failoverDegraded = isRpcFailoverDegraded();
+    const circuitBreaker = getRpcCircuitBreakerSnapshot();
+    const circuitDegraded = circuitBreaker.state !== "CLOSED";
 
     const optionalChecks = [rpcStatus, horizonStatus, contractStatus, redisStatus].filter(
       (s: string) => s !== "disabled" && s !== "unchecked"
     );
     const hasOptionalError = optionalChecks.includes("error");
-    const isDegraded = dbStatus === "ok" && (hasOptionalError || failoverDegraded);
+    const isDegraded =
+      dbStatus === "ok" && (hasOptionalError || failoverDegraded || circuitDegraded);
     const overallStatus = dbStatus === "error" ? "error" : isDegraded ? "degraded" : "ok";
 
     return successResponse(
@@ -171,6 +175,7 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
           degraded: failoverDegraded,
           lastFailureReasons: failover.lastFailureReasons,
         },
+        rpcCircuitBreaker: circuitBreaker,
         uptime: process.uptime(),
       },
       { timestamp: new Date().toISOString() },

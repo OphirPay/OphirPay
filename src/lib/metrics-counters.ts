@@ -30,6 +30,8 @@ const counters = {
   rpc_failover_total: 0,
   /** Counter: cumulative RPC recoveries to the primary endpoint (issue #820). */
   rpc_failover_recoveries_total: 0,
+  /** Counter: cumulative Soroban RPC circuit breaker trips into OPEN state (issue #1421). */
+  rpc_circuit_breaker_trips_total: 0,
   /**
    * Counter: CSP violation reports received at POST /api/csp-report (issue #698).
    * Incremented once per accepted, parsed, and logged report.  Oversized or

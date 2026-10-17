@@ -59,6 +59,19 @@ with the message:
 UI surfaces render that message with a retry affordance, so a timeout is
 actionable rather than an opaque failure.
 
+## Soroban RPC Circuit Breaker & Failover (`#1421`)
+
+To prevent API request thread starvation when an upstream Soroban RPC provider
+is down or timing out, `src/lib/rpc-circuit-breaker.ts` and
+`src/lib/stellar-rpc.ts` wrap RPC calls in a three-state circuit breaker:
+
+| Parameter / State | Behaviour |
+|---|---|
+| `CLOSED` | Normal operation; consecutive failures are counted per endpoint. |
+| `OPEN` | Tripped after **5 consecutive failures** (`DEFAULT_FAILURE_THRESHOLD = 5`). Holds open for a **30-second cooldown** (`DEFAULT_COOLDOWN_MS = 30_000`), failing fast with `CircuitOpenError` or immediately routing to secondary RPC URLs. |
+| `HALF_OPEN` | Entered once the 30-second cooldown expires. Runs a lightweight `getLatestLedger` JSON-RPC probe (`probeLatestLedger`) within `RPC_PROBE_TIMEOUT_MS`; closes (`CLOSED`) on success or immediately re-trips (`OPEN`) on failure. |
+| Observability | Circuit state is surfaced at `GET /api/health` under `data.rpcCircuitBreaker`, and trips increment the Prometheus counter `ophirpay_rpc_circuit_breaker_trips_total` (`rpc_circuit_breaker_trips_total`). |
+
 ---
 
 <div align="center">

@@ -34,7 +34,25 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx prisma generate
 RUN npm run build
 
-# Stage 3: Runner
+# Stage 3: Migrator (dedicated Prisma schema migration target — issue #1335)
+# Built with `docker build --target migrator -t ophirpay-migrator .` so the
+# production `runner` stage below stays free of the Prisma CLI and devDependencies.
+FROM node:24-slim AS migrator
+RUN apt-get update -qq \
+  && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+USER node
+WORKDIR /app
+
+ENV NODE_ENV=production
+COPY --chown=node:node --from=builder /app/package.json ./package.json
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/prisma ./prisma
+
+CMD ["npx", "prisma", "migrate", "deploy"]
+
+# Stage 4: Runner
 FROM node:24-slim AS runner
 # `apt-get upgrade` is what keeps the image-scan step green: the node:24-slim
 # base ships snapshot versions of system libraries (libcap2, gnutls, pcre2)

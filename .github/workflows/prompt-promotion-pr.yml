@@ -9,9 +9,16 @@ name: "🔔 Prompt Promotion PR"
 # It deliberately does NOT open the promotion PR itself: a PR created with the
 # workflow's default `GITHUB_TOKEN` does not trigger further workflow runs, so
 # its CI checks would never run. Opening it as a human/authenticated actor keeps
-# the merge gate honest.
+# Security notice: `pull_request_target` is used here instead of `pull_request`
+# because PRs merged from forks receive a read-only GITHUB_TOKEN under `pull_request`,
+# preventing the workflow from posting promotion comments (HTTP 403).
+# `pull_request_target` runs in the context of the base repository branch with write
+# permissions. This is completely safe here because:
+# 1. The workflow never checks out (`actions/checkout`) or executes untrusted PR code.
+# 2. It only references metadata (`github.event.pull_request.number` and `.title`)
+#    passed safely via step environment variables.
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
   workflow_dispatch:
 

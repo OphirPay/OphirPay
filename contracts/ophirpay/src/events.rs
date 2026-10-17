@@ -77,6 +77,35 @@ pub fn add_locked(env: &Env, delta: i128) {
     env.storage().instance().set(&LOCKED_BALANCE, &clamped);
 }
 
+/// Track per-token funds locked in active escrows, streams, and governance deposits.
+/// Updates both the per-token locked balance (`DataKey::TokenLockedBalance(asset)` and
+/// `(TOKEN_LOCKED_BALANCE, asset)`) and the aggregate `LOCKED_BALANCE` counter.
+pub fn add_token_locked(env: &Env, asset: &Address, delta: i128) {
+    let key = DataKey::TokenLockedBalance(asset.clone());
+    let current: i128 = env.storage().instance().get(&key).unwrap_or(0);
+    let next = current.saturating_add(delta);
+    // Clamp at 0 — per-token locked balance must never go negative
+    let clamped = if next < 0 { 0 } else { next };
+    env.storage().instance().set(&key, &clamped);
+    env.storage()
+        .instance()
+        .set(&(TOKEN_LOCKED_BALANCE, asset.clone()), &clamped);
+    add_locked(env, delta);
+}
+
+/// Read the locked balance for a specific token contract address.
+pub fn get_token_locked(env: &Env, asset: &Address) -> i128 {
+    let key = DataKey::TokenLockedBalance(asset.clone());
+    if let Some(val) = env.storage().instance().get::<DataKey, i128>(&key) {
+        return val;
+    }
+    env.storage()
+        .instance()
+        .get(&(TOKEN_LOCKED_BALANCE, asset.clone()))
+        .unwrap_or(0)
+}
+
+
 /// Compute the protocol fee for an amount at the given fee basis points.
 /// Shared by the public `calculate_fee` contract method and the internal
 /// `collect_fee` helper so fee math stays in one place.

@@ -935,3 +935,109 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. MULTI-TOKEN EMERGENCY WITHDRAW BALANCE INTEGRITY (#1354)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_emergency_withdraw_multi_token_isolation_and_balance_integrity() {
+    let fix = TestFixture::new();
+
+    let token_b_admin = Address::generate(&fix.env);
+    let token_b_id = fix
+        .env
+        .register_stellar_asset_contract_v2(token_b_admin.clone())
+        .address();
+    let token_b_client = token::Client::new(&fix.env, &token_b_id);
+    let token_b_admin_client = token::StellarAssetClient::new(&fix.env, &token_b_id);
+
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+
+    // Fund depositor with Token A (fix.token_id) and Token B
+    fix.mint(&depositor, 50_000);
+    token_b_admin_client.mint(&depositor, &50_000);
+
+    // 1. Lock 10_000 Token A in escrow and 20_000 Token B in stream
+    let now = fix.env.ledger().timestamp();
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Option::<Address>::None,
+        &10_000i128,
+        &fix.token_id,
+        &(now + 3600),
+        &String::from_str(&fix.env, "token_a_escrow"),
+    );
+    let stream_id = fix.client.create_stream(
+        &depositor,
+        &beneficiary,
+        &20_000i128,
+        &token_b_id,
+        &now,
+        &(now + 1000),
+        &String::from_str(&fix.env, "token_b_stream"),
+    );
+
+    // 2. Lock 5_000 Token A in governance proposal deposit
+    fix.client
+        .configure_governance(&fix.owner, &1_000i128, &3600u64, &5000u32, &true);
+    let proposal_id = fix.client.create_proposal(
+        &depositor,
+        &String::from_str(&fix.env, "Prop"),
+        &String::from_str(&fix.env, "Desc"),
+        &String::from_str(&fix.env, "act"),
+        &String::from_str(&fix.env, "tgt"),
+        &String::from_str(&fix.env, "data"),
+        &fix.token_id,
+        &5_000i128,
+    );
+
+    assert_eq!(fix.client.get_token_locked_balance(&fix.token_id), 15_000);
+    assert_eq!(fix.client.get_token_locked_balance(&token_b_id), 20_000);
+    assert_eq!(fix.client.get_locked_balance(), 35_000);
+
+    // 3. Accidentally send 3_000 Token A and 7_500 Token B directly to the contract
+    fix.mint(&fix.contract_id, 3_000);
+    token_b_admin_client.mint(&fix.contract_id, &7_500);
+
+    // Attempting to withdraw 3_001 Token A fails (only 3_000 Token A is unlocked)
+    assert_eq!(
+        fix.client
+            .try_emergency_withdraw(&fix.owner, &fix.token_id, &3_001i128),
+        Err(Ok(PaymentError::NoTokensToWithdraw))
+    );
+
+    // Withdrawing 3_000 unlocked Token A succeeds even though aggregate locked (35_000) > Token A balance (18_000)
+    fix.client
+        .emergency_withdraw(&fix.owner, &fix.token_id, &3_000i128);
+    assert_eq!(fix.token_client.balance(&fix.contract_id), 15_000);
+    assert_eq!(fix.token_client.balance(&fix.owner), 3_000);
+
+    // Attempting to withdraw 7_501 Token B fails (only 7_500 Token B is unlocked)
+    assert_eq!(
+        fix.client
+            .try_emergency_withdraw(&fix.owner, &token_b_id, &7_501i128),
+        Err(Ok(PaymentError::NoTokensToWithdraw))
+    );
+
+    // Withdrawing 7_500 unlocked Token B succeeds and preserves the 20_000 locked Token B
+    fix.client
+        .emergency_withdraw(&fix.owner, &token_b_id, &7_500i128);
+    assert_eq!(token_b_client.balance(&fix.contract_id), 20_000);
+    assert_eq!(token_b_client.balance(&fix.owner), 7_500);
+
+    // 4. Release escrow, cancel stream, and execute proposal — all per-token locks return to 0
+    fix.client.release_escrow(&fix.owner, &escrow_id);
+    assert_eq!(fix.client.get_token_locked_balance(&fix.token_id), 5_000);
+
+    fix.client.cancel_stream(&depositor, &stream_id);
+    assert_eq!(fix.client.get_token_locked_balance(&token_b_id), 0);
+
+    fix.env.ledger().set_timestamp(now + 3601);
+    fix.client.execute_proposal(&proposal_id);
+    assert_eq!(fix.client.get_token_locked_balance(&fix.token_id), 0);
+    assert_eq!(fix.client.get_locked_balance(), 0);
+}
+

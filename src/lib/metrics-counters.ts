@@ -38,6 +38,95 @@ const counters = {
   csp_violation_reports_total: 0,
 };
 
+// ── Per-route SSE connection gauge & session duration telemetry (#1425) ──
+
+export const SSE_ROUTES = ["/api/events", "/api/audit-log/sse"] as const;
+export const SSE_DURATION_BUCKET_BOUNDS = [1, 5, 15, 30, 60, 300, 600, 1800, 3600];
+
+export interface SseDurationObservation {
+  sum: number;
+  count: number;
+  buckets: number[];
+}
+
+const sseActiveByRoute = new Map<string, number>([
+  ["/api/events", 0],
+  ["/api/audit-log/sse", 0],
+]);
+
+const sseDurationByRoute = new Map<string, SseDurationObservation>();
+
+function ensureSseDurationEntry(route: string): SseDurationObservation {
+  let entry = sseDurationByRoute.get(route);
+  if (!entry) {
+    entry = {
+      sum: 0,
+      count: 0,
+      buckets: new Array(SSE_DURATION_BUCKET_BOUNDS.length + 1).fill(0),
+    };
+    sseDurationByRoute.set(route, entry);
+  }
+  return entry;
+}
+
+/** Increment active SSE connection gauge for `route` (and aggregate `sse_open_connections`). */
+export function incSseActiveConnection(route: string): void {
+  sseActiveByRoute.set(route, (sseActiveByRoute.get(route) ?? 0) + 1);
+  counters.sse_open_connections += 1;
+}
+
+/** Record an SSE client session duration in seconds for `route`. */
+export function observeSseConnectionDuration(
+  route: string,
+  durationSeconds: number
+): void {
+  const safeDuration = Math.max(0, Number.isFinite(durationSeconds) ? durationSeconds : 0);
+  const obs = ensureSseDurationEntry(route);
+  obs.sum += safeDuration;
+  obs.count += 1;
+  for (let i = 0; i < SSE_DURATION_BUCKET_BOUNDS.length; i++) {
+    if (safeDuration <= SSE_DURATION_BUCKET_BOUNDS[i]) {
+      obs.buckets[i] += 1;
+    }
+  }
+  obs.buckets[SSE_DURATION_BUCKET_BOUNDS.length] += 1;
+}
+
+/**
+ * Decrement active SSE connection gauge for `route` (clamped at 0) and
+ * optionally record the completed session duration in seconds.
+ */
+export function decSseActiveConnection(
+  route: string,
+  durationSeconds?: number
+): void {
+  const currentRouteCount = sseActiveByRoute.get(route) ?? 0;
+  sseActiveByRoute.set(route, Math.max(0, currentRouteCount - 1));
+  counters.sse_open_connections = Math.max(0, counters.sse_open_connections - 1);
+  if (typeof durationSeconds === "number") {
+    observeSseConnectionDuration(route, durationSeconds);
+  }
+}
+
+export function getSseMetricsSnapshot(): {
+  activeByRoute: Record<string, number>;
+  durationByRoute: Record<string, SseDurationObservation>;
+} {
+  const activeByRoute: Record<string, number> = {};
+  for (const [route, count] of sseActiveByRoute.entries()) {
+    activeByRoute[route] = count;
+  }
+  const durationByRoute: Record<string, SseDurationObservation> = {};
+  for (const [route, obs] of sseDurationByRoute.entries()) {
+    durationByRoute[route] = {
+      sum: obs.sum,
+      count: obs.count,
+      buckets: [...obs.buckets],
+    };
+  }
+  return { activeByRoute, durationByRoute };
+}
+
 export type CspReportDropReason = "rate_limited" | "deduplicated" | "oversized";
 
 const cspReportsDropped = new Map<CspReportDropReason, number>([
@@ -168,7 +257,10 @@ export function getMetricsSnapshot(): typeof counters & {
   delivery_attempts: DeliveryAttemptMetric[];
   delivery_final_outcomes: DeliveryFinalOutcomeMetric[];
   csp_reports_dropped: Record<CspReportDropReason, number>;
+  sse_active_by_route: Record<string, number>;
+  sse_duration_by_route: Record<string, SseDurationObservation>;
 } {
+  const sseSnap = getSseMetricsSnapshot();
   return {
     ...counters,
     delivery_attempts: [...deliveryAttempts.values()].sort(
@@ -183,6 +275,8 @@ export function getMetricsSnapshot(): typeof counters & {
         a.final_outcome.localeCompare(b.final_outcome)
     ),
     csp_reports_dropped: getCspReportsDroppedSnapshot(),
+    sse_active_by_route: sseSnap.activeByRoute,
+    sse_duration_by_route: sseSnap.durationByRoute,
   };
 }
 
@@ -196,6 +290,11 @@ export function resetMetricsForTest(): void {
   for (const reason of ["rate_limited", "deduplicated", "oversized"] as CspReportDropReason[]) {
     cspReportsDropped.set(reason, 0);
   }
+  sseActiveByRoute.clear();
+  for (const route of SSE_ROUTES) {
+    sseActiveByRoute.set(route, 0);
+  }
+  sseDurationByRoute.clear();
 }
 
 // ── Per-endpoint latency histograms and error counts ──────────

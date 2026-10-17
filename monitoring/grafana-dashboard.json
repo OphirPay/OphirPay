@@ -80,6 +80,19 @@
       "targets": [
         { "expr": "rate(ophirpay_batches_processed_total[5m])", "legendFormat": "Batches/min" }
       ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "id": 7,
+      "options": {},
+      "title": "Active SSE Connections & Session Duration",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sse_active_connections", "legendFormat": "Active ({{route}})" },
+        { "expr": "rate(sse_connection_duration_seconds_sum[5m]) / clamp_min(rate(sse_connection_duration_seconds_count[5m]), 1e-9)", "legendFormat": "Avg Duration (s) ({{route}})" }
+      ]
     }
   ],
   "refresh": "30s",

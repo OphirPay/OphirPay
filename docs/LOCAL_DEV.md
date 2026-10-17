@@ -323,4 +323,56 @@ Optional extras:
 
 ---
 
+## 8. Soroban Smart Contract Toolchain & WASM Reproducibility
+
+Soroban contracts (`contracts/ophirpay` and `contracts/emitter`) are compiled to deterministic WASM binaries targeting `wasm32v1-none`. Because small toolchain differences can produce differing WASM hashes, OphirPay pins the exact compiler version in `contracts/rust-toolchain.toml` and validates artifact hashes in CI.
+
+### 8.1 Automated Environment Setup
+
+Run the automated setup helper to verify and install the pinned toolchain, target architectures, and developer CLI tools:
+
+```bash
+# Verify environment without installing (dry-run check)
+./scripts/setup-soroban-env.sh --check
+
+# Install pinned Rust channel (1.91.0), components, and wasm32 targets
+./scripts/setup-soroban-env.sh
+```
+
+Or via npm shortcut:
+```bash
+npm run contracts:setup
+```
+
+### 8.2 Reproducible Compilation & Verification
+
+To verify that local contract compilation produces bit-for-bit identical binaries matching `contracts/expected-wasm-hashes.sha256`:
+
+```bash
+# Compile contracts with deterministic flags and verify hashes
+./scripts/verify-wasm-reproducibility.sh
+
+# Or verify pre-existing compiled artifacts without rebuilding
+./scripts/verify-wasm-reproducibility.sh --check
+```
+
+The build script enforces the following deterministic compiler flags:
+- `--locked`: Strict dependency lock validation against `Cargo.lock`.
+- `-C opt-level=z`: Size-optimized deterministic compilation matching production release profile.
+- `-C link-arg=-s`: Strips symbol tables from WASM artifacts.
+- `--remap-path-prefix`: Remaps local `$CARGO_HOME` paths to prevent environment-specific path embedding.
+
+### 8.3 Updating Expected Baseline Hashes
+
+If you intentionally modified contract source code under `contracts/`:
+
+```bash
+./scripts/verify-wasm-reproducibility.sh --update
+```
+
+This rebuilds the contracts and writes the updated SHA-256 hashes into `contracts/expected-wasm-hashes.sha256`. Commit the updated hash manifest alongside your contract changes.
+
+---
+
 *Related docs: [Deployment Guide](DEPLOYMENT.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Stellar 101](STELLAR_101.md) · [Database Schema](SCHEMA.md) · [Mainnet Runbook](MAINNET_RUNBOOK.md)*
+

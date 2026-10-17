@@ -238,7 +238,7 @@ paths:
               properties:
                 status:
                   type: string
-                  enum: [CREATED, PENDING, COMPLETED, FAILED, CANCELLED]
+                  enum: [CREATED, SIGNED, SUBMITTED, CONFIRMED, PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED]
                 description:
                   type: string
                 memo:
@@ -2567,6 +2567,18 @@ components:
           type: string
           pattern: "^G[A-Z0-9]{55}$"
           description: Optional recipient Stellar address
+        recipientEmail:
+          type: string
+          format: email
+          description: Optional recipient email address
+        notificationEmail:
+          type: string
+          format: email
+          description: Optional email address for payment notifications
+        dueDate:
+          type: string
+          format: date-time
+          description: Optional future due date for the payment request
 
     CreatePaymentRequest:
       type: object

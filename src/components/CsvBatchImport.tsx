@@ -1,15 +1,18 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   parseRecipientsCsvToRows,
   validateRecipientFields,
   applyDuplicateErrors,
-  downloadCsvTemplate,
-  MAX_BATCH_RECIPIENTS,
   type CsvImportRow,
 } from "@/lib/csv-import";
+import {
+  BatchDropzone,
+  formatFileSizeKb,
+  type BatchFileMetadata,
+} from "@/components/batch/BatchDropzone";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -41,8 +44,10 @@ export function CsvBatchImport({
   const [rows, setRows] = useState<CsvImportRow[]>([]);
   const [fileErrors, setFileErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [isDragActive, setIsDragActive] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [fileSizeKb, setFileSizeKb] = useState<string | null>(null);
+  const [fileSizeBytes, setFileSizeBytes] = useState<number>(0);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [isParsing, setIsParsing] = useState<boolean>(false);
 
   const errorCount = rows.filter(
     (r) => Object.keys(r.errors).length > 0
@@ -65,18 +70,31 @@ export function CsvBatchImport({
     onValidityChange(isValid);
   }, [rows, fileErrors, isValid, onRowsChange, onValidityChange]);
 
-  const handleFiles = useCallback(
-    async (files: FileList | File[] | null) => {
-      const file = files?.[0];
-      if (!file) return;
+  const handleFileAccepted = useCallback(
+    async (file: File) => {
+      setIsParsing(true);
+      setUploadProgress(40);
       const result = await parseRecipientsCsvToRows(file, { selfAddress });
       setRows(result.rows);
       setFileErrors(result.fileErrors);
       setFileName(file.name);
-      setIsDragActive(false);
+      setFileSizeBytes(file.size);
+      setFileSizeKb(formatFileSizeKb(file.size));
+      setUploadProgress(100);
+      setIsParsing(false);
     },
     [selfAddress]
   );
+
+  const handleFileRejected = useCallback(() => {
+    setRows([]);
+    setFileErrors([]);
+    setFileName(null);
+    setFileSizeKb(null);
+    setFileSizeBytes(0);
+    setUploadProgress(0);
+    setIsParsing(false);
+  }, []);
 
   const updateCell = (id: number, field: EditableField, value: string) => {
     setRows((prev) => {
@@ -111,95 +129,54 @@ export function CsvBatchImport({
     setRows([]);
     setFileErrors([]);
     setFileName(null);
-    if (inputRef.current) inputRef.current.value = "";
+    setFileSizeKb(null);
+    setFileSizeBytes(0);
+    setUploadProgress(0);
+    setIsParsing(false);
+    const inputEl = document.querySelector(
+      '[data-testid="csv-file-input"]'
+    ) as HTMLInputElement | null;
+    if (inputEl) inputEl.value = "";
   };
+
+  const metadata: BatchFileMetadata | null = fileName
+    ? {
+        name: fileName,
+        sizeBytes: fileSizeBytes,
+        sizeKb: fileSizeKb ?? "0.1 KB",
+        rowCount: rows.length,
+      }
+    : null;
 
   return (
     <div className="space-y-4" data-testid="csv-batch-import">
-      {/* Dropzone */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Upload CSV file"
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragActive(true);
-        }}
-        onDragLeave={() => setIsDragActive(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          handleFiles(e.dataTransfer.files);
-        }}
-        className={cn(
-          "border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-ophir-500/40",
-          isDragActive
-            ? "border-ophir-500 bg-ophir-50 dark:bg-ophir-950/30"
-            : "border-gray-300 dark:border-gray-700 hover:border-ophir-400 dark:hover:border-ophir-600"
-        )}
-        data-testid="csv-dropzone"
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".csv,text/csv"
-          className="hidden"
-          data-testid="csv-file-input"
-          onChange={(e) => handleFiles(e.target.files)}
-        />
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
-          className={cn(
-            "w-10 h-10 mx-auto mb-3",
-            isDragActive
-              ? "text-ophir-600 dark:text-ophir-400"
-              : "text-gray-400 dark:text-gray-500"
-          )}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-          />
-        </svg>
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {isDragActive
-            ? "Drop your CSV here"
-            : "Drag & drop your CSV file here, or click to browse"}
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Columns: <span className="font-mono">address,amount,memo</span> — up
-          to {MAX_BATCH_RECIPIENTS} recipients
-        </p>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            downloadCsvTemplate();
-          }}
-          className="mt-3 text-sm text-ophir-600 dark:text-ophir-400 hover:underline"
-        >
-          Download template
-        </button>
-      </div>
+      {/* Dropzone with visual states, MIME validation, and ProgressBar */}
+      <BatchDropzone
+        onFileAccepted={handleFileAccepted}
+        onFileRejected={handleFileRejected}
+        metadata={metadata}
+        progress={uploadProgress}
+        isParsing={isParsing}
+        hasError={fileErrors.length > 0 || errorCount > 0}
+      />
 
       {/* File summary / actions */}
       {fileName && (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-              {fileName}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                {fileName}
+              </p>
+              {fileSizeKb && (
+                <span
+                  className="text-xs text-gray-500 dark:text-gray-400 shrink-0"
+                  data-testid="csv-file-size"
+                >
+                  ({fileSizeKb})
+                </span>
+              )}
+            </div>
             <p
               className={cn(
                 "text-xs mt-0.5",
@@ -218,7 +195,12 @@ export function CsvBatchImport({
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => inputRef.current?.click()}
+              onClick={() => {
+                const inputEl = document.querySelector(
+                  '[data-testid="csv-file-input"]'
+                ) as HTMLInputElement | null;
+                inputEl?.click();
+              }}
               className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               Replace file

@@ -660,5 +660,8 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    // ── Memo Validation (310) ───────────────────────────
+    /// Memo or metadata exceeds the 64-byte maximum or contains invalid control characters
+    MemoTooLong = 310,
 }
 

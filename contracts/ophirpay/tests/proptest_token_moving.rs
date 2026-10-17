@@ -640,3 +640,96 @@ fn test_reentrancy_lock_lifecycle_and_clean_release() {
     assert_eq!(h.client.is_reentrancy_locked(), false);
     assert_eq!(h.client.get_locked_balance(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. PROPERTY TESTS: Stream Vesting Curve Invariants (10,000+ Cases, #1297)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VESTING_FUZZ_CASES: u32 = 10_000;
+
+fn get_vesting_fuzz_config() -> ProptestConfig {
+    ProptestConfig {
+        cases: VESTING_FUZZ_CASES,
+        max_shrink_iters: 100,
+        ..ProptestConfig::default()
+    }
+}
+
+proptest! {
+    #![proptest_config(get_vesting_fuzz_config())]
+
+    /// Verifies across 10,000+ randomized configurations:
+    /// 1. Monotonicity: vested amount never decreases as time advances (t1 <= t2)
+    /// 2. Boundedness: 0 <= vested <= total_amount
+    /// 3. Claimed ceiling: claimable = vested(t2) - vested(t1) >= 0 and claimed + claimable <= total_amount
+    /// 4. No panics on arbitrary u64 timestamps and i128 amounts up to i128::MAX
+    #[test]
+    fn prop_vesting_curve_invariants_10k(
+        total_amount in 1i128..=i128::MAX,
+        start_time in 0u64..=u64::MAX,
+        duration in 0u64..=u64::MAX,
+        t1 in 0u64..=u64::MAX,
+        t2 in 0u64..=u64::MAX,
+    ) {
+        let end_time = start_time.saturating_add(duration);
+        let (earlier, later) = if t1 <= t2 { (t1, t2) } else { (t2, t1) };
+
+        let vested_earlier = ophirpay_contract::compute_vested(total_amount, start_time, end_time, earlier);
+        let vested_later = ophirpay_contract::compute_vested(total_amount, start_time, end_time, later);
+
+        // 1. Boundedness: 0 <= vested <= total_amount
+        prop_assert!(vested_earlier >= 0);
+        prop_assert!(vested_earlier <= total_amount);
+        prop_assert!(vested_later >= 0);
+        prop_assert!(vested_later <= total_amount);
+
+        // 2. Monotonicity: time advancing never reduces vested amount
+        prop_assert!(vested_later >= vested_earlier);
+
+        // 3. Claimed ceiling: claimable = vested - claimed is always >= 0 and bounded
+        let claimed = vested_earlier;
+        let claimable = vested_later - claimed;
+        prop_assert!(claimable >= 0);
+        prop_assert!(claimed + claimable <= total_amount);
+    }
+
+    /// Arbitrary raw inputs (including negative/zero amounts and inverted timestamps)
+    /// never panic and never exceed max(0, total_amount).
+    #[test]
+    fn prop_vesting_curve_arbitrary_inputs_never_panic(
+        total_amount in any::<i128>(),
+        start_time in any::<u64>(),
+        end_time in any::<u64>(),
+        now in any::<u64>(),
+    ) {
+        let vested = ophirpay_contract::compute_vested(total_amount, start_time, end_time, now);
+        let ceiling = if total_amount > 0 { total_amount } else { 0 };
+        prop_assert!(vested >= 0);
+        prop_assert!(vested <= ceiling);
+    }
+}
+
+#[test]
+fn test_vesting_curve_explicit_edge_cases() {
+    // 1. Zero duration (start_time == end_time)
+    assert_eq!(ophirpay_contract::compute_vested(1_000_000, 500, 500, 499), 0);
+    assert_eq!(ophirpay_contract::compute_vested(1_000_000, 500, 500, 500), 1_000_000);
+    assert_eq!(ophirpay_contract::compute_vested(1_000_000, 500, 500, 501), 1_000_000);
+
+    // 2. start_time == current_time with positive duration
+    assert_eq!(ophirpay_contract::compute_vested(i128::MAX, 1_000, 2_000, 1_000), 0);
+
+    // 3. Max i128 amounts near u64::MAX boundaries
+    let start = u64::MAX - 10;
+    let end = u64::MAX;
+    let mid = u64::MAX - 5;
+    let v_mid = ophirpay_contract::compute_vested(i128::MAX, start, end, mid);
+    assert_eq!(v_mid, i128::MAX / 2);
+    assert_eq!(ophirpay_contract::compute_vested(i128::MAX, start, end, end), i128::MAX);
+
+    // 4. Zero or negative amounts
+    assert_eq!(ophirpay_contract::compute_vested(0, 100, 200, 150), 0);
+    assert_eq!(ophirpay_contract::compute_vested(-500, 100, 200, 250), 0);
+    assert_eq!(ophirpay_contract::compute_vested(i128::MIN, 0, 100, 50), 0);
+}
+

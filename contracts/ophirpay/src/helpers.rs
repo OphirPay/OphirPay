@@ -27,6 +27,9 @@ pub fn release_reentrancy_lock(env: &Env) {
 /// The multiply is therefore performed at 256-bit precision so the result is
 /// always the exact linear vesting value and can never exceed `total_amount`.
 pub fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u64) -> i128 {
+    if total_amount <= 0 {
+        return 0;
+    }
     if now >= end_time {
         return total_amount;
     }
@@ -53,10 +56,6 @@ pub fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u
     // and `d` originate from u64 timestamps, so `(a % d) * b` fits in u128 and
     // the sum is bounded by `total_amount` — no precision is lost and the
     // INV-5 ceiling holds.
-    if total_amount <= 0 {
-        // Unreachable for streams; keeps the u128 casts below value-preserving.
-        return total_amount;
-    }
     let amount = total_amount as u128;
     let divisor = total_duration as u128;
     let multiplier = elapsed as u128;
@@ -64,4 +63,3 @@ pub fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u
     let fractional = ((amount % divisor) * multiplier) / divisor;
     (whole + fractional) as i128
 }
-

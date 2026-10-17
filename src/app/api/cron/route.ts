@@ -22,6 +22,8 @@ import {
   selectDuePayments,
 } from "@/lib/scheduler";
 import { publicKeyFromSecret, submitPaymentFromSecret } from "@/lib/stellar";
+import { processWebhookRetryQueue } from "@/lib/webhook-delivery-service";
+
 
 /**
  * Scheduled payment execution (issue #175).
@@ -90,6 +92,19 @@ async function runScheduledPayments(request: Request) {
       }
       return unauthorizedError("Invalid or missing cron secret.");
     }
+
+    const url = new URL(request.url);
+    if (url.searchParams.get("task") === "webhook-retries") {
+      const retrySummary = await processWebhookRetryQueue({ now: new Date() });
+      logger.info("Webhook retry queue run complete", {
+        picked: retrySummary.picked,
+        succeeded: retrySummary.succeeded,
+        retried: retrySummary.retried,
+        deadLettered: retrySummary.deadLettered,
+      });
+      return successResponse(retrySummary);
+    }
+
 
     // Checked before any row is touched: without a signing account the run
     // could claim rows it can never submit, delaying them by a lease window.

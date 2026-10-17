@@ -19,8 +19,10 @@ import {
   candidateWhere,
   claimWhere,
   newRunId,
+  pruneExpiredCronLogs,
   selectDuePayments,
 } from "@/lib/scheduler";
+import { incMetric } from "@/lib/metrics-counters";
 import { publicKeyFromSecret, submitPaymentFromSecret } from "@/lib/stellar";
 
 /**
@@ -67,6 +69,8 @@ interface RunSummary {
   failed: number;
   /** Due rows another overlapping run had already claimed. */
   skipped: number;
+  /** Completed cron execution logs pruned during post-run maintenance (#1420). */
+  prunedLogs?: number;
   sourcePublicKey: string;
   results: ExecutionResult[];
 }
@@ -243,12 +247,40 @@ async function runScheduledPayments(request: Request) {
       }
     }
 
+    // Post-run cleanup (#1420): prune completed cron execution logs older than
+    // CRON_LOG_RETENTION_DAYS (default 90 days) in bounded batches (LIMIT 1000).
+    // Active (SCHEDULED/PROCESSING) and FAILED rows are never deleted.
+    try {
+      const pruneResult = await pruneExpiredCronLogs(
+        prisma as unknown as Parameters<typeof pruneExpiredCronLogs>[0],
+        { now }
+      );
+      summary.prunedLogs = pruneResult.prunedCount;
+      if (pruneResult.prunedCount > 0) {
+        incMetric("cron_logs_pruned_total", pruneResult.prunedCount);
+        logger.info("Pruned expired cron execution logs", {
+          runId,
+          prunedCount: pruneResult.prunedCount,
+          scheduledPaymentsPruned: pruneResult.scheduledPaymentsPruned,
+          syncRunsPruned: pruneResult.syncRunsPruned,
+          retentionDays: pruneResult.retentionDays,
+          cutoff: pruneResult.cutoff,
+        });
+      }
+    } catch (pruneErr) {
+      logger.warn("Cron log pruning failed — continuing run", {
+        runId,
+        error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
+      });
+    }
+
     logger.info("Scheduled payment run complete", {
       runId,
       picked: summary.picked,
       executed: summary.executed,
       failed: summary.failed,
       skipped: summary.skipped,
+      prunedLogs: summary.prunedLogs ?? 0,
     });
 
     return successResponse(summary);

@@ -218,3 +218,176 @@ export function authorizeCronRequest(
     ? { ok: true }
     : { ok: false, reason: "unauthorized" };
 }
+
+/** Default retention window (days) for completed cron execution logs (#1420). */
+export const DEFAULT_CRON_LOG_RETENTION_DAYS = 90;
+
+/** Maximum rows deleted in a single cron pruning pass to prevent long PostgreSQL table locks (#1420). */
+export const CRON_LOG_PRUNE_BATCH_SIZE = 1000;
+
+/**
+ * Terminal statuses eligible for historical cron log pruning.
+ * Active (`SCHEDULED`, `PROCESSING`) and `FAILED` rows are NEVER pruned so
+ * pending/in-flight schedules and failure diagnostics remain intact.
+ */
+export const PRUNABLE_CRON_STATUSES = ["EXECUTED", "CANCELLED"] as const;
+
+/**
+ * Parse `CRON_LOG_RETENTION_DAYS` from environment, falling back to
+ * {@link DEFAULT_CRON_LOG_RETENTION_DAYS} (90 days) when unset or invalid.
+ */
+export function resolveCronLogRetentionDays(
+  rawValue: string | undefined = process.env.CRON_LOG_RETENTION_DAYS
+): number {
+  if (!rawValue) return DEFAULT_CRON_LOG_RETENTION_DAYS;
+  const parsed = Number(rawValue.trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_CRON_LOG_RETENTION_DAYS;
+  }
+  return Math.floor(parsed);
+}
+
+/** Compute the UTC cutoff timestamp prior to which completed cron logs may be pruned. */
+export function cronLogPruneCutoff(
+  now: Date,
+  retentionDays: number = DEFAULT_CRON_LOG_RETENTION_DAYS
+): Date {
+  assertValidDate(now, "now");
+  if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
+    throw new RangeError("retentionDays must be a positive number");
+  }
+  return new Date(now.getTime() - retentionDays * 86_400_000);
+}
+
+export interface CronLogPruneClient {
+  scheduledPayment?: {
+    findMany?: (args: {
+      where: {
+        status: { in: string[] };
+        updatedAt: { lt: Date };
+      };
+      select: { id: true };
+      orderBy: { updatedAt: "asc" };
+      take: number;
+    }) => Promise<Array<{ id: string }>>;
+    deleteMany?: (args: {
+      where: {
+        id: { in: string[] };
+        status: { in: string[] };
+      };
+    }) => Promise<{ count: number }>;
+  };
+  paymentSyncRun?: {
+    findMany?: (args: {
+      where: {
+        status: string;
+        completedAt: { lt: Date };
+      };
+      select: { id: true };
+      orderBy: { completedAt: "asc" };
+      take: number;
+    }) => Promise<Array<{ id: string }>>;
+    deleteMany?: (args: {
+      where: {
+        id: { in: string[] };
+        status: string;
+      };
+    }) => Promise<{ count: number }>;
+  };
+}
+
+export interface CronLogPruneOptions {
+  now: Date;
+  retentionDays?: number;
+  batchSize?: number;
+}
+
+export interface CronLogPruneResult {
+  prunedCount: number;
+  scheduledPaymentsPruned: number;
+  syncRunsPruned: number;
+  retentionDays: number;
+  cutoff: string;
+}
+
+/**
+ * Prune completed cron execution logs older than `retentionDays` (default 90d)
+ * in bounded batches (`LIMIT 1000`). Active (`SCHEDULED`, `PROCESSING`),
+ * `FAILED` rows, and recurring schedules (`Recurrence`) are never deleted.
+ */
+export async function pruneExpiredCronLogs(
+  db: CronLogPruneClient,
+  options: CronLogPruneOptions
+): Promise<CronLogPruneResult> {
+  const retentionDays =
+    options.retentionDays ?? resolveCronLogRetentionDays();
+  const batchSize = options.batchSize ?? CRON_LOG_PRUNE_BATCH_SIZE;
+  if (!Number.isInteger(batchSize) || batchSize <= 0) {
+    throw new RangeError("batchSize must be a positive integer");
+  }
+
+  const cutoff = cronLogPruneCutoff(options.now, retentionDays);
+  let scheduledPaymentsPruned = 0;
+  let syncRunsPruned = 0;
+
+  if (
+    typeof db?.scheduledPayment?.findMany === "function" &&
+    typeof db?.scheduledPayment?.deleteMany === "function"
+  ) {
+    const expiredScheduled = await db.scheduledPayment.findMany({
+      where: {
+        status: { in: [...PRUNABLE_CRON_STATUSES] },
+        updatedAt: { lt: cutoff },
+      },
+      select: { id: true },
+      orderBy: { updatedAt: "asc" },
+      take: batchSize,
+    });
+
+    if (expiredScheduled.length > 0) {
+      const deleted = await db.scheduledPayment.deleteMany({
+        where: {
+          id: { in: expiredScheduled.map((r) => r.id) },
+          status: { in: [...PRUNABLE_CRON_STATUSES] },
+        },
+      });
+      scheduledPaymentsPruned = deleted.count;
+    }
+  }
+
+  const remainingBudget = Math.max(0, batchSize - scheduledPaymentsPruned);
+  if (
+    remainingBudget > 0 &&
+    typeof db?.paymentSyncRun?.findMany === "function" &&
+    typeof db?.paymentSyncRun?.deleteMany === "function"
+  ) {
+    const expiredSyncRuns = await db.paymentSyncRun.findMany({
+      where: {
+        status: "success",
+        completedAt: { lt: cutoff },
+      },
+      select: { id: true },
+      orderBy: { completedAt: "asc" },
+      take: remainingBudget,
+    });
+
+    if (expiredSyncRuns.length > 0) {
+      const deleted = await db.paymentSyncRun.deleteMany({
+        where: {
+          id: { in: expiredSyncRuns.map((r) => r.id) },
+          status: "success",
+        },
+      });
+      syncRunsPruned = deleted.count;
+    }
+  }
+
+  return {
+    prunedCount: scheduledPaymentsPruned + syncRunsPruned,
+    scheduledPaymentsPruned,
+    syncRunsPruned,
+    retentionDays,
+    cutoff: cutoff.toISOString(),
+  };
+}
+

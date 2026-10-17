@@ -36,6 +36,10 @@ const counters = {
    * malformed requests are rejected before reaching this counter.
    */
   csp_violation_reports_total: 0,
+  /**
+   * Counter: Completed cron execution logs pruned by the retention policy (issue #1420).
+   */
+  cron_logs_pruned_total: 0,
 };
 
 export type CspReportDropReason = "rate_limited" | "deduplicated" | "oversized";

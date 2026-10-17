@@ -262,6 +262,15 @@ function buildMetrics(): string {
     `ophirpay_sse_dropped_events_total ${c.sse_dropped_events_total}`
   );
 
+  if (c.cron_logs_pruned_total > 0) {
+    lines.push(
+      "",
+      "# HELP cron_logs_pruned_total Total completed cron execution logs pruned by retention policy",
+      "# TYPE cron_logs_pruned_total counter",
+      `cron_logs_pruned_total ${c.cron_logs_pruned_total}`
+    );
+  }
+
   return lines.join("\n") + "\n";
 }
 

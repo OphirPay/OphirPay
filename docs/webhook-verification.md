@@ -166,6 +166,22 @@ This makes replays harmless even if they arrive inside the freshness window.
 > of the underlying record when it is stable, or hash the canonical body — it
 > is stable across retries and unique per logical event.
 
+### 3. Dead-Letter Queue (DLQ) Requeue & Retry Worker
+
+When all automatic retry attempts are exhausted, the delivery is recorded with
+`status = "DEAD_LETTER"`. Administrators can inspect and requeue dead-lettered
+deliveries via the API or programmatically using `requeueWebhookDelivery` and
+`requeueDeadLetterDeliveries` in `src/lib/webhook-deliver.ts`:
+
+- **Filter DLQ deliveries by HTTP status code or timeout**:
+  `GET /api/webhooks/{id}/deliveries?status=DEAD_LETTER&statusCodes=500,502,504,timeout`
+- **Requeue single or filtered DLQ deliveries**:
+  `POST /api/webhooks/{id}/deliveries/requeue` (or `POST /api/webhooks/{id}/deliveries`)
+  with optional filters (`deliveryId`, `deliveryIds`, `statusCode`, `statusCodes: [500, 502, 504, "timeout"]`, `includeTimeouts`).
+- **State reset & correlation preservation**:
+  Requeuing resets `attempts = 0` and transitions `status` to `"PENDING"`, while
+  preserving the original event `timestamp` and `correlationId` (`replayBatchId ?? eventId`).
+
 ---
 
 ## Reference implementations

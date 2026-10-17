@@ -354,3 +354,415 @@ export async function deliverWebhookWithDetails(
 ): Promise<WebhookDeliveryDetails> {
   return deliverWebhook(url, secret, payload, maxRetries);
 }
+
+// ── Dead-Letter Queue (DLQ) Requeue & Retry Worker (#1362) ────
+
+export const WEBHOOK_CORRELATION_HEADER = "X-OphirPay-Correlation-Id";
+
+export type DlqStatusCodeFilter = number | "timeout" | null;
+
+export interface DlqFilterOptions {
+  statusCode?: DlqStatusCodeFilter;
+  statusCodes?: DlqStatusCodeFilter[];
+  includeTimeouts?: boolean;
+}
+
+export interface RequeueWebhookDeliveryOptions {
+  deliveryId: string;
+  webhookId?: string;
+  userId?: string;
+  deliverNow?: boolean;
+}
+
+export interface RequeuedDeliveryRecord {
+  id: string;
+  webhookId: string;
+  eventId: string;
+  eventType: string;
+  originalTimestamp: string;
+  correlationId: string;
+  status: "PENDING" | "SUCCESS" | "FAILED" | "DEAD_LETTER";
+  attempts: number;
+  previousResponseCode: number | null;
+  responseCode: number | null;
+  isReplay: boolean;
+}
+
+export interface RequeueDeadLetterDeliveriesParams extends DlqFilterOptions {
+  webhookId: string;
+  userId?: string;
+  deliveryId?: string;
+  deliveryIds?: string[];
+  limit?: number;
+  deliverNow?: boolean;
+}
+
+export interface RequeueDeadLetterBatchResult {
+  webhookId: string;
+  requeuedCount: number;
+  deliveries: RequeuedDeliveryRecord[];
+}
+
+/**
+ * Parse a query-string status code filter (e.g. `"500,502,timeout"`) into
+ * structured `DlqStatusCodeFilter[]` entries.
+ */
+export function parseDlqStatusCodesParam(
+  raw?: string | null
+): DlqStatusCodeFilter[] | undefined {
+  if (!raw || !raw.trim()) return undefined;
+  const items: DlqStatusCodeFilter[] = [];
+  for (const part of raw.split(",")) {
+    const token = part.trim().toLowerCase();
+    if (!token) continue;
+    if (token === "timeout" || token === "null") {
+      items.push("timeout");
+    } else {
+      const code = Number(token);
+      if (Number.isInteger(code) && code >= 100 && code <= 599) {
+        items.push(code);
+      }
+    }
+  }
+  return items.length > 0 ? items : undefined;
+}
+
+/**
+ * Build a Prisma `where` fragment for filtering DLQ deliveries by HTTP
+ * `responseCode` (e.g. `500`, `502`, `504`) and/or timeouts (`responseCode: null`).
+ */
+export function buildDlqStatusFilter(
+  options?: DlqFilterOptions
+): Record<string, unknown> {
+  if (!options) return {};
+
+  const rawFilters: DlqStatusCodeFilter[] = [];
+  if (options.statusCode !== undefined) {
+    rawFilters.push(options.statusCode);
+  }
+  if (Array.isArray(options.statusCodes)) {
+    rawFilters.push(...options.statusCodes);
+  }
+
+  const numericCodes = Array.from(
+    new Set(
+      rawFilters.filter((v): v is number => typeof v === "number" && Number.isInteger(v))
+    )
+  );
+  const matchTimeout =
+    Boolean(options.includeTimeouts) ||
+    rawFilters.some((v) => v === "timeout" || v === null);
+
+  if (numericCodes.length > 0 && matchTimeout) {
+    return {
+      OR: [{ responseCode: { in: numericCodes } }, { responseCode: null }],
+    };
+  }
+  if (numericCodes.length === 1) {
+    return { responseCode: numericCodes[0] };
+  }
+  if (numericCodes.length > 1) {
+    return { responseCode: { in: numericCodes } };
+  }
+  if (matchTimeout) {
+    return { responseCode: null };
+  }
+  return {};
+}
+
+/**
+ * Requeue a single failed / dead-letter webhook delivery (#1362).
+ *
+ * - Resets `attempts = 0` and sets `status = "PENDING"`.
+ * - Preserves the original event timestamp (`event.timestamp`) and correlation
+ *   ID (`replayBatchId ?? eventId`).
+ * - Optionally executes immediate redelivery when `deliverNow: true`.
+ */
+export async function requeueWebhookDelivery(
+  deliveryIdOrOptions: string | RequeueWebhookDeliveryOptions,
+  extraOptions?: Omit<RequeueWebhookDeliveryOptions, "deliveryId">
+): Promise<RequeuedDeliveryRecord> {
+  const opts: RequeueWebhookDeliveryOptions =
+    typeof deliveryIdOrOptions === "string"
+      ? { deliveryId: deliveryIdOrOptions, ...extraOptions }
+      : deliveryIdOrOptions;
+
+  const prisma = (await import("@/lib/prisma")).default;
+
+  const delivery = await prisma.webhookDelivery.findFirst({
+    where: {
+      id: opts.deliveryId,
+      ...(opts.webhookId ? { webhookId: opts.webhookId } : {}),
+    },
+    include: {
+      webhook: true,
+      event: {
+        select: {
+          id: true,
+          event: true,
+          timestamp: true,
+          data: true,
+        },
+      },
+    },
+  });
+
+  if (!delivery) {
+    throw new Error("Webhook delivery not found");
+  }
+
+  if (opts.userId && delivery.webhook && delivery.webhook.userId !== opts.userId) {
+    throw new Error("Forbidden: webhook belongs to another user");
+  }
+
+  if (delivery.status !== "DEAD_LETTER" && delivery.status !== "FAILED") {
+    throw new Error(
+      `Only FAILED or DEAD_LETTER deliveries can be requeued (current status: ${delivery.status})`
+    );
+  }
+
+  const originalTimestamp = delivery.event.timestamp.toISOString();
+  const correlationId = delivery.replayBatchId ?? delivery.eventId;
+  const previousResponseCode = delivery.responseCode ?? null;
+
+  await prisma.webhookDelivery.update({
+    where: { id: delivery.id },
+    data: {
+      status: "PENDING" as never,
+      attempts: 0,
+      errorMessage: null,
+      error: null,
+      isReplay: true,
+      replayBatchId: correlationId,
+    },
+  });
+
+  if (opts.deliverNow && delivery.webhook) {
+    let parsedData: Record<string, unknown> = {};
+    try {
+      parsedData = JSON.parse(delivery.event.data) as Record<string, unknown>;
+    } catch {
+      parsedData = {};
+    }
+
+    const payload: WebhookPayload = {
+      event: delivery.event.event,
+      timestamp: originalTimestamp,
+      data: {
+        ...parsedData,
+        correlationId,
+      },
+    };
+
+    const result = await deliverWebhook(
+      delivery.webhook.url,
+      delivery.webhook.secret,
+      payload
+    );
+    const finalStatus = result.success ? "SUCCESS" : "DEAD_LETTER";
+
+    await prisma.webhookDelivery.update({
+      where: { id: delivery.id },
+      data: {
+        status: finalStatus as never,
+        attempts: result.attempts,
+        responseCode: result.statusCode ?? null,
+        latencyMs: result.latencyMs,
+        errorMessage: result.errorMessage ?? null,
+        isReplay: true,
+        replayBatchId: correlationId,
+      },
+    });
+
+    return {
+      id: delivery.id,
+      webhookId: delivery.webhookId,
+      eventId: delivery.eventId,
+      eventType: delivery.event.event,
+      originalTimestamp,
+      correlationId,
+      status: finalStatus,
+      attempts: result.attempts,
+      previousResponseCode,
+      responseCode: result.statusCode ?? null,
+      isReplay: true,
+    };
+  }
+
+  logger.info("Webhook delivery requeued from DLQ", {
+    deliveryId: delivery.id,
+    webhookId: delivery.webhookId,
+    eventId: delivery.eventId,
+    correlationId,
+    originalTimestamp,
+  });
+
+  return {
+    id: delivery.id,
+    webhookId: delivery.webhookId,
+    eventId: delivery.eventId,
+    eventType: delivery.event.event,
+    originalTimestamp,
+    correlationId,
+    status: "PENDING",
+    attempts: 0,
+    previousResponseCode,
+    responseCode: previousResponseCode,
+    isReplay: true,
+  };
+}
+
+/**
+ * Bulk/filtered DLQ requeue helper (#1362).
+ *
+ * Selects `DEAD_LETTER` / `FAILED` deliveries for a webhook matching optional
+ * `deliveryId(s)` and HTTP status code filters (`500`, `502`, `504`, `timeout`),
+ * resets `attempts = 0`, sets `status = "PENDING"`, and preserves the original
+ * event timestamp and correlation ID.
+ */
+export async function requeueDeadLetterDeliveries(
+  params: RequeueDeadLetterDeliveriesParams
+): Promise<RequeueDeadLetterBatchResult> {
+  const prisma = (await import("@/lib/prisma")).default;
+
+  const statusFilter = buildDlqStatusFilter({
+    statusCode: params.statusCode,
+    statusCodes: params.statusCodes,
+    includeTimeouts: params.includeTimeouts,
+  });
+
+  const idList = [
+    ...(params.deliveryId ? [params.deliveryId] : []),
+    ...(params.deliveryIds ?? []),
+  ];
+
+  const where: Record<string, unknown> = {
+    webhookId: params.webhookId,
+    status: { in: ["DEAD_LETTER", "FAILED"] },
+    ...(idList.length === 1
+      ? { id: idList[0] }
+      : idList.length > 1
+        ? { id: { in: idList } }
+        : {}),
+    ...statusFilter,
+  };
+
+  const candidates = await prisma.webhookDelivery.findMany({
+    where: where as never,
+    orderBy: { deliveredAt: "desc" },
+    take: Math.min(100, Math.max(1, params.limit ?? 50)),
+    include: {
+      webhook: true,
+      event: {
+        select: {
+          id: true,
+          event: true,
+          timestamp: true,
+          data: true,
+        },
+      },
+    },
+  });
+
+  const requeued: RequeuedDeliveryRecord[] = [];
+
+  for (const item of candidates) {
+    if (params.userId && item.webhook && item.webhook.userId !== params.userId) {
+      continue;
+    }
+
+    const originalTimestamp = item.event.timestamp.toISOString();
+    const correlationId = item.replayBatchId ?? item.eventId;
+    const previousResponseCode = item.responseCode ?? null;
+
+    await prisma.webhookDelivery.update({
+      where: { id: item.id },
+      data: {
+        status: "PENDING" as never,
+        attempts: 0,
+        errorMessage: null,
+        error: null,
+        isReplay: true,
+        replayBatchId: correlationId,
+      },
+    });
+
+    if (params.deliverNow && item.webhook) {
+      let parsedData: Record<string, unknown> = {};
+      try {
+        parsedData = JSON.parse(item.event.data) as Record<string, unknown>;
+      } catch {
+        parsedData = {};
+      }
+
+      const payload: WebhookPayload = {
+        event: item.event.event,
+        timestamp: originalTimestamp,
+        data: {
+          ...parsedData,
+          correlationId,
+        },
+      };
+
+      const result = await deliverWebhook(
+        item.webhook.url,
+        item.webhook.secret,
+        payload
+      );
+      const finalStatus = result.success ? "SUCCESS" : "DEAD_LETTER";
+
+      await prisma.webhookDelivery.update({
+        where: { id: item.id },
+        data: {
+          status: finalStatus as never,
+          attempts: result.attempts,
+          responseCode: result.statusCode ?? null,
+          latencyMs: result.latencyMs,
+          errorMessage: result.errorMessage ?? null,
+          isReplay: true,
+          replayBatchId: correlationId,
+        },
+      });
+
+      requeued.push({
+        id: item.id,
+        webhookId: item.webhookId,
+        eventId: item.eventId,
+        eventType: item.event.event,
+        originalTimestamp,
+        correlationId,
+        status: finalStatus,
+        attempts: result.attempts,
+        previousResponseCode,
+        responseCode: result.statusCode ?? null,
+        isReplay: true,
+      });
+    } else {
+      requeued.push({
+        id: item.id,
+        webhookId: item.webhookId,
+        eventId: item.eventId,
+        eventType: item.event.event,
+        originalTimestamp,
+        correlationId,
+        status: "PENDING",
+        attempts: 0,
+        previousResponseCode,
+        responseCode: previousResponseCode,
+        isReplay: true,
+      });
+    }
+  }
+
+  logger.info("Bulk DLQ webhook deliveries requeued", {
+    webhookId: params.webhookId,
+    requeuedCount: requeued.length,
+  });
+
+  return {
+    webhookId: params.webhookId,
+    requeuedCount: requeued.length,
+    deliveries: requeued,
+  };
+}
+

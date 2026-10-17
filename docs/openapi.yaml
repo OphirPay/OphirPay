@@ -1362,9 +1362,49 @@ paths:
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: status
+          in: query
+          schema: { type: string, enum: [SUCCESS, FAILED, DEAD_LETTER, PENDING] }
+        - name: statusCode
+          in: query
+          schema: { type: string }
       responses:
         "200":
           description: Delivery history (original + replay attempts)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Webhooks]
+      summary: Requeue failed or dead-letter webhook deliveries
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Dead-letter deliveries requeued to PENDING with attempts reset to 0
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/webhooks/{id}/deliveries/requeue:
+    post:
+      tags: [Webhooks]
+      summary: Requeue dead-letter webhook deliveries with HTTP status filtering
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Filtered dead-letter deliveries requeued to PENDING with attempts reset to 0
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
 

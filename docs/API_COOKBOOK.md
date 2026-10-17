@@ -82,7 +82,8 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/webhooks/{id}` | GET |
 | `/api/webhooks/{id}/test` | POST |
 | `/api/webhooks/{id}/replay` | POST |
-| `/api/webhooks/{id}/deliveries` | GET |
+| `/api/webhooks/{id}/deliveries` | GET, POST |
+| `/api/webhooks/{id}/deliveries/requeue` | POST |
 | `/api/webhooks/{id}/deliveries/{deliveryId}/redeliver` | POST |
 | `/api/keys` | GET, POST, PATCH, DELETE |
 | `/api/keys/stats` | GET |

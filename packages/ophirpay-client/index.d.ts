@@ -65,10 +65,44 @@ export interface Paginated<T> {
   meta?: Record<string, unknown>;
 }
 
+export interface ValidationFieldError {
+  field: string;
+  path: string;
+  message: string;
+  code?: string;
+}
+
+export interface ProblemDetails {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  instance?: string;
+  code?: string;
+  errors?: ValidationFieldError[];
+}
+
+export interface OphirPayErrorOptions {
+  status?: number | null;
+  code?: string | null;
+  details?: unknown;
+  type?: string | null;
+  title?: string | null;
+  detail?: string | null;
+  instance?: string | null;
+  errors?: ValidationFieldError[] | null;
+}
+
 export class OphirPayError extends Error {
+  constructor(message: string, options?: OphirPayErrorOptions);
   status: number | null;
   code: string | null;
   details: unknown;
+  type: string | null;
+  title: string | null;
+  detail: string | null;
+  instance: string | null;
+  errors: ValidationFieldError[] | null;
 }
 
 export interface OphirPayClientOptions {

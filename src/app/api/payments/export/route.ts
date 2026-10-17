@@ -3,10 +3,10 @@
 import prisma from "@/lib/prisma";
 import { paymentExportParamsSchema } from "@/lib/validation-schemas";
 import {
-  unauthorizedError,
-  validationError,
-  handleApiError,
-} from "@/lib/api-response";
+  unauthorizedProblem,
+  validationProblem,
+  handleProblemApiError,
+} from "@/lib/api-errors";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { buildPaymentWhere } from "@/lib/payment-filters";
@@ -17,6 +17,8 @@ import {
   buildPaymentExportFilename,
 } from "@/lib/payment-export";
 import { toCsvString, createCsvResponse } from "@/lib/export-csv";
+
+const INSTANCE_PATH = "/api/payments/export";
 
 /**
  * GET /api/payments/export
@@ -30,8 +32,9 @@ export async function GET(request: Request) {
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+      return unauthorizedProblem(
+        "Authentication required. Connect your wallet or provide an API key.",
+        INSTANCE_PATH
       );
     }
 
@@ -42,7 +45,7 @@ export async function GET(request: Request) {
       status: searchParams.get("status") ?? undefined,
       search: searchParams.get("search") ?? undefined,
     });
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return validationProblem(parsed.error, INSTANCE_PATH);
 
     const { status, search } = parsed.data;
 
@@ -65,6 +68,6 @@ export async function GET(request: Request) {
       "X-Export-Truncated": truncated ? "true" : "false",
     });
   } catch (err) {
-    return handleApiError(err, "GET /api/payments/export");
+    return handleProblemApiError(err, "GET /api/payments/export", INSTANCE_PATH);
   }
 }

@@ -3,17 +3,20 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { retryPaymentSchema } from "@/lib/validation-schemas";
+import { successResponse } from "@/lib/api-response";
 import {
-  successResponse,
-  validationError,
-  notFoundError,
-  conflictError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+  validationProblem,
+  notFoundProblem,
+  conflictProblem,
+  unauthorizedProblem,
+  forbiddenProblem,
+  handleProblemApiError,
+} from "@/lib/api-errors";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
+
+const INSTANCE_PATH = "/api/payments/retry";
 
 /**
  * POST /api/payments/retry
@@ -28,18 +31,25 @@ import { verifyCsrf } from "@/lib/csrf";
 export async function POST(request: Request) {
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    if (csrfError) {
+      return forbiddenProblem(
+        "Invalid or missing CSRF token. Refresh the page and try again.",
+        INSTANCE_PATH,
+        "CSRF_INVALID"
+      );
+    }
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+      return unauthorizedProblem(
+        "Authentication required. Connect your wallet or provide an API key.",
+        INSTANCE_PATH
       );
     }
 
     const body = await request.json().catch(() => null);
     const parsed = retryPaymentSchema.safeParse(body ?? {});
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return validationProblem(parsed.error, INSTANCE_PATH);
 
     const { id } = parsed.data;
 
@@ -48,11 +58,12 @@ export async function POST(request: Request) {
     const payment = await prisma.payment.findFirst({
       where: { id, userId: auth.userId, deletedAt: null },
     });
-    if (!payment) return notFoundError("Payment");
+    if (!payment) return notFoundProblem("Payment", INSTANCE_PATH);
 
     if (payment.status !== "FAILED") {
-      return conflictError(
-        `Only failed payments can be retried (current status: ${payment.status})`
+      return conflictProblem(
+        `Only failed payments can be retried (current status: ${payment.status})`,
+        INSTANCE_PATH
       );
     }
 
@@ -69,10 +80,10 @@ export async function POST(request: Request) {
         idempotencyKey: crypto.randomUUID(),
       },
     });
-    if (updated.count === 0) return notFoundError("Payment");
+    if (updated.count === 0) return notFoundProblem("Payment", INSTANCE_PATH);
 
     const retried = await prisma.payment.findUnique({ where: { id } });
-    if (!retried) return notFoundError("Payment");
+    if (!retried) return notFoundProblem("Payment", INSTANCE_PATH);
 
     logger.info("Payment retried", {
       id,
@@ -82,6 +93,6 @@ export async function POST(request: Request) {
 
     return successResponse(retried);
   } catch (err) {
-    return handleApiError(err, "POST /api/payments/retry");
+    return handleProblemApiError(err, "POST /api/payments/retry", INSTANCE_PATH);
   }
 }

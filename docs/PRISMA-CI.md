@@ -43,24 +43,28 @@ Before committing schema or migration updates, run the validation toolchain:
 # 1. Validate Prisma schema syntax and model definitions
 npm run db:validate
 
-# 2. Run structural and destructive migration scan
+# 2. Run static Prisma schema ⇄ migration drift detection (no DB required)
+node scripts/verify-prisma-drift.mjs
+
+# 3. Run structural and destructive migration scan
 bash scripts/validate-prisma-migrations.sh
 
-# 3. Execute unit & integration tests for Prisma schema integrity
-npm test src/__tests__/prisma-schema-ci.test.ts
+# 4. Execute unit & integration tests for Prisma schema & migration drift integrity
+npm test src/__tests__/prisma-schema-ci.test.ts src/__tests__/prisma-drift-check.test.ts
 ```
 
 ---
 
 ## CI/CD Pipeline Workflow
 
-The dedicated workflow `.github/workflows/prisma-ci.yml` runs automatically on PRs and pushes touching `prisma/**`:
+The dedicated workflow `.github/workflows/prisma-ci.yml` and the Vitest CI suite (`src/__tests__/prisma-drift-check.test.ts`) run automatically on PRs and pushes:
 
 1. **Syntax & Schema Validation**: Runs `npx prisma validate` against the schema.
-2. **Client Generation**: Ensures `@prisma/client` builds without type errors.
-3. **Migration Deploy Replay**: Executes all migrations in `prisma/migrations/` sequentially against a fresh PostgreSQL test instance.
-4. **Drift Detection**: Uses `prisma migrate diff` against a shadow database to verify that `schema.prisma` strictly matches the applied migrations.
-5. **Schema Regression Tests**: Executes Vitest suite checking relationship integrity, decimal precision on monetary columns, and timestamp constraints.
+2. **Static Schema-to-Migration Drift Gate**: Runs `scripts/verify-prisma-drift.mjs` to replay all committed `prisma/migrations/*/migration.sql` files (including multi-column `ALTER TABLE ADD COLUMN` statements) and verify zero model, field, or enum drift against `prisma/schema.prisma`.
+3. **Client Generation**: Ensures `@prisma/client` builds without type errors.
+4. **Migration Deploy Replay**: Executes all migrations in `prisma/migrations/` sequentially against a fresh PostgreSQL test instance.
+5. **Shadow DB Drift Detection**: Uses `prisma migrate diff` against a shadow database to verify that `schema.prisma` strictly matches the applied migrations.
+6. **Schema Regression Tests**: Executes Vitest suite checking relationship integrity, decimal precision on monetary columns, and timestamp constraints.
 
 ---
 
@@ -70,3 +74,4 @@ The dedicated workflow `.github/workflows/prisma-ci.yml` runs automatically on P
 2. **Monetary Precision**: Ensure all financial amount columns maintain `@db.Decimal(18, 7)` precision.
 3. **Index Coverage**: Always index foreign keys and frequent query filters (`userId`, `status`, `createdAt`).
 4. **Shadow Database**: Always run `prisma migrate dev` locally to test migration generation against a local shadow DB before opening a PR.
+

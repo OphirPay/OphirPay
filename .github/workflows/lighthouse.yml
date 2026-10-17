@@ -2,7 +2,7 @@ name: Lighthouse CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, integration/staging]
   pull_request:
     paths:
       - 'src/**'

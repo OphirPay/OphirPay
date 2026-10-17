@@ -17,6 +17,7 @@
  */
 
 import { getRateLimitStore } from "@/lib/rate-limit";
+import { extractClientIp } from "@/lib/client-ip";
 import { ERROR_CODES } from "@/lib/error-codes";
 
 const WINDOW_MS = 60_000; // 1 minute sliding window
@@ -43,11 +44,7 @@ function envInt(name: string, fallback: number): number {
 }
 
 function getClientIp(request: Request): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown"
-  );
+  return extractClientIp(request);
 }
 
 /** Build the 429 response with standard RateLimit and Retry-After headers. */

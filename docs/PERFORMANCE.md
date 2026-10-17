@@ -347,3 +347,71 @@ user sees *why* a fee is higher than usual.
   fee, so the pre-sign preview matches what is signed.
 - `estimateTransactionFee()` / `estimateBatchFee()` (`src/lib/fee-estimator.ts`)
   — the UI-facing wrappers.
+
+## Next.js bundle size monitoring & budgets (#1309)
+
+Client-side first-load JavaScript is measured per App Router route and enforced
+in CI on every pull request targeting `integration/staging` via
+[`scripts/check-bundle-budget.mjs`](../scripts/check-bundle-budget.mjs) and
+[`bundle-budget.json`](../bundle-budget.json).
+
+### How the CI budget check works
+
+After `npm run build`, `npm run bundle:check` inspects
+`.next/build-manifest.json` (root shared/polyfill chunks) and every
+`<route>/page_client-reference-manifest.js` under `.next/server/app/**`. For
+each route it:
+
+1. Unions all shared and route-specific `.js` chunks,
+2. Measures their **gzip-compressed** size in KB,
+3. Compares the route total against `bundle-budget.json` (`routes[route]` or
+   `defaultBudgetKb`), and
+4. Writes a Markdown summary table to `$GITHUB_STEP_SUMMARY`.
+
+| Status | Marker | Meaning |
+|---|---|---|
+| Within budget | `✅` | Route gzip size is below `warningThresholdRatio` (95%) of its budget |
+| Approaching budget | `⚠️` | Route gzip size is ≥ 95% of its budget (logs a warning in CI) |
+| Over budget | `❌` | Route exceeds its budget; exits non-zero and prints the top 3 largest chunks |
+
+### Comparing PR chunk changes against a base branch
+
+You can save a JSON snapshot on the base branch and pass `--base=<path>` on the
+PR branch to include a `Base` and `Change` column in the summary table:
+
+```bash
+# On base branch:
+npm run build
+node scripts/check-bundle-budget.mjs --json=bundle-base.json
+
+# On PR branch:
+npm run build
+node scripts/check-bundle-budget.mjs --base=bundle-base.json --json=bundle-pr.json
+```
+
+### Interpreting bundle reports locally
+
+1. **Quick threshold check (Turbopack or Webpack build):**
+   ```bash
+   npm run build
+   npm run bundle:check
+   ```
+   If any route exceeds its budget, the output lists the offending route and its
+   three largest `.js` chunks so you can immediately see which dependency or
+   client component caused the increase.
+
+2. **Interactive treemap (`@next/bundle-analyzer`):**
+   ```bash
+   npm run analyze
+   ```
+   This runs `ANALYZE=true next build --webpack` via
+   `scripts/analyze-build.mjs` and writes static HTML treemaps to
+   `.next/analyze/client.html`, `.next/analyze/nodejs.html`, and
+   `.next/analyze/edge.html`. Open `.next/analyze/client.html` in a browser to
+   inspect module-by-module weights:
+   - Prefer **Parsed / Gzipped** size in the sidebar toggle (matches CI).
+   - Look for server-only packages (`prisma`, `crypto`, heavy SDK submodules)
+     accidentally imported into `"use client"` files.
+   - Use `next/dynamic` for heavy interactive widgets (charts, QR scanners, CSV
+     previews) that are not needed on initial paint.
+

@@ -1,6 +1,7 @@
 {
   "$comment": "First-load JavaScript budget per route, gzip-compressed, measured by scripts/check-bundle-budget.mjs from the App Router client-reference manifests. Values are the 2026-09-30 Turbopack baseline plus ~8% headroom. Budgets are raised deliberately in a PR (with a reason) and never lowered to make a red build green. See CONTRIBUTING.md -> 'Bundle-size budget'.",
   "defaultBudgetKb": 570,
+  "warningThresholdRatio": 0.95,
   "routes": {
     "/": 570,
     "/address-book": 565,

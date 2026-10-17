@@ -345,6 +345,10 @@ export enum PaymentErrorCode {
   RefundWindowExpired = 50,
   AlreadyVoted = 51,
   ReentrantCall = 52,
+  HookNotFound = 62,
+  PendingOwnershipTransfer = 71,
+  OwnershipTransferExpired = 72,
+  NoPendingOwner = 305,
   PaymentIdempotencyConflict = 309,
 }
 
@@ -401,5 +405,9 @@ export const PAYMENT_ERROR_MESSAGES: Record<number, string> = {
   50: "Refund window has expired — no longer eligible",
   51: "Voter has already voted on this proposal",
   52: "Reentrant call detected — execution rejected by reentrancy lock",
+  62: "Notification hook not found",
+  71: "Pending ownership transfer must be accepted or cancelled first",
+  72: "Ownership transfer timelock expired without acceptance",
+  305: "No pending ownership transfer has been proposed",
   309: "Idempotency key was reused for a different payment payload",
 };

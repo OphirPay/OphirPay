@@ -176,6 +176,20 @@ mod tests {
         assert_eq!(client.get_owner(), new_owner);
     }
 
+    #[test]
+    fn test_accept_ownership_without_pending_transfer_returns_ownership_error() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let addr = env.register(PaymentEventEmitter, ());
+        let client = PaymentEventEmitterClient::new(&env, &addr);
+        let owner = Address::generate(&env);
+        let caller = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        let res = client.try_accept_ownership(&caller);
+        assert_eq!(res, Err(Ok(EmitterError::OwnershipTransferNotProposed)));
+    }
+
     // ── Pagination Tests ──────────────────────────────────────
 
     /// Helper: emit `n` events and return the owner address.

@@ -660,5 +660,30 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    // ── Multisig Validation Guards (310-311) ───────────────
+    /// Multisig threshold must be strictly positive and at most the signer count
+    InvalidThreshold = 310,
+    /// Multisig signers list cannot be empty
+    EmptySignersList = 311,
+}
+
+/// Validates multisig configuration parameters (#1355):
+/// - Rejects an empty signer list with PaymentError::EmptySignersList.
+/// - Rejects 	hreshold == 0 or 	hreshold > signers.len() with PaymentError::InvalidThreshold.
+/// - Rejects signers.len() > 20 with PaymentError::MaxSignersExceeded.
+pub fn validate_multisig_config(
+    threshold: u32,
+    signers: &Vec<Address>,
+) -> Result<(), PaymentError> {
+    if signers.is_empty() {
+        return Err(PaymentError::EmptySignersList);
+    }
+    if threshold == 0 || threshold > signers.len() {
+        return Err(PaymentError::InvalidThreshold);
+    }
+    if signers.len() > 20 {
+        return Err(PaymentError::MaxSignersExceeded);
+    }
+    Ok(())
 }
 

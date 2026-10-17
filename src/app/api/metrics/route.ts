@@ -12,6 +12,7 @@ import { getRpcFailoverState } from "@/lib/rpc-failover";
 import { timingSafeEqual } from "@/lib/crypto";
 import { authenticateRequest } from "@/lib/api-auth";
 import { hasScope, ADMIN_SCOPE } from "@/lib/api-scopes";
+import { getPrismaPoolMetrics } from "@/lib/prisma";
 
 /**
  * /api/metrics — Prometheus exposition endpoint.
@@ -294,7 +295,17 @@ export const GET = withMetrics("GET /api/metrics", async function GET(request: R
     return unauthorizedMetricsResponse();
   }
 
-  return new NextResponse(buildMetrics(), {
+  const baseMetrics = buildMetrics();
+  let prismaMetrics = "";
+  try {
+    prismaMetrics = await getPrismaPoolMetrics();
+  } catch {
+    // Graceful fallback: database metrics unavailability never breaks the endpoint
+  }
+
+  const responseBody = prismaMetrics ? `${baseMetrics}\n${prismaMetrics}\n` : baseMetrics;
+
+  return new NextResponse(responseBody, {
     status: 200,
     headers: {
       "Content-Type": "text/plain; version=0.0.4",

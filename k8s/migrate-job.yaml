@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ophirpay-migrate
+  namespace: ophirpay
+  labels:
+    app: ophirpay
+    component: migrations
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: ophirpay
+        component: migrations
+    spec:
+      restartPolicy: Never
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: prisma-migrate
+          image: ghcr.io/ophirpay/ophirpay:migrator
+          command: ["npx", "prisma", "migrate", "deploy"]
+          envFrom:
+            - configMapRef:
+                name: ophirpay-config
+            - secretRef:
+                name: ophirpay-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop:
+                - ALL

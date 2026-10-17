@@ -5,23 +5,35 @@ required checks below run on pull requests and are the merge gate. Run
 `npm run ci` locally for the application checks; the repository-specific
 commands are listed so failures can be reproduced individually.
 
-| Required check | Workflow | Local command |
-| --- | --- | --- |
-| Typecheck | `ci.yml` | `npm run typecheck` |
-| ESLint (zero warnings) | `ci.yml` | `npm run lint -- --max-warnings 0` |
-| Unit tests | `ci.yml` | `npm test` |
-| Next.js build | `ci.yml` | `npm run build` |
-| Deploy configuration guards | `ci.yml` | `bash scripts/validate-deploy-config.sh` |
-| Contract WASM and Rust tests | `ci.yml` | `cd contracts/ophirpay && cargo test`; repeat in `contracts/emitter` |
-| Secrets scan | `ci.yml` | `gitleaks detect --config .gitleaks.toml --redact` |
-| Helm lint/render | `ci.yml` | `helm lint helm/ophirpay` |
-| Prisma schema and migration replay | `prisma-ci.yml` | `npm run db:validate:migrations` |
-| Contract regression guard | `contract-regression.yml` | `node scripts/check-contract-regressions.mjs` |
-| Integration-branch policy | `enforce-integration-branch.yml` | Open the PR against `integration/staging` |
+| Required check | Workflow | Gate Job Name | Local command |
+| --- | --- | --- | --- |
+| Typecheck | `ci.yml` | `Typecheck` | `npm run typecheck` |
+| ESLint (zero warnings) | `ci.yml` | `ESLint (zero warnings)` | `npm run lint -- --max-warnings 0` |
+| Unit tests | `ci.yml` | `Unit tests` | `npm test` |
+| Next.js build | `ci.yml` | `Next.js build` | `npm run build` |
+| Deploy configuration guards | `ci.yml` | `Deploy configuration guards` | `bash scripts/validate-deploy-config.sh` |
+| Contract WASM and Rust tests | `ci.yml` | `Contract WASM and Rust tests` | `cd contracts/ophirpay && cargo test`; repeat in `contracts/emitter` |
+| Secrets scan | `ci.yml` | `Secrets scan` | `gitleaks detect --config .gitleaks.toml --redact` |
+| Helm lint/render | `ci.yml` | `Helm lint/render` | `helm lint helm/ophirpay` |
+| Prisma schema and migration replay | `prisma-ci.yml` | `Prisma Gate` | `npm run db:validate:migrations` |
+| Contract regression guard | `contract-regression.yml` | `Contract Regression Gate` | `node scripts/check-contract-regressions.mjs` |
+| Docker smoke test (when required) | `docker-smoke.yml` | `Docker Smoke Gate` | `docker build -t ophirpay:smoke .` |
+| Integration-branch policy | `enforce-integration-branch.yml` | `Enforce integration branch` | Open the PR against `integration/staging` |
 
-The path-scoped Prisma and contract checks are required when their files are
-changed. The integration-branch policy is required for every PR while the
-batch-integration branch exists.
+### Path-filtered gate jobs
+
+`prisma-ci.yml`, `contract-regression.yml`, and `docker-smoke.yml` use a path
+detection job (`dorny/paths-filter`) paired with an always-running `gate` job.
+When configuring branch protection, mark **only the gate job** as required:
+- `Prisma Gate`
+- `Contract Regression Gate`
+- `Docker Smoke Gate` (if enabled in branch protection)
+
+Because the gate job runs unconditionally and succeeds when the heavy work is
+either skipped (no matching file changes) or passes, unrelated pull requests
+(such as documentation changes) will report the check as passed instead of
+stalling on "Expected — waiting for status". The integration-branch policy is
+required for every PR while the batch-integration branch exists.
 
 ## Scheduled or advisory workflows
 

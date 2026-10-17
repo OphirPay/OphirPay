@@ -2,65 +2,88 @@ name: Prisma schema and migration checks
 
 on:
   pull_request:
-    paths:
-      - "prisma/**"
-      - "scripts/validate-prisma-migrations.sh"
-      - "src/__tests__/prisma-schema-ci.test.ts"
-      - ".github/workflows/prisma-ci.yml"
+    branches: [main, integration/staging]
   push:
-    branches: [main]
-    paths:
-      - "prisma/**"
-      - "scripts/validate-prisma-migrations.sh"
-      - "src/__tests__/prisma-schema-ci.test.ts"
-      - ".github/workflows/prisma-ci.yml"
+    branches: [main, integration/staging]
 
 permissions:
   contents: read
+  pull-requests: read
 
-
-# -- Global Concurrency � cancel stale runs on same PR --------
+# ── Global Concurrency — cancel stale runs on same PR ────────
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  prisma:
-    name: Validate schema, replay migrations, and test invariants
+  changes:
+    name: "Detect Prisma changes"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      prisma: ${{ steps.filter.outputs.prisma }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            prisma:
+              - "prisma/**"
+              - "scripts/validate-prisma-migrations.sh"
+              - "src/__tests__/prisma-schema-ci.test.ts"
+              - ".github/workflows/prisma-ci.yml"
+
+  prisma-ci:
+    name: "Prisma schema and migration checks"
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.prisma == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
-          POSTGRES_USER: prisma
-          POSTGRES_PASSWORD: prisma
-          POSTGRES_DB: ophirpay_ci
+          POSTGRES_USER: ophirpay
+          POSTGRES_PASSWORD: ophirpay
+          POSTGRES_DB: ophirpay_migration_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U prisma -d ophirpay_ci"
-          --health-interval 10s
+          --health-cmd "pg_isready -U ophirpay"
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
-      DIRECT_DATABASE_URL: postgresql://prisma:prisma@localhost:5432/ophirpay_ci
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
-          cache: npm
+          cache: "npm"
       - run: npm ci
-      - run: npx prisma validate
-      - run: npx prisma generate
-      - run: bash scripts/validate-prisma-migrations.sh
-      - name: Check schema and migration drift
-        run: >-
-          npx prisma migrate diff
-          --from-migrations prisma/migrations
-          --to-schema-datamodel prisma/schema.prisma
-          --shadow-database-url "postgresql://prisma:prisma@localhost:5432/postgres"
-      - run: npx prisma migrate deploy
-      - run: npx vitest run src/__tests__/prisma-schema-ci.test.ts
+      - name: Validate migrations on clean DB
+        run: bash scripts/validate-prisma-migrations.sh
+        env:
+          DATABASE_URL: "postgresql://ophirpay:ophirpay@localhost:5432/ophirpay_migration_test"
+      - name: Validate schema matches baseline & migrations
+        run: npm test -- src/__tests__/prisma-schema-ci.test.ts
+
+  prisma-gate:
+    name: "Prisma Gate"
+    needs: [changes, prisma-ci]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate gate status
+        run: |
+          status="${{ needs.prisma-ci.result }}"
+          echo "prisma-ci status: $status"
+          if [ "$status" = "success" ] || [ "$status" = "skipped" ]; then
+            echo "✅ Gate passed (job was $status)"
+            exit 0
+          else
+            echo "❌ Gate failed (job was $status)"
+            exit 1
+          fi

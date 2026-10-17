@@ -12,27 +12,43 @@ name: Contract regression guard
 
 on:
   pull_request:
-    paths:
-      - 'contracts/**'
-      - 'scripts/check-contract-regressions.mjs'
-      - '.github/workflows/contract-regression.yml'
+    branches: [main, integration/staging]
   workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: write
 
-
-# -- Global Concurrency � cancel stale runs on same PR --------
+# ── Global Concurrency — cancel stale runs on same PR ────────
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  contract-regression:
+  changes:
+    name: "Detect contract changes"
     runs-on: ubuntu-latest
-    # Default 3 %; override per-PR/per-repo with the WASM_SIZE_THRESHOLD_PERCENT
-    # repository variable, or by running the script with the env var set.
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      contracts: ${{ steps.filter.outputs.contracts }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            contracts:
+              - 'contracts/**'
+              - 'scripts/check-contract-regressions.mjs'
+              - '.github/workflows/contract-regression.yml'
+
+  contract-regression:
+    name: "Contract regression guard"
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
     env:
       WASM_SIZE_THRESHOLD_PERCENT: ${{ vars.WASM_SIZE_THRESHOLD_PERCENT }}
     defaults:
@@ -64,8 +80,6 @@ jobs:
           path: contract-regression-report.md
           if-no-files-found: warn
       - name: Comment the report on the pull request
-        # Fork PRs get a read-only token, so a failed comment must not fail the
-        # job — the job summary always carries the same report.
         if: always() && github.event_name == 'pull_request' && hashFiles('contract-regression-report.md') != ''
         continue-on-error: true
         uses: actions/github-script@v7
@@ -91,3 +105,21 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
+
+  contract-gate:
+    name: "Contract Regression Gate"
+    needs: [changes, contract-regression]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate gate status
+        run: |
+          status="${{ needs.contract-regression.result }}"
+          echo "contract-regression status: $status"
+          if [ "$status" = "success" ] || [ "$status" = "skipped" ]; then
+            echo "✅ Gate passed (job was $status)"
+            exit 0
+          else
+            echo "❌ Gate failed (job was $status)"
+            exit 1
+          fi

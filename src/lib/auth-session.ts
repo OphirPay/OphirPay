@@ -134,13 +134,14 @@ export interface AuthContext {
   userId: string;
   publicKey?: string;
   keyId?: string;
+  scopes?: string[];
 }
 
 /**
  * Resolve the authenticated user for a request:
  *
  *   1. Signed wallet session cookie (browser UI)  →  { userId, publicKey }
- *   2. API key (machine-to-machine)               →  { userId, keyId }
+ *   2. API key (machine-to-machine)               →  { userId, keyId, scopes }
  *
  * Returns null when the caller is unauthenticated. Route handlers should
  * respond with 401 in that case.
@@ -169,7 +170,13 @@ export async function getAuthContext(
   }
 
   const apiAuth = await authenticateRequest(request);
-  if (apiAuth) return { userId: apiAuth.userId, keyId: apiAuth.keyId };
+  if (apiAuth) {
+    return {
+      userId: apiAuth.userId,
+      keyId: apiAuth.keyId,
+      scopes: apiAuth.scopes,
+    };
+  }
 
   return null;
 }

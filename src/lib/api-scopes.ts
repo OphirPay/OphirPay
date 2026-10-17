@@ -16,6 +16,10 @@ export const API_SCOPES = [
   "read:payments",
   "write:payments",
   "read:analytics",
+  "batches:create",
+  "escrow:write",
+  "escrow:release",
+  "webhooks:write",
   "admin",
 ] as const;
 

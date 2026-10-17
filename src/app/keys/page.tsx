@@ -45,6 +45,10 @@ const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   "read:payments": "View payments and payment history",
   "write:payments": "Create and submit payments",
   "read:analytics": "Read analytics and reporting data",
+  "batches:create": "Create and submit payment batches",
+  "escrow:write": "Create and manage escrow agreements",
+  "escrow:release": "Release funds from escrow agreements",
+  "webhooks:write": "Create, rotate, and delete webhook subscriptions",
   admin: "Full access to all API capabilities",
 };
 

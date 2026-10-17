@@ -169,4 +169,65 @@ describe("GET /api/payments/export", () => {
     expect(res.status).toBe(400);
     expect(mockFindMany).not.toHaveBeenCalled();
   });
+
+  it("supports format=json and applies asset and date range filters (#1296)", async () => {
+    mockGetAuthContext.mockResolvedValue({ userId: "user-json-1" });
+    mockFindMany.mockResolvedValue([
+      makePayment({
+        assetCode: "USDC",
+        sourceAccountId: "GSENDER",
+        destAccountId: "GRECIPIENT",
+      }),
+    ]);
+
+    const res = await GET(
+      new Request(
+        "http://localhost/api/payments/export?format=json&asset=USDC&dateFrom=2026-08-01&dateTo=2026-08-31"
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+    expect(res.headers.get("Content-Disposition")).toMatch(
+      /ophirpay-payments-\d{4}-\d{2}-\d{2}\.json/
+    );
+    expect(mockFindMany).toHaveBeenCalledWith({
+      where: {
+        userId: "user-json-1",
+        assetCode: "USDC",
+        createdAt: {
+          gte: new Date("2026-08-01T00:00:00.000Z"),
+          lte: new Date("2026-08-31T23:59:59.999Z"),
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: MAX_EXPORT_ROWS + 1,
+    });
+
+    const parsed = JSON.parse(await res.text());
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toMatchObject({
+      asset: "USDC",
+      sender: "GSENDER",
+      recipient: "GRECIPIENT",
+      fee: "0.0000100",
+      memo: "invoice-42",
+      status: "COMPLETED",
+    });
+  });
+
+  it("enforces per-user rate limiting with 429 (#1296)", async () => {
+    mockGetAuthContext.mockResolvedValue({ userId: "user-ratelimited" });
+    mockFindMany.mockResolvedValue([]);
+
+    let lastRes: Response | null = null;
+    for (let i = 0; i < 31; i++) {
+      lastRes = await GET(
+        new Request("http://localhost/api/payments/export")
+      );
+    }
+
+    expect(lastRes?.status).toBe(429);
+    expect(lastRes?.headers.get("Retry-After")).toBeDefined();
+  });
 });

@@ -382,15 +382,22 @@ function PaymentsClient() {
     );
   };
 
-  const handleExport = async () => {
+  const handleExport = async (format: "csv" | "json" = "csv") => {
     // Prefer the server-side export (GET /api/payments/export): it applies the
-    // CURRENT search filter to the full DB-backed record set, so the CSV is
-    // not limited to the rows loaded into the page. It falls back to a
-    // client-side export of the loaded rows when there is no server session
-    // (e.g. wallet connected but the session cookie expired) so the button
-    // never dead-ends in a 401.
+    // CURRENT search, status, asset, and date range filters to the full DB-backed
+    // record set, so the export is not limited to the rows loaded into the page.
+    // It falls back to a client-side export of the filtered rows when there is
+    // no server session so the button never dead-ends in a 401.
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
+    if (statusFilter) params.set("status", statusFilter);
+    if (assetFilter) params.set("asset", assetFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
+    if (format === "json") params.set("format", "json");
+
+    const dateStamp = new Date().toISOString().split("T")[0];
+    const filename = `ophirpay-payments-${dateStamp}.${format}`;
 
     try {
       const res = await fetch(`/api/payments/export?${params.toString()}`, {
@@ -401,7 +408,7 @@ function PaymentsClient() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv`;
+        link.download = filename;
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -412,6 +419,40 @@ function PaymentsClient() {
       // Network failure or missing session — fall through to the client-side
       // export below.
     }
+
+    if (format === "json") {
+      const jsonPayload = JSON.stringify(
+        filtered.map((p) => ({
+          id: String(p.id),
+          timestamp: p.timestamp
+            ? new Date(p.timestamp * 1000).toISOString()
+            : "",
+          transactionHash: p.txHash,
+          sender: p.payer,
+          recipient: p.payee,
+          asset: p.assetCode ?? "XLM",
+          amount: (p.amountStroops / XLM_STROOPS).toFixed(7),
+          fee: "0.0000100",
+          memo: p.metadata ?? "",
+          status: getStatus(p),
+        })),
+        null,
+        2
+      );
+      const blob = new Blob([jsonPayload], {
+        type: "application/json;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
     exportToCsv(filtered, [
       { key: "id", header: "Payment ID" },
       { key: "payer", header: "Payer" },
@@ -419,7 +460,7 @@ function PaymentsClient() {
       { key: "amountStroops", header: "Amount (Stroops)" },
       { key: "metadata", header: "Metadata" },
       { key: "txHash", header: "Tx Hash" },
-    ], { filename: `ophirpay-payments-${new Date().toISOString().split("T")[0]}.csv` });
+    ], { filename });
   };
 
   return (
@@ -446,7 +487,7 @@ function PaymentsClient() {
           />
           <button
             type="button"
-            onClick={handleExport}
+            onClick={() => handleExport("csv")}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             title="Export CSV"
           >
@@ -465,6 +506,28 @@ function PaymentsClient() {
               />
             </svg>
             CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => handleExport("json")}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            title="Export JSON"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-4 h-4"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+            JSON
           </button>
           <button
             type="button"

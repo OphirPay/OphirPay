@@ -106,13 +106,30 @@ const paymentStatusValues = [
   "CANCELLED",
 ] as const;
 
-/** Status filter accepted by the payment CSV export endpoint. */
+/** Status filter accepted by the payment CSV/JSON export endpoint. */
 export const paymentStatusSchema = z.enum(paymentStatusValues);
 
-/** Query params for GET /api/payments/export — same filters as the list route. */
+export const paymentExportFormatValues = ["csv", "json"] as const;
+export const paymentExportFormatSchema = z.enum(paymentExportFormatValues);
+
+/** Query params for GET /api/payments/export — same filters as the list route plus format. */
 export const paymentExportParamsSchema = z.object({
   status: paymentStatusSchema.optional(),
   search: z.string().optional(),
+  asset: z.string().trim().min(1).max(16).optional(),
+  dateFrom: z
+    .string()
+    .refine((val) => !Number.isNaN(Date.parse(val)), {
+      message: "Invalid dateFrom parameter",
+    })
+    .optional(),
+  dateTo: z
+    .string()
+    .refine((val) => !Number.isNaN(Date.parse(val)), {
+      message: "Invalid dateTo parameter",
+    })
+    .optional(),
+  format: paymentExportFormatSchema.default("csv"),
 });
 
 // ── Batch Schemas ─────────────────────────────────────────────

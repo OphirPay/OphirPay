@@ -111,3 +111,20 @@ export function createCsvResponse(
     },
   });
 }
+
+/**
+ * Create a JSON attachment Response object for API download endpoints.
+ */
+export function createJsonExportResponse(
+  filename: string,
+  data: string,
+  extraHeaders: Record<string, string> = {}
+): Response {
+  return new Response(data, {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      ...extraHeaders,
+    },
+  });
+}

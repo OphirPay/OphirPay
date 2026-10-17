@@ -125,9 +125,61 @@ per table only after comparing the source and target column lists. CSV is a
 transport format, not a schema/type converter: review escaping, timestamps,
 JSON, decimal text, enum values, and locally adapted fields before importing.
 
-The reverse direction also requires a logical export/import and schema
-transformation. Do not try to apply PostgreSQL migrations to SQLite or use a
-PostgreSQL dump as SQLite SQL.
+## Connection pool monitoring and tuning (#1371)
+
+Under high traffic or during large batch simulations, Prisma client connection pools can become exhausted if connection limits and wait timeouts are not properly configured. OphirPay exposes live connection pool metrics to Prometheus and emits structured warning logs on connection starvation.
+
+### Connection pool metrics
+
+The `/api/metrics` endpoint exposes Prisma connection pool telemetry formatted for Prometheus:
+
+| Metric Name | Type | Description |
+|---|---|---|
+| `prisma_pool_connections_busy` | Gauge | Number of connections currently executing a database query. |
+| `prisma_pool_connections_idle` | Gauge | Number of open, idle connections ready in the pool. |
+| `prisma_pool_connections_open` | Gauge | Total active physical database connections managed by the pool. |
+| `prisma_pool_wait_duration_ms` | Histogram | Time spent in milliseconds waiting to acquire a connection from the pool. |
+
+### Structured warning logs on connection wait
+
+When a connection acquisition or query execution wait exceeds 500ms (`CONNECTION_WAIT_THRESHOLD_MS` in `src/lib/prisma.ts`), the client logs a structured warning:
+
+```json
+{
+  "timestamp": "2026-10-17T14:30:00.000Z",
+  "level": "warn",
+  "message": "[Prisma] Database connection acquisition wait exceeded 500ms",
+  "context": {
+    "waitDurationMs": 620,
+    "thresholdMs": 500,
+    "model": "Payment",
+    "operation": "findMany"
+  }
+}
+```
+
+### Pool tuning recommendations
+
+1. **`connection_limit` configuration**:
+   By default, Prisma calculates connection limits using `num_cpus * 2 + 1`. For high-throughput containerized deployments behind Kubernetes or serverless proxies, tune the pool size in the connection string:
+   ```
+   DATABASE_URL="postgresql://user:pass@host:5432/ophirpay?connection_limit=20&pool_timeout=15"
+   ```
+2. **`pool_timeout` settings**:
+   The default timeout waiting for a connection is 10 seconds. In latency-critical payment ingestion routes, set `pool_timeout=15` or configure horizontal pod autoscaling before connections hit starvation.
+3. **External connection poolers (PgBouncer, Supabase, Neon)**:
+   When running behind PgBouncer in transaction pooling mode:
+   - Append `?pgbouncer=true` to `DATABASE_URL` to disable prepared statements that conflict with transaction-mode pooling.
+   - For migration and DDL commands, use `DIRECT_DATABASE_URL` pointing to session mode or a direct database port.
+4. **Grafana PromQL queries**:
+   - **Pool saturation ratio**:
+     ```promql
+     prisma_pool_connections_busy / (prisma_pool_connections_busy + prisma_pool_connections_idle)
+     ```
+   - **95th percentile connection wait duration**:
+     ```promql
+     histogram_quantile(0.95, sum(rate(prisma_pool_wait_duration_ms_bucket[5m])) by (le))
+     ```
 
 ## Local development checklist
 

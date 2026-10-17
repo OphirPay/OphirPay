@@ -24,6 +24,23 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.service.targetPort }}
+    {{- if and .Values.networkPolicy.metrics .Values.networkPolicy.metrics.enabled }}
+    # Allow in-cluster Prometheus scraper to reach /api/metrics (#1344).
+    - from:
+        - {{- if .Values.networkPolicy.metrics.namespaceSelector }}
+          namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.metrics.namespaceSelector | nindent 14 }}
+          {{- end }}
+          {{- if .Values.networkPolicy.metrics.podSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.metrics.podSelector | nindent 14 }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+    {{- end }}
   egress:
     # Cluster DNS — without this every in-cluster name fails to resolve.
     - to:

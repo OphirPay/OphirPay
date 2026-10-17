@@ -2292,9 +2292,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(ESCROW_KEY, escrow_id), &escrow);
-        env.storage()
-            .persistent()
-            .extend_ttl(&(ESCROW_KEY, escrow_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+        touch_record_ttl(&env, &ESCROW_KEY, escrow_id);
 
         inc_counter(&env, &STAT_ESC_RELEASED);
 
@@ -2354,9 +2352,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(ESCROW_KEY, escrow_id), &escrow);
-        env.storage()
-            .persistent()
-            .extend_ttl(&(ESCROW_KEY, escrow_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+        touch_record_ttl(&env, &ESCROW_KEY, escrow_id);
 
         inc_counter(&env, &STAT_ESC_RELEASED);
 
@@ -2408,9 +2404,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(ESCROW_KEY, escrow_id), &escrow);
-        env.storage()
-            .persistent()
-            .extend_ttl(&(ESCROW_KEY, escrow_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+        touch_record_ttl(&env, &ESCROW_KEY, escrow_id);
 
         inc_counter(&env, &STAT_ESC_CLAIMED);
 
@@ -2427,10 +2421,13 @@ impl OphirPayContract {
 
     /// Get escrow by ID
     pub fn get_escrow(env: Env, escrow_id: u64) -> Result<Escrow, PaymentError> {
-        env.storage()
+        let escrow: Escrow = env
+            .storage()
             .persistent()
             .get(&(ESCROW_KEY, escrow_id))
-            .ok_or(PaymentError::EscrowNotFound)
+            .ok_or(PaymentError::EscrowNotFound)?;
+        touch_record_ttl(&env, &ESCROW_KEY, escrow_id);
+        Ok(escrow)
     }
 
     /// Get escrow count
@@ -2570,9 +2567,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(STREAM_KEY, stream_id), &stream);
-        env.storage()
-            .persistent()
-            .extend_ttl(&(STREAM_KEY, stream_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+        touch_record_ttl(&env, &STREAM_KEY, stream_id);
 
         inc_counter(&env, &STAT_STR_CLAIMED);
 
@@ -2619,9 +2614,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(STREAM_KEY, stream_id), &stream);
-        env.storage()
-            .persistent()
-            .extend_ttl(&(STREAM_KEY, stream_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+        touch_record_ttl(&env, &STREAM_KEY, stream_id);
 
         let token_client = token::Client::new(&env, &stream.asset);
         let contract_addr = env.current_contract_address();
@@ -2649,10 +2642,13 @@ impl OphirPayContract {
 
     /// Get a stream by ID
     pub fn get_stream(env: Env, stream_id: u64) -> Result<Stream, PaymentError> {
-        env.storage()
+        let stream: Stream = env
+            .storage()
             .persistent()
             .get(&(STREAM_KEY, stream_id))
-            .ok_or(PaymentError::StreamNotFound)
+            .ok_or(PaymentError::StreamNotFound)?;
+        touch_record_ttl(&env, &STREAM_KEY, stream_id);
+        Ok(stream)
     }
 
     /// Get stream count

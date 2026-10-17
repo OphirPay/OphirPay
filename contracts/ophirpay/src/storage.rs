@@ -77,4 +77,21 @@ pub const STAT_AMT_BATCHED: Symbol = symbol_short!("S_AB");
 /// Prevents the owner from draining user-deposited funds (critical invariant).
 pub const LOCKED_BALANCE: Symbol = symbol_short!("LOCKED");
 pub const REENTRANCY_LOCK: Symbol = symbol_short!("RE_LOCK");
-
+
+// ── Active Record TTL Extension Policy (#1352) ─────────────────
+pub const RECORD_TTL_THRESHOLD: u32 = 10_000;
+pub const RECORD_TTL_EXTEND: u32 = 50_000;
+
+/// Refresh the persistent storage TTL for a `(prefix, id)` record (such as an
+/// active escrow or stream) as well as the contract instance TTL.
+pub fn touch_record_ttl(env: &Env, prefix: &Symbol, id: u64) {
+    let key = (prefix.clone(), id);
+    if env.storage().persistent().has(&key) {
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, RECORD_TTL_THRESHOLD, RECORD_TTL_EXTEND);
+    }
+    env.storage()
+        .instance()
+        .extend_ttl(RECORD_TTL_THRESHOLD, RECORD_TTL_EXTEND);
+}

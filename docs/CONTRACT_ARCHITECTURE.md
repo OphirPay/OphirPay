@@ -246,7 +246,28 @@ voucher contract, …). Follow this recipe:
 - [ ] Audit entry recorded
 - [ ] Contract test covering the happy path and the failure path
 
-## 6. Related reading
+## 6. Persistent Storage Retention & Automatic TTL Extension (#1352)
+
+Long-lived stateful records — specifically active escrows (`(ESCROW_KEY, id)`)
+and payment streams (`(STREAM_KEY, id)`) — must remain live in Soroban
+persistent storage across multi-month vesting schedules and dispute windows.
+
+`contracts/ophirpay/src/storage.rs` defines the retention constants and helper:
+
+- `RECORD_TTL_THRESHOLD = 10_000` ledgers (~7 days): minimum remaining TTL
+  before an extension is triggered.
+- `RECORD_TTL_EXTEND = 50_000` ledgers (~35 days): target TTL ceiling applied
+  when touched.
+- `touch_record_ttl(&env, &PREFIX, id)` extends both the persistent record entry
+  `(PREFIX, id)` and the contract instance storage to `50,000` ledgers whenever
+  remaining TTL falls below `10,000` ledgers.
+
+It is invoked automatically on every escrow or stream status inquiry (`get_escrow`,
+`get_stream`), partial or full stream claim (`claim_stream`), stream cancellation
+(`cancel_stream`), and escrow resolution (`release_escrow`, `release_by_arbiter`,
+`claim_escrow`).
+
+## 7. Related reading
 
 - [`docs/architecture.md`](architecture.md) — the system-level architecture
 - [`contracts/ophirpay/src/lib.rs`](../contracts/ophirpay/src/lib.rs) — the calling contract

@@ -16,6 +16,10 @@ import {
   hashApiKeyV1,
   API_SCOPES,
 } from "@/lib/api-auth";
+import {
+  hashApiKeySlowKdf,
+  validateApiKeyEntropy,
+} from "@/lib/api-key-kdf";
 import { withRequestLogging } from "@/lib/request-logging";
 import { verifyCsrf } from "@/lib/csrf";
 
@@ -89,6 +93,7 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
     const body = (await request.json().catch(() => ({}))) as {
       name?: string;
       scopes?: unknown;
+      kdf?: string;
     };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
@@ -103,7 +108,14 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
     // `generateApiKey` mints 32 CSPRNG bytes (issue #701) and fails closed if
     // the result ever drifts from the documented `oph_` + 64-hex format.
     const rawKey = generateApiKey();
-    const keyHash = hashApiKeyV1(rawKey);
+    validateApiKeyEntropy(rawKey);
+    const useSlowKdf =
+      body.kdf === "v2" ||
+      body.kdf === "argon2id" ||
+      process.env.API_KEY_KDF === "v2";
+    const keyHash = useSlowKdf
+      ? hashApiKeySlowKdf(rawKey)
+      : hashApiKeyV1(rawKey);
     const prefix = deriveKeyPrefix(rawKey);
 
     const apiKey = await prisma.apiKey.create({

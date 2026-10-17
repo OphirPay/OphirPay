@@ -382,17 +382,20 @@ jobs:
           kubeconform -strict -summary /tmp/disabled.yaml
 
       - name: Assert rendered config keys against .env.example
-        # AC of #730: a broken template or an unknown config key must fail the
+        # AC of #730 & #1336: a broken template or an unknown config key must fail the
         # job. Every key the chart renders into the ConfigMap/Secret has to be
-        # a variable the app documents in .env.example, and no documented
-        # variable may be missing, so config drift cannot recur silently.
+        # a variable the app documents in .env.example (required or commented optional),
+        # and no required documented variable may be missing.
         run: |
           set -euo pipefail
 
-          # Documented variables (commented-out optional ones are excluded).
-          grep -v '^#' .env.example | grep -v '^$' | cut -d= -f1 | sort -u > /tmp/env.keys
+          # Required documented variables (uncommented lines in .env.example).
+          grep -v '^#' .env.example | grep -v '^$' | cut -d= -f1 | sort -u > /tmp/required.keys
 
-          # Keys rendered by the chart (ConfigMap `data` + Secret `stringData`).
+          # All documented variables, including commented-out optional variables (#1336).
+          sed -n -E 's/^[[:space:]]*#?[[:space:]]*([A-Z][A-Z0-9_]*)=.*/\1/p' .env.example | sort -u > /tmp/documented.keys
+
+          # Keys rendered by the chart by default (ConfigMap `data` + Secret `stringData`).
           helm template ophirpay helm/ophirpay --show-only templates/config.yaml \
             | grep -E '^  [A-Z][A-Z0-9_]*:' \
             | awk -F':' '{print $1}' \
@@ -400,21 +403,48 @@ jobs:
             | sort -u > /tmp/chart.keys
 
           fail=0
+          # Every required key must be rendered by the chart.
           while read -r key; do
             grep -Fxq "$key" /tmp/chart.keys || {
-              echo "::error::.env.example variable '$key' is not rendered by the chart"
+              echo "::error::required .env.example variable '$key' is not rendered by the chart"
               fail=1
             }
-          done < /tmp/env.keys
+          done < /tmp/required.keys
 
+          # Every rendered key must be documented (required or optional).
           while read -r key; do
-            grep -Fxq "$key" /tmp/env.keys || {
+            grep -Fxq "$key" /tmp/documented.keys || {
               echo "::error::chart renders '$key', which is not documented in .env.example"
               fail=1
             }
           done < /tmp/chart.keys
 
+          # Verify that optional keys (METRICS_TOKEN, CRON_SECRET, REDIS_URL) can be passed via values (#1336).
+          helm template ophirpay helm/ophirpay --show-only templates/config.yaml \
+            --set secrets.METRICS_TOKEN=metrics-token-sample \
+            --set secrets.CRON_SECRET=cron-secret-sample \
+            --set secrets.REDIS_URL=redis://localhost:6379 \
+            | grep -E '^  [A-Z][A-Z0-9_]*:' \
+            | awk -F':' '{print $1}' \
+            | sed 's/^[[:space:]]*//' \
+            | sort -u > /tmp/chart-optional.keys
+
+          for opt_key in METRICS_TOKEN CRON_SECRET REDIS_URL; do
+            grep -Fxq "$opt_key" /tmp/chart-optional.keys || {
+              echo "::error::optional key '$opt_key' could not be rendered when set in values"
+              fail=1
+            }
+          done
+
+          while read -r key; do
+            grep -Fxq "$key" /tmp/documented.keys || {
+              echo "::error::chart with optional values renders '$key', which is not documented in .env.example"
+              fail=1
+            }
+          done < /tmp/chart-optional.keys
+
           if [ "$fail" -eq 0 ]; then
-            echo "✅ Rendered config keys match .env.example ($(wc -l < /tmp/chart.keys | tr -d ' ') keys)"
+            echo "✅ Rendered config keys match .env.example specification ($(wc -l < /tmp/chart.keys | tr -d ' ') required, $(wc -l < /tmp/chart-optional.keys | tr -d ' ') with optionals)"
           fi
           exit "$fail"
+

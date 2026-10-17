@@ -51,7 +51,25 @@ interface LogEntry {
   timestamp: string;
   level: LogLevel;
   message: string;
+  requestId?: string;
   context?: Record<string, unknown>;
+}
+
+let requestIdProvider: (() => string | undefined) | null = null;
+
+/**
+ * Register a function that returns the active request's correlation ID.
+ * Kept decoupled from `node:async_hooks` so `logger.ts` remains Edge-runtime safe.
+ */
+export function setRequestIdProvider(
+  provider: (() => string | undefined) | null
+): void {
+  requestIdProvider = provider;
+}
+
+/** Read the active request correlation ID if a provider is registered. */
+export function getActiveRequestId(): string | undefined {
+  return requestIdProvider?.();
 }
 
 function formatEntry(entry: LogEntry): string {
@@ -59,11 +77,23 @@ function formatEntry(entry: LogEntry): string {
 }
 
 function log(level: LogLevel, message: string, context?: Record<string, unknown>) {
+  const activeRequestId = requestIdProvider?.();
+  const explicitRequestId =
+    typeof context?.requestId === "string" ? context.requestId : undefined;
+  const correlationId = explicitRequestId ?? activeRequestId;
+  const resolvedContext =
+    correlationId && context
+      ? { requestId: correlationId, ...context }
+      : correlationId
+        ? { requestId: correlationId }
+        : context;
+
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
     level,
     message,
-    context,
+    ...(correlationId ? { requestId: correlationId } : {}),
+    ...(resolvedContext !== undefined ? { context: resolvedContext } : {}),
   };
 
   const line = formatEntry(entry);
@@ -101,12 +131,13 @@ export const logger = {
     durationMs: number,
     requestId?: string
   ) => {
+    const effectiveRequestId = requestId ?? requestIdProvider?.();
     log("info", `${method} ${path} ${status}`, {
       method,
       path,
       status,
       durationMs,
-      ...(requestId ? { requestId } : {}),
+      ...(effectiveRequestId ? { requestId: effectiveRequestId } : {}),
     });
   },
 

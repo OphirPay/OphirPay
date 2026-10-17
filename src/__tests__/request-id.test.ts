@@ -60,5 +60,14 @@ describe('request-id', () => {
       // UUID format
       expect(id).toMatch(/^[0-9a-f-]+$/);
     });
+
+    it('extracts and trims an incoming X-Request-Id header from a Request', async () => {
+      const { extractRequestId, getRequestId } = await import('@/lib/request-id');
+      const req = new Request('https://example.com/api/test', {
+        headers: { 'X-Request-Id': '  req-inbound-789  ' },
+      });
+      expect(extractRequestId(req)).toBe('req-inbound-789');
+      expect(await getRequestId(req)).toBe('req-inbound-789');
+    });
   });
 });

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { logger } from "@/lib/logger";
+import { logger, getActiveRequestId } from "@/lib/logger";
 import { incMetric } from "@/lib/metrics-counters";
 import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
 import { RETRY_CONFIG } from "@/lib/retry-config";
@@ -219,6 +219,21 @@ export function buildWebhookRequestPreview(
   payload: WebhookPayload,
   secret: string
 ): WebhookRequestPreview {
+  if (payload.requestId) {
+    const basePreview = buildWebhookRequestPreview({ ...payload, requestId: undefined }, secret);
+    const signed = buildSignedPayload(payload, secret);
+    return {
+      canonicalBody: canonicalizeWebhookBody(payload),
+      body: signed.body,
+      signature: signed.signature,
+      headers: {
+        ...basePreview.headers,
+        "X-OphirPay-Signature": signed.signature,
+        [WEBHOOK_TIMESTAMP_HEADER]: signed.timestamp,
+        "X-Request-Id": payload.requestId,
+      },
+    };
+  }
   const { body, signature, timestamp } = buildSignedPayload(payload, secret);
   return {
     canonicalBody: canonicalizeWebhookBody(payload),
@@ -240,7 +255,12 @@ export async function deliverWebhook(
   maxRetries: number = RETRY_CONFIG.webhook.maxAttempts
 ): Promise<WebhookDeliveryDetails> {
   const startedAt = Date.now();
-  const request = buildWebhookRequestPreview(payload, secret);
+  const activeRequestId = payload.requestId ?? getActiveRequestId();
+  const effectivePayload: WebhookPayload =
+    activeRequestId && !payload.requestId
+      ? { ...payload, requestId: activeRequestId }
+      : payload;
+  const request = buildWebhookRequestPreview(effectivePayload, secret);
   let lastStatusCode: number | undefined;
   let lastResponseBody = "";
   let lastError: string | undefined;

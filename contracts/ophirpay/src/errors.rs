@@ -660,5 +660,9 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    /// No active dispute on this escrow
+    DisputeNotOpen = 310,
+    /// Dispute cooling-off window is still active
+    DisputeCoolingOffActive = 311,
 }
 

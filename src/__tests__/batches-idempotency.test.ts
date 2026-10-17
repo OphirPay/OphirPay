@@ -30,6 +30,14 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: mockGetAuthContext,
 }));
 
+// The Redis lease added for issue #1366 is covered end-to-end in
+// `batches-redis-idempotency.test.ts`. Stub it to "no broker" here so this
+// suite isolates the durable database guarantee — and stays hermetic when a
+// developer has REDIS_URL set locally.
+vi.mock("@/lib/idempotency", () => ({
+  claimIdempotencyKey: vi.fn().mockResolvedValue({ status: "unavailable" }),
+}));
+
 import { generateCsrfToken } from "@/lib/csrf";
 import { POST } from "@/app/api/batches/route";
 

@@ -157,3 +157,67 @@ Invalid amount at row 3.
 - **Balance check:** the batch total is checked against the connected
   wallet's balance before signing, so a file that imports cleanly can still
   be rejected at submission time if the total is too large.
+
+---
+
+## Exports
+
+The import format above is not the only CSV the platform speaks: two endpoints
+produce CSV as output. Their format is defined by
+[`src/lib/payment-export.ts`](../src/lib/payment-export.ts) and
+[`src/lib/audit-log.ts`](../src/lib/audit-log.ts), and both are **streamed**
+(issue #1369).
+
+### `GET /api/payments/export`
+
+| | |
+| --- | --- |
+| Filters | `status` and `search` — identical to `GET /api/payments` |
+| Filename | `ophirpay-payments-YYYY-MM-DD.csv` (UTC date) |
+| Transfer | `Transfer-Encoding: chunked`, header first, then 250-row chunks |
+| Row cap | **None.** A streamed export never withholds rows |
+
+Columns, in order (header text is what appears in the file):
+
+```csv
+Payment ID,Amount,Asset Code,Asset Issuer,Description,Memo,Status,Transaction Hash,Source Account,Destination Account,Created At
+```
+
+- `Amount` is written at the asset's 7-decimal scale (e.g. `100.2500000`),
+  never in scientific notation.
+- `Created At` is ISO-8601 UTC.
+- Empty values are written as empty cells, not the literal `null`.
+- Rows are ordered `createdAt DESC, id DESC`, matching the list endpoint, and
+  are paged with a Prisma cursor (never `skip`), so a large export does not get
+  slower page by page.
+
+### Escaping (both exports)
+
+Every cell goes through the same escaper
+([`buildCsvRow`](../src/lib/export-csv.ts)):
+
+- Cells containing `,`, `"`, `\n` or `\r` are wrapped in double quotes and
+  inner quotes are doubled (RFC 4180).
+- A cell whose first character is `=`, `+`, `-` or `@` is prefixed with a
+  single quote. Spreadsheet applications evaluate such cells as formulas
+  (including DDE/UNC paths), so the prefix prevents a memo like
+  `=cmd|calc` from executing on open.
+
+### Reading a streamed export
+
+Because the body is sent as it is produced, a failure **after** the response
+headers have been sent cannot be reported as an HTTP error status. The server
+errors the stream instead, so a client reading `response.body` sees the read
+fail. Treat a stream error/aborted download as a failed export rather than a
+complete file — the presence of a final newline is not proof of completeness,
+since the connection can also drop.
+
+```ts
+const res = await fetch("/api/payments/export?status=COMPLETED");
+if (!res.ok) throw new Error(`export failed: ${res.status}`);
+const text = await res.text(); // rejects if the stream was errored
+```
+
+> **Caveat:** `fetch` resolves as soon as the headers arrive, so `res.text()` is
+> the call that surfaces a mid-stream failure. Save the file only after it
+> resolves.

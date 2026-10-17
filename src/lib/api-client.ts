@@ -2,7 +2,13 @@
 
 /**
  * Client-side API fetch wrapper with error handling and type safety.
+ *
+ * Error bodies are normalized through `src/lib/problem-details.ts`, so a route
+ * that answers with `application/problem+json` (the payment mutations, see
+ * issue #1364) surfaces the same message the legacy envelope would have.
  */
+
+import { normalizeApiError } from "@/lib/problem-details";
 
 interface ApiClientOptions {
   baseUrl?: string;
@@ -15,12 +21,7 @@ interface ApiResponse<T> {
   meta?: { timestamp?: string };
 }
 
-interface ApiError {
-  success: false;
-  error: { code: string; message: string };
-}
-
-type ApiResult<T> = ApiResponse<T> | ApiError;
+type ApiResult<T> = ApiResponse<T> | Record<string, unknown>;
 
 /**
  * Create a typed API client for browser-side fetch calls.
@@ -44,9 +45,12 @@ export function createApiClient(options: ApiClientOptions = {}) {
 
     const json = (await res.json()) as ApiResult<T>;
 
-    if (!res.ok || !json.success) {
-      const err = json as ApiError;
-      throw new Error(err.error?.message || `Request failed with status ${res.status}`);
+    // `!res.ok` alone is enough: an error body is either the legacy
+    // `{ success: false, error }` envelope or an RFC 7807 problem document
+    // (which has no `success` member at all) — see src/lib/problem-details.ts.
+    if (!res.ok) {
+      const { message } = normalizeApiError(json, res.status);
+      throw new Error(message);
     }
 
     return (json as ApiResponse<T>).data;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
+import { normalizeApiError } from "@/lib/problem-details";
 
 /**
  * Shared API error type for typed error handling.
@@ -64,30 +65,36 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
 
   // Read the body once so it can be reused for both the CSRF check and the
   // error path — consuming the stream twice loses the server's error detail.
-  let body: { error?: { code?: string; message?: string } } | null = null;
+  //
+  // The body may be either wire format: the payment mutation routes answer
+  // with RFC 7807 problem details (`application/problem+json`, issue #1364)
+  // while the rest of the API still uses the `{ success, error }` envelope.
+  // `normalizeApiError` understands both, so CSRF retry and callers' error
+  // handling never depend on which route produced the failure.
+  let body: unknown = undefined;
+  let bodyRead = false;
 
   // The cached token may be stale (24h cookie expiry, server rotation, or a
   // prior failed mint). Mint a fresh one and retry the request once.
   if (res.status === 403 && isMutation) {
-    body = await res.json().catch(() => ({}));
-    if (body?.error?.code === "CSRF_INVALID") {
+    body = await res.json().catch(() => null);
+    bodyRead = true;
+    if (normalizeApiError(body, res.status).code === "CSRF_INVALID") {
       csrfTokenPromise = null;
       const token = await getCsrfToken();
       if (token) {
         headers.set("x-csrf-token", token);
         res = await fetch(url, { ...init, headers });
-        body = null; // the retried response has its own body
+        body = undefined; // the retried response has its own body
+        bodyRead = false;
       }
     }
   }
 
   if (!res.ok) {
-    if (!body) body = await res.json().catch(() => ({}));
-    const err: ApiError = {
-      code: body?.error?.code ?? `HTTP_${res.status}`,
-      message: body?.error?.message ?? `Request failed with status ${res.status}`,
-    };
-    throw err;
+    if (!bodyRead) body = await res.json().catch(() => null);
+    const { code, message } = normalizeApiError(body, res.status);
+    throw { code, message } satisfies ApiError;
   }
 
   const json = await res.json();

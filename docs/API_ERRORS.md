@@ -1,6 +1,15 @@
 # API error code reference
 
-API errors use the standard envelope:
+**Two wire formats are in use.** The payment mutation routes —
+`POST /api/payments`, `POST /api/payments/cancel`, `POST /api/payments/retry` —
+answer failures with [RFC 7807 problem details](#rfc-7807-problem-details)
+(`Content-Type: application/problem+json`). Every other route still uses the
+envelope below, and a client that handles both is future-proof while the rest
+of the API migrates.
+
+## Standard envelope
+
+Most API errors use the standard envelope:
 
 ```json
 {
@@ -70,3 +79,67 @@ OpenAPI response definition.
 The response envelope and route conventions are documented in the
 [API endpoint guide](./API_GUIDE.md); the maintained code and status constants
 are in [`src/lib/error-codes.ts`](../src/lib/error-codes.ts).
+
+## RFC 7807 problem details
+
+The payment mutation routes answer every failure — validation, authentication,
+CSRF, conflict, not-found and unexpected server errors — with the registered
+`application/problem+json` media type:
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/problem+json
+Cache-Control: no-store
+
+{
+  "type": "https://ophirpay.dev/problems/memo-too-long",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Memo must be 28 bytes or fewer (non-ASCII characters count more)",
+  "instance": "/api/payments",
+  "code": "MEMO_TOO_LONG",
+  "requestId": "3f8c1a7e-7d2b-4f36-9a5e-0a2b8c1d4e6f",
+  "errors": [
+    {
+      "field": "memo",
+      "message": "Memo must be 28 bytes or fewer (non-ASCII characters count more)",
+      "code": "custom"
+    }
+  ]
+}
+```
+
+| Member | Meaning |
+| --- | --- |
+| `type` | Stable URI identifying the problem **class**, e.g. `https://ophirpay.dev/problems/state-conflict`. Use it to branch; never string-match `title`/`detail`. `about:blank` means no more specific type is available. |
+| `title` | Short, stable name of the class (`Bad Request`, `Conflict`, …). Safe to log. |
+| `status` | HTTP status, repeated in the body for logs that only kept the payload. |
+| `detail` | Explanation of **this** occurrence — the value to show a user. |
+| `instance` | Path of the request that produced the problem. |
+| `code` | The machine-readable code from the catalog above. This is the same vocabulary as `error.code` in the legacy envelope, so branching logic does not have to change. |
+| `requestId` | Mirrors the `X-Request-Id` response header; quote it in a support request. |
+| `errors` | Present on 400 responses: one entry per invalid field, so a form can attach the message to the right input instead of showing one combined sentence. |
+
+Client guidance:
+
+- Key off `code` (stable) and `status`; display `detail`.
+- `errors[]` is additive — a client that ignores it still gets a usable
+  `detail`.
+- The published SDK (`@ophirpay/client`) exposes the full document as
+  `OphirPayError.problem`, plus `code`/`details` for both formats:
+
+  ```ts
+  try {
+    await client.createPayment(input);
+  } catch (err) {
+    if (err instanceof OphirPayError) {
+      console.error(err.code, err.message);
+      for (const field of err.problem?.errors ?? []) {
+        console.error(`${field.field}: ${field.message}`);
+      }
+    }
+  }
+  ```
+- The constructors live in
+  [`src/lib/api-errors.ts`](../src/lib/api-errors.ts); the wire types are in
+  [`src/lib/problem-details.ts`](../src/lib/problem-details.ts).

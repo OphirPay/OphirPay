@@ -5,10 +5,16 @@ import type { Payment } from "@prisma/client";
 /**
  * Pure row-shaping for the payment CSV export. No Prisma client or auth
  * imports, so it can be unit-tested without a database or a session.
+ *
+ * There is deliberately no row cap: the export streams 250-row pages straight
+ * from a Prisma cursor (issue #1369), so memory stays flat regardless of how
+ * many rows match. An earlier 10,000-row cap existed only because the whole
+ * file was materialised as one string — keeping it now would silently withhold
+ * rows for exactly the large accounts the streaming rewrite is for.
  */
 
-/** Upper bound on exported rows — the CSV is materialised as a single string. */
-export const MAX_EXPORT_ROWS = 10_000;
+/** Rows fetched (and flushed) per database round trip while streaming. */
+export const PAYMENT_EXPORT_PAGE_SIZE = 250;
 
 /** A CSV-friendly, fully-stringified view of a payment record. */
 export interface PaymentExportRow {

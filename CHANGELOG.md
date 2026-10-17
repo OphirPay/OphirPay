@@ -2,6 +2,16 @@
 
 All notable changes to OphirPay will be documented in this file.
 
+## [Unreleased] — 2026-10-17
+
+### Added
+- **RFC 7807 problem details for the payment API (#1364)**: `POST /api/payments`, `/api/payments/cancel` and `/api/payments/retry` (plus `GET /api/payments` and `/api/payments/export`) now answer every failure — validation, auth, CSRF, conflict, not-found, server error — with `Content-Type: application/problem+json` and an RFC 9457 body (`type`, `title`, `status`, `detail`, `instance`, plus `code`, `requestId` and per-field `errors[]`). Zod rejections map to one `errors[]` entry per field instead of a single joined sentence. `@ophirpay/client` exposes the document as `OphirPayError.problem`, and the in-app fetchers (`src/lib/api-client.ts`, `useApiQuery`) normalise both wire formats so the rest of the API can migrate incrementally.
+- **Atomic Redis idempotency lease for batch creation (#1366)**: `POST /api/batches` now claims `SET idempotency:lock:<user>:<key> … EX 120 NX` before doing any work, so concurrent retries with the same `Idempotency-Key` can no longer race the pre-insert lookup. The loser gets `409` with `Retry-After: 5` (`code: OPERATION_IN_PROGRESS`); a completed response is cached for 24 h and replayed byte-for-byte with `Idempotent-Replay: true`. The lease is compare-and-deleted in `finally`, so a failed attempt frees the key immediately. With `REDIS_URL` unset or unreachable it degrades to the previous database-uniqueness behaviour.
+- **Stellar memo variant validation (#1368)**: `src/lib/validation/stellar.ts` validates all four memo encodings — `MEMO_TEXT` (28 **UTF-8 bytes**, measured with `TextEncoder`, plus a printable-charset check), `MEMO_ID` (full unsigned 64-bit range via `BigInt`, rejecting `123abc`/`1e3`/negatives), `MEMO_HASH` and `MEMO_RETURN` (exactly 64 hex characters) — and rejects unpaired surrogates that would silently become U+FFFD. Payment, payment-request, batch, multisig, update and scheduled-payment schemas accept an optional `memoType` (defaulting to `MEMO_TEXT`, so existing text-only clients are unchanged) and fail fast with a 400 instead of a downstream Horizon error.
+
+### Changed
+- **Payment and audit-log CSV exports stream (#1369)**: `GET /api/payments/export` walks the result set with a Prisma cursor in 250-row pages and flushes each page as its own chunk (`Transfer-Encoding: chunked`), so memory is flat regardless of dataset size and `skip`-based deep pagination is gone. The 10,000-row cap and `X-Export-Truncated` header were removed: the cap only existed because the CSV was materialised as one string, and keeping it would silently withhold rows from exactly the large accounts the change targets. A database failure after the headers are sent now errors the stream, so a partial download fails instead of looking complete.
+
 ## [Unreleased] — 2026-09-25
 
 ### Added

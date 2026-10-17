@@ -18,7 +18,18 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 /** Webhook signatures older/newer than this are rejected (seconds). */
 export const DEFAULT_SIGNATURE_TOLERANCE_SECONDS = 300;
 
-/** Error raised for any non-2xx API response or transport failure. */
+/** Media type of an RFC 7807 problem-details body. */
+export const PROBLEM_CONTENT_TYPE = "application/problem+json";
+
+/**
+ * Error raised for any non-2xx API response or transport failure.
+ *
+ * `problem` is populated when the server answered with RFC 7807 problem
+ * details (the payment mutation routes, issue #1364): it carries the full
+ * document (`type`, `title`, `status`, `detail`, `instance`, `errors`), while
+ * `code` and `details` stay populated for both wire formats so existing
+ * consumers keep working.
+ */
 export class OphirPayError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -26,7 +37,25 @@ export class OphirPayError extends Error {
     this.status = options.status ?? null;
     this.code = options.code ?? null;
     this.details = options.details ?? null;
+    this.problem = options.problem ?? null;
   }
+}
+
+/**
+ * True when a parsed body is an RFC 7807 problem document.
+ *
+ * Structural rather than content-type based on purpose: proxies and test
+ * doubles re-serialize bodies as `application/json`, and the three required
+ * members (`type`, `title`, `status`) are what actually make it a problem.
+ */
+export function isProblemDetails(value) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof value.type === "string" &&
+      typeof value.title === "string" &&
+      typeof value.status === "number"
+  );
 }
 
 /**
@@ -162,9 +191,27 @@ export class OphirPayClient {
     }
 
     const text = await res.text();
-    const json = text ? JSON.parse(text) : {};
+    let json;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      // A non-JSON body (HTML error page from a proxy, truncated response) is
+      // still a failed request and must surface as an OphirPayError.
+      throw new OphirPayError(`Request failed with status ${res.status}`, {
+        status: res.status,
+      });
+    }
 
     if (!res.ok || json.success === false) {
+      if (isProblemDetails(json)) {
+        throw new OphirPayError(json.detail ?? json.title, {
+          status: res.status,
+          code: json.code ?? null,
+          details: json.errors ?? null,
+          problem: json,
+        });
+      }
+
       const error = json.error ?? {};
       throw new OphirPayError(
         error.message ?? `Request failed with status ${res.status}`,

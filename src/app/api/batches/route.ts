@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
+import { ERROR_CODES } from "@/lib/error-codes";
 
 import type { PaymentStatus } from "@prisma/client";
 import prisma from "@/lib/prisma";
@@ -24,6 +25,11 @@ import {
   prismaPagination,
 } from "@/lib/pagination-utils";
 import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
+import {
+  claimIdempotencyKey,
+  type IdempotencyClaim,
+} from "@/lib/idempotency";
+import { NextResponse } from "next/server";
 
 // ── GET /api/batches — List batches with pagination ──────────
 
@@ -172,6 +178,9 @@ async function fetchBatchWithPayments(batchId: string) {
 }
 
 export const POST = withMetrics("POST /api/batches", withRequestLogging(async function POST(request: Request) {
+  // Declared outside `try` so the catch block can release a lease taken by the
+  // request that then failed.
+  let claim: IdempotencyClaim | null = null;
   try {
     const csrfError = verifyCsrf(request);
     if (csrfError) return csrfError;
@@ -208,6 +217,70 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
       idempotencyKey = headerCheck.data;
     }
 
+    // ── Atomic idempotency claim (issue #1366) ─────────────────
+    //
+    // The database checks below only see committed rows, so two retries that
+    // arrive while the first request is still assembling transactions both
+    // miss them and race each other. Claiming a short Redis lease *before* any
+    // work is what actually serializes concurrent submissions: the loser is
+    // told (409 + Retry-After) that the winner is still working, and a retry
+    // that arrives after completion is replayed from the cached response.
+    //
+    // With Redis unset/unreachable the claim is `unavailable` and this route
+    // behaves exactly as it did before: the unique (userId, idempotencyKey)
+    // index is still the durable guarantee, the lease is only the fast path.
+    claim = idempotencyKey
+      ? await claimIdempotencyKey(userId, idempotencyKey)
+      : null;
+
+    if (claim?.status === "replay") {
+      // The stored status and body, so a replay is byte-identical to what the
+      // first request received (201 for a fresh batch, 200 for a deduplicated
+      // one). `Idempotent-Replay` is what lets a caller tell the difference
+      // between that and new work.
+      incMetric("batches_processed_total");
+      return NextResponse.json(claim.response.body, {
+        status: claim.response.status,
+        headers: { "Idempotent-Replay": "true" },
+      });
+    }
+
+    if (claim?.status === "in-flight") {
+      // Not a validation error and not a duplicate: the first request is
+      // simply still running. `Retry-After` is the actionable part.
+      return conflictError(
+        "A batch with this idempotency key is already being processed. Retry after the indicated delay.",
+        { "Retry-After": String(claim.retryAfterSeconds) },
+        ERROR_CODES.OPERATION_IN_PROGRESS
+      );
+    }
+
+    /**
+     * Finish the request and settle the lease.
+     *
+     * Successful responses are cached for 24 h (so a later retry replays
+     * them); anything else releases the lease immediately, because a 4xx/5xx
+     * must never pin the key and block the client from fixing its request.
+     */
+    const settle = async (response: Response): Promise<Response> => {
+      if (claim?.status !== "acquired") return response;
+      if (!response.ok) {
+        await claim.release();
+        return response;
+      }
+      try {
+        await claim.remember({
+          status: response.status,
+          body: await response.clone().json(),
+        });
+      } catch {
+        // A non-JSON success body cannot be replayed; release the lease so the
+        // next retry can at least reach the database guard.
+        await claim.release();
+      }
+      return response;
+    };
+
     // Re-submission of an already-processed batch: same user + same key means
     // no new batch. If the first attempt created the batch row but crashed
     // before inserting its child payments (a partial write), the retry resumes
@@ -225,18 +298,22 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
           });
           const resumed = await fetchBatchWithPayments(existing.id);
           incMetric("batches_processed_total");
-          return successResponse(
-            resumed,
-            { deduplicated: true, resumed: true, timestamp: new Date().toISOString() },
-            200
+          return settle(
+            successResponse(
+              resumed,
+              { deduplicated: true, resumed: true, timestamp: new Date().toISOString() },
+              200
+            )
           );
         }
 
         incMetric("batches_processed_total");
-        return successResponse(
-          existing,
-          { deduplicated: true, timestamp: new Date().toISOString() },
-          200
+        return settle(
+          successResponse(
+            existing,
+            { deduplicated: true, timestamp: new Date().toISOString() },
+            200
+          )
         );
       }
     }
@@ -278,17 +355,21 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
         });
         if (winner) {
           incMetric("batches_processed_total");
-          return successResponse(
-            winner,
-            { deduplicated: true, timestamp: new Date().toISOString() },
-            200
+          return settle(
+            successResponse(
+              winner,
+              { deduplicated: true, timestamp: new Date().toISOString() },
+              200
+            )
           );
         }
         // A unique violation on the compound (userId, idempotencyKey) with no
         // recoverable winner is a genuine data conflict — surface a 409 rather
         // than failing the whole request.
-        return conflictError(
-          "A batch with this idempotency key already exists but could not be recovered."
+        return settle(
+          conflictError(
+            "A batch with this idempotency key already exists but could not be recovered."
+          )
         );
       }
       throw err;
@@ -296,8 +377,15 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
 
     incMetric("batches_processed_total");
 
-    return successResponse(result, { timestamp: new Date().toISOString() }, 201);
+    return settle(
+      successResponse(result, { timestamp: new Date().toISOString() }, 201)
+    );
   } catch (err) {
+    // An exception would otherwise leave the lease pinned for the full 120 s
+    // TTL, turning a transient 500 into a two-minute outage for that key.
+    if (claim?.status === "acquired") {
+      await claim.release().catch(() => {});
+    }
     return handleApiError(err, "POST /api/batches");
   }
 }));

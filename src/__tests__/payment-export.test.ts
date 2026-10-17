@@ -3,12 +3,17 @@
 import { describe, it, expect } from "vitest";
 import { Prisma, type Payment } from "@prisma/client";
 import {
-  MAX_EXPORT_ROWS,
   PAYMENT_EXPORT_COLUMNS,
+  PAYMENT_EXPORT_PAGE_SIZE,
   paymentToCsvRow,
   buildPaymentExportFilename,
 } from "@/lib/payment-export";
-import { toCsvString, createCsvResponse } from "@/lib/export-csv";
+import {
+  buildCsvHeader,
+  buildCsvRow,
+  toCsvString,
+  createCsvResponse,
+} from "@/lib/export-csv";
 
 /** Build a realistic Prisma Payment row for the mapper under test. */
 function makePayment(overrides: Partial<Payment> = {}): Payment {
@@ -160,8 +165,25 @@ describe("createCsvResponse", () => {
   });
 });
 
-describe("MAX_EXPORT_ROWS", () => {
-  it("is a positive cap for the in-memory CSV", () => {
-    expect(MAX_EXPORT_ROWS).toBeGreaterThan(0);
+describe("PAYMENT_EXPORT_PAGE_SIZE", () => {
+  it("is the 250-row page the streaming export flushes at a time", () => {
+    expect(PAYMENT_EXPORT_PAGE_SIZE).toBe(250);
+  });
+});
+
+describe("streaming helpers", () => {
+  const columns = PAYMENT_EXPORT_COLUMNS;
+
+  it("buildCsvHeader matches the first line of toCsvString", () => {
+    const row = paymentToCsvRow(makePayment());
+    const streamed = [buildCsvHeader(columns), buildCsvRow(row, columns)].join(
+      "\n"
+    );
+    expect(streamed).toBe(toCsvString([row], columns));
+  });
+
+  it("applies the CSV-injection guard to streamed rows", () => {
+    const row = paymentToCsvRow(makePayment({ memo: "=HYPERLINK(\"x\")" }));
+    expect(buildCsvRow(row, columns)).toContain("'=HYPERLINK(");
   });
 });

@@ -4,12 +4,13 @@ import { withMetrics } from "@/lib/metrics-middleware";
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import {
-  successResponse,
-  validationError,
-  badRequestError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+  problemBadRequest,
+  problemFromError,
+  problemFromLegacyResponse,
+  problemFromZodError,
+  problemUnauthorized,
+} from "@/lib/api-errors";
+import { successResponse } from "@/lib/api-response";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -29,12 +30,13 @@ import {
 } from "@/lib/pagination-utils";
 
 export const GET = withMetrics("GET /api/payments", withRequestLogging(async function GET(request: Request) {
+  // Errors on this endpoint are RFC 7807 problem documents (issue #1364), so
+  // the SDK can read one shape for both the list and the mutations.
+  const instance = new URL(request.url).pathname;
   try {
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
+      return problemUnauthorized(undefined, { instance });
     }
 
     const { searchParams } = new URL(request.url);
@@ -49,7 +51,7 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
       search: searchParams.get("search") ?? undefined,
     });
 
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return problemFromZodError(parsed.error, { instance });
 
     const { page, limit, status, search, cursor: rawCursor } = parsed.data;
 
@@ -69,10 +71,15 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
     // pagination via an explicit `page` param is kept for legacy consumers.
     const cursor = rawCursor ? decodeCursor(rawCursor) : null;
     if (rawCursor && !cursor) {
-      return badRequestError("Invalid cursor");
+      return problemBadRequest("Invalid cursor", {
+        instance,
+        code: "INVALID_CURSOR",
+      });
     }
     if (cursor !== null && explicitPage !== null) {
-      return badRequestError("page and cursor cannot both be used");
+      return problemBadRequest("page and cursor cannot both be used", {
+        instance,
+      });
     }
 
     // Keyset mode (default): fetch limit + 1 rows to learn whether another
@@ -114,25 +121,32 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
       hasMore: page * limit < total,
     });
   } catch (err) {
-    return handleApiError(err, "GET /api/payments");
+    return problemFromError(err, instance);
   }
 }));
 
 export const POST = withMetrics("POST /api/payments", withRequestLogging(async function POST(request: Request) {
+  const instance = new URL(request.url).pathname;
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    // The CSRF guard runs before this handler and answers in the legacy
+    // envelope; re-render it so no error on this route bypasses RFC 7807.
+    if (csrfError) return problemFromLegacyResponse(csrfError, instance);
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
+      return problemUnauthorized(undefined, { instance });
     }
 
-    const body = await request.json();
+    // A body that is not JSON is a client error (400), not a server fault —
+    // `request.json()` throws a SyntaxError that would otherwise classify as 500.
+    const body = await request.json().catch(() => null);
+    if (body === null) {
+      return problemBadRequest("Request body must be valid JSON", { instance });
+    }
+
     const parsed = createPaymentSchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return problemFromZodError(parsed.error, { instance });
 
     const payment = await prisma.payment.create({
       data: {
@@ -181,6 +195,6 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
 
     return successResponse(payment, undefined, 201);
   } catch (err) {
-    return handleApiError(err, "POST /api/payments");
+    return problemFromError(err, instance);
   }
 }));

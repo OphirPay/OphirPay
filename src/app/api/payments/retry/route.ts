@@ -3,14 +3,16 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { retryPaymentSchema } from "@/lib/validation-schemas";
+import { successResponse } from "@/lib/api-response";
 import {
-  successResponse,
-  validationError,
-  notFoundError,
-  conflictError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
+  problemBadRequest,
+  problemConflict,
+  problemFromError,
+  problemFromLegacyResponse,
+  problemFromZodError,
+  problemNotFound,
+  problemUnauthorized,
+} from "@/lib/api-errors";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
@@ -26,20 +28,24 @@ import { verifyCsrf } from "@/lib/csrf";
  * transitions, which fire their usual webhooks.
  */
 export async function POST(request: Request) {
+  const instance = new URL(request.url).pathname;
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    if (csrfError) return problemFromLegacyResponse(csrfError, instance);
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
+      return problemUnauthorized(undefined, { instance });
     }
 
     const body = await request.json().catch(() => null);
+    if (body === null) {
+      return problemBadRequest("Request body must be valid JSON", { instance });
+    }
+    // `?? {}` keeps the schema's own error ("Payment id is required") for a
+    // valid JSON body that simply omits the field.
     const parsed = retryPaymentSchema.safeParse(body ?? {});
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return problemFromZodError(parsed.error, { instance });
 
     const { id } = parsed.data;
 
@@ -48,11 +54,12 @@ export async function POST(request: Request) {
     const payment = await prisma.payment.findFirst({
       where: { id, userId: auth.userId, deletedAt: null },
     });
-    if (!payment) return notFoundError("Payment");
+    if (!payment) return problemNotFound("Payment", { instance });
 
     if (payment.status !== "FAILED") {
-      return conflictError(
-        `Only failed payments can be retried (current status: ${payment.status})`
+      return problemConflict(
+        `Only failed payments can be retried (current status: ${payment.status})`,
+        { instance, code: "STATE_CONFLICT" }
       );
     }
 
@@ -69,10 +76,10 @@ export async function POST(request: Request) {
         idempotencyKey: crypto.randomUUID(),
       },
     });
-    if (updated.count === 0) return notFoundError("Payment");
+    if (updated.count === 0) return problemNotFound("Payment", { instance });
 
     const retried = await prisma.payment.findUnique({ where: { id } });
-    if (!retried) return notFoundError("Payment");
+    if (!retried) return problemNotFound("Payment", { instance });
 
     logger.info("Payment retried", {
       id,
@@ -82,6 +89,6 @@ export async function POST(request: Request) {
 
     return successResponse(retried);
   } catch (err) {
-    return handleApiError(err, "POST /api/payments/retry");
+    return problemFromError(err, instance);
   }
 }

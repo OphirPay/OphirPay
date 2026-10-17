@@ -203,7 +203,8 @@ describe("GET /api/payments — cursor pagination over 10,050 rows", () => {
     );
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error.code).toBe("BAD_REQUEST");
+    // RFC 7807 problem details (issue #1364): the code is a top-level member.
+    expect(json.code).toBe("INVALID_CURSOR");
   });
 });
 

@@ -65,10 +65,49 @@ export interface Paginated<T> {
   meta?: Record<string, unknown>;
 }
 
+/** Media type of an RFC 7807 problem-details body. */
+export declare const PROBLEM_CONTENT_TYPE: "application/problem+json";
+
+/** One invalid request field carried by a problem document. */
+export interface ProblemFieldError {
+  /** Dotted path of the offending field, e.g. `memo`. */
+  field: string;
+  /** User-facing explanation. */
+  message: string;
+  /** Machine-readable reason (e.g. the underlying Zod issue code). */
+  code?: string;
+}
+
+/** RFC 7807 problem details as returned by the payment mutation routes. */
+export interface ProblemDetails {
+  /** URI identifying the problem class, e.g. `https://ophirpay.dev/problems/memo-too-long`. */
+  type: string;
+  /** Stable, human-readable name of the problem class. */
+  title: string;
+  status: number;
+  /** Request-specific explanation, safe to display. */
+  detail?: string;
+  /** Request path that produced the problem. */
+  instance?: string;
+  /** OphirPay error code (`VALIDATION_ERROR`, `MEMO_TOO_LONG`, …). */
+  code?: string;
+  /** Correlates with the `X-Request-Id` response header. */
+  requestId?: string;
+  /** Per-field validation failures. */
+  errors?: ProblemFieldError[];
+  [extension: string]: unknown;
+}
+
+/** True when a parsed response body is a problem document. */
+export declare function isProblemDetails(value: unknown): value is ProblemDetails;
+
 export class OphirPayError extends Error {
   status: number | null;
   code: string | null;
+  /** `errors` for a problem document, `details` for the legacy envelope. */
   details: unknown;
+  /** The full problem document when the server returned one, else null. */
+  problem: ProblemDetails | null;
 }
 
 export interface OphirPayClientOptions {

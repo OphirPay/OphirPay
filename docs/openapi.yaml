@@ -146,9 +146,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaginatedPayments"
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: >-
+            RFC 7807 problem details — a filter or cursor failed validation.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
     post:
       tags: [Payments]
       summary: Create a payment
@@ -199,9 +208,25 @@ paths:
                     meta:
                       timestamp: "2026-09-29T10:00:00.000Z"
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: >-
+            RFC 7807 problem details. Zod rejections carry one `errors[]` entry
+            per invalid field (including an oversized or badly encoded memo).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "500":
-          $ref: "#/components/responses/ServerError"
+          description: RFC 7807 problem details — an unexpected server failure.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
 
   /api/payments/{id}:
     get:
@@ -296,15 +321,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaymentEnvelopeResponse"
         "400":
-          $ref: "#/components/responses/ValidationError"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          description: Payment is not in a retryable (FAILED) state
+          description: RFC 7807 problem details — the body failed validation.
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "404":
+          description: RFC 7807 problem details — no such payment for this caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
+          description: >-
+            RFC 7807 problem details — the payment is not in a retryable
+            (FAILED) state. `code` is `STATE_CONFLICT`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
 
   /api/payments/cancel:
     post:
@@ -330,11 +371,23 @@ paths:
         "200":
           description: Payment cancelled
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: RFC 7807 problem details — `txHash` is missing or invalid.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: RFC 7807 problem details — no such payment for this caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
 
   /api/payments/export:
     get:
@@ -345,8 +398,14 @@ paths:
         matching `status` / `search` (the same filters as GET /api/payments),
         not just the page loaded in the browser. Returns a dated CSV
         attachment that includes all key fields plus memo and transaction hash.
-        The response includes an `X-Export-Truncated` header set to `true`
-        when the result set exceeds the export row cap.
+
+        The response is **streamed**: the CSV header is sent immediately, then
+        rows are flushed in 250-row chunks as they are pulled from the database
+        with a Prisma cursor (`Transfer-Encoding: chunked`). Memory use is flat
+        regardless of how many rows match, and there is no row cap — the export
+        never silently omits rows. If the database fails after the headers are
+        sent, the stream is errored so the download fails instead of producing
+        a truncated file that looks complete.
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       parameters:
         - name: status
@@ -363,21 +422,25 @@ paths:
           description: Only export payments matching this search term
       responses:
         "200":
-          description: CSV attachment with the matching payment rows
-          headers:
-            X-Export-Truncated:
-              description: true when the result set was truncated to the export cap
-              schema:
-                type: string
-                enum: ["true", "false"]
+          description: >-
+            Streamed CSV attachment with the matching payment rows
+            (`Transfer-Encoding: chunked`).
           content:
             text/csv:
               schema:
                 type: string
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: RFC 7807 problem details — an unknown `status` filter.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
 
   # ── Escrows ───────────────────────────────────────────────
   /api/escrows:
@@ -2655,7 +2718,20 @@ components:
           maxLength: 200
         memo:
           type: string
-          maxLength: 28
+          description: >-
+            Stellar memo to attach. For `MEMO_TEXT` (the default) the limit is
+            28 **UTF-8 bytes**, not characters — `"🚀".repeat(8)` is 8
+            characters but 32 bytes and is rejected. `MEMO_HASH`/
+            `MEMO_RETURN` carry exactly 64 hex characters and `MEMO_ID` an
+            unsigned 64-bit decimal integer.
+        memoType:
+          type: string
+          enum: [MEMO_TEXT, MEMO_ID, MEMO_HASH, MEMO_RETURN]
+          default: MEMO_TEXT
+          description: >-
+            Encoding of `memo`. Omitted means `MEMO_TEXT`, so text-only clients
+            are unaffected. Lowercase aliases (`text`, `id`, `hash`, `return`)
+            are accepted and normalized.
         sourceAccountId:
           type: string
           description: Source Stellar account
@@ -2851,6 +2927,10 @@ components:
 
     ErrorResponse:
       type: object
+      description: >-
+        Legacy error envelope still used by most routes. The payment mutation
+        routes (`POST /api/payments`, `/cancel`, `/retry`) answer with
+        `ProblemDetails` instead.
       properties:
         success: { type: boolean, const: false }
         error:
@@ -2858,6 +2938,64 @@ components:
           properties:
             code: { type: string }
             message: { type: string }
+
+    ProblemFieldError:
+      type: object
+      description: One invalid request field.
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: Dotted path of the field, e.g. `memo` or `recipients.0.address`.
+        message:
+          type: string
+          description: User-facing explanation, safe to display next to the input.
+        code:
+          type: string
+          description: Machine-readable reason (e.g. the underlying Zod issue code).
+
+    ProblemDetails:
+      type: object
+      description: |
+        RFC 7807 / RFC 9457 problem details, served as
+        `application/problem+json`.
+
+        `type` identifies the problem *class* (a stable documentation URI),
+        `title` names it, and `detail` explains this particular occurrence.
+        `code` and `errors` are extension members carrying the OphirPay error
+        code from the catalog and the per-field validation failures.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: >-
+            Stable URI for the problem class, e.g.
+            `https://ophirpay.dev/problems/memo-too-long`. `about:blank` when no
+            specific type applies.
+        title:
+          type: string
+          description: Short, human-readable summary of the problem class.
+        status:
+          type: integer
+          description: HTTP status code, repeated here for log-only consumers.
+        detail:
+          type: string
+          description: Request-specific explanation, safe to display.
+        instance:
+          type: string
+          description: Path of the request that produced the problem.
+        code:
+          type: string
+          description: OphirPay error code (`VALIDATION_ERROR`, `MEMO_TOO_LONG`, …).
+        requestId:
+          type: string
+          description: Mirrors the `X-Request-Id` response header.
+        errors:
+          type: array
+          description: Per-field validation failures, when the request had a body.
+          items:
+            $ref: "#/components/schemas/ProblemFieldError"
 
   responses:
     ValidationError:

@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import {
   OphirPayClient,
   OphirPayError,
+  isProblemDetails,
   verifyWebhookSignature,
   canonicalizeWebhookBody,
   webhookSignedInput,
@@ -105,6 +106,28 @@ beforeAll(async () => {
             idempotencyKey: null,
           },
         });
+      }
+
+      // RFC 7807 problem details, as the payment mutation routes answer
+      // (issue #1364). Served with the registered media type, like production.
+      if (
+        req.method === "POST" &&
+        (url === "/api/payments/cancel" || url === "/api/payments/retry")
+      ) {
+        const body = JSON.stringify({
+          type: "https://ophirpay.dev/problems/memo-too-long",
+          title: "Bad Request",
+          status: 400,
+          detail: "Memo must be 28 bytes or fewer",
+          instance: url,
+          code: "MEMO_TOO_LONG",
+          requestId: "req_1",
+          errors: [
+            { field: "memo", message: "Memo must be 28 bytes or fewer" },
+          ],
+        });
+        res.writeHead(400, { "content-type": "application/problem+json" });
+        return res.end(body);
       }
 
       if (req.method === "POST" && url === "/api/batches") {
@@ -198,6 +221,50 @@ describe("@ophirpay/client against a local server", () => {
       status: 400,
       code: "VALIDATION_ERROR",
     });
+  });
+
+  it("parses an RFC 7807 problem document instead of a generic error", async () => {
+    const err = await client()
+      .request("POST", "/api/payments/retry", { body: { id: "pay_1" } })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(OphirPayError);
+    if (!(err instanceof OphirPayError)) throw new Error("expected OphirPayError");
+    expect(err.status).toBe(400);
+    // The machine-readable code survives, so branch-y client logic keeps working.
+    expect(err.code).toBe("MEMO_TOO_LONG");
+    // `detail` is what a UI displays; `title`/`type` are for branching/logging.
+    expect(err.message).toBe("Memo must be 28 bytes or fewer");
+    expect(err.details).toEqual([
+      { field: "memo", message: "Memo must be 28 bytes or fewer" },
+    ]);
+    expect(err.problem).toMatchObject({
+      type: "https://ophirpay.dev/problems/memo-too-long",
+      title: "Bad Request",
+      status: 400,
+      instance: "/api/payments/retry",
+      requestId: "req_1",
+    });
+    expect(isProblemDetails(err.problem)).toBe(true);
+  });
+
+  it("leaves problem null for legacy-envelope errors", async () => {
+    const err = await client()
+      .createPayment({ amount: 0 })
+      .catch((e: unknown) => e);
+
+    if (!(err instanceof OphirPayError)) throw new Error("expected OphirPayError");
+    expect(err.code).toBe("VALIDATION_ERROR");
+    expect(err.problem).toBeNull();
+  });
+
+  it("REGRESSION: legacy problem-free errors still carry their own message", async () => {
+    const err = await client()
+      .createPayment({ amount: 0 })
+      .catch((e: unknown) => e);
+
+    if (!(err instanceof OphirPayError)) throw new Error("expected OphirPayError");
+    expect(err.message).toBe("amount must be positive");
   });
 
   it("resolves operations from the generated OpenAPI catalogue", () => {

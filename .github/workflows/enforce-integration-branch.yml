@@ -33,9 +33,30 @@ jobs:
           # everyone and can be removed at any time.
           INTEGRATION_BRANCH="integration/staging"
 
-          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${INTEGRATION_BRANCH}" >/dev/null 2>&1; then
-            echo "Batch mode over: '${INTEGRATION_BRANCH}' does not exist. Passing."
-            exit 0
+          # Query GitHub API with response headers (-i) to determine branch status.
+          # We must distinguish a genuine 404 (branch merged/deleted -> batch mode over)
+          # from transient API errors, rate limiting, or auth failures (fail closed).
+          set +e
+          API_OUTPUT=$(gh api -i "repos/${GITHUB_REPOSITORY}/git/ref/heads/${INTEGRATION_BRANCH}" 2>&1)
+          API_EXIT=$?
+          set -e
+
+          if [ $API_EXIT -eq 0 ]; then
+            echo "Batch mode active: '${INTEGRATION_BRANCH}' exists."
+          else
+            # Extract HTTP status code from header (e.g. "HTTP/2.0 404 Not Found" or "HTTP/1.1 404")
+            HTTP_STATUS=$(echo "$API_OUTPUT" | grep -m 1 -E '^HTTP/[0-9.]+[[:space:]]+[0-9]+' | awk '{print $2}' || true)
+
+            if [ "${HTTP_STATUS}" = "404" ] || echo "$API_OUTPUT" | grep -q "HTTP 404"; then
+              echo "Batch mode over: '${INTEGRATION_BRANCH}' does not exist (HTTP 404). Passing."
+              exit 0
+            fi
+
+            # Any non-404 API error (rate limits, 5xx, invalid token, network issues) must fail closed.
+            echo "::error title=Branch verification failed::Failed to verify existence of '${INTEGRATION_BRANCH}' (HTTP status: '${HTTP_STATUS:-unknown}', exit: ${API_EXIT}). Failing closed to prevent bypass."
+            echo "API Response:"
+            echo "$API_OUTPUT"
+            exit 1
           fi
 
           if [ "${HEAD_REF}" = "${INTEGRATION_BRANCH}" ]; then

@@ -4,12 +4,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchAddressBook, saveAddress } from "@/lib/address-book";
 import { isValidStellarAddress } from "@/lib/stellar";
+import {
+  validateStellarAddress,
+  type StellarAddressValidationResult,
+} from "@/lib/validation-helpers";
 import { shortenAddress, cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 
 interface AddressAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
+  onValidationChange?: (result: StellarAddressValidationResult) => void;
+  showValidationFeedback?: boolean;
   id?: string;
   name?: string;
   placeholder?: string;
@@ -23,10 +29,13 @@ type Option =
   | { kind: "save"; publicKey: string };
 
 /**
- * Stellar recipient input with address-book autocomplete.
+ * Stellar recipient input with address-book autocomplete and inline StrKey validation.
  *
  * - Types into the field, matching entries (label or address) appear below.
  * - Arrow keys + Enter select; Escape closes; click or outside-click closes.
+ * - Validates destination public keys on change/blur using Stellar SDK's
+ *   `StrKey.isValidEd25519PublicKey()`, showing an inline warning when prefix,
+ *   length, or CRC checksum fails, and a green checkmark when valid.
  * - When the typed value is a valid Stellar address not yet in the address
  *   book, a "Save to address book" action is offered (label defaults to the
  *   shortened address — rename it later on the Address Book page).
@@ -35,6 +44,8 @@ type Option =
 export function AddressAutocomplete({
   value,
   onChange,
+  onValidationChange,
+  showValidationFeedback = true,
   id,
   name,
   placeholder = "G...",
@@ -45,11 +56,18 @@ export function AddressAutocomplete({
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
   const [justSaved, setJustSaved] = useState(false);
+  const [blurred, setBlurred] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
   const query = value.trim();
+
+  const validation = useMemo(() => validateStellarAddress(query), [query]);
+
+  useEffect(() => {
+    onValidationChange?.(validation);
+  }, [validation, onValidationChange]);
 
   const matches = useMemo(() => {
     if (!query) return [];
@@ -76,6 +94,12 @@ export function AddressAutocomplete({
   }, [matches, canSave, query]);
 
   const showDropdown = open && options.length > 0 && !disabled;
+  const showValidIndicator =
+    showValidationFeedback && query.length > 0 && validation.valid;
+  const showWarning =
+    showValidationFeedback &&
+    !validation.valid &&
+    (query.length > 0 || blurred);
 
   // Close on outside click / Escape
   useEffect(() => {
@@ -140,30 +164,73 @@ export function AddressAutocomplete({
 
   return (
     <div ref={rootRef} className={cn("relative", className)}>
-      <input
-        ref={inputRef}
-        id={id}
-        name={name}
-        type="text"
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-          setJustSaved(false);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={handleKeyDown}
-        disabled={disabled}
-        placeholder={placeholder}
-        data-testid={dataTestId}
-        autoComplete="off"
-        role="combobox"
-        aria-expanded={showDropdown}
-        aria-controls={id ? `${id}-listbox` : undefined}
-        aria-autocomplete="list"
-        aria-label="Recipient address with address book autocomplete"
-        className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-      />
+      <div className="relative">
+        <input
+          ref={inputRef}
+          id={id}
+          name={name}
+          type="text"
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setJustSaved(false);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setBlurred(true)}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          placeholder={placeholder}
+          data-testid={dataTestId}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={showDropdown}
+          aria-controls={id ? `${id}-listbox` : undefined}
+          aria-autocomplete="list"
+          aria-invalid={showWarning ? true : undefined}
+          aria-label="Recipient address with address book autocomplete"
+          className={cn(
+            "w-full px-4 py-2.5 rounded-lg border bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed",
+            showValidIndicator
+              ? "pr-10 border-green-500 dark:border-green-500 focus:ring-green-500"
+              : showWarning
+                ? "border-amber-500 dark:border-amber-500 focus:ring-amber-500"
+                : "border-gray-200 dark:border-gray-700 focus:ring-ophir-500"
+          )}
+        />
+        {showValidIndicator && (
+          <span
+            data-testid="strkey-valid-indicator"
+            aria-label="Valid Stellar public key"
+            title="Valid Stellar public key"
+            className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-green-600 dark:text-green-400"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="h-5 w-5"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </span>
+        )}
+      </div>
+
+      {showWarning && validation.error && (
+        <p
+          data-testid="strkey-validation-warning"
+          role="alert"
+          className="mt-1.5 text-xs text-amber-600 dark:text-amber-400"
+        >
+          {validation.error}
+        </p>
+      )}
 
       {showDropdown && (
         <ul

@@ -1,10 +1,69 @@
 // SPDX-License-Identifier: MIT
 
+import { StrKey } from "@stellar/stellar-sdk";
+
 /**
  * Common validation helpers for forms and inputs.
  * Works standalone or alongside Zod schemas.
  * (Merged from the former validation.ts + validation-helpers.ts.)
  */
+
+export type StellarAddressErrorReason =
+  | "empty"
+  | "wrong_prefix"
+  | "wrong_length"
+  | "invalid_checksum";
+
+export interface StellarAddressValidationResult {
+  valid: boolean;
+  reason: StellarAddressErrorReason | null;
+  error: string | null;
+}
+
+/**
+ * Validate a Stellar Ed25519 public key (G... address) using Stellar SDK's
+ * `StrKey.isValidEd25519PublicKey()` with detailed feedback for wrong prefix,
+ * wrong length, and failed CRC16 checksum.
+ */
+export function validateStellarAddress(
+  value: string
+): StellarAddressValidationResult {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return {
+      valid: false,
+      reason: "empty",
+      error: "Destination address is required.",
+    };
+  }
+  if (!trimmed.startsWith("G")) {
+    return {
+      valid: false,
+      reason: "wrong_prefix",
+      error:
+        "Invalid Stellar address: must start with G (Ed25519 public key prefix).",
+    };
+  }
+  if (trimmed.length !== 56) {
+    return {
+      valid: false,
+      reason: "wrong_length",
+      error: `Invalid Stellar address: must be 56 characters long (currently ${trimmed.length}).`,
+    };
+  }
+  if (!StrKey.isValidEd25519PublicKey(trimmed)) {
+    return {
+      valid: false,
+      reason: "invalid_checksum",
+      error: "Invalid Stellar address: StrKey CRC checksum failed.",
+    };
+  }
+  return {
+    valid: true,
+    reason: null,
+    error: null,
+  };
+}
 
 /** Check if a string is a valid email address. */
 export function isValidEmail(email: string): boolean {
@@ -47,6 +106,9 @@ export function getFieldError(field: string, value: string): string | null {
       if (!value) return "URL is required";
       if (!isValidUrl(value)) return "Please enter a valid URL";
       return null;
+    case "stellarAddress":
+    case "destination":
+      return validateStellarAddress(value).error;
     default:
       return null;
   }

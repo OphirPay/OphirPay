@@ -656,6 +656,8 @@ model AuditLog {
 
   /// Speeds up history queries by action/target.
   @@index([action, target])
+  /// Speeds up cursor-based pagination and directional timestamp sorting on /api/audit-log.
+  @@index([createdAt, id])
 }
 
 /// Lifecycle of a Refund row, mirroring the on-chain refund state machine.

@@ -82,6 +82,7 @@ const yearSuffixCheck = z
  */
 export const auditLogQuerySchema = z
   .object({
+    cursor: z.string().trim().min(1).optional(),
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     actor: z.string().trim().min(1).optional(),
@@ -89,7 +90,8 @@ export const auditLogQuerySchema = z
     resource: z.coerce.number().int().nonnegative().optional(),
     since: yearSuffixCheck.optional(),
     until: yearSuffixCheck.optional(),
-    order: z.enum(["asc", "desc"]).default("desc"),
+    order: z.enum(["asc", "desc"]).optional(),
+    sort: z.enum(["asc", "desc"]).optional(),
     // Backing store for GET /api/audit-log (issue #365): "db" serves the
     // persisted audit trail, "contract" the on-chain ledger, "all" both.
     source: z.enum(["contract", "db", "all"]).optional().default("contract"),
@@ -106,9 +108,20 @@ export const auditLogQuerySchema = z
         message: "until must be greater than or equal to since",
       });
     }
-  });
+  })
+  .transform((val) => ({
+    ...val,
+    order: (val.order ?? val.sort ?? "desc") as "asc" | "desc",
+  }));
 
 export type AuditLogQuery = z.infer<typeof auditLogQuerySchema>;
+
+/** Standardized cursor-paginated response envelope for /api/audit-log. */
+export interface AuditLogPageResult<T = unknown> {
+  data: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
 
 /** Convert validated query params into the numeric filters consumed by the reader. */
 export function toAuditLogFilters(query: AuditLogQuery): AuditLogFilters {

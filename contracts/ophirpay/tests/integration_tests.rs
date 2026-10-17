@@ -935,3 +935,110 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEMO BYTE-LENGTH & CHARACTER VALIDATION TESTS (issue #1360)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_memo_validation_accepts_empty_64_byte_boundary_and_utf8() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    // 1. Empty memo succeeds
+    let id_empty = fix.client.record_payment(
+        &payer,
+        &payee,
+        &1_000i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx_memo_empty"),
+        &String::from_str(&fix.env, ""),
+    );
+    assert_eq!(id_empty, 1);
+
+    // 2. Exact 64-byte ASCII boundary succeeds
+    let exact_64 = "a".repeat(ophirpay_contract::MAX_MEMO_BYTES as usize);
+    let id_64 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &2_000i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx_memo_64"),
+        &String::from_str(&fix.env, &exact_64),
+    );
+    assert_eq!(id_64, 2);
+
+    // 3. Multi-byte UTF-8 memo (16 4-byte emoji = 64 bytes) succeeds
+    let utf8_64 = "🚀".repeat(16);
+    assert_eq!(utf8_64.len(), 64);
+    let id_utf8 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &3_000i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx_memo_utf8_64"),
+        &String::from_str(&fix.env, &utf8_64),
+    );
+    assert_eq!(id_utf8, 3);
+}
+
+#[test]
+fn test_memo_validation_rejects_oversized_and_control_chars_in_record_payment_and_create_batch() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    // 1. 65-byte ASCII memo rejected with MemoTooLong
+    let oversized_65 = "a".repeat((ophirpay_contract::MAX_MEMO_BYTES as usize) + 1);
+    let res_65 = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &1_000i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx_memo_65"),
+        &String::from_str(&fix.env, &oversized_65),
+    );
+    assert_eq!(res_65, Err(Ok(PaymentError::MemoTooLong)));
+
+    // 2. Multi-byte UTF-8 memo exceeding 64 bytes (17 4-byte emoji = 68 bytes) rejected
+    let utf8_68 = "🚀".repeat(17);
+    assert_eq!(utf8_68.len(), 68);
+    let res_utf8_68 = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &1_000i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx_memo_utf8_68"),
+        &String::from_str(&fix.env, &utf8_68),
+    );
+    assert_eq!(res_utf8_68, Err(Ok(PaymentError::MemoTooLong)));
+
+    // 3. Control character (NUL / ESC / DEL) in memo rejected with MemoTooLong
+    let ctrl_memo = "invoice\u{0007}bell";
+    let res_ctrl = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &1_000i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx_memo_ctrl"),
+        &String::from_str(&fix.env, ctrl_memo),
+    );
+    assert_eq!(res_ctrl, Err(Ok(PaymentError::MemoTooLong)));
+
+    // 4. create_batch rejects oversized 65-byte tx_hash/memo with MemoTooLong
+    let mut payees = Vec::new(&fix.env);
+    payees.push_back(payee.clone());
+    let mut amounts = Vec::new(&fix.env);
+    amounts.push_back(500i128);
+
+    let res_batch = fix.client.try_create_batch(
+        &payer,
+        &payees,
+        &amounts,
+        &fix.token_id,
+        &String::from_str(&fix.env, &oversized_65),
+    );
+    assert_eq!(res_batch, Err(Ok(PaymentError::MemoTooLong)));
+}
+

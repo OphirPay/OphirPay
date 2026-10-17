@@ -43,5 +43,6 @@ export default defineConfig({
     },
   ],
   // No webServer block: start and prepare the app before running E2E.
+  // Core E2E suites include payment, refunds, and escrow-dispute (e2e/escrow-dispute.spec.ts).
   // See docs/E2E_TESTING.md for database, contract, and mocking requirements.
 });

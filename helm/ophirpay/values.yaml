@@ -91,6 +91,18 @@ pdb:
 
 networkPolicy:
   enabled: true
+  # Ingress rule for Prometheus scraping /api/metrics (Issue #1344).
+  # By default, ingress is locked down to ingress-nginx. When Prometheus runs in a dedicated
+  # monitoring namespace (default: monitoring), in-cluster scraping on service.targetPort is blocked.
+  # This configures an explicit ingress rule matching the Prometheus namespace and/or pods.
+  metrics:
+    enabled: true
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    podSelector: {}
+      # matchLabels:
+      #   app.kubernetes.io/name: prometheus
 
 # ── Runtime configuration (rendered into a ConfigMap) ──────────
 # Every key here must be a real variable documented in `.env.example`;

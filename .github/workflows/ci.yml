@@ -367,11 +367,29 @@ jobs:
           expect "kind: NetworkPolicy" /tmp/enabled.yaml
           expect "kind: ServiceAccount" /tmp/enabled.yaml
           expect "policyTypes:" /tmp/enabled.yaml
+          # Issue #1344 — Prometheus metrics scraper ingress enabled by default
+          expect "kubernetes.io/metadata.name: monitoring" /tmp/enabled.yaml
 
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
           reject "kind: NetworkPolicy" /tmp/disabled.yaml
           reject "kind: ServiceAccount" /tmp/disabled.yaml
+          reject "kubernetes.io/metadata.name: monitoring" /tmp/disabled.yaml
+
+          # Issue #1344 — Verify Prometheus ingress can be disabled or customized with podSelector
+          helm template ophirpay helm/ophirpay \
+            --set networkPolicy.enabled=true \
+            --set networkPolicy.metrics.enabled=false \
+            > /tmp/no-metrics.yaml
+          reject "kubernetes.io/metadata.name: monitoring" /tmp/no-metrics.yaml
+
+          helm template ophirpay helm/ophirpay \
+            --set networkPolicy.enabled=true \
+            --set networkPolicy.metrics.namespaceSelector.matchLabels."kubernetes\.io/metadata\.name"=custom-monitoring \
+            --set networkPolicy.metrics.podSelector.matchLabels."app\.kubernetes\.io/name"=prometheus \
+            > /tmp/scoped-metrics.yaml
+          expect "kubernetes.io/metadata.name: custom-monitoring" /tmp/scoped-metrics.yaml
+          expect "app.kubernetes.io/name: prometheus" /tmp/scoped-metrics.yaml
 
           exit "$fail"
       
@@ -380,6 +398,8 @@ jobs:
           kubeconform -strict -summary /tmp/default.yaml
           kubeconform -strict -summary /tmp/enabled.yaml
           kubeconform -strict -summary /tmp/disabled.yaml
+          kubeconform -strict -summary /tmp/no-metrics.yaml
+          kubeconform -strict -summary /tmp/scoped-metrics.yaml
 
       - name: Assert rendered config keys against .env.example
         # AC of #730: a broken template or an unknown config key must fail the

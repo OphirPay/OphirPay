@@ -98,10 +98,34 @@ env:
   DURATION_MS: "40000"
 
 jobs:
+  resolve-refs:
+    name: "Resolve Target Refs"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Determine existing target branches
+        id: set-matrix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          matrix='[{"ref":"main","slug":"main"}]'
+          if gh api "repos/${REPO}/branches/integration/staging" --silent 2>/dev/null; then
+            matrix='[{"ref":"main","slug":"main"},{"ref":"integration/staging","slug":"integration-staging"}]'
+          fi
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+
   load-test:
-    name: "⚡ Load test + baseline gate"
+    name: "⚡ Load test + baseline gate (${{ matrix.target.ref }})"
+    needs: resolve-refs
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.resolve-refs.outputs.matrix) }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -249,7 +273,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: load-test-results
+          name: load-test-results-${{ matrix.target.slug }}
           path: tests/load/results/
           retention-days: 14
 
@@ -257,6 +281,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: load-test-server-log
+          name: load-test-server-log-${{ matrix.target.slug }}
           path: tests/load/results/next-server.log
           retention-days: 7

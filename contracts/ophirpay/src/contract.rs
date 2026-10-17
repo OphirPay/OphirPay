@@ -2185,6 +2185,8 @@ impl OphirPayContract {
     //  ESCROW — Lock funds, release on command or deadline
     // ═══════════════════════════════════════════════════════════
 
+    pub const MIN_DISPUTE_PERIOD: u64 = 86_400;
+
     /// Create an escrow. Tokens are transferred from depositor to this contract.
     /// The beneficiary can claim after `deadline`; owner can release early;
     /// optional arbiter can resolve disputes.
@@ -2228,6 +2230,8 @@ impl OphirPayContract {
             deadline,
             released: false,
             claimed: false,
+            dispute_initiated_at: None,
+            mutual_release_approved: false,
             metadata,
         };
 
@@ -2309,6 +2313,29 @@ impl OphirPayContract {
         Ok(())
     }
 
+    /// Depositor or beneficiary opens an escrow dispute and starts the cooling-off timer.
+    pub fn open_dispute(env: Env, caller: Address, escrow_id: u64) -> Result<(), PaymentError> {
+        let _guard = acquire_reentrancy_lock(&env)?;
+        caller.require_auth();
+        require_not_paused(&env, PauseScope::Escrows)?;
+        let mut escrow: Escrow = env
+            .storage()
+            .persistent()
+            .get(&(ESCROW_KEY, escrow_id))
+            .ok_or(PaymentError::EscrowNotFound)?;
+        if caller != escrow.depositor && caller != escrow.beneficiary {
+            return Err(PaymentError::Unauthorized);
+        }
+        if escrow.released || escrow.claimed {
+            return Err(PaymentError::EscrowAlreadyReleased);
+        }
+        if escrow.dispute_initiated_at.is_none() {
+            escrow.dispute_initiated_at = Some(env.ledger().timestamp());
+            env.storage().persistent().set(&(ESCROW_KEY, escrow_id), &escrow);
+        }
+        Ok(())
+    }
+
     /// Arbiter releases escrow to either party (dispute resolution).
     /// Only the escrow's designated arbiter can call this.
     pub fn release_by_arbiter(
@@ -2335,6 +2362,12 @@ impl OphirPayContract {
 
         if escrow.released || escrow.claimed {
             return Err(PaymentError::EscrowAlreadyReleased);
+        }
+        let initiated_at = escrow.dispute_initiated_at.ok_or(PaymentError::DisputeNotOpen)?;
+        if !escrow.mutual_release_approved
+            && env.ledger().timestamp() < initiated_at.saturating_add(Self::MIN_DISPUTE_PERIOD)
+        {
+            return Err(PaymentError::DisputeCoolingOffActive);
         }
 
         let recipient = if release_to_beneficiary {
@@ -2392,6 +2425,9 @@ impl OphirPayContract {
         }
         if escrow.released || escrow.claimed {
             return Err(PaymentError::EscrowAlreadyReleased);
+        }
+        if escrow.dispute_initiated_at.is_some() {
+            return Err(PaymentError::DisputeCoolingOffActive);
         }
         if env.ledger().timestamp() < escrow.deadline {
             return Err(PaymentError::EscrowNotDue);

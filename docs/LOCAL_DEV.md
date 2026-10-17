@@ -182,17 +182,19 @@ npm run dev
 
 ## 4. What the seed script does
 
-`npm run db:seed` runs `prisma/seed.ts` via `tsx`. It creates:
+`npm run db:seed` (or `./scripts/staging-seed.sh`) runs `prisma/seed.ts` via `tsx` and supports three structured profiles (`--profile=staging`, `--profile=minimal`, `--profile=load`):
 
-| Data | Details |
-|---|---|
-| **1 demo user** | `seed-user-1` — "OphirPay Demo", Stellar address `GACZ7ZEL…QM2U` (upserted — safe to re-run) |
-| **5 payments** | 3 `COMPLETED`, 1 `PENDING`, 1 `FAILED` — with amounts, descriptions, and a placeholder `transactionHash` |
-| **1 batch** | "Demo Batch — Monthly Payroll" (`COMPLETED`) |
-| **4 refunds** | Linked to the seeded payments, with realistic `reason`/`reasonCode`/`status` values |
-| **3 notification hooks** | `payment_recorded`, `refund_processed`, `escrow_created` → `https://example.com/webhooks/...` |
+| Profile | Command | Seeded Records |
+|---|---|---|
+| `minimal` | `./scripts/staging-seed.sh --profile=minimal` | 1 user, 5 payments, 1 batch, 4 refunds, 3 hooks, 1 active escrow, 1 stream, 1 multi-sig item |
+| `staging` *(default)* | `./scripts/staging-seed.sh --profile=staging` | 3 users, 30 payments (spanning the past 30 days), 2 batches, 4 refunds, 3 hooks, 4 escrows, 4 partially vested streams, 3 multi-sig approval queue items |
+| `load` | `./scripts/staging-seed.sh --profile=load` | 6 users, 120 payments (spanning the past 30 days), 2 batches, 4 refunds, 3 hooks, 8 escrows, 8 streams, 6 multi-sig approval queue items |
 
-**Idempotency caveat:** the demo user is upserted, but payments/batches/refunds/
+### Sanitization & Production Safety Guarantees
+- **Valid Testnet Keys & Zero PII:** Every seeded user, account, escrow, stream, and multi-sig signer uses valid 56-character Stellar Testnet public keys (`G...`). `sanitizeSeedRecord` normalizes all email addresses to the RFC 2606 `@example.test` domain and strips any accidental live API keys (`sk_live_...`, `whsec_live_...`) or Stellar secret seeds (`S...`).
+- **Production Database Guard:** Both `./scripts/staging-seed.sh` and `validateSafeSeedDatabaseUrl` in `prisma/seed.ts` strictly refuse to run if `NODE_ENV=production` or if `DATABASE_URL` matches a production identifier (`prod`, `production`, `mainnet`, `.rds.amazonaws.com`, `.supabase.co`, `.aws.neon.tech`).
+
+**Idempotency caveat:** demo users are upserted, but payments/batches/refunds/
 hooks are plain `create` calls — **re-running the seed adds duplicate rows**. To
 start clean:
 
@@ -205,7 +207,7 @@ npx prisma db push && npm run db:seed
 npx prisma db execute --stdin <<'SQL'
 TRUNCATE "Payment", "Batch", "Refund", "NotificationHook", "User" CASCADE;
 SQL
-npm run db:seed
+./scripts/staging-seed.sh --profile=staging
 ```
 
 ---

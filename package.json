@@ -57,6 +57,8 @@
     "db:push": "prisma db push",
     "db:validate": "prisma validate && prisma generate",
     "db:validate:migrations": "bash scripts/validate-prisma-migrations.sh",
+    "db:drift-check": "node scripts/verify-prisma-drift.mjs",
+    "prisma:drift-check": "node scripts/verify-prisma-drift.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:openapi": "vitest run src/__tests__/openapi-conformance.test.ts",

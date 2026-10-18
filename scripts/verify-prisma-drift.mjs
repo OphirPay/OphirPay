@@ -35,7 +35,7 @@ const MIGRATIONS_DIR = path.join(ROOT, "prisma", "migrations");
 
 /** Strip `//` comments and collapse whitespace from a schema line. */
 function cleanLine(raw) {
-  return raw.replace(/\/\/.*$/, "").trim();
+  return raw.replace(/\r/g, "").replace(/\/\/.*$/, "").trim();
 }
 
 /** Parse schema.prisma into { models, enums }. */
@@ -151,12 +151,25 @@ export function replaySql(sql, state) {
       continue;
     }
 
-    m = trimmed.match(
-      /^ALTER TABLE\s+"?(\w+)"?\s+ADD COLUMN\s+"?(\w+)"?\s+"?([A-Za-z]+)(?:\(([^)]*)\))?(\[\])?/i
+    const alterAddMatch = trimmed.match(
+      /^ALTER TABLE\s+"?(\w+)"?\s+((?:ADD\s+(?:COLUMN\s+)?[\s\S]+))$/i
     );
-    if (m) {
-      state.tables[m[1]] = state.tables[m[1]] || {};
-      state.tables[m[1]][m[2]] = `${m[3]}${m[4] ? `(${m[4]})` : ""}${m[5] ?? ""}`;
+    if (alterAddMatch) {
+      const table = alterAddMatch[1];
+      state.tables[table] = state.tables[table] || {};
+      const parts = splitByCommaTopLevel(alterAddMatch[2]);
+      for (const part of parts) {
+        const trimmedPart = part.trim();
+        if (/^(ADD\s+)?(CONSTRAINT|PRIMARY KEY|UNIQUE|FOREIGN KEY|CHECK)/i.test(trimmedPart)) {
+          continue;
+        }
+        const colMatch = trimmedPart.match(
+          /^(?:ADD\s+(?:COLUMN\s+)?)?(?:IF NOT EXISTS\s+)?"?(\w+)"?\s+"?([A-Za-z]+)(?:\(([^)]*)\))?(\[\])?/i
+        );
+        if (colMatch) {
+          state.tables[table][colMatch[1]] = `${colMatch[2]}${colMatch[3] ? `(${colMatch[3]})` : ""}${colMatch[4] ?? ""}`;
+        }
+      }
       continue;
     }
 
@@ -175,10 +188,20 @@ export function replaySql(sql, state) {
       continue;
     }
 
-    m = trimmed.match(/^ALTER TABLE\s+"?(\w+)"?\s+DROP COLUMN\s+"?(\w+)"?/i);
-    if (m) {
-      const t = state.tables[m[1]];
-      if (t) delete t[m[2]];
+    const alterDropMatch = trimmed.match(
+      /^ALTER TABLE\s+"?(\w+)"?\s+((?:DROP\s+(?:COLUMN\s+)?[\s\S]+))$/i
+    );
+    if (alterDropMatch) {
+      const table = alterDropMatch[1];
+      const parts = splitByCommaTopLevel(alterDropMatch[2]);
+      for (const part of parts) {
+        const colMatch = part
+          .trim()
+          .match(/^(?:DROP\s+(?:COLUMN\s+)?)?(?:IF EXISTS\s+)?"?(\w+)"?/i);
+        if (colMatch && state.tables[table]) {
+          delete state.tables[table][colMatch[1]];
+        }
+      }
       continue;
     }
 
@@ -212,6 +235,7 @@ export function replaySql(sql, state) {
 function splitStatements(sql) {
   const withoutComments = sql
     .split("\n")
+    .map((line) => line.replace(/\r/g, ""))
     .filter((line) => !line.trim().startsWith("--"))
     .join("\n");
   return withoutComments.split(";");
@@ -363,26 +387,55 @@ export function diffSchemaAndMigrations(schema, migrationState) {
   return issues;
 }
 
-function main() {
-  if (!fs.existsSync(SCHEMA_PATH)) {
-    console.error(`❌ Schema file not found: ${SCHEMA_PATH}`);
-    process.exit(1);
-  }
-  const schema = parseSchema(fs.readFileSync(SCHEMA_PATH, "utf8"));
-  const migrationState = parseMigrations(MIGRATIONS_DIR);
+/**
+ * Run the static Prisma drift check programmatically.
+ *
+ * @param {object} [options]
+ * @param {string} [options.schemaPath] - Path to schema.prisma (defaults to SCHEMA_PATH)
+ * @param {string} [options.migrationsDir] - Path to migrations dir (defaults to MIGRATIONS_DIR)
+ * @returns {{ ok: boolean, issues: string[], schema: object, migrationState: object }}
+ */
+export function verifyPrismaDrift(options = {}) {
+  const schemaPath = options.schemaPath || SCHEMA_PATH;
+  const migrationsDir = options.migrationsDir || MIGRATIONS_DIR;
 
-  console.log("🔍 Verifying Prisma schema ⇄ migrations are in sync (no DB required)…");
+  if (!fs.existsSync(schemaPath)) {
+    throw new Error(`Schema file not found: ${schemaPath}`);
+  }
+
+  const schema = parseSchema(fs.readFileSync(schemaPath, "utf8"));
+  const migrationState = parseMigrations(migrationsDir);
   const issues = diffSchemaAndMigrations(schema, migrationState);
 
-  if (issues.length === 0) {
-    console.log(`✅ Schema and ${Object.keys(migrationState.tables).length} table(s) / ${
-      Object.keys(migrationState.enums).length
-    } enum(s) from migrations are in sync.`);
+  return {
+    ok: issues.length === 0,
+    issues,
+    schema,
+    migrationState,
+  };
+}
+
+function main() {
+  console.log("🔍 Verifying Prisma schema ⇄ migrations are in sync (no DB required)…");
+  let result;
+  try {
+    result = verifyPrismaDrift();
+  } catch (err) {
+    console.error(`❌ ${err.message}`);
+    process.exit(1);
+  }
+
+  if (result.ok) {
+    console.log(
+      `✅ Schema and ${Object.keys(result.migrationState.tables).length} table(s) / ${
+        Object.keys(result.migrationState.enums).length
+      } enum(s) from migrations are in sync.`
+    );
     process.exit(0);
   }
 
-  console.error(`❌ Found ${issues.length} drift issue(s):`);
-  for (const issue of issues) {
+  console.error(`❌ Found ${result.issues.length} drift issue(s):`);
+  for (const issue of result.issues) {
     console.error(`   - ${issue}`);
   }
   console.error("\n💡 Run `npx prisma migrate dev --name <migration>` to create a migration, or update schema.prisma.");

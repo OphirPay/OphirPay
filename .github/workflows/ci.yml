@@ -129,7 +129,7 @@ jobs:
           components: rustfmt, clippy
       - name: Install Soroban SDK deps & WASM optimization tools
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen
+          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen wabt
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -163,14 +163,41 @@ jobs:
           OPHIR_WASM=contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm
           EMIT_WASM=contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm
 
+          echo "### ⚡ WASM Optimization Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract | Initial Size | Optimized Size | Savings |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | ---: | ---: | ---: |" >> $GITHUB_STEP_SUMMARY
+
           for f in "$OPHIR_WASM" "$EMIT_WASM"; do
-            if [ -f "$f" ]; then
-              echo "Before: $(basename $f) $(stat -c%s "$f") bytes"
-              cp "$f" "${f}.orig"
-              wasm-strip "$f" || true
-              wasm-opt -Oz -o "$f" "${f}" || true
-              echo "After:  $(basename $f) $(stat -c%s "$f") bytes"
+            if [ ! -f "$f" ]; then
+              echo "::error file=$f::Required WASM artifact missing at $f"
+              exit 1
             fi
+
+            name=$(basename "$f")
+            before_size=$(stat -c%s "$f")
+            echo "Optimizing $name (initial: $before_size bytes)..."
+
+            cp "$f" "${f}.orig"
+            wasm-strip "$f"
+            wasm-opt -Oz -o "$f" "${f}"
+
+            after_size=$(stat -c%s "$f")
+            echo "Optimized $name (final: $after_size bytes)"
+
+            if [ "$after_size" -gt "$before_size" ]; then
+              echo "::warning::$name after-optimization size ($after_size bytes) exceeds initial ($before_size bytes). Preserving original."
+              cp "${f}.orig" "$f"
+              after_size=$before_size
+            fi
+
+            diff_bytes=$((before_size - after_size))
+            if [ "$before_size" -gt 0 ]; then
+              reduction=$(awk -v b="$before_size" -v a="$after_size" 'BEGIN { printf "%.2f%%", ((b - a) / b) * 100 }')
+            else
+              reduction="0.00%"
+            fi
+
+            echo "| \`$name\` | $before_size bytes | $after_size bytes | -$diff_bytes bytes ($reduction) |" >> $GITHUB_STEP_SUMMARY
           done
       - name: Verify WASM artifacts
         run: |

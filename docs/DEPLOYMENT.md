@@ -228,6 +228,7 @@ The `Dockerfile` uses a 3-stage build:
 | `deps` | `node:24-slim` | Install npm dependencies (with OpenSSL for Prisma) |
 | `builder` | `node:24-slim` | Generate Prisma client, run `next build` |
 | `runner` | `node:24-slim` | Minimal production image, runs as the non-root `node` user |
+| `migrator` | `node:24-slim` | Contains Prisma CLI and migrations for Kubernetes / CI database migration Jobs |
 
 **Key details:**
 - Uses **Debian (glibc)**, not Alpine (musl) — Tailwind v4's native binaries require glibc
@@ -240,9 +241,36 @@ The `Dockerfile` uses a 3-stage build:
   only the runtime dependencies the server actually needs. Copying the full builder
   `node_modules` on top would double the image size and ship every devDependency
   (TypeScript, Prisma CLI, Tailwind, Playwright, Puppeteer) into the distroless layer —
-  defeating the purpose of standalone output.  The runner stage only copies the native
+  defeating the purpose of standalone output. The runner stage only copies the native
   Prisma query-engine binary, which the standalone tracer intentionally omits because it
   is platform-specific.
+- **Database migrations target** (issue #1335): The `migrator` stage provides a clean,
+  dedicated image containing the Prisma CLI and migration files.
+
+### Database Migrations in Kubernetes (Helm Hook)
+
+The runtime `runner` image intentionally omits the Prisma CLI. To run database migrations during releases:
+
+1. **Build the Migrator Target**:
+   ```bash
+   docker build --target migrator -t ghcr.io/ophirpay/ophirpay-migrator:1.0.0 .
+   ```
+
+2. **Enable Helm Pre-Upgrade Hook**:
+   Set `migrations.enabled=true` in Helm values or via `--set migrations.enabled=true`. The chart launches a Kubernetes `batch/v1` Job annotated with `"helm.sh/hook": pre-install,pre-upgrade`:
+   ```bash
+   helm upgrade --install ophirpay helm/ophirpay \
+     -f helm/ophirpay/values-production.yaml \
+     --set migrations.enabled=true \
+     --set migrations.image.repository=ghcr.io/ophirpay/ophirpay-migrator \
+     --set migrations.image.tag=1.0.0
+   ```
+
+3. **Upgrade Safety Guarantee**:
+   - The migration Job executes `npx prisma migrate deploy` with the target `DATABASE_URL`.
+   - If the migration succeeds, Helm proceeds to roll out the new application Deployment pods.
+   - If the migration fails, Helm **aborts the upgrade**, protecting running pods from receiving traffic on an unmigrated database schema.
+   - Succeeded hook jobs are cleaned up automatically via `before-hook-creation,hook-succeeded`.
 
 ### Liveness vs readiness
 

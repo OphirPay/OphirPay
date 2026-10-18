@@ -317,7 +317,8 @@ jobs:
             --set autoscaling.enabled=true \
             --set pdb.enabled=true \
             --set networkPolicy.enabled=true \
-            --set serviceAccount.create=true
+            --set serviceAccount.create=true \
+            --set migrations.enabled=true
       - name: Render and assert the flag-gated objects
         run: |
           set -euo pipefail
@@ -332,6 +333,7 @@ jobs:
             --set pdb.enabled=true \
             --set networkPolicy.enabled=true \
             --set serviceAccount.create=true \
+            --set migrations.enabled=true \
             > /tmp/enabled.yaml
 
           helm template ophirpay helm/ophirpay \
@@ -339,6 +341,7 @@ jobs:
             --set pdb.enabled=false \
             --set networkPolicy.enabled=false \
             --set serviceAccount.create=false \
+            --set migrations.enabled=false \
             > /tmp/disabled.yaml
 
           fail=0
@@ -367,11 +370,16 @@ jobs:
           expect "kind: NetworkPolicy" /tmp/enabled.yaml
           expect "kind: ServiceAccount" /tmp/enabled.yaml
           expect "policyTypes:" /tmp/enabled.yaml
+          expect "kind: Job" /tmp/enabled.yaml
+          expect "app.kubernetes.io/component: migration" /tmp/enabled.yaml
+          expect "helm.sh/hook: pre-install,pre-upgrade" /tmp/enabled.yaml
+          expect "prisma migrate deploy" /tmp/enabled.yaml
 
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
           reject "kind: NetworkPolicy" /tmp/disabled.yaml
           reject "kind: ServiceAccount" /tmp/disabled.yaml
+          reject "kind: Job" /tmp/disabled.yaml
 
           exit "$fail"
       

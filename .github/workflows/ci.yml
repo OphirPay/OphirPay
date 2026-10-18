@@ -138,18 +138,18 @@ jobs:
             ~/.cargo/git
             contracts/ophirpay/target
             contracts/emitter/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
+          key: cargo-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml', 'contracts/**/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
       - name: Build OphirPay contract
         env:
           RUSTFLAGS: "-C link-arg=-s"
-        run: cd contracts/ophirpay && cargo build --target wasm32v1-none --release
+        run: cd contracts/ophirpay && cargo build --locked --target wasm32v1-none --release
       - name: Build Emitter contract
         env:
           RUSTFLAGS: "-C link-arg=-s"
-        run: cd contracts/emitter && cargo build --target wasm32v1-none --release
+        run: cd contracts/emitter && cargo build --locked --target wasm32v1-none --release
       - name: Run fee assertions and emit fee report
-        run: cargo test --manifest-path contracts/ophirpay/Cargo.toml --test fee_report -- --nocapture
+        run: cargo test --locked --manifest-path contracts/ophirpay/Cargo.toml --test fee_report -- --nocapture
         env:
           OPHIRPAY_FEE_REPORT_PATH: ${{ github.workspace }}/fee-report.json
       - name: Check contract regressions against baseline
@@ -177,9 +177,9 @@ jobs:
           ls -lh contracts/ophirpay/target/wasm32v1-none/release/*.wasm
           ls -lh contracts/emitter/target/wasm32v1-none/release/*.wasm
       - name: Run OphirPay contract unit & property tests
-        run: cd contracts/ophirpay && PROPTEST_CASES=64 cargo test
+        run: cd contracts/ophirpay && PROPTEST_CASES=64 cargo test --locked
       - name: Run Emitter contract unit tests
-        run: cd contracts/emitter && cargo test
+        run: cd contracts/emitter && cargo test --locked
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
         with:

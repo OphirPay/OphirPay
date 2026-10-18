@@ -23,7 +23,7 @@ permissions:
   pull-requests: write
 
 
-# -- Global Concurrency — cancel stale runs on same PR --------
+# -- Global Concurrency ï¿½ cancel stale runs on same PR --------
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -44,10 +44,20 @@ jobs:
         with:
           toolchain: 1.91.0
           target: wasm32v1-none
-      - run: cargo build --manifest-path ophirpay/Cargo.toml --target wasm32v1-none --release
-      - run: cargo build --manifest-path emitter/Cargo.toml --target wasm32v1-none --release
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/ophirpay/target
+            contracts/emitter/target
+          key: cargo-regression-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml', 'contracts/**/Cargo.lock') }}
+          restore-keys: cargo-regression-${{ runner.os }}-
+      - run: cargo build --locked --manifest-path ophirpay/Cargo.toml --target wasm32v1-none --release
+      - run: cargo build --locked --manifest-path emitter/Cargo.toml --target wasm32v1-none --release
       - name: Run fee assertions and emit the fee report
-        run: cargo test --manifest-path ophirpay/Cargo.toml --test fee_report -- --nocapture
+        run: cargo test --locked --manifest-path ophirpay/Cargo.toml --test fee_report -- --nocapture
         env:
           OPHIRPAY_FEE_REPORT_PATH: ${{ github.workspace }}/fee-report.json
       - name: Check WASM size and fee deltas

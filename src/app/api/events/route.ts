@@ -26,7 +26,12 @@ import { withMetrics } from "@/lib/metrics-middleware";
 
 import { createLiveEventSource } from "@/lib/events/event-source";
 import { createBoundedSseBuffer } from "@/lib/events/sse-buffer";
-import { incMetric } from "@/lib/metrics-counters";
+import {
+  incMetric,
+  incSseActiveConnection,
+  decSseActiveConnection,
+  observeSseConnectionDuration,
+} from "@/lib/metrics-counters";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +48,8 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
   let closed = false;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let source: ReturnType<typeof createLiveEventSource> | null = null;
+  const startTime = Date.now();
+  const routeName = "/api/events";
 
   // Release the connection exactly once — from the client abort, an overflow
   // disconnect, or a stream cancel.
@@ -51,6 +58,11 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
     closed = true;
     if (heartbeat) clearInterval(heartbeat);
     if (source) source.stop();
+
+    const durationSeconds = Math.max(0, (Date.now() - startTime) / 1000);
+    observeSseConnectionDuration(routeName, durationSeconds);
+    decSseActiveConnection(routeName);
+
     // Release the connection from the `ophirpay_sse_open_connections` gauge
     // (visible on /api/metrics) so operators and the SSE load test can verify
     // connections are released when clients disconnect.
@@ -76,9 +88,16 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
       // Bind the controller so pushes can drain while the consumer has demand.
       buffer.attach(controller);
 
-      // Track the open connection on the `ophirpay_sse_open_connections`
-      // gauge (visible on /api/metrics).
+      // Track the open connection on the active SSE connections gauge
+      // and legacy open connections gauge (visible on /api/metrics).
+      incSseActiveConnection(routeName);
       incMetric("sse_open_connections");
+
+      // Check if already aborted before start ran
+      if (request.signal.aborted) {
+        teardown();
+        return;
+      }
 
       // Heartbeat every 15s to keep the connection alive through proxies.
       heartbeat = setInterval(() => {

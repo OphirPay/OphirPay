@@ -333,3 +333,13 @@ export const CSP_REPORT_RATE_LIMIT_WINDOW_MS = 60_000;
 
 /** Maximum CSP violation reports allowed per client per minute (#1392). */
 export const CSP_REPORT_RATE_LIMIT_MAX = 60;
+
+/** Rate limit window for API key operations (1 hour in milliseconds, issue #1370). */
+export const API_KEY_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
+/** Maximum key creation/rotation operations allowed per hour per user (issue #1370). */
+export const API_KEY_RATE_LIMIT_MAX = 10;
+
+/** Maximum active (unrevoked) API keys allowed per account (issue #1370). */
+export const MAX_ACTIVE_API_KEYS = 5;
+

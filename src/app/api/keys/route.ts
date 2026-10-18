@@ -6,8 +6,16 @@ import {
   successResponse,
   badRequestError,
   unauthorizedError,
+  rateLimitError,
   handleApiError,
 } from "@/lib/api-response";
+import {
+  getRateLimitStore,
+  getRetryAfterSeconds,
+  API_KEY_RATE_LIMIT_WINDOW_MS,
+  API_KEY_RATE_LIMIT_MAX,
+  MAX_ACTIVE_API_KEYS,
+} from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
 import {
@@ -100,6 +108,43 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
       return badRequestError(parsed.error ?? "Invalid scopes");
     }
 
+    // Sliding-window rate limiting per authenticated user (issue #1370)
+    const store = getRateLimitStore();
+    const rateLimitKey = `rl:keys:${auth.userId}`;
+    const rateLimit = await store.increment(
+      rateLimitKey,
+      API_KEY_RATE_LIMIT_WINDOW_MS,
+      API_KEY_RATE_LIMIT_MAX
+    );
+    if (!rateLimit.allowed) {
+      const retryAfter = getRetryAfterSeconds(rateLimit);
+      return rateLimitError(
+        "Hourly API key creation limit exceeded. Please try again later.",
+        retryAfter,
+        {
+          "X-RateLimit-Limit": String(API_KEY_RATE_LIMIT_MAX),
+          "X-RateLimit-Remaining": String(rateLimit.remaining),
+          "X-RateLimit-Reset": String(rateLimit.resetAt),
+        }
+      );
+    }
+
+    // Maximum active API key count per account (issue #1370)
+    const activeKeyCount =
+      typeof prisma.apiKey.count === "function"
+        ? await prisma.apiKey.count({
+            where: {
+              userId: auth.userId,
+              revokedAt: null,
+            },
+          })
+        : 0;
+    if (activeKeyCount >= MAX_ACTIVE_API_KEYS) {
+      return badRequestError(
+        `Maximum active API keys limit reached (${MAX_ACTIVE_API_KEYS}). Revoke an unused key before creating a new one.`
+      );
+    }
+
     // `generateApiKey` mints 32 CSPRNG bytes (issue #701) and fails closed if
     // the result ever drifts from the documented `oph_` + 64-hex format.
     const rawKey = generateApiKey();
@@ -115,6 +160,21 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
         scopes: parsed.scopes,
       },
     });
+
+    if (prisma.auditLog && typeof prisma.auditLog.create === "function") {
+      await prisma.auditLog.create({
+        data: {
+          action: "api_key:create",
+          actor: auth.userId,
+          target: apiKey.id,
+          details: {
+            name,
+            prefix,
+            scopes: parsed.scopes,
+          },
+        },
+      });
+    }
 
     logger.info("API key generated", {
       id: apiKey.id,

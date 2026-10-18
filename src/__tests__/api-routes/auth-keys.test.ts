@@ -11,6 +11,10 @@ vi.mock("@/lib/prisma", () => ({
       create: vi.fn(),
       deleteMany: vi.fn(),
       updateMany: vi.fn(),
+      count: vi.fn().mockResolvedValue(0),
+    },
+    auditLog: {
+      create: vi.fn().mockResolvedValue({}),
     },
     user: {
       findUnique: vi.fn(),

@@ -115,6 +115,8 @@ ecosystems once a week.
   Cargo bumps) and run it locally for security-sensitive packages. If a bump has
   breaking changes or fails CI, coordinate with the team before merging instead
   of force-landing it.
+- **Target Branch during Batch Mode**: While batch integration mode is active (enforced by `.github/workflows/enforce-integration-branch.yml`), `.github/dependabot.yml` sets `target-branch: "integration/staging"` across all ecosystem update blocks so that Dependabot PRs pass integration branch checks.
+- **Reverting to `main`**: When the batch integration phase concludes and `integration/staging` is merged and decommissioned, remove the `target-branch: "integration/staging"` entries from `.github/dependabot.yml` so Dependabot resumes targeting `main`.
 
 ### Issue triage & stale policy
 

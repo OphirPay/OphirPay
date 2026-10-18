@@ -26,6 +26,11 @@ export class OphirPayError extends Error {
     this.status = options.status ?? null;
     this.code = options.code ?? null;
     this.details = options.details ?? null;
+    this.type = options.type ?? null;
+    this.title = options.title ?? null;
+    this.detail = options.detail ?? null;
+    this.instance = options.instance ?? null;
+    this.errors = options.errors ?? null;
   }
 }
 
@@ -141,7 +146,7 @@ export class OphirPayClient {
         method,
         signal: controller.signal,
         headers: {
-          Accept: "application/json",
+          Accept: "application/json, application/problem+json",
           ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
           ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
           ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
@@ -165,6 +170,34 @@ export class OphirPayClient {
     const json = text ? JSON.parse(text) : {};
 
     if (!res.ok || json.success === false) {
+      // Support RFC 7807 problem details (Issue #1364)
+      const isProblem =
+        json.type !== undefined ||
+        json.title !== undefined ||
+        json.detail !== undefined ||
+        (typeof res.headers?.get === "function" &&
+          res.headers.get("content-type")?.includes("application/problem+json"));
+
+      if (isProblem) {
+        const message =
+          json.detail ??
+          json.title ??
+          `Request failed with status ${res.status}`;
+        const code = json.code ?? json.title ?? "PROBLEM_DETAILS";
+        const details = json.errors ?? json.invalidParams ?? null;
+
+        throw new OphirPayError(message, {
+          status: res.status,
+          code,
+          details,
+          type: json.type ?? null,
+          title: json.title ?? null,
+          detail: json.detail ?? null,
+          instance: json.instance ?? null,
+          errors: json.errors ?? null,
+        });
+      }
+
       const error = json.error ?? {};
       throw new OphirPayError(
         error.message ?? `Request failed with status ${res.status}`,

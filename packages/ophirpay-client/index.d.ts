@@ -69,6 +69,16 @@ export class OphirPayError extends Error {
   status: number | null;
   code: string | null;
   details: unknown;
+  /** RFC 7807 problem type URI */
+  type?: string | null;
+  /** RFC 7807 short title */
+  title?: string | null;
+  /** RFC 7807 occurrence details */
+  detail?: string | null;
+  /** RFC 7807 occurrence instance URI */
+  instance?: string | null;
+  /** RFC 7807 field validation errors */
+  errors?: unknown;
 }
 
 export interface OphirPayClientOptions {

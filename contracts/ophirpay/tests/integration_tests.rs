@@ -1168,4 +1168,137 @@ fn test_create_stream_valid_boundaries_succeed() {
     assert_eq!(max_stream_id, 2);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Token Decimal Precision Validation in record_payment (#1347)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_record_payment_default_7_decimals_succeeds() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    // Verify default decimals is 7 for unconfigured assets
+    assert_eq!(fix.client.get_token_decimals(&fix.token_id), 7);
+
+    // Valid payments with 1 stroop, 100 stroops, and 10_000_000 stroops (1 unit)
+    let p1 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &1i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx-dec-1"),
+        &String::from_str(&fix.env, "meta-1"),
+    );
+    assert_eq!(p1, 1);
+
+    let p2 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx-dec-2"),
+        &String::from_str(&fix.env, "meta-2"),
+    );
+    assert_eq!(p2, 2);
+
+    let p3 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &10_000_000i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx-dec-3"),
+        &String::from_str(&fix.env, "meta-3"),
+    );
+    assert_eq!(p3, 3);
+}
+
+#[test]
+fn test_record_payment_custom_2_decimals_enforcement() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let token_2dec = Address::generate(&fix.env);
+
+    // Set token decimals = 2 (cents; quantum step = 10^(7 - 2) = 100,000 stroops)
+    fix.client.set_token_decimals(&fix.owner, &token_2dec, &2);
+    assert_eq!(fix.client.get_token_decimals(&token_2dec), 2);
+
+    // Step multiple (e.g. 500_000 stroops = 0.05 units) succeeds
+    let pid = fix.client.record_payment(
+        &payer,
+        &payee,
+        &500_000i128,
+        &token_2dec,
+        &String::from_str(&fix.env, "tx-2dec-valid"),
+        &String::from_str(&fix.env, "meta"),
+    );
+    assert_eq!(pid, 1);
+
+    // Sub-quantum dust amount (500_050 % 100_000 != 0) fails with InvalidDecimalPrecision
+    let res = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &500_050i128,
+        &token_2dec,
+        &String::from_str(&fix.env, "tx-2dec-invalid"),
+        &String::from_str(&fix.env, "meta"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+}
+
+#[test]
+fn test_record_payment_custom_0_decimals_enforcement() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let token_0dec = Address::generate(&fix.env);
+
+    // Set token decimals = 0 (indivisible asset; step = 10^7 = 10_000_000 stroops)
+    fix.client.set_token_decimals(&fix.owner, &token_0dec, &0);
+    assert_eq!(fix.client.get_token_decimals(&token_0dec), 0);
+
+    // Exact whole units succeed (20_000_000 = 2 units)
+    let pid = fix.client.record_payment(
+        &payer,
+        &payee,
+        &20_000_000i128,
+        &token_0dec,
+        &String::from_str(&fix.env, "tx-0dec-valid"),
+        &String::from_str(&fix.env, "meta"),
+    );
+    assert_eq!(pid, 1);
+
+    // Fractional unit (15_500_000 % 10_000_000 != 0) fails
+    let res = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &15_500_000i128,
+        &token_0dec,
+        &String::from_str(&fix.env, "tx-0dec-invalid"),
+        &String::from_str(&fix.env, "meta"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+}
+
+#[test]
+fn test_set_token_decimals_bounds_and_auth() {
+    let fix = TestFixture::new();
+    let non_owner = Address::generate(&fix.env);
+    let token = Address::generate(&fix.env);
+
+    // Non-owner cannot set decimals
+    let res_auth = fix.client.try_set_token_decimals(&non_owner, &token, &6);
+    assert_eq!(res_auth, Err(Ok(PaymentError::Unauthorized)));
+
+    // Decimals exceeding MAX_TOKEN_DECIMALS (18) is rejected
+    let res_bound = fix.client.try_set_token_decimals(&fix.owner, &token, &19);
+    assert_eq!(res_bound, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+    // Decimals up to 18 succeeds
+    let res_valid = fix.client.try_set_token_decimals(&fix.owner, &token, &18);
+    assert_eq!(res_valid, Ok(Ok(())));
+    assert_eq!(fix.client.get_token_decimals(&token), 18);
+}
+
 

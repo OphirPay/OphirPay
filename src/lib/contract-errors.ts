@@ -321,6 +321,7 @@ export const CONTRACT_ERROR_MAP: Record<string, string> = {
   "310": "Dispute cooling-off period is active: resolution attempted prematurely",
   "311": "Stream duration is too short: minimum duration is 60 seconds",
   "312": "Stream duration is too long: maximum duration is 5 years",
+  "313": "Amount violates the token's configured decimal precision or decimal places exceed maximum",
 };
 
 /**

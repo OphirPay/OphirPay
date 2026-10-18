@@ -392,4 +392,8 @@ pub struct HookList {
     pub total: u32,
     pub truncated: bool,
 }
+
+pub const DEFAULT_STELLAR_DECIMALS: u32 = 7;
+pub const MAX_TOKEN_DECIMALS: u32 = 18;
+
 

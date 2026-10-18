@@ -46,6 +46,10 @@ import {
   getRpcFailoverState,
   getRpcUrls,
   isRpcFailoverDegraded,
+  isRpcConditionDegraded,
+  recordRpcLatency,
+  recordRpcStatusCode,
+  getActiveRpcLatency,
   resetRpcState,
   RPC_FAILOVER_DEGRADED_AFTER_MS,
 } from "@/lib/rpc-failover";
@@ -255,4 +259,35 @@ describe("RPC failover state (issue #820)", () => {
     await getWorkingRpcServer("TESTNET");
     expect(getRpcFailoverState().lastFailureReasons[PRIMARY]).toBe("timeout");
   });
+
+  it("tracks endpoint latency and flags degraded when latency > 3000ms", async () => {
+    await getWorkingRpcServer("TESTNET");
+    const active = getRpcFailoverState().activeEndpoint;
+    expect(active).toBe(PRIMARY);
+
+    recordRpcLatency(PRIMARY, 3200);
+    expect(getActiveRpcLatency()).toBe(3200);
+    expect(isRpcConditionDegraded()).toBe(true);
+    expect(getRpcFailoverState().activeLatencyMs).toBe(3200);
+
+    // Normal latency returns
+    recordRpcLatency(PRIMARY, 120);
+    expect(isRpcConditionDegraded()).toBe(false);
+  });
+
+  it("flags degraded when status code is 429 or 5xx", async () => {
+    await getWorkingRpcServer("TESTNET");
+    recordRpcLatency(PRIMARY, 100);
+    expect(isRpcConditionDegraded()).toBe(false);
+
+    recordRpcStatusCode(PRIMARY, 429);
+    expect(isRpcConditionDegraded()).toBe(true);
+
+    recordRpcStatusCode(PRIMARY, 200);
+    expect(isRpcConditionDegraded()).toBe(false);
+
+    recordRpcStatusCode(PRIMARY, 503);
+    expect(isRpcConditionDegraded()).toBe(true);
+  });
 });
+

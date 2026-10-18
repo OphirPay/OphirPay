@@ -101,6 +101,15 @@ let longestFallbackDuration = 0;
 /** Probe-attempt counters per endpoint (cumulative). */
 const probeCounts = new Map<string, { total: number; failed: number }>();
 
+/** Threshold in ms beyond which an RPC endpoint is considered degraded (issue #1295). */
+export const RPC_DEGRADED_LATENCY_THRESHOLD_MS = 3000;
+
+/** Last measured probe latency in ms, per endpoint. */
+const probeLatencies = new Map<string, number>();
+
+/** Last recorded HTTP status code per endpoint. */
+const lastStatusCodes = new Map<string, number>();
+
 /** Exported failover snapshot (see `getRpcFailoverState`). */
 export interface RpcFailoverState {
   /** Endpoint currently serving requests; null before the first RPC call. */
@@ -128,6 +137,12 @@ export interface RpcFailoverState {
   lastFailureAt: Record<string, number>;
   /** Cumulative probe attempts / failures per endpoint. */
   probes: Record<string, { total: number; failed: number }>;
+  /** Last measured probe latency (ms) per endpoint. */
+  latencies: Record<string, number>;
+  /** Latency of the active endpoint (ms), or null if not yet measured. */
+  activeLatencyMs: number | null;
+  /** Last recorded HTTP status codes per endpoint. */
+  lastStatusCodes: Record<string, number>;
 }
 
 function reasonFromError(err: unknown): string {
@@ -215,6 +230,7 @@ function createRpcServer(url: string): rpc.Server {
 async function probeHealth(url: string): Promise<boolean> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), probeTimeoutMs());
+  const start = Date.now();
 
   try {
     const res = await fetch(url, {
@@ -223,6 +239,10 @@ async function probeHealth(url: string): Promise<boolean> {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
       signal: controller.signal,
     });
+    const latency = Date.now() - start;
+    probeLatencies.set(url, latency);
+    lastStatusCodes.set(url, res.status);
+
     if (!res.ok) {
       recordProbeFailure(url, `HTTP ${res.status}`);
       return false;
@@ -230,6 +250,9 @@ async function probeHealth(url: string): Promise<boolean> {
     recordProbeSuccess(url);
     return true;
   } catch (err) {
+    const latency = Date.now() - start;
+    probeLatencies.set(url, latency);
+    lastStatusCodes.set(url, 0);
     recordProbeFailure(url, reasonFromError(err));
     return false;
   } finally {
@@ -306,6 +329,8 @@ export function getRpcFailoverState(): RpcFailoverState {
   const now = Date.now();
   const usingFallback =
     activeEndpoint !== null && activeEndpoint !== primaryEndpoint;
+  const activeLatency = activeEndpoint ? (probeLatencies.get(activeEndpoint) ?? null) : null;
+
   return {
     activeEndpoint,
     primaryEndpoint,
@@ -319,6 +344,9 @@ export function getRpcFailoverState(): RpcFailoverState {
     lastFailureReasons: Object.fromEntries(lastFailureReasons),
     lastFailureAt: Object.fromEntries(lastFailureAt),
     probes: Object.fromEntries(probeCounts),
+    latencies: Object.fromEntries(probeLatencies),
+    activeLatencyMs: activeLatency,
+    lastStatusCodes: Object.fromEntries(lastStatusCodes),
   };
 }
 
@@ -332,6 +360,43 @@ export function isRpcFailoverDegraded(): boolean {
     currentFailoverStartedAt !== null &&
     Date.now() - currentFailoverStartedAt > RPC_FAILOVER_DEGRADED_AFTER_MS
   );
+}
+
+/** Record a caller-measured RPC latency (e.g. from hooks or client requests). */
+export function recordRpcLatency(url: string, latencyMs: number): void {
+  probeLatencies.set(url, latencyMs);
+}
+
+/** Record a caller-observed HTTP status code (e.g. 429, 503). */
+export function recordRpcStatusCode(url: string, statusCode: number): void {
+  lastStatusCodes.set(url, statusCode);
+}
+
+/** Get the active endpoint or null if none active. */
+export function getActiveRpcEndpoint(): string | null {
+  return activeEndpoint;
+}
+
+/** Get the estimated latency of the active endpoint in ms. */
+export function getActiveRpcLatency(): number | null {
+  if (!activeEndpoint) return null;
+  return probeLatencies.get(activeEndpoint) ?? null;
+}
+
+/**
+ * True if RPC condition is degraded:
+ * - Active endpoint latency > 3000ms
+ * - Or recent status code is 429 or 5xx
+ * - Or failover has been degraded
+ */
+export function isRpcConditionDegraded(): boolean {
+  if (isRpcFailoverDegraded()) return true;
+  if (!activeEndpoint) return false;
+  const latency = probeLatencies.get(activeEndpoint);
+  if (latency !== undefined && latency > RPC_DEGRADED_LATENCY_THRESHOLD_MS) return true;
+  const status = lastStatusCodes.get(activeEndpoint);
+  if (status !== undefined && (status === 429 || status >= 500)) return true;
+  return false;
 }
 
 /**
@@ -350,6 +415,8 @@ export function resetRpcState(): void {
   lastFailureReasons.clear();
   lastFailureAt.clear();
   probeCounts.clear();
+  probeLatencies.clear();
+  lastStatusCodes.clear();
   currentFailoverStartedAt = null;
   degradedLogged = false;
   longestFallbackDuration = 0;

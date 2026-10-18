@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+import { NextResponse } from "next/server";
 import { withApiAuth } from "@/lib/api-auth";
-import { successResponse, handleApiError, validationError } from "@/lib/api-response";
-import prisma from "@/lib/prisma";
+import { handleApiError, validationError } from "@/lib/api-response";
+import prisma, { Prisma } from "@/lib/prisma";
 import { withRequestLogging } from "@/lib/request-logging";
 import {
   auditLogQuerySchema,
@@ -100,6 +101,7 @@ async function _GET(request: Request) {
     const parsed = auditLogQuerySchema.safeParse({
       page: param("page"),
       limit: param("limit"),
+      cursor: param("cursor"),
       actor: param("actor"),
       action: param("action"),
       resource: param("resource"),
@@ -110,7 +112,7 @@ async function _GET(request: Request) {
     });
     if (!parsed.success) return validationError(parsed.error);
 
-    const { page, limit, source } = parsed.data;
+    const { page, limit, source, cursor, order } = parsed.data;
     const hasFilters = Boolean(
       parsed.data.actor ||
         parsed.data.action ||
@@ -143,38 +145,108 @@ async function _GET(request: Request) {
     };
 
     // Persisted (DB) audit entries — refund lifecycle history with record
-    // ids (issue #365).
-    const dbRows =
-      source === "db" || source === "all"
-        ? (
-            await prisma.auditLog.findMany({
-              where: dbWhere,
-              orderBy: { createdAt: "desc" },
-              skip: (page - 1) * limit,
-              take: limit,
-            })
-          ).map(mapDbRow)
-        : [];
+    // ids (issue #365, issue #1361).
+    let dbRows: DbAuditRow[] = [];
+    let nextCursor: string | null = null;
+    let hasMore = false;
+
+    if (source === "db" || source === "all") {
+      const orderBy: Prisma.AuditLogOrderByWithRelationInput[] = [
+        { createdAt: order },
+        { id: order },
+      ];
+
+      let dbRowsRaw: Array<{
+        id: string;
+        action: string;
+        actor: string | null;
+        target: string | null;
+        details: unknown;
+        createdAt: Date;
+      }> = [];
+
+      if (cursor) {
+        // Deterministic indexed keyset pagination (Issue #1361)
+        dbRowsRaw = await prisma.auditLog.findMany({
+          where: dbWhere,
+          orderBy,
+          cursor: { id: cursor },
+          skip: 1,
+          take: limit + 1,
+        });
+      } else if (searchParams.has("page") && page > 1) {
+        // Backward-compatible offset pagination when explicit page > 1 is requested without cursor
+        dbRowsRaw = await prisma.auditLog.findMany({
+          where: dbWhere,
+          orderBy,
+          skip: (page - 1) * limit,
+          take: limit + 1,
+        });
+      } else {
+        // Initial page (fetches limit + 1 to detect nextCursor and hasMore)
+        dbRowsRaw = await prisma.auditLog.findMany({
+          where: dbWhere,
+          orderBy,
+          take: limit + 1,
+        });
+      }
+
+      hasMore = dbRowsRaw.length > limit;
+      const pageRowsRaw = hasMore ? dbRowsRaw.slice(0, limit) : dbRowsRaw;
+      nextCursor = hasMore ? pageRowsRaw[pageRowsRaw.length - 1].id : null;
+      dbRows = pageRowsRaw.map(mapDbRow);
+    }
+
     const dbTotal =
       source === "db" || source === "all"
         ? await prisma.auditLog.count({ where: dbWhere })
         : 0;
 
     if (source === "db") {
-      return successResponse(dbRows, { page, limit, total: dbTotal });
+      return NextResponse.json({
+        success: true,
+        data: dbRows,
+        nextCursor,
+        hasMore,
+        meta: {
+          timestamp: new Date().toISOString(),
+          page,
+          limit,
+          total: dbTotal,
+          cursor: cursor ?? null,
+          nextCursor,
+          hasMore,
+          order,
+        },
+      });
     }
 
     // ── On-chain ledger (source=contract | all) ────────────────
     const totalCount = await readAuditLogTotalCount();
     if (totalCount === 0) {
-      return successResponse(dbRows, { page, limit, total: dbTotal });
+      return NextResponse.json({
+        success: true,
+        data: dbRows,
+        nextCursor: null,
+        hasMore: false,
+        meta: {
+          timestamp: new Date().toISOString(),
+          page,
+          limit,
+          total: dbTotal,
+          cursor: cursor ?? null,
+          nextCursor: null,
+          hasMore: false,
+          order,
+        },
+      });
     }
 
     // Which ids to read (ids are 1-indexed, newest = highest id):
     // - Unfiltered: only the page window, so plain reads stay cheap.
     // - Filtered: scan the whole ledger so the filtered `total` (and therefore
     //   pagination) is exact regardless of where matches fall.
-    const descending = parsed.data.order !== "asc";
+    const descending = order !== "asc";
     const ascendingIds = (count: number) => {
       const ids: number[] = [];
       for (let id = 1; id <= count; id++) ids.push(id);
@@ -204,7 +276,29 @@ async function _GET(request: Request) {
 
     if (!hasFilters) {
       // Unfiltered page window — total is the ledger size.
-      return successResponse(entries, { page, limit, total: totalCount });
+      const contractHasMore = descending
+        ? Math.max(1, totalCount - (page - 1) * limit) - limit >= 1
+        : page * limit < totalCount;
+      const contractNextCursor =
+        contractHasMore && entries.length > 0
+          ? String(entries[entries.length - 1].id)
+          : null;
+      return NextResponse.json({
+        success: true,
+        data: entries,
+        nextCursor: contractNextCursor,
+        hasMore: contractHasMore,
+        meta: {
+          timestamp: new Date().toISOString(),
+          page,
+          limit,
+          total: totalCount,
+          cursor: cursor ?? null,
+          nextCursor: contractNextCursor,
+          hasMore: contractHasMore,
+          order,
+        },
+      });
     }
 
     // Filtered — slice the page from the matching set (kept in id order).
@@ -215,7 +309,27 @@ async function _GET(request: Request) {
       source === "all"
         ? [...pageItems, ...dbRows]
         : pageItems;
-    return successResponse(data, { page, limit, total });
+    const filteredHasMore = start + limit < total;
+    const filteredNextCursor =
+      filteredHasMore && data.length > 0
+        ? String(data[data.length - 1].id)
+        : null;
+    return NextResponse.json({
+      success: true,
+      data,
+      nextCursor: filteredNextCursor,
+      hasMore: filteredHasMore,
+      meta: {
+        timestamp: new Date().toISOString(),
+        page,
+        limit,
+        total,
+        cursor: cursor ?? null,
+        nextCursor: filteredNextCursor,
+        hasMore: filteredHasMore,
+        order,
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

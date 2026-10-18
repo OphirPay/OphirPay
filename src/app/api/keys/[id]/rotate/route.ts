@@ -6,7 +6,14 @@ import {
   handleApiError,
   successResponse,
   unauthorizedError,
+  rateLimitError,
 } from "@/lib/api-response";
+import {
+  getRateLimitStore,
+  getRetryAfterSeconds,
+  API_KEY_RATE_LIMIT_WINDOW_MS,
+  API_KEY_RATE_LIMIT_MAX,
+} from "@/lib/rate-limit";
 import { getAuthContext } from "@/lib/auth-session";
 import {
   deriveKeyPrefix,
@@ -34,6 +41,27 @@ export async function POST(
 
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+
+    // Sliding-window rate limiting per authenticated user (issue #1370)
+    const store = getRateLimitStore();
+    const rateLimitKey = `rl:keys:${auth.userId}`;
+    const rateLimit = await store.increment(
+      rateLimitKey,
+      API_KEY_RATE_LIMIT_WINDOW_MS,
+      API_KEY_RATE_LIMIT_MAX
+    );
+    if (!rateLimit.allowed) {
+      const retryAfter = getRetryAfterSeconds(rateLimit);
+      return rateLimitError(
+        "Hourly API key rotation limit exceeded. Please try again later.",
+        retryAfter,
+        {
+          "X-RateLimit-Limit": String(API_KEY_RATE_LIMIT_MAX),
+          "X-RateLimit-Remaining": String(rateLimit.remaining),
+          "X-RateLimit-Reset": String(rateLimit.resetAt),
+        }
+      );
+    }
 
     const { id } = await params;
     const now = new Date();

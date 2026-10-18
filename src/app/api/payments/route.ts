@@ -11,6 +11,7 @@ import {
   handleApiError,
 } from "@/lib/api-response";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
+import { validateStellarMemo } from "@/lib/validation/stellar";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
@@ -131,6 +132,12 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
     }
 
     const body = await request.json();
+    if (body && typeof body === "object" && "memo" in body && body.memo) {
+      const memoCheck = validateStellarMemo(String(body.memo), body.memoType);
+      if (!memoCheck.valid) {
+        return badRequestError(memoCheck.error ?? "Invalid memo payload");
+      }
+    }
     const parsed = createPaymentSchema.safeParse(body);
     if (!parsed.success) return validationError(parsed.error);
 

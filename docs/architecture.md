@@ -125,6 +125,16 @@ All writes call `extend_ttl(5000, 50000)` to prevent archival.
 
 300 typed error variants from `NotInitialized=1` to `SystemOverloaded=300` (many reserved for unimplemented features). Contract functions return `Result<T, PaymentError>` — no panics in production code.
 
+### 6. Process Lifecycle & Graceful Teardown
+
+During rolling Kubernetes deployments, container scaling, or Docker process restarts, OphirPay manages clean connection teardown through `src/lib/lifecycle.ts`, `src/lib/prisma.ts`, and `src/lib/redis.ts`:
+
+- **Signal Interception**: Installs centralized `SIGTERM` and `SIGINT` event listeners on Node bootstrap.
+- **Priority Execution**: Cleanup hooks execute in descending order of priority (e.g. priority 10 for stopping in-flight job queues; priority 5 for database and cache connections).
+- **Safe Database & Cache Disconnection**: Coordinates `await prisma.$disconnect()` and `await redis.quit()` with timeout fail-safes to prevent interrupted transactions, connection leaks, or orphaned pool handles.
+- **Configurable Grace Period**: Controlled via `SHUTDOWN_TIMEOUT_MS` (default: 5,000ms), guaranteeing that shutdown resolves cleanly within container termination limits.
+- **Structured Telemetry**: Outputs structured JSON logs (`lifecycle:shutdown:start`, `lifecycle:hook:executing`, `lifecycle:shutdown:complete`) recording signal types, hook latencies, and execution outcomes.
+
 ## Directory Structure
 
 ```

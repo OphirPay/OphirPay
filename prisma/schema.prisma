@@ -801,3 +801,32 @@ model PaymentSyncRun {
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
 }
+
+// ── Ephemeral Cron Execution Logs ────────────────────────────
+// Issue #1420: Ephemeral execution logs for scheduled payment cron runs.
+// Retained for 90 days and pruned in batches of 1,000 to prevent table bloat.
+
+model CronExecutionLog {
+  /// Primary key — CUID generated at insert time.
+  id         String    @id @default(cuid())
+  /// Unique run identifier.
+  runId      String    @unique
+  /// Rows selected as due for this run.
+  picked     Int       @default(0)
+  /// Successfully executed payments.
+  executed   Int       @default(0)
+  /// Failed payments.
+  failed     Int       @default(0)
+  /// Due rows another overlapping run had already claimed.
+  skipped    Int       @default(0)
+  /// Duration of the cron run in milliseconds.
+  durationMs Int?
+  /// Top-level error message if the run aborted.
+  error      String?
+  /// When the run started.
+  createdAt  DateTime  @default(now())
+
+  /// Speeds up retention sweeps (older than 90 days).
+  @@index([createdAt])
+}
+

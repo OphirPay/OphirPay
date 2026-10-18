@@ -41,6 +41,7 @@ erDiagram
 | **`Webhook`** | `id` (CUID) | Registered endpoints receiving HMAC-signed event notifications. | `userId → User(id)` |
 | **`ApiKey`** | `id` (CUID) | Programmatic authentication storing SHA-256 `keyHash` and 8-character display `prefix`. | `userId → User(id)` |
 | **`NotificationHook`** | `id` (CUID) | Mirrors on-chain Soroban event hooks to route contract signals. | `userId → User(id)` |
+| **`CronExecutionLog`** | `id` (CUID) | Ephemeral execution logs for scheduled payment cron runs (auto-pruned after 90 days). | None |
 
 ---
 
@@ -236,7 +237,23 @@ return the same rows for the same terms, and the API contract is unchanged.
 
 ---
 
-## 6. Summary Checklist for Pull Requests
+## 7. Automated Data Retention & Ephemeral Log Pruning (Issue #1420)
+
+### Why Ephemeral Retention is Required
+
+Scheduled payment execution runs (`/api/cron`) execute at 5-minute intervals, producing up to ~288 cycle entries per day. Over time, high-frequency execution records create table bloat in PostgreSQL, degrading index performance, increasing storage footprints, and lengthening vacuum windows.
+
+### Retention Policy & Invariants
+
+* **Retention Window**: Ephemeral execution logs (`CronExecutionLog`) older than **90 days** are pruned automatically during cron cycles.
+* **Batch Processing**: Deletions occur in chunks of **1,000 records** (`PRUNE_BATCH_SIZE`) to prevent long transaction locks on production PostgreSQL tables.
+* **Non-Blocking ID Scoping**: Stale records are identified by primary key (`id`) first, followed by a scoped transaction delete (`DELETE WHERE id IN (...)`), avoiding full-table range locking.
+* **Schedule Preservation Invariant**: **Active, paused, or failed payment schedules (`Recurrence` and `ScheduledPayment`) are NEVER deleted** by this retention runner. Only ephemeral execution run logs are pruned.
+* **Observability**: Every pruned record increments the Prometheus counter `ophirpay_cron_logs_pruned_total`, visible on `/api/metrics`.
+
+---
+
+## 8. Summary Checklist for Pull Requests
 
 Before submitting a PR with database changes:
 - [ ] `prisma/schema.prisma` contains clear doc comments (`///`) on all new models/fields.

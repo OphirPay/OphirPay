@@ -36,6 +36,10 @@ const counters = {
    * malformed requests are rejected before reaching this counter.
    */
   csp_violation_reports_total: 0,
+  /**
+   * Counter: cron execution logs pruned by retention policy (issue #1420).
+   */
+  cron_logs_pruned_total: 0,
 };
 
 export type CspReportDropReason = "rate_limited" | "deduplicated" | "oversized";
@@ -121,6 +125,11 @@ function finalOutcomeKey(
 /** Increment a named counter. */
 export function incMetric(name: MetricName, delta = 1): void {
   counters[name] += delta;
+}
+
+/** Increment the counter for pruned cron execution logs (#1420). */
+export function incCronLogsPruned(delta = 1): void {
+  incMetric("cron_logs_pruned_total", delta);
 }
 
 /** Count one delivery attempt for a webhook or batch delivery path. */

@@ -52,6 +52,8 @@ pub struct Escrow {
     pub deadline: u64, // ledger timestamp when beneficiary can claim
     pub released: bool,
     pub claimed: bool,
+    pub dispute_initiated_at: Option<u64>,
+    pub mutual_release_approved: bool,
     pub metadata: String,
 }
 

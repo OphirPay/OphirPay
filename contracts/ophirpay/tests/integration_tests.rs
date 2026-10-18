@@ -935,3 +935,24 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+#[test]
+fn test_premature_arbiter_and_disputed_deadline_claim() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+    fix.mint(&depositor, 20_000_000);
+    let meta = String::from_str(&fix.env, "inv-dispute");
+    let e1 = fix.client.create_escrow(&depositor, &beneficiary, &Some(arbiter.clone()), &10_000_000, &fix.token_id, &1_001_000, &meta);
+    let e2 = fix.client.create_escrow(&depositor, &beneficiary, &Some(arbiter.clone()), &10_000_000, &fix.token_id, &1_001_000, &meta);
+    fix.env.ledger().set_timestamp(1_000_500);
+    fix.client.open_dispute(&depositor, &e1);
+    fix.client.open_dispute(&depositor, &e2);
+    fix.env.ledger().set_timestamp(1_000_501);
+    assert_eq!(fix.client.try_release_by_arbiter(&arbiter, &e1, &false), Err(Ok(PaymentError::DisputeCoolingOffActive)));
+    fix.env.ledger().set_timestamp(1_001_001);
+    assert_eq!(fix.client.try_claim_escrow(&beneficiary, &e2), Err(Ok(PaymentError::DisputeCoolingOffActive)));
+    fix.env.ledger().set_timestamp(1_000_500 + 86_400);
+    assert!(fix.client.try_release_by_arbiter(&arbiter, &e1, &false).is_ok());
+}

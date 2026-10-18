@@ -534,4 +534,140 @@ describe("verifyWebhookSignature", () => {
   it("exposes the signature header name used on the wire", () => {
     expect(WEBHOOK_SIGNATURE_HEADER).toBe("X-OphirPay-Signature");
   });
+
+  describe("fuzz testing and input resilience (issue #1299)", () => {
+    it("handles buildSignedPayload with null bytes, extreme unicode, long strings, and empty objects", () => {
+      const edgeCases: unknown[] = [
+        null,
+        undefined,
+        {},
+        { event: "payment\0with\0null", timestamp: "2026-08-14T00:00:00Z", data: { text: "hello\0world" } },
+        { event: "payment.created", timestamp: "2026-08-14T00:00:00Z", data: { unicode: "🚀✨你好世界\u200B\uFEFF" } },
+        { event: "large", timestamp: "2026-08-14T00:00:00Z", data: { big: "A".repeat(50_000) } },
+      ];
+
+      for (const payload of edgeCases) {
+        expect(() => {
+          const res = buildSignedPayload(payload as unknown as WebhookPayload, SECRET);
+          expect(typeof res.body).toBe("string");
+          expect(typeof res.signature).toBe("string");
+          expect(res.signature).toMatch(/^[a-f0-9]{64}$/);
+        }).not.toThrow();
+      }
+    });
+
+    it("survives circular structures in buildSignedPayload and canonicalizeWebhookBody without throwing", () => {
+      const circ: Record<string, unknown> = {
+        event: "circular",
+        timestamp: "2026-08-14T00:00:00Z",
+        data: {},
+      };
+      circ.self = circ;
+
+      expect(() => {
+        const canonical = canonicalizeWebhookBody(circ as unknown as WebhookPayload);
+        expect(typeof canonical).toBe("string");
+      }).not.toThrow();
+
+      expect(() => {
+        const res = buildSignedPayload(circ as unknown as WebhookPayload, SECRET);
+        expect(typeof res.body).toBe("string");
+        expect(typeof res.signature).toBe("string");
+      }).not.toThrow();
+    });
+
+    it("handles signature header parsing with missing headers, duplicate headers, and non-hex values", () => {
+      const { body, signature, timestamp } = buildSignedPayload(samplePayload, SECRET);
+
+      // Missing header (null, undefined, empty string)
+      for (const missingSig of [null, undefined, ""]) {
+        const res = verifyWebhookSignature({
+          body,
+          signature: missingSig,
+          secret: SECRET,
+          timestamp,
+          now: receivedAt,
+        });
+        expect(res.valid).toBe(false);
+        expect(res.reason).toBe("signature mismatch");
+      }
+
+      // Duplicate headers (array format from HTTP frameworks)
+      const validArraySig = [signature, "duplicate_sig"];
+      const arrayRes = verifyWebhookSignature({
+        body,
+        signature: validArraySig,
+        secret: SECRET,
+        timestamp,
+        now: receivedAt,
+      });
+      expect(arrayRes.valid).toBe(true);
+
+      const invalidArraySig = ["invalid_sig_0000000000000000000000000000000000000000000000000000000000000000", signature];
+      const invalidArrayRes = verifyWebhookSignature({
+        body,
+        signature: invalidArraySig,
+        secret: SECRET,
+        timestamp,
+        now: receivedAt,
+      });
+      expect(invalidArrayRes.valid).toBe(false);
+
+      // Non-hex characters
+      const nonHexSig = "g".repeat(64);
+      const nonHexRes = verifyWebhookSignature({
+        body,
+        signature: nonHexSig,
+        secret: SECRET,
+        timestamp,
+        now: receivedAt,
+      });
+      expect(nonHexRes.valid).toBe(false);
+      expect(nonHexRes.reason).toBe("signature mismatch");
+    });
+
+    it("safely rejects boundary-length HMAC signatures without throwing or timing attacks", () => {
+      const { body, timestamp } = buildSignedPayload(samplePayload, SECRET);
+      const boundaryLengths = [0, 1, 31, 32, 63, 65, 128, 512, 4096];
+
+      for (const len of boundaryLengths) {
+        const dummySig = "a".repeat(len);
+        expect(() => {
+          const res = verifyWebhookSignature({
+            body,
+            signature: dummySig,
+            secret: SECRET,
+            timestamp,
+            now: receivedAt,
+          });
+          expect(res.valid).toBe(false);
+          expect(res.reason).toBe("signature mismatch");
+        }).not.toThrow();
+      }
+    });
+
+    it("handles malformed input objects, missing secrets, and throwing getters safely", () => {
+      expect(() => {
+        expect(verifyWebhookSignature(null as unknown as WebhookVerificationInput).valid).toBe(false);
+        expect(verifyWebhookSignature(undefined as unknown as WebhookVerificationInput).valid).toBe(false);
+        expect(verifyWebhookSignature({} as unknown as WebhookVerificationInput).valid).toBe(false);
+        expect(
+          verifyWebhookSignature({
+            body: '{"event":"test"}',
+            signature: "0".repeat(64),
+            secret: null as unknown as string,
+          }).valid
+        ).toBe(false);
+        expect(
+          verifyWebhookSignature({
+            get body(): string {
+              throw new Error("unexpected getter failure");
+            },
+            signature: "0".repeat(64),
+            secret: SECRET,
+          }).valid
+        ).toBe(false);
+      }).not.toThrow();
+    });
+  });
 });

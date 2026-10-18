@@ -9,14 +9,19 @@ import type { WebhookPayload } from "@/lib/webhook-deliver";
  * (on both the envelope and the data) lets receivers skip side effects.
  *
  * @param event The event type to simulate. Defaults to `payment.completed`.
+ * @param timestamp Optional timestamp string. Defaults to now.
+ * @param overrides Optional partial payload overrides for fuzzing / boundary tests.
  */
 export function buildTestWebhookPayload(
   event: WebhookEventType = WEBHOOK_EVENTS.PAYMENT_COMPLETED,
   timestamp = new Date().toISOString(),
+  overrides?: Partial<WebhookPayload>,
 ): WebhookPayload {
+  const safeTimestamp =
+    typeof timestamp === "string" ? timestamp : new Date().toISOString();
   return {
-    event,
-    timestamp,
+    event: event || WEBHOOK_EVENTS.PAYMENT_COMPLETED,
+    timestamp: safeTimestamp,
     test: true,
     data: {
       test: true,
@@ -26,7 +31,9 @@ export function buildTestWebhookPayload(
       assetIssuer: "GA5ZSEJ4KZ3P4P6XWJLZ4TLQUDV6C6PDU4XJ7BCVQZ4TVPULZNK3WYJ",
       status: "COMPLETED",
       description: "OphirPay test event — no real payment was created",
-      createdAt: timestamp,
+      createdAt: safeTimestamp,
+      ...(overrides?.data ?? {}),
     },
+    ...overrides,
   };
 }

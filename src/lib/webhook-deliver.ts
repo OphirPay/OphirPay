@@ -39,7 +39,14 @@ export function webhookSignedInput(
 }
 
 export function canonicalizeWebhookBody(payload: WebhookPayload): string {
-  return JSON.stringify({ ...payload, signature: "" });
+  try {
+    if (!payload || typeof payload !== "object") {
+      return JSON.stringify({ signature: "" });
+    }
+    return JSON.stringify({ ...payload, signature: "" });
+  } catch {
+    return JSON.stringify({ signature: "" });
+  }
 }
 
 export const BLOCKED_WEBHOOK_TARGET_ERROR =
@@ -56,13 +63,18 @@ export const BLOCKED_WEBHOOK_TARGET_ERROR =
  * of each string (the hex digests the sender transmits).
  */
 export function constantTimeEqual(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a, "utf8");
-  const bBuf = Buffer.from(b, "utf8");
-  // Length is not secret (the digest length is fixed), and equal-byte-length
-  // is a hard precondition for timingSafeEqual. Bailing here keeps a malformed
-  // or truncated signature from throwing an uncaught RangeError.
-  if (aBuf.length !== bBuf.length) return false;
-  return crypto.timingSafeEqual(aBuf, bBuf);
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  try {
+    const aBuf = Buffer.from(a, "utf8");
+    const bBuf = Buffer.from(b, "utf8");
+    // Length is not secret (the digest length is fixed), and equal-byte-length
+    // is a hard precondition for timingSafeEqual. Bailing here keeps a malformed
+    // or truncated signature from throwing an uncaught RangeError.
+    if (aBuf.length !== bBuf.length) return false;
+    return crypto.timingSafeEqual(aBuf, bBuf);
+  } catch {
+    return false;
+  }
 }
 
 /** Why a delivery was accepted or rejected by {@link verifyWebhookSignature}. */
@@ -78,7 +90,7 @@ export interface WebhookVerificationInput {
   /** Raw request body, exactly as received. */
   body: string;
   /** `X-OphirPay-Signature` header value (the body field is informational). */
-  signature: string | null | undefined;
+  signature: string | string[] | null | undefined;
   /** The webhook signing secret. */
   secret: string;
   /**
@@ -122,66 +134,107 @@ export interface WebhookVerificationResult {
  * if (!result.valid) return new Response("unauthorized", { status: 401 });
  * ```
  */
-export function verifyWebhookSignature({
-  body,
-  signature,
-  secret,
-  timestamp,
-  maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
-  now = Date.now(),
-}: WebhookVerificationInput): WebhookVerificationResult {
-  let parsed: WebhookPayload;
-  let canonical: string;
+export function verifyWebhookSignature(
+  input: WebhookVerificationInput
+): WebhookVerificationResult {
   try {
-    const raw: unknown = JSON.parse(body);
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    if (!input || typeof input !== "object") {
       return { valid: false, reason: "invalid body" };
     }
-    parsed = raw as WebhookPayload;
-    // Empty the signature field (do NOT delete the key) — the HMAC covers
-    // `"signature":""` as the last member.
-    canonical = JSON.stringify({ ...parsed, signature: "" });
+
+    const {
+      body,
+      signature,
+      secret,
+      timestamp,
+      maxAgeSeconds = WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+      now = Date.now(),
+    } = input;
+
+    if (typeof body !== "string" || !body) {
+      return { valid: false, reason: "invalid body" };
+    }
+    if (typeof secret !== "string" || !secret) {
+      return { valid: false, reason: "signature mismatch" };
+    }
+
+    let parsed: WebhookPayload;
+    let canonical: string;
+    try {
+      const raw: unknown = JSON.parse(body);
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return { valid: false, reason: "invalid body" };
+      }
+      parsed = raw as WebhookPayload;
+      // Empty the signature field (do NOT delete the key) — the HMAC covers
+      // `"signature":""` as the last member.
+      canonical = JSON.stringify({ ...parsed, signature: "" });
+    } catch {
+      return { valid: false, reason: "invalid body" };
+    }
+
+    // The timestamp is authenticated (it is prepended to the canonical body), so
+    // the header is safe to trust for replay protection. Prefer the header, fall
+    // back to the body field, which is signed too.
+    const signedTimestamp = String(timestamp ?? parsed.timestamp ?? "");
+    const expected = crypto
+      .createHmac("sha256", secret)
+      .update(webhookSignedInput(signedTimestamp, canonical))
+      .digest("hex");
+
+    // Handle string, array (e.g. duplicate headers), or missing/malformed signature values
+    const sigStr =
+      typeof signature === "string"
+        ? signature
+        : Array.isArray(signature)
+        ? (typeof signature[0] === "string" ? signature[0] : "")
+        : "";
+
+    // Constant-time comparison — see constantTimeEqual. Length mismatches return
+    // false without throwing (acceptance criterion of issue #1386).
+    if (!constantTimeEqual(sigStr, expected)) {
+      return { valid: false, reason: "signature mismatch" };
+    }
+
+    const maxAge =
+      typeof maxAgeSeconds === "number" && !Number.isNaN(maxAgeSeconds)
+        ? maxAgeSeconds
+        : WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS;
+
+    if (maxAge > 0) {
+      const ts = Date.parse(signedTimestamp);
+      if (Number.isNaN(ts)) {
+        return { valid: false, reason: "missing or invalid timestamp" };
+      }
+      const refNow =
+        typeof now === "number" && !Number.isNaN(now) ? now : Date.now();
+      const ageSeconds = (refNow - ts) / 1000;
+      if (ageSeconds > maxAge) {
+        return { valid: false, reason: "payload too old — possible replay" };
+      }
+      if (ageSeconds < -maxAge) {
+        return { valid: false, reason: "payload timestamp is in the future" };
+      }
+    }
+
+    return { valid: true, reason: "valid" };
   } catch {
     return { valid: false, reason: "invalid body" };
   }
-
-  // The timestamp is authenticated (it is prepended to the canonical body), so
-  // the header is safe to trust for replay protection. Prefer the header, fall
-  // back to the body field, which is signed too.
-  const signedTimestamp = String(timestamp ?? parsed.timestamp ?? "");
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(webhookSignedInput(signedTimestamp, canonical))
-    .digest("hex");
-
-  // Constant-time comparison — see constantTimeEqual. Length mismatches return
-  // false without throwing (acceptance criterion of issue #1386).
-  if (!constantTimeEqual(String(signature ?? ""), expected)) {
-    return { valid: false, reason: "signature mismatch" };
-  }
-
-  if (maxAgeSeconds > 0) {
-    const ts = Date.parse(signedTimestamp);
-    if (Number.isNaN(ts)) {
-      return { valid: false, reason: "missing or invalid timestamp" };
-    }
-    const ageSeconds = (now - ts) / 1000;
-    if (ageSeconds > maxAgeSeconds) {
-      return { valid: false, reason: "payload too old — possible replay" };
-    }
-    if (ageSeconds < -maxAgeSeconds) {
-      return { valid: false, reason: "payload timestamp is in the future" };
-    }
-  }
-
-  return { valid: true, reason: "valid" };
 }
 
 export function signWebhookPayload(payload: WebhookPayload, secret: string): string {
-  const canonical = canonicalizeWebhookBody(payload);
+  const safeSecret = typeof secret === "string" ? secret : "";
+  const safePayload =
+    payload && typeof payload === "object" ? payload : ({} as WebhookPayload);
+  const timestamp =
+    typeof safePayload.timestamp === "string"
+      ? safePayload.timestamp
+      : String(safePayload.timestamp ?? "");
+  const canonical = canonicalizeWebhookBody(safePayload);
   return crypto
-    .createHmac("sha256", secret)
-    .update(webhookSignedInput(payload.timestamp, canonical))
+    .createHmac("sha256", safeSecret)
+    .update(webhookSignedInput(timestamp, canonical))
     .digest("hex");
 }
 
@@ -189,13 +242,25 @@ export function buildSignedPayload(
   payload: WebhookPayload,
   secret: string
 ): { body: string; signature: string; timestamp: string } {
-  const timestamp = payload.timestamp;
-  const canonical = canonicalizeWebhookBody(payload);
+  const safeSecret = typeof secret === "string" ? secret : "";
+  const safePayload =
+    payload && typeof payload === "object" ? payload : ({} as WebhookPayload);
+  const timestamp =
+    typeof safePayload.timestamp === "string"
+      ? safePayload.timestamp
+      : String(safePayload.timestamp ?? "");
+  const canonical = canonicalizeWebhookBody(safePayload);
   const signature = crypto
-    .createHmac("sha256", secret)
+    .createHmac("sha256", safeSecret)
     .update(webhookSignedInput(timestamp, canonical))
     .digest("hex");
-  return { body: JSON.stringify({ ...payload, signature }), signature, timestamp };
+  let body: string;
+  try {
+    body = JSON.stringify({ ...safePayload, signature });
+  } catch {
+    body = JSON.stringify({ signature, timestamp, event: "", data: {} });
+  }
+  return { body, signature, timestamp };
 }
 
 export interface WebhookRequestPreview {

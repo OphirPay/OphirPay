@@ -1912,6 +1912,66 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_multisig_reject_duplicate_signers() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let signer1 = Address::generate(&env);
+        let signer2 = Address::generate(&env);
+        let _ = client.init(&owner);
+
+        // Vector containing duplicate signer1
+        let signers = vec![&env, signer1.clone(), signer2.clone(), signer1.clone()];
+        let result = client.try_set_multisig_config(&owner, &2u32, &signers, &true);
+        assert_eq!(result, Err(Ok(PaymentError::DuplicateSigner)));
+    }
+
+    #[test]
+    fn test_multisig_reject_max_signers_exceeded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let _ = client.init(&owner);
+
+        let mut signers = Vec::new(&env);
+        // Exceed MAX_MULTISIG_SIGNERS (50) by pushing 51 distinct addresses
+        for _ in 0..=50 {
+            signers.push_back(Address::generate(&env));
+        }
+        let result = client.try_set_multisig_config(&owner, &2u32, &signers, &true);
+        assert_eq!(result, Err(Ok(PaymentError::MaxSignersExceeded)));
+    }
+
+    #[test]
+    fn test_multisig_reject_invalid_threshold() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let s1 = Address::generate(&env);
+        let s2 = Address::generate(&env);
+        let _ = client.init(&owner);
+
+        let signers = vec![&env, s1.clone(), s2.clone()];
+
+        // Zero threshold is rejected
+        let res_zero = client.try_set_multisig_config(&owner, &0u32, &signers, &true);
+        assert_eq!(res_zero, Err(Ok(PaymentError::InvalidAmount)));
+
+        // Threshold greater than signer count (3 > 2) is rejected
+        let res_gt = client.try_set_multisig_config(&owner, &3u32, &signers, &true);
+        assert_eq!(res_gt, Err(Ok(PaymentError::InvalidAmount)));
+    }
+
     // ── Spending Limit Tests ──────────────────────────────────
 
     #[test]

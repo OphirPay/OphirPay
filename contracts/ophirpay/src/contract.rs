@@ -50,6 +50,8 @@ pub const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 // `get_audit_log_range`, `get_payments_range`, `get_fee_config_history` and
 // `get_reason_code_analytics`.
 pub const MAX_READER_ENTRIES: u32 = 100;
+/// Maximum number of signers allowed in a multisig configuration.
+pub const MAX_MULTISIG_SIGNERS: u32 = 50;
 
 // ── Contract ───────────────────────────────────────────────────
 
@@ -139,24 +141,25 @@ impl OphirPayContract {
         caller.require_auth();
         require_owner(&env, &caller)?;
 
-        let mut unique_signers = Vec::new(&env);
-        for signer in signers.into_iter() {
-            if !unique_signers.contains(signer.clone()) {
-                unique_signers.push_back(signer);
-            }
-        }
-
-        if unique_signers.len() > 50 {
+        if signers.len() > MAX_MULTISIG_SIGNERS {
             return Err(PaymentError::MaxSignersExceeded);
         }
 
-        if threshold == 0 || threshold > unique_signers.len() {
+        let mut seen = Vec::new(&env);
+        for signer in signers.iter() {
+            if seen.contains(&signer) {
+                return Err(PaymentError::DuplicateSigner);
+            }
+            seen.push_back(signer);
+        }
+
+        if threshold == 0 || threshold > signers.len() {
             return Err(PaymentError::InvalidAmount);
         }
 
         let config = MultisigConfig {
             threshold,
-            signers: unique_signers,
+            signers,
             enabled,
         };
 

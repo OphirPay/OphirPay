@@ -66,6 +66,10 @@ export interface BoundedSseBuffer {
   attach(controller: ReadableStreamDefaultController<Uint8Array>): void;
   /** Enqueue an SSE event (or buffer it, subject to the policy). */
   push(event: string, data: unknown): void;
+  /** Enqueue a raw SSE comment line (e.g. `: ping\n\n`), bypasses EventSource parsing. */
+  pushComment(comment: string): void;
+  /** Enqueue a periodic keep-alive ping comment (`: ping\n\n`) (#1289). */
+  ping(): void;
   /** ReadableStream `pull` hook — drains on consumer demand. */
   pull(controller: ReadableStreamDefaultController<Uint8Array>): void;
   /** Stop buffering and close the stream (client already gone). */
@@ -243,11 +247,39 @@ export function createBoundedSseBuffer(
     drain();
   };
 
+  const pushComment = (comment: string): void => {
+    if (disconnected) return;
+    const bytes = encodeSseComment(comment);
+    const controller = controllerRef;
+    if (
+      controller &&
+      queue.length === 0 &&
+      (controller.desiredSize === null || controller.desiredSize > 0)
+    ) {
+      try {
+        controller.enqueue(bytes);
+        lastDrainAt = now();
+        return;
+      } catch {
+        /* fall back to queueing */
+      }
+    }
+    queue.push(bytes);
+    queuedBytes += bytes.length;
+    drain();
+  };
+
+  const ping = (): void => {
+    pushComment("ping");
+  };
+
   return {
     attach(controller) {
       controllerRef = controller;
     },
     push,
+    pushComment,
+    ping,
     pull(controller) {
       controllerRef = controller;
       lastDrainAt = now();

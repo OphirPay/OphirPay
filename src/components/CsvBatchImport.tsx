@@ -7,6 +7,7 @@ import {
   validateRecipientFields,
   applyDuplicateErrors,
   downloadCsvTemplate,
+  computeCsvTotals,
   MAX_BATCH_RECIPIENTS,
   type CsvImportRow,
 } from "@/lib/csv-import";
@@ -44,9 +45,8 @@ export function CsvBatchImport({
   const [isDragActive, setIsDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const errorCount = rows.filter(
-    (r) => Object.keys(r.errors).length > 0
-  ).length;
+  const totals = computeCsvTotals(rows);
+  const errorCount = totals.errorRows;
   const isValid =
     rows.length > 0 &&
     fileErrors.length === 0 &&
@@ -200,20 +200,43 @@ export function CsvBatchImport({
             <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
               {fileName}
             </p>
-            <p
-              className={cn(
-                "text-xs mt-0.5",
-                isValid
-                  ? "text-green-600 dark:text-green-400"
-                  : "text-red-600 dark:text-red-400"
-              )}
-              data-testid="csv-summary"
+            <div
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs"
+              data-testid="csv-aggregate-totals"
             >
-              {rows.length} row{rows.length !== 1 ? "s" : ""}
-              {errorCount > 0
-                ? ` · ${errorCount} with error${errorCount !== 1 ? "s" : ""}`
-                : " · all rows valid"}
-            </p>
+              <span className="font-medium text-gray-700 dark:text-gray-300">
+                Recipients:{" "}
+                <span className="font-semibold text-gray-900 dark:text-white" data-testid="aggregate-recipient-count">
+                  {rows.length}
+                </span>
+              </span>
+              <span className="text-gray-400">·</span>
+              <span className="font-medium text-gray-700 dark:text-gray-300">
+                Total:{" "}
+                <span className="font-semibold text-ophir-600 dark:text-ophir-400 font-mono" data-testid="aggregate-total-amount">
+                  {totals.totalAmount.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 7,
+                  })}{" "}
+                  XLM
+                </span>
+              </span>
+              <span className="text-gray-400">·</span>
+              <span
+                className={cn(
+                  "font-medium",
+                  isValid
+                    ? "text-green-600 dark:text-green-400"
+                    : "text-red-600 dark:text-red-400"
+                )}
+                data-testid="csv-summary"
+              >
+                {totals.validRows}/{rows.length} valid
+                {totals.errorRows > 0
+                  ? ` · ${totals.errorRows} with error${totals.errorRows !== 1 ? "s" : ""}`
+                  : " · all rows valid"}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -279,6 +302,7 @@ export function CsvBatchImport({
                       </td>
                       <td className="py-3 px-3">
                         <CellInput
+                          testId={`csv-input-address-${r.sourceRow}`}
                           value={r.values.address}
                           error={r.errors.address}
                           placeholder="G... destination address"
@@ -288,6 +312,7 @@ export function CsvBatchImport({
                       </td>
                       <td className="py-3 px-3">
                         <CellInput
+                          testId={`csv-input-amount-${r.sourceRow}`}
                           value={r.values.amount}
                           error={r.errors.amount}
                           placeholder="0.00"
@@ -298,6 +323,7 @@ export function CsvBatchImport({
                       </td>
                       <td className="py-3 px-3">
                         <CellInput
+                          testId={`csv-input-memo-${r.sourceRow}`}
                           value={r.values.memo}
                           error={r.errors.memo}
                           placeholder="Optional"
@@ -388,6 +414,7 @@ function CellInput({
   className,
   inputMode,
   maxLength,
+  testId,
   onChange,
 }: {
   value: string;
@@ -396,12 +423,14 @@ function CellInput({
   className?: string;
   inputMode?: "decimal" | "text";
   maxLength?: number;
+  testId?: string;
   onChange: (value: string) => void;
 }) {
   return (
     <div>
       <input
         type="text"
+        data-testid={testId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -420,6 +449,7 @@ function CellInput({
       {error && (
         <p
           role="alert"
+          data-testid={testId ? `${testId}-error` : undefined}
           className="mt-1 text-xs text-red-600 dark:text-red-400"
         >
           {error}

@@ -164,4 +164,39 @@ describe("CsvBatchImport", () => {
       await screen.findByText(/must have a header row and at least one data row/i)
     ).toBeInTheDocument();
   });
+
+  it("calculates and displays aggregate totals and updates dynamically when edited", async () => {
+    setup();
+    await uploadFile(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,note1\n${OTHER_ADDRESS},50.25,note2\n`)
+    );
+
+    expect(await screen.findByTestId("csv-aggregate-totals")).toBeInTheDocument();
+    expect(screen.getByTestId("aggregate-recipient-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("aggregate-total-amount")).toHaveTextContent("150.25 XLM");
+
+    // Edit row 1 amount from 100 to 200
+    const amountInput = screen.getByTestId("csv-input-amount-1");
+    fireEvent.change(amountInput, { target: { value: "200" } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("aggregate-total-amount")).toHaveTextContent("250.25 XLM");
+    });
+  });
+
+  it("exposes row-level test IDs for cells and displays inline errors", async () => {
+    setup();
+    await uploadFile(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},-10,test\n`)
+    );
+
+    expect(await screen.findByTestId("csv-row-1")).toBeInTheDocument();
+    expect(screen.getByTestId("csv-input-amount-1")).toBeInTheDocument();
+    expect(screen.getByTestId("csv-input-amount-1-error")).toHaveTextContent(
+      "Amount must be a number greater than 0."
+    );
+  });
 });
+

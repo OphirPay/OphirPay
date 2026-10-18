@@ -135,11 +135,53 @@ export function validateRecipientFields(
   }
 
   const mem = memo.trim();
-  if (mem.length > 28) {
-    errors.memo = "Memo must be 28 characters or fewer.";
+  if (mem) {
+    if (/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069]/.test(mem)) {
+      errors.memo = "Memo must not contain control characters.";
+    } else if (mem.length > 28) {
+      errors.memo = "Memo must be 28 characters or fewer.";
+    } else if (new TextEncoder().encode(mem).length > 28) {
+      errors.memo = "Memo must be 28 bytes or fewer (non-ASCII characters count more).";
+    }
   }
 
   return errors;
+}
+
+export interface CsvAggregateTotals {
+  totalRows: number;
+  validRows: number;
+  errorRows: number;
+  totalAmount: number;
+}
+
+/**
+ * Compute aggregate metrics (recipient count, valid count, total amount) across CSV rows.
+ */
+export function computeCsvTotals(rows: CsvImportRow[]): CsvAggregateTotals {
+  let totalAmount = 0;
+  let validRows = 0;
+  let errorRows = 0;
+
+  for (const row of rows) {
+    const hasError = Object.keys(row.errors).length > 0;
+    if (hasError) {
+      errorRows++;
+    } else {
+      validRows++;
+      const n = parseFloat(row.values.amount);
+      if (!isNaN(n) && n > 0) {
+        totalAmount += n;
+      }
+    }
+  }
+
+  return {
+    totalRows: rows.length,
+    validRows,
+    errorRows,
+    totalAmount,
+  };
 }
 
 /**

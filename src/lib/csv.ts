@@ -46,3 +46,13 @@ function escapeCsvField(value: string, delimiter: string): string {
   }
   return value;
 }
+
+export {
+  parseCsvText,
+  parseRecipientsCsvToRows,
+  validateRecipientFields,
+  computeCsvTotals,
+  type CsvImportRow,
+  type CsvAggregateTotals,
+} from "./csv-import";
+

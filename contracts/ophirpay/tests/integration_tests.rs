@@ -935,3 +935,165 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stream Cancellation Pro-Rata Refund Verification (#1357)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_stream_cancellation_prorata_intervals() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+
+    fix.mint(&creator, 100_000);
+
+    let start_time: u64 = 10_000;
+    let duration: u64 = 1_000;
+    let end_time: u64 = start_time + duration;
+    let total_amount: i128 = 10_000;
+
+    // Case 1: Cancel at 0% elapsed (now == start_time)
+    fix.env.ledger().set_timestamp(start_time);
+    let s1 = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total_amount,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "s1-0pct"),
+    );
+    let (claimed1, earned1, unvested1) = fix.client.get_stream_cancel_split(&s1);
+    assert_eq!(claimed1, 0);
+    assert_eq!(earned1, 0);
+    assert_eq!(unvested1, total_amount);
+    assert_eq!(claimed1 + earned1 + unvested1, total_amount);
+
+    let refund1 = fix.client.cancel_stream(&creator, &s1);
+    assert_eq!(refund1, total_amount);
+
+    // Case 2: Cancel at 25% elapsed (now == start_time + 250)
+    let s2 = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total_amount,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "s2-25pct"),
+    );
+    fix.env.ledger().set_timestamp(start_time + 250);
+    let (claimed2, earned2, unvested2) = fix.client.get_stream_cancel_split(&s2);
+    assert_eq!(claimed2, 0);
+    assert_eq!(earned2, 2_500);
+    assert_eq!(unvested2, 7_500);
+    assert_eq!(claimed2 + earned2 + unvested2, total_amount);
+
+    let refund2 = fix.client.cancel_stream(&creator, &s2);
+    assert_eq!(refund2, 7_500);
+
+    // Case 3: Cancel at 50% elapsed with prior partial claim
+    let s3 = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total_amount,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "s3-50pct"),
+    );
+    // At 20%, recipient claims
+    fix.env.ledger().set_timestamp(start_time + 200);
+    let claimed_so_far = fix.client.claim_stream(&recipient, &s3);
+    assert_eq!(claimed_so_far, 2_000);
+
+    // Now advance to 50%
+    fix.env.ledger().set_timestamp(start_time + 500);
+    let (claimed3, earned3, unvested3) = fix.client.get_stream_cancel_split(&s3);
+    assert_eq!(claimed3, 2_000);
+    assert_eq!(earned3, 3_000); // 5000 vested - 2000 claimed
+    assert_eq!(unvested3, 5_000);
+    assert_eq!(claimed3 + earned3 + unvested3, total_amount);
+
+    let refund3 = fix.client.cancel_stream(&creator, &s3);
+    assert_eq!(refund3, 5_000);
+
+    // Case 4: Cancel at 75% elapsed (now == start_time + 750)
+    let s4 = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total_amount,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "s4-75pct"),
+    );
+    fix.env.ledger().set_timestamp(start_time + 750);
+    let (claimed4, earned4, unvested4) = fix.client.get_stream_cancel_split(&s4);
+    assert_eq!(claimed4, 0);
+    assert_eq!(earned4, 7_500);
+    assert_eq!(unvested4, 2_500);
+    assert_eq!(claimed4 + earned4 + unvested4, total_amount);
+
+    let refund4 = fix.client.cancel_stream(&creator, &s4);
+    assert_eq!(refund4, 2_500);
+
+    // Case 5: Cancel at 100% elapsed (now == end_time)
+    let s5 = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total_amount,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "s5-100pct"),
+    );
+    fix.env.ledger().set_timestamp(end_time);
+    let (claimed5, earned5, unvested5) = fix.client.get_stream_cancel_split(&s5);
+    assert_eq!(claimed5, 0);
+    assert_eq!(earned5, 10_000);
+    assert_eq!(unvested5, 0);
+    assert_eq!(claimed5 + earned5 + unvested5, total_amount);
+
+    let refund5 = fix.client.cancel_stream(&creator, &s5);
+    assert_eq!(refund5, 0);
+}
+
+#[test]
+fn test_stream_cancellation_inexact_division_solvency() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+
+    fix.mint(&creator, 100_000);
+
+    let start_time: u64 = 1_000;
+    let end_time: u64 = 2_000; // duration 1000s
+    let odd_amount: i128 = 10_001; // Not cleanly divisible
+
+    fix.env.ledger().set_timestamp(start_time);
+    let s = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &odd_amount,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "odd-stream"),
+    );
+
+    // Cancel halfway at 1500s (50%)
+    fix.env.ledger().set_timestamp(1_500);
+    let (claimed, earned, unvested) = fix.client.get_stream_cancel_split(&s);
+    // 10_001 * 500 / 1000 = 5_000 (floor rounding)
+    assert_eq!(claimed, 0);
+    assert_eq!(earned, 5_000);
+    assert_eq!(unvested, 5_001);
+    // Conservation must hold exactly
+    assert_eq!(claimed + earned + unvested, odd_amount);
+
+    let refund = fix.client.cancel_stream(&creator, &s);
+    assert_eq!(refund, 5_001);
+}
+

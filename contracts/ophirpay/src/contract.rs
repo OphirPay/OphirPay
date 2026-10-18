@@ -2612,7 +2612,20 @@ impl OphirPayContract {
         let earned_unclaimed = vested
             .checked_sub(stream.claimed_amount)
             .ok_or(PaymentError::StreamInvariantViolated)?;
-        let unvested = stream.total_amount.saturating_sub(vested);
+        let unvested = stream
+            .total_amount
+            .checked_sub(vested)
+            .ok_or(PaymentError::StreamInvariantViolated)?;
+
+        // Strict conservation invariant (#1357): claimed + earned_unclaimed + unvested == total_amount
+        if stream
+            .claimed_amount
+            .saturating_add(earned_unclaimed)
+            .saturating_add(unvested)
+            != stream.total_amount
+        {
+            return Err(PaymentError::StreamInvariantViolated);
+        }
 
         stream.cancelled = true;
         stream.claimed_amount = vested;
@@ -2645,6 +2658,32 @@ impl OphirPayContract {
         );
 
         Ok(unvested)
+    }
+
+    /// Calculate pro-rata stream cancellation split (#1357).
+    /// Returns (claimed, earned_unclaimed, unvested_refundable).
+    /// Guarantee: claimed + earned_unclaimed + unvested_refundable == total_amount.
+    pub fn get_stream_cancel_split(
+        env: Env,
+        stream_id: u64,
+    ) -> Result<(i128, i128, i128), PaymentError> {
+        let stream: Stream = env
+            .storage()
+            .persistent()
+            .get(&(STREAM_KEY, stream_id))
+            .ok_or(PaymentError::StreamNotFound)?;
+
+        let now = env.ledger().timestamp();
+        let vested = compute_vested(stream.total_amount, stream.start_time, stream.end_time, now);
+        let earned_unclaimed = vested
+            .checked_sub(stream.claimed_amount)
+            .ok_or(PaymentError::StreamInvariantViolated)?;
+        let unvested = stream
+            .total_amount
+            .checked_sub(vested)
+            .ok_or(PaymentError::StreamInvariantViolated)?;
+
+        Ok((stream.claimed_amount, earned_unclaimed, unvested))
     }
 
     /// Get a stream by ID

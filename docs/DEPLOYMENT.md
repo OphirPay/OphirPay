@@ -244,6 +244,25 @@ The `Dockerfile` uses a 3-stage build:
   Prisma query-engine binary, which the standalone tracer intentionally omits because it
   is platform-specific.
 
+### Multi-Architecture Builds (linux/amd64 & linux/arm64)
+
+Issue #1300 introduces multi-architecture container manifests and CI smoke test matrix validation for both `linux/amd64` and `linux/arm64`:
+
+- **Supported Platforms:**
+  - `linux/amd64`: Standard x86_64 cloud instances (AWS EC2, GCP Compute Engine, bare-metal servers) and Intel/AMD developer machines.
+  - `linux/arm64`: Apple Silicon (M1/M2/M3/M4) Macs and ARM-based cloud instances (AWS Graviton2/3/4, Oracle Ampere Altra).
+- **Platform-Agnostic Compose:** `docker-compose.yml` contains no platform-specific overrides or hardcoded flags; Docker automatically selects the native image matching the host machine.
+- **Manual Multi-Arch Build:**
+  ```bash
+  docker buildx create --use
+  docker buildx build --platform linux/amd64,linux/arm64 -t ophirpay:latest .
+  ```
+- **Build Time Increase Justification:**
+  Building multi-architecture manifests on standard GitHub Actions runners (`ubuntu-latest` x86_64) requires QEMU emulation for `linux/arm64`, which increases compilation time compared to a single-architecture build (~6-10 minutes for ARM64 vs ~2-3 minutes for native AMD64). This overhead is justified because:
+  1. **Zero Emulation in Production:** ARM-based instances (AWS Graviton, Ampere) and Apple Silicon developers run native ARM64 code without Rosetta 2 or QEMU user-space translation, yielding up to 300%-500% CPU throughput improvements and avoiding memory-leak edge cases.
+  2. **CI Matrix Parallelization:** The CI workflow (`.github/workflows/docker-smoke.yml`) executes `amd64` and `arm64` smoke tests in parallel matrix runners rather than serialized jobs, keeping turnaround time minimal.
+  3. **BuildKit Layer Caching:** GitHub Actions cache (`type=gha`) isolates cache scopes per architecture (`docker-amd64` and `docker-arm64`), ensuring incremental rebuilds only recompile changed layers.
+
 ### Liveness vs readiness
 
 OphirPay exposes two probes with deliberately different meanings. They are

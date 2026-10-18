@@ -4,6 +4,11 @@
 # NOTE: Use the Debian (glibc) image, not Alpine (musl). Tailwind v4's
 # `@tailwindcss/postcss` and its native `lightningcss`/`oxide` binaries crash
 # the Turbopack PostCSS loader on musl, which fails `next build` in Docker.
+#
+# Multi-Architecture Support (Issue #1300):
+# `node:24-slim` is an official multi-arch base supporting linux/amd64 and linux/arm64.
+# The builder and runner stages compile and run natively on both x86_64 and aarch64
+# (Apple Silicon M1/M2/M3/M4, AWS Graviton, Oracle Ampere) without emulation.
 FROM node:24-slim AS deps
 RUN apt-get update -qq \
   && apt-get install -y --no-install-recommends openssl ca-certificates \

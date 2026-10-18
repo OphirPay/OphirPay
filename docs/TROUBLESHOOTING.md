@@ -331,6 +331,93 @@ npm ci
 
 ---
 
+## 🚨 Prometheus Alert Runbooks
+
+### Webhook delivery failures
+<a id="webhook-delivery-failures"></a>
+
+**Alerts**: `OphirPayWebhookHighFailureRate` (> 5% failure rate over 5m), `WebhookDeliveryFailureRateHigh` (> 25% failure rate over 15m).
+
+**Symptom**: Webhook events fail terminal delivery attempts to subscriber endpoints.
+
+**Cause**: 
+- Subscriber endpoint is offline, returning HTTP 5xx or timing out.
+- TLS/SSL certificate mismatch or invalid payload signature verification on client side.
+- Network partitions or DNS resolution failures on egress traffic.
+
+**Resolution**:
+1. Check webhook delivery logs via `GET /api/webhooks/[id]/deliveries`.
+2. Send test webhook payload via `POST /api/webhooks/[id]/test` to verify subscriber reachability.
+3. Verify endpoint health and inspect HTTP status code distribution.
+4. If failures persist on subscriber side, verify subscriber endpoint URL with customer or disable broken hooks to preserve queue capacity.
+
+---
+
+### Soroban RPC degraded
+<a id="soroban-rpc-degraded"></a>
+
+**Alerts**: `OphirPayRpcProviderDegraded` (> 2.5s latency or 5xx for 3m), `RpcFailoverDegraded` (running on fallback for > 2m), `RpcFailoverFrequent` (flapping between endpoints).
+
+**Symptom**: Contract calls, balance simulations, or payment submissions are slow or failing.
+
+**Cause**:
+- Upstream Stellar/Soroban RPC provider is rate-limiting requests or experiencing degraded performance.
+- Network latency or ISP routing degradation between server and RPC cluster.
+- Primary RPC node desynchronized from the Stellar Horizon consensus ledger.
+
+**Resolution**:
+1. Inspect `GET /api/health` — review the `rpcFailover` status block for current active endpoint and recent failure reasons.
+2. Check [status.stellar.org](https://status.stellar.org) for network-wide Stellar incidents.
+3. Verify connectivity: `curl -s -X POST https://soroban-testnet.stellar.org -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'`.
+4. If primary provider is unresponsive, update `SOROBAN_RPC_URL` in `.env.local` or let the automatic failover engine switch to configured fallback URLs.
+
+---
+
+### Database pool exhaustion
+<a id="database-pool-exhaustion"></a>
+
+**Alerts**: `OphirPayDatabasePoolExhaustion` (queue wait / query latency > 500ms for 2m).
+
+**Symptom**: API response times degrade, requests time out with connection pool wait errors (`P2024` Prisma connection timeout).
+
+**Cause**:
+- High concurrent mutation traffic exhausting available PostgreSQL connections.
+- Slow unindexed queries or long-running database transactions holding connections open.
+- Connection limit configured too low in `DATABASE_URL`.
+
+**Resolution**:
+1. Check PostgreSQL active connections:
+   ```sql
+   SELECT count(*), state FROM pg_stat_activity GROUP BY state;
+   ```
+2. Tune `connection_limit` and `pool_timeout` in `DATABASE_URL`:
+   ```bash
+   DATABASE_URL="postgresql://user:pass@host:5432/db?connection_limit=25&pool_timeout=15"
+   ```
+3. Inspect slow query logs in PostgreSQL or Prometheus `ophirpay_db_query_duration_seconds`.
+4. Scale database connection poolers (e.g. PgBouncer) or upgrade instance tier if sustained load exceeds capacity.
+
+---
+
+### Payment processing latency
+<a id="payment-processing-latency"></a>
+
+**Alerts**: `PaymentProcessingLatencyHigh` (P95 latency > 30s for 5m).
+
+**Resolution**: Check Horizon transaction ingestion delays and Soroban RPC health.
+
+---
+
+### API high error rate & API down
+<a id="api-high-error-rate"></a>
+<a id="api-down"></a>
+
+**Alerts**: `ApiHighErrorRate` (error rate > 5%), `ApiDown` (scrape failed).
+
+**Resolution**: Check application container logs via `docker logs` or Kubernetes `kubectl logs` for uncaught exceptions.
+
+---
+
 ## Quick checks
 
 - `node -v` matches `.nvmrc` / `package.json` engines.

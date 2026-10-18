@@ -119,21 +119,55 @@ jobs:
           NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000 \
             node .next/standalone/server.js > /tmp/next-server.log 2>&1 &
 
-          # /api/health returns 200 (healthy) or 503 (degraded — a Stellar or
-          # Redis dependency is unreachable). Either one proves the server is up
-          # and past environment validation.
+          # Phase 1: Wait for Next.js process to start serving (liveness check).
+          echo "Waiting for Next.js process to answer /api/health/live..."
+          live_ok=false
           for _ in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$E2E_BASE_URL/api/health" || true)
-            if [ "$code" = "200" ] || [ "$code" = "503" ]; then
-              echo "✅ Server ready (HTTP $code)"
-              exit 0
+            live_code=$(curl -s -o /dev/null -w "%{http_code}" "$E2E_BASE_URL/api/health/live" || true)
+            if [ "$live_code" = "200" ]; then
+              echo "✅ Process up (/api/health/live returned 200)"
+              live_ok=true
+              break
             fi
             sleep 1
           done
 
-          echo "::error::Server did not become ready within 60s"
-          cat /tmp/next-server.log
-          exit 1
+          if [ "$live_ok" != "true" ]; then
+            echo "::error::Server process failed to answer /api/health/live within 60s"
+            cat /tmp/next-server.log
+            exit 1
+          fi
+
+          # Phase 2: Wait for database readiness (/api/health).
+          # In src/app/api/health/route.ts:
+          # - HTTP 200 is returned for healthy OR degraded (Stellar/Redis unreachable, but DB is operational).
+          # - HTTP 503 is returned ONLY when the critical database connection check fails.
+          # The E2E suite requires a working database to execute tests, so HTTP 200 is strictly required.
+          echo "Waiting for database readiness (/api/health returning HTTP 200)..."
+          ready_ok=false
+          health_json=""
+          code=""
+          for _ in $(seq 1 30); do
+            health_response=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$E2E_BASE_URL/api/health" || true)
+            code=$(echo "$health_response" | tail -n 1 | sed 's/HTTP_STATUS://')
+            health_json=$(echo "$health_response" | sed '$d')
+
+            if [ "$code" = "200" ]; then
+              echo "✅ Database ready and server operational (HTTP 200)"
+              ready_ok=true
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$ready_ok" != "true" ]; then
+            echo "::error::Server failed database readiness check (/api/health returned HTTP ${code:-<none>})"
+            echo "--- /api/health JSON response ---"
+            echo "$health_json"
+            echo "--- Server Log (/tmp/next-server.log) ---"
+            cat /tmp/next-server.log
+            exit 1
+          fi
 
       - name: Run Playwright (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
         run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}

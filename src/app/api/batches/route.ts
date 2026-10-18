@@ -24,6 +24,11 @@ import {
   prismaPagination,
 } from "@/lib/pagination-utils";
 import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
+import {
+  acquireIdempotencyLock,
+  completeIdempotency,
+  releaseIdempotencyLock,
+} from "@/lib/idempotency";
 
 // ── GET /api/batches — List batches with pagination ──────────
 
@@ -208,10 +213,36 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
       idempotencyKey = headerCheck.data;
     }
 
-    // Re-submission of an already-processed batch: same user + same key means
-    // no new batch. If the first attempt created the batch row but crashed
-    // before inserting its child payments (a partial write), the retry resumes
-    // by inserting only the missing payments.
+    // 1. Redis-backed atomic lock & in-flight conflict guard (Issue #1366)
+    let lockAcquired = false;
+    if (idempotencyKey) {
+      const lockResult = await acquireIdempotencyLock(idempotencyKey);
+      if (lockResult.status === "in_flight") {
+        return conflictError(
+          "A request with this idempotency key is currently processing. Please retry after 5 seconds.",
+          { "Retry-After": String(lockResult.retryAfter ?? 5) }
+        );
+      }
+      if (lockResult.status === "cached") {
+        incMetric("batches_processed_total");
+        return successResponse(
+          lockResult.response.data,
+          {
+            ...lockResult.response.meta,
+            deduplicated: true,
+            cached: true,
+            timestamp: new Date().toISOString(),
+          },
+          lockResult.response.status ?? 201,
+          { "Idempotent-Replay": "true" }
+        );
+      }
+      if (lockResult.status === "acquired") {
+        lockAcquired = true;
+      }
+    }
+
+    // 2. Database layer check: Re-submission of an already-processed batch
     if (idempotencyKey) {
       const existing = await prisma.batch.findFirst({
         where: { userId, idempotencyKey },
@@ -225,18 +256,28 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
           });
           const resumed = await fetchBatchWithPayments(existing.id);
           incMetric("batches_processed_total");
+          await completeIdempotency(idempotencyKey, {
+            data: resumed,
+            status: 200,
+          });
           return successResponse(
             resumed,
             { deduplicated: true, resumed: true, timestamp: new Date().toISOString() },
-            200
+            200,
+            { "Idempotent-Replay": "true" }
           );
         }
 
         incMetric("batches_processed_total");
+        await completeIdempotency(idempotencyKey, {
+          data: existing,
+          status: 200,
+        });
         return successResponse(
           existing,
           { deduplicated: true, timestamp: new Date().toISOString() },
-          200
+          200,
+          { "Idempotent-Replay": "true" }
         );
       }
     }
@@ -269,6 +310,9 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
         });
       });
     } catch (err) {
+      if (lockAcquired && idempotencyKey) {
+        await releaseIdempotencyLock(idempotencyKey);
+      }
       if (isUniqueConstraintViolation(err) && idempotencyKey) {
         // A concurrent request won the race with the same key — serve the
         // already-created batch instead of failing the retry.
@@ -278,10 +322,15 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
         });
         if (winner) {
           incMetric("batches_processed_total");
+          await completeIdempotency(idempotencyKey, {
+            data: winner,
+            status: 200,
+          });
           return successResponse(
             winner,
             { deduplicated: true, timestamp: new Date().toISOString() },
-            200
+            200,
+            { "Idempotent-Replay": "true" }
           );
         }
         // A unique violation on the compound (userId, idempotencyKey) with no
@@ -292,6 +341,14 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
         );
       }
       throw err;
+    }
+
+    // Cache completed result in Redis for 24h
+    if (idempotencyKey) {
+      await completeIdempotency(idempotencyKey, {
+        data: result,
+        status: 201,
+      });
     }
 
     incMetric("batches_processed_total");

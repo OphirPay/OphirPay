@@ -33,6 +33,8 @@ interface ApiSuccess<T> {
     deduplicated?: boolean;
     /** True when a replayed batch resumed its missing child payments. */
     resumed?: boolean;
+    /** True when served from Redis idempotency response cache (#1366). */
+    cached?: boolean;
   };
 }
 
@@ -176,8 +178,19 @@ export function forbiddenError(
   return errorResponse(ERROR_CODES.INSUFFICIENT_SCOPE, message, 403, details);
 }
 
-export function conflictError(message: string) {
-  return errorResponse(ERROR_CODES.CONFLICT, message, 409);
+export function conflictError(
+  message: string,
+  extraHeaders?: Record<string, string>
+) {
+  const headers: Record<string, string> = { ...(extraHeaders ?? {}) };
+  return NextResponse.json(
+    {
+      success: false,
+      error: { code: ERROR_CODES.CONFLICT, message },
+      timestamp: new Date().toISOString(),
+    } satisfies ApiError,
+    { status: 409, headers }
+  );
 }
 
 export function badRequestError(message: string) {

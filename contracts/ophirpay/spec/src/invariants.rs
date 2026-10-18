@@ -135,6 +135,35 @@ fn locked_balance_invariant() {
     assert!(after_cycle <= locked_balance);
 }
 
+#[proof]
+fn multi_token_locked_balance_invariant() {
+    let token_a_balance: i128 = kani::any();
+    let token_a_locked: i128 = kani::any();
+    let token_b_balance: i128 = kani::any();
+    let token_b_locked: i128 = kani::any();
+    let withdraw_a: i128 = kani::any();
+    let withdraw_b: i128 = kani::any();
+
+    kani::assume(token_a_balance >= 0 && token_a_locked >= 0 && token_a_locked <= token_a_balance);
+    kani::assume(token_b_balance >= 0 && token_b_locked >= 0 && token_b_locked <= token_b_balance);
+    kani::assume(withdraw_a > 0 && withdraw_b > 0);
+
+    // Property 1f: Locking Token A never blocks withdrawing unlocked Token B
+    let allowed_b = model_emergency_withdraw_allowed(token_b_balance, token_b_locked, withdraw_b);
+    if withdraw_b <= token_b_balance.saturating_sub(token_b_locked) {
+        assert!(allowed_b);
+        let post_balance_b = token_b_balance.saturating_sub(withdraw_b);
+        assert!(post_balance_b >= token_b_locked);
+    }
+
+    // Property 1g: Token A withdrawal enforces post-withdrawal balance >= token_a_locked
+    let allowed_a = model_emergency_withdraw_allowed(token_a_balance, token_a_locked, withdraw_a);
+    if allowed_a {
+        let post_balance_a = token_a_balance.saturating_sub(withdraw_a);
+        assert!(post_balance_a >= token_a_locked);
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // INVARIANT 2: One Address = One Vote
 //

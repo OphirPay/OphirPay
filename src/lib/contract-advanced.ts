@@ -727,3 +727,94 @@ export async function setScopePaused(
   ];
   return signAndSubmit(caller, CONTRACT_ID, "set_scope_paused", args);
 }
+
+// ── Emergency Withdraw & Multi-Token Balance Integrity ────────
+
+/**
+ * Pre-withdrawal verification for emergency_withdraw (#1354).
+ * Enforces per-token balance integrity:
+ * 1. Contract balance must be greater than or equal to locked balance for this specific asset.
+ * 2. Withdraw amount must be positive and not exceed unlocked balance (balance - locked).
+ * 3. Post-withdrawal balance must remain >= locked balance.
+ */
+export function verifyEmergencyWithdrawIntegrity(
+  contractBalance: bigint,
+  tokenLockedBalance: bigint,
+  withdrawAmount: bigint,
+): { canWithdraw: boolean; reason?: string; remainingUnlocked: bigint } {
+  if (withdrawAmount <= BigInt(0)) {
+    return {
+      canWithdraw: false,
+      reason: "Withdraw amount must be greater than zero",
+      remainingUnlocked: BigInt(0),
+    };
+  }
+  if (contractBalance < tokenLockedBalance) {
+    return {
+      canWithdraw: false,
+      reason: "Contract balance is lower than token locked balance",
+      remainingUnlocked: BigInt(0),
+    };
+  }
+  const unlocked = contractBalance - tokenLockedBalance;
+  if (withdrawAmount > unlocked) {
+    return {
+      canWithdraw: false,
+      reason: "Withdraw amount exceeds unlocked token balance",
+      remainingUnlocked: unlocked,
+    };
+  }
+  const postBalance = contractBalance - withdrawAmount;
+  if (postBalance < tokenLockedBalance) {
+    return {
+      canWithdraw: false,
+      reason: "Post-withdrawal balance violates token locked balance invariant",
+      remainingUnlocked: unlocked,
+    };
+  }
+  return {
+    canWithdraw: true,
+    remainingUnlocked: unlocked - withdrawAmount,
+  };
+}
+
+/**
+ * Read the on-chain locked balance for a specific token asset (#1354).
+ */
+export async function getTokenLockedBalance(
+  assetContractId: string,
+  sourcePublicKey: string = CHAIN_READ_SOURCE,
+): Promise<bigint> {
+  const result = await simulateContractCall(
+    CONTRACT_ID,
+    "get_token_locked_balance",
+    sourcePublicKey,
+    [nativeToScVal(assetContractId, { type: "address" })],
+  );
+  if (result.status === "SIMULATION_FAILED" || result.returnValue === undefined) {
+    return BigInt(0);
+  }
+  try {
+    return BigInt(result.returnValue as string | number | bigint);
+  } catch {
+    return BigInt(0);
+  }
+}
+
+/**
+ * Owner-only: execute emergency withdrawal of unlocked tokens for a specific asset (#1354).
+ */
+export async function emergencyWithdraw(
+  caller: string,
+  asset: string,
+  amount: bigint | string | number,
+): Promise<ContractCallResult> {
+  const withdrawBigInt = BigInt(amount);
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(asset, { type: "address" }),
+    nativeToScVal(withdrawBigInt, { type: "i128" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "emergency_withdraw", args);
+}
+

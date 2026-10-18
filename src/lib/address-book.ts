@@ -11,8 +11,13 @@ import { isValidStellarAddress } from "@/lib/stellar";
 export interface AddressEntry {
   publicKey: string;
   label: string;
+  alias?: string;
+  federationAddress?: string;
   memo?: string;
   lastUsed?: number;
+  isBlacklisted?: boolean;
+  isUntrusted?: boolean;
+  warningNote?: string;
 }
 
 export interface AddressBookImportRejection {
@@ -147,14 +152,166 @@ export function removeAddress(publicKey: string): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(book));
 }
 
-/** Search address book by label or public key. */
-export function searchAddressBook(query: string): AddressEntry[] {
-  const q = query.toLowerCase();
-  return getAddressBook().filter(
-    (a) =>
-      a.label.toLowerCase().includes(q) ||
-      a.publicKey.toLowerCase().includes(q)
+export type ContactConflictType =
+  | "duplicate_public_key"
+  | "duplicate_alias"
+  | "duplicate_label";
+
+export interface ContactValidationResult {
+  valid: boolean;
+  conflictType?: ContactConflictType;
+  message?: string;
+  conflictingEntry?: AddressEntry;
+}
+
+/**
+ * Validate that a contact does not collide with existing saved contacts by address or alias.
+ */
+export function validateContactUniqueness(
+  entry: Partial<AddressEntry>,
+  existingBook: AddressEntry[] = getAddressBook(),
+  currentPublicKey?: string
+): ContactValidationResult {
+  const targetKey = (entry.publicKey ?? "").trim();
+  const targetAlias = (entry.alias ?? "").trim().toLowerCase();
+
+  for (const existing of existingBook) {
+    // Skip self if updating
+    if (
+      currentPublicKey &&
+      existing.publicKey.trim().toLowerCase() === currentPublicKey.trim().toLowerCase()
+    ) {
+      continue;
+    }
+
+    if (
+      targetKey &&
+      existing.publicKey.trim().toLowerCase() === targetKey.toLowerCase()
+    ) {
+      return {
+        valid: false,
+        conflictType: "duplicate_public_key",
+        message: `A contact with address ${targetKey} already exists (${existing.label}).`,
+        conflictingEntry: existing,
+      };
+    }
+
+    if (
+      targetAlias &&
+      existing.alias &&
+      existing.alias.trim().toLowerCase() === targetAlias
+    ) {
+      return {
+        valid: false,
+        conflictType: "duplicate_alias",
+        message: `A contact with alias "${entry.alias}" already exists (${existing.label}).`,
+        conflictingEntry: existing,
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+/** Lookup a contact by exact public key. */
+export function lookupContactByAddress(
+  address: string,
+  book: AddressEntry[] = getAddressBook()
+): AddressEntry | undefined {
+  if (!address) return undefined;
+  const target = address.trim().toLowerCase();
+  return book.find((e) => e.publicKey.trim().toLowerCase() === target);
+}
+
+/** Lookup a contact by alias or label. */
+export function lookupContactByAlias(
+  alias: string,
+  book: AddressEntry[] = getAddressBook()
+): AddressEntry | undefined {
+  if (!alias) return undefined;
+  const target = alias.trim().toLowerCase();
+  return book.find(
+    (e) =>
+      (e.alias && e.alias.trim().toLowerCase() === target) ||
+      (e.label && e.label.trim().toLowerCase() === target)
   );
+}
+
+/** Predefined known blacklisted / flagged malicious accounts. */
+export const KNOWN_BLACKLISTED_ADDRESSES = new Set<string>([
+  "GBLACKLISTEDACCOUNT00000000000000000000000000000000000000000",
+  "GBADACTORSCAMMER00000000000000000000000000000000000000000000",
+]);
+
+/** Check if an address is blacklisted in address book or global registry. */
+export function isBlacklistedAddress(
+  address: string,
+  book: AddressEntry[] = getAddressBook()
+): boolean {
+  if (!address) return false;
+  const target = address.trim();
+  if (KNOWN_BLACKLISTED_ADDRESSES.has(target)) return true;
+  const contact = lookupContactByAddress(target, book);
+  return Boolean(contact?.isBlacklisted);
+}
+
+/** Check if an address is marked as untrusted. */
+export function isUntrustedAddress(
+  address: string,
+  book: AddressEntry[] = getAddressBook()
+): boolean {
+  if (!address) return false;
+  const target = address.trim();
+  const contact = lookupContactByAddress(target, book);
+  if (contact?.isUntrusted) return true;
+  return isBlacklistedAddress(target, book);
+}
+
+/**
+ * Search address book by name/label, alias, federation address, or public key prefix.
+ */
+export function searchAddressBook(
+  query: string,
+  book: AddressEntry[] = getAddressBook()
+): AddressEntry[] {
+  if (!query || !query.trim()) return book;
+  const q = query.trim().toLowerCase();
+  return book.filter((a) => {
+    const labelMatch = a.label?.toLowerCase().includes(q);
+    const aliasMatch = a.alias?.toLowerCase().includes(q);
+    const pubKeyMatch = a.publicKey?.toLowerCase().includes(q);
+    const fedMatch = a.federationAddress?.toLowerCase().includes(q);
+    return Boolean(labelMatch || aliasMatch || pubKeyMatch || fedMatch);
+  });
+}
+
+/** Save an address with conflict detection. */
+export function saveAddressSafe(
+  entry: AddressEntry,
+  options?: { allowUpdate?: boolean; book?: AddressEntry[] }
+): { success: boolean; conflictType?: ContactConflictType; message?: string } {
+  const book = options?.book ?? getAddressBook();
+  const isExisting = book.some(
+    (e) => e.publicKey.trim().toLowerCase() === entry.publicKey.trim().toLowerCase()
+  );
+
+  if (!isExisting || !options?.allowUpdate) {
+    const validation = validateContactUniqueness(
+      entry,
+      book,
+      options?.allowUpdate ? entry.publicKey : undefined
+    );
+    if (!validation.valid) {
+      return {
+        success: false,
+        conflictType: validation.conflictType,
+        message: validation.message,
+      };
+    }
+  }
+
+  saveAddress(entry);
+  return { success: true };
 }
 
 /** Get recently used addresses (last 5 by lastUsed). */

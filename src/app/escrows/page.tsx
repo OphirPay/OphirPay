@@ -15,7 +15,8 @@ import { createEscrow, claimEscrow, getContractOwner, releaseEscrow, releaseEscr
 import { fetchRecentContractRecords } from "@/lib/on-chain-records";
 import { formatXlmStroops, parseXlmAmount } from "@/lib/stellar-amount";
 import type { EscrowData } from "@/types/contract-abi";
-import { shortenAddress } from "@/lib/utils";
+import { shortenAddress, cn } from "@/lib/utils";
+import { useTableKeyboardNavigation } from "@/hooks/useTableKeyboardNavigation";
 
 const XLM_ASSET = "native";
 
@@ -49,6 +50,17 @@ export default function EscrowsPage() {
     undefined,
     () => fetchRecentContractRecords<EscrowData>("escrows"),
   );
+
+  const [selectedEscrow, setSelectedEscrow] = useState<EscrowData | null>(null);
+
+  const { activeIndex, getRowProps, onRowsKeyDown, tbodyRef } =
+    useTableKeyboardNavigation(escrows.length, {
+      onRowSelect: (index) => {
+        if (escrows[index]) {
+          setSelectedEscrow(escrows[index]);
+        }
+      },
+    });
 
   const submit = async (action: () => Promise<{ success: boolean; error?: string }>, success: string) => {
     setSubmitting(true);
@@ -151,53 +163,190 @@ export default function EscrowsPage() {
           </p>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {escrows.map((escrow) => {
-            const id = Number(escrow.id);
-            const isSettled = escrow.released || escrow.claimed;
-            const deadlineReached = Math.floor(Date.now() / 1000) >= Number(escrow.deadline);
-            const isBeneficiary = wallet.publicKey === escrow.beneficiary;
-            const isArbiter = Boolean(escrow.arbiter && wallet.publicKey === escrow.arbiter);
-            return (
-              <Card key={id} className="space-y-3 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-semibold text-gray-900 dark:text-white">Escrow #{id}</h2>
-                  <Badge variant={isSettled ? "success" : "info"}>{isSettled ? "Settled" : "Locked"}</Badge>
-                  <span className="ml-auto text-lg font-semibold text-gray-900 dark:text-white">
-                    {formatXlmStroops(escrow.amount)}
-                  </span>
-                </div>
-                <dl className="grid gap-2 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">
-                  <div><dt className="inline font-medium">Depositor: </dt><dd className="inline font-mono">{shortenAddress(escrow.depositor, 12)}</dd></div>
-                  <div><dt className="inline font-medium">Beneficiary: </dt><dd className="inline font-mono">{shortenAddress(escrow.beneficiary, 12)}</dd></div>
-                  <div><dt className="inline font-medium">Arbiter: </dt><dd className="inline font-mono">{escrow.arbiter ? shortenAddress(escrow.arbiter, 12) : "Not set"}</dd></div>
-                  <div><dt className="inline font-medium">Claimable after: </dt><dd className="inline">{new Date(Number(escrow.deadline) * 1000).toLocaleString()}</dd></div>
-                </dl>
-                {escrow.metadata && <p className="text-sm text-gray-500">{escrow.metadata}</p>}
-                {!isSettled && wallet.connected && (
-                  <div className="flex flex-wrap gap-2">
-                    {isBeneficiary && deadlineReached && (
-                      <Button size="sm" onClick={() => void handleClaim(id)} loading={submitting}>Claim escrow</Button>
+        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 shadow-sm">
+          <table className="w-full text-left text-sm" aria-label="On-chain escrows">
+            <thead className="bg-gray-50/75 dark:bg-gray-800/50 text-xs uppercase text-gray-500 border-b border-gray-200 dark:border-gray-800">
+              <tr>
+                <th scope="col" className="py-3 px-4 font-medium">Escrow ID</th>
+                <th scope="col" className="py-3 px-4 font-medium">Status</th>
+                <th scope="col" className="py-3 px-4 font-medium">Amount</th>
+                <th scope="col" className="py-3 px-4 font-medium">Depositor</th>
+                <th scope="col" className="py-3 px-4 font-medium">Beneficiary</th>
+                <th scope="col" className="py-3 px-4 font-medium">Arbiter</th>
+                <th scope="col" className="py-3 px-4 font-medium">Claimable After</th>
+                <th scope="col" className="py-3 px-4 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody ref={tbodyRef} onKeyDown={onRowsKeyDown}>
+              {escrows.map((escrow, index) => {
+                const id = Number(escrow.id);
+                const isSettled = escrow.released || escrow.claimed;
+                const deadlineReached = Math.floor(Date.now() / 1000) >= Number(escrow.deadline);
+                const isBeneficiary = wallet.publicKey === escrow.beneficiary;
+                const isArbiter = Boolean(escrow.arbiter && wallet.publicKey === escrow.arbiter);
+                return (
+                  <tr
+                    key={id}
+                    data-row-index={index}
+                    {...getRowProps(index)}
+                    aria-rowindex={index + 2}
+                    onClick={() => setSelectedEscrow(escrow)}
+                    className={cn(
+                      "border-b border-gray-100 dark:border-gray-800/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ophir-500 focus-visible:ring-inset cursor-pointer",
+                      index === activeIndex
+                        ? "bg-ophir-50/70 dark:bg-ophir-950/40 hover:bg-ophir-100/70 dark:hover:bg-ophir-900/40"
+                        : "hover:bg-gray-50 dark:hover:bg-gray-800/30"
                     )}
-                    {isArbiter && (
-                      <>
-                        <Button size="sm" onClick={() => void handleArbiterRelease(id, true)} loading={submitting}>Release to beneficiary</Button>
-                        <Button size="sm" variant="secondary" onClick={() => void handleArbiterRelease(id, false)} loading={submitting}>Return to depositor</Button>
-                      </>
-                    )}
-                    {wallet.publicKey === contractOwner && (
-                      <Button size="sm" onClick={() => void handleOwnerRelease(id)} loading={submitting}>Owner release</Button>
-                    )}
-                    {isBeneficiary && !deadlineReached && (
-                      <span className="self-center text-xs text-gray-500">Claim becomes available after the deadline.</span>
-                    )}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
+                  >
+                    <td className="py-3 px-4">
+                      <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+                        Escrow #{id}
+                      </h2>
+                      {escrow.metadata && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[180px]">
+                          {escrow.metadata}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      <Badge variant={isSettled ? "success" : "info"}>
+                        {isSettled ? "Settled" : "Locked"}
+                      </Badge>
+                    </td>
+                    <td className="py-3 px-4 font-semibold font-mono text-gray-900 dark:text-white">
+                      {formatXlmStroops(escrow.amount)}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-xs text-gray-600 dark:text-gray-400">
+                      {shortenAddress(escrow.depositor, 8)}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-xs text-gray-600 dark:text-gray-400">
+                      {shortenAddress(escrow.beneficiary, 8)}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-xs text-gray-600 dark:text-gray-400">
+                      {escrow.arbiter ? shortenAddress(escrow.arbiter, 8) : "—"}
+                    </td>
+                    <td className="py-3 px-4 text-xs text-gray-600 dark:text-gray-400">
+                      {new Date(Number(escrow.deadline) * 1000).toLocaleString()}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div
+                        className="flex items-center justify-end gap-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {!isSettled && wallet.connected ? (
+                          <>
+                            {isBeneficiary && deadlineReached && (
+                              <Button
+                                size="sm"
+                                onClick={() => void handleClaim(id)}
+                                loading={submitting}
+                              >
+                                Claim escrow
+                              </Button>
+                            )}
+                            {isArbiter && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() => void handleArbiterRelease(id, true)}
+                                  loading={submitting}
+                                >
+                                  Release to beneficiary
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => void handleArbiterRelease(id, false)}
+                                  loading={submitting}
+                                >
+                                  Return to depositor
+                                </Button>
+                              </>
+                            )}
+                            {wallet.publicKey === contractOwner && (
+                              <Button
+                                size="sm"
+                                onClick={() => void handleOwnerRelease(id)}
+                                loading={submitting}
+                              >
+                                Owner release
+                              </Button>
+                            )}
+                            {isBeneficiary && !deadlineReached && (
+                              <span className="text-xs text-gray-400">Locked</span>
+                            )}
+                          </>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setSelectedEscrow(escrow)}
+                          >
+                            Details
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
+
+      <Modal
+        open={Boolean(selectedEscrow)}
+        onClose={() => setSelectedEscrow(null)}
+        title={selectedEscrow ? `Escrow #${selectedEscrow.id} Details` : "Escrow Details"}
+        description="On-chain escrow terms, participant addresses, and settlement state."
+      >
+        {selectedEscrow && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Badge variant={selectedEscrow.released || selectedEscrow.claimed ? "success" : "info"}>
+                {selectedEscrow.released || selectedEscrow.claimed ? "Settled" : "Locked"}
+              </Badge>
+              <span className="text-lg font-bold text-gray-900 dark:text-white">
+                {formatXlmStroops(selectedEscrow.amount)}
+              </span>
+            </div>
+            <dl className="grid gap-3 text-sm text-gray-600 dark:text-gray-400 sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-gray-900 dark:text-gray-200">Depositor</dt>
+                <dd className="font-mono text-xs break-all">{selectedEscrow.depositor}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-gray-900 dark:text-gray-200">Beneficiary</dt>
+                <dd className="font-mono text-xs break-all">{selectedEscrow.beneficiary}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-gray-900 dark:text-gray-200">Arbiter</dt>
+                <dd className="font-mono text-xs break-all">{selectedEscrow.arbiter || "None"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-gray-900 dark:text-gray-200">Claim Deadline</dt>
+                <dd className="text-xs">
+                  {new Date(Number(selectedEscrow.deadline) * 1000).toLocaleString()}
+                </dd>
+              </div>
+            </dl>
+            {selectedEscrow.metadata && (
+              <div>
+                <dt className="font-medium text-gray-900 dark:text-gray-200 text-sm">Memo</dt>
+                <dd className="text-sm text-gray-600 dark:text-gray-400 mt-1 p-2 rounded bg-gray-50 dark:bg-gray-800">
+                  {selectedEscrow.metadata}
+                </dd>
+              </div>
+            )}
+            <div className="pt-2 flex justify-end">
+              <Button variant="secondary" onClick={() => setSelectedEscrow(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create escrow" description="Deposit XLM into a contract escrow with an optional arbiter.">
         <div className="space-y-4">

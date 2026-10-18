@@ -24,7 +24,7 @@ interface UseTableKeyboardNavigationResult {
   tbodyRef: RefObject<HTMLTableSectionElement | null>;
 }
 
-const NAVIGATION_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End"]);
+const NAVIGATION_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End", "Enter"]);
 
 /**
  * Roving-tabindex keyboard navigation for table rows.
@@ -48,8 +48,14 @@ const NAVIGATION_KEYS = new Set(["ArrowUp", "ArrowDown", "Home", "End"]);
  * </tbody>
  * ```
  */
+export interface UseTableKeyboardNavigationOptions {
+  /** Optional callback fired when Enter is pressed on an active row. */
+  onRowSelect?: (index: number) => void;
+}
+
 export function useTableKeyboardNavigation(
-  rowCount: number
+  rowCount: number,
+  options?: UseTableKeyboardNavigationOptions
 ): UseTableKeyboardNavigationResult {
   const [activeIndex, setActiveIndex] = useState(rowCount > 0 ? 0 : -1);
   const tbodyRef = useRef<HTMLTableSectionElement | null>(null);
@@ -82,6 +88,35 @@ export function useTableKeyboardNavigation(
       const currentIndex = Array.from(rows).indexOf(row);
       if (currentIndex === -1) return;
 
+      if (event.key === "Enter") {
+        const target = event.target as HTMLElement;
+        const tagName = target.tagName.toLowerCase();
+        // If the focused target is an interactive child like a button or input,
+        // let it handle Enter naturally instead of intercepting
+        if (
+          tagName === "button" ||
+          tagName === "input" ||
+          tagName === "textarea" ||
+          target.getAttribute("role") === "button"
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        if (options?.onRowSelect) {
+          options.onRowSelect(currentIndex);
+        } else {
+          // Fallback: click the primary link or action in the row
+          const primaryAction = row.querySelector<HTMLAnchorElement | HTMLButtonElement>(
+            'a[href], button[data-testid*="detail"], button[data-action="view"]'
+          );
+          if (primaryAction) {
+            primaryAction.click();
+          }
+        }
+        return;
+      }
+
       let nextIndex = currentIndex;
       if (event.key === "ArrowUp") nextIndex -= 1;
       else if (event.key === "ArrowDown") nextIndex += 1;
@@ -95,7 +130,7 @@ export function useTableKeyboardNavigation(
       setActiveIndex(nextIndex);
       rows[nextIndex]?.focus();
     },
-    []
+    [options]
   );
 
   const getRowProps = useCallback(

@@ -319,9 +319,14 @@ function PaymentsClient() {
     : paginated;
 
   // Roving-tabindex keyboard navigation: the active row is in the tab order
-  // and ArrowUp/Down/Home/End move between rows (also from row actions).
+  // and ArrowUp/Down/Home/End move between rows, Enter opens payment details.
   const { activeIndex, getRowProps, onRowsKeyDown, tbodyRef } =
-    useTableKeyboardNavigation(visibleRows.length);
+    useTableKeyboardNavigation(visibleRows.length, {
+      onRowSelect: (index) => {
+        const p = visibleRows[index];
+        if (p) router.push(`/payments/${p.id}`);
+      },
+    });
 
   const goToPage = (target: number) => updateQuery({ page: target <= 1 ? null : String(target) });
 
@@ -671,7 +676,7 @@ function PaymentsClient() {
                     {...getRowProps(index)}
                     aria-rowindex={startIndex + windowStart + index + 2}
                     className={cn(
-                      "border-b border-gray-100 dark:border-gray-800/50 transition-colors",
+                      "border-b border-gray-100 dark:border-gray-800/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ophir-500 focus-visible:ring-inset",
                       index === activeIndex
                         ? "bg-ophir-50/70 dark:bg-ophir-950/40 hover:bg-ophir-100/70 dark:hover:bg-ophir-900/40"
                         : "hover:bg-gray-50 dark:hover:bg-gray-800/30"

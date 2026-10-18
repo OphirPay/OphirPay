@@ -104,3 +104,26 @@ test.describe("Payments table accessibility", () => {
     await expect(rows.first()).toHaveAttribute("tabindex", "0");
   });
 });
+
+test.describe("Escrows table accessibility", () => {
+  test("arrow keys navigate between escrow rows", async ({ page }) => {
+    await page.goto("/escrows");
+    await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
+
+    const table = page.locator("table[aria-label='On-chain escrows']");
+    const hasTable = await table.isVisible().catch(() => false);
+    if (!hasTable) return;
+
+    const rows = table.locator("tbody tr[data-row-index]");
+    const rowCount = await rows.count();
+    test.skip(rowCount < 2, "requires at least two escrow rows");
+
+    await expect(rows.first()).toHaveAttribute("tabindex", "0");
+    await rows.first().focus();
+    await expect(rows.first()).toBeFocused();
+
+    await page.keyboard.press("ArrowDown");
+    await expect(rows.nth(1)).toBeFocused();
+    await expect(rows.nth(1)).toHaveAttribute("tabindex", "0");
+  });
+});

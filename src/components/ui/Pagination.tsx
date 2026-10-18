@@ -47,24 +47,35 @@ export function Pagination({
       aria-label="Pagination"
       className={cn("flex items-center justify-between gap-4", className)}
     >
-      <Button variant="outline" size="sm" onClick={onPrev} disabled={!hasPrev}>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="pagination-prev"
+        onClick={onPrev}
+        disabled={!hasPrev}
+        className="focus-visible:ring-2 focus-visible:ring-ophir-500 focus-visible:outline-none"
+      >
         ← Previous
       </Button>
 
       <div className="hidden sm:flex items-center gap-1">
         {pages.map((p, i) =>
           p === "ellipsis" ? (
-            <span key={`e-${i}`} className="px-1 text-gray-400">
+            <span key={`e-${i}`} className="px-1 text-gray-400 select-none">
               …
             </span>
           ) : (
             <button
               key={p}
+              type="button"
+              data-testid={`pagination-page-${p}`}
+              aria-label={`Page ${p}`}
+              aria-current={p === page ? "page" : undefined}
               onClick={() => onPage?.(p)}
               className={cn(
-                "w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors",
+                "w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ophir-500 focus-visible:outline-none",
                 p === page
-                  ? "bg-ophir-600 text-white"
+                  ? "bg-ophir-600 text-white font-semibold"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
               )}
             >
@@ -74,7 +85,14 @@ export function Pagination({
         )}
       </div>
 
-      <Button variant="outline" size="sm" onClick={onNext} disabled={!hasNext}>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="pagination-next"
+        onClick={onNext}
+        disabled={!hasNext}
+        className="focus-visible:ring-2 focus-visible:ring-ophir-500 focus-visible:outline-none"
+      >
         Next →
       </Button>
     </nav>

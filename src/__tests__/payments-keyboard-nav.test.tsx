@@ -6,13 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/Toast";
 import PaymentsPage from "@/app/payments/page";
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), prefetch: vi.fn() }),
-  usePathname: () => "/payments",
-  useSearchParams: () => new URLSearchParams(""),
-}));
-
-const { PAYMENTS } = vi.hoisted(() => {
+const { PAYMENTS, mockPush } = vi.hoisted(() => {
   const payments = Array.from({ length: 4 }, (_, i) => ({
     id: i + 1,
     payer: `G${"A".repeat(55)}`,
@@ -21,8 +15,14 @@ const { PAYMENTS } = vi.hoisted(() => {
     txHash: `${i + 1}234567890abcdef1234567890abcdef1234567890abcdef1234567890`,
     timestamp: 1700000000 + i,
   }));
-  return { PAYMENTS: payments };
+  return { PAYMENTS: payments, mockPush: vi.fn() };
 });
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: mockPush, prefetch: vi.fn() }),
+  usePathname: () => "/payments",
+  useSearchParams: () => new URLSearchParams(""),
+}));
 
 vi.mock("@/lib/contracts", () => ({
   fetchOnChainPayments: vi.fn().mockResolvedValue({
@@ -205,5 +205,21 @@ describe("PaymentsPage keyboard navigation", () => {
     for (const header of headers) {
       expect(header).toHaveAttribute("scope", "col");
     }
+  });
+
+  it("navigates to payment details when Enter is pressed on an active row", async () => {
+    const { container } = renderPage();
+    const rows = await getRows(container);
+
+    mockPush.mockClear();
+    focusRow(rows[0]);
+    fireEvent.keyDown(rows[0], { key: "Enter" });
+
+    expect(mockPush).toHaveBeenCalledWith("/payments/1");
+
+    mockPush.mockClear();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+    expect(mockPush).toHaveBeenCalledWith("/payments/2");
   });
 });

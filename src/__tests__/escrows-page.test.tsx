@@ -113,4 +113,48 @@ describe("EscrowsPage", () => {
       expect(refetch).toHaveBeenCalledOnce();
     });
   });
+
+  it("navigates escrow table rows with arrow keys and opens details on Enter", async () => {
+    const escrow2 = {
+      ...escrow,
+      id: 4,
+      amount: 500_000_000,
+      metadata: "Second milestone",
+    };
+    mockUseApiQuery.mockReturnValue({
+      data: [escrow, escrow2],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    const { container } = render(<EscrowsPage />);
+    const rows = container.querySelectorAll<HTMLTableRowElement>("tbody tr[data-row-index]");
+    expect(rows).toHaveLength(2);
+
+    // Initial roving tabindex: first row is 0, second is -1
+    expect(rows[0]).toHaveAttribute("tabindex", "0");
+    expect(rows[1]).toHaveAttribute("tabindex", "-1");
+
+    // Move to next row with ArrowDown
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    expect(rows[1]).toHaveAttribute("tabindex", "0");
+    expect(rows[0]).toHaveAttribute("tabindex", "-1");
+
+    // Move back to first row with ArrowUp
+    fireEvent.keyDown(rows[1], { key: "ArrowUp" });
+    expect(rows[0]).toHaveFocus();
+    expect(rows[0]).toHaveAttribute("tabindex", "0");
+
+    // Press Enter on first row to open details modal
+    fireEvent.keyDown(rows[0], { key: "Enter" });
+    const dialog = screen.getByRole("dialog", { name: "Escrow #3 Details" });
+    expect(dialog).toBeTruthy();
+    expect(dialog.textContent).toContain("Milestone payment");
+
+    // Close details modal
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Escrow #3 Details" })).toBeNull();
+  });
 });

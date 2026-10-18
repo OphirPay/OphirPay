@@ -43,4 +43,29 @@ spec:
     - ports:
         - protocol: TCP
           port: 5432
+    # Redis for distributed rate limiting (Issue #1345).
+    {{- if and .Values.networkPolicy.redis .Values.networkPolicy.redis.enabled }}
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.redis.port | default 6379 }}
+      {{- if or .Values.networkPolicy.redis.namespaceSelector .Values.networkPolicy.redis.podSelector }}
+      to:
+        -
+          {{- with .Values.networkPolicy.redis.namespaceSelector }}
+          namespaceSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.networkPolicy.redis.podSelector }}
+          podSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- if and .Values.networkPolicy.egress .Values.networkPolicy.egress.extraPorts }}
+    {{- range .Values.networkPolicy.egress.extraPorts }}
+    - ports:
+        - protocol: TCP
+          port: {{ . }}
+    {{- end }}
+    {{- end }}
 {{- end }}

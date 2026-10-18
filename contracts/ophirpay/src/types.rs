@@ -378,4 +378,19 @@ pub struct HookList {
     pub total: u32,
     pub truncated: bool,
 }
-
+
+/// Typed timelockable administrative operations (#1306).
+/// Stored securely on-chain to prevent string forgery and dispatched
+/// directly during xxecute_timelocked_action.
+#[contracttype]
+#[derive(Clone)]
+pub enum TimelockedOp {
+    SetFeeConfig(FeeConfig),
+    SetMultisigConfig(MultisigConfig),
+    GrantRole(Address, Role),
+    ConfigureGovernance(GovernanceConfig),
+    SetFeeCollector(Address),
+    SetEmitter(Address),
+    EmergencyPauseAll,
+    EmergencyUnpauseAll,
+}

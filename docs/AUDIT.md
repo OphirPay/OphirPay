@@ -324,13 +324,11 @@ and re-run the IP/hostname check against the final resolved address after follow
 
 ### INFORMATIONAL
 
-- **Admin functions are not timelocked on-chain.** `set_fee_config`, `set_multisig_config`,
-  `grant_role`, `configure_governance`, `configure_escalation`, `set_spending_limit`,
-  `set_fee_collector`, and `set_emitter` are immediate owner-only actions. The
-  `propose_timelocked_action` / `execute_timelocked_action` mechanism (L1360/L1413) stores a
-  string and flips an `executed` flag but **never dispatches** to any state-changing function —
-  it is disconnected from the functions the README claims it protects. (Two-step ownership
-  transfer and WASM upgrade *are* correctly timelocked.)
+- **Admin functions are not timelocked on-chain.** (Resolved via #1306) `set_fee_config`, `set_multisig_config`,
+  `grant_role`, `configure_governance`, `set_fee_collector`, and `set_emitter` are now fully
+  integrated with `propose_timelocked_op` and `execute_timelocked_action` dispatcher, routing typed
+  operations (`TimelockedOp`) on-chain with automatic state dispatch and strict enforcement mode (`set_timelock_enforced`).
+  (Two-step ownership transfer and WASM upgrade *are* correctly timelocked.)
 - `execute_timelocked_action`, `execute_upgrade`, and `process_refund` are permissionless
   executors (acceptable *only* when the payload is owner-approved and the action is
   content-bound, which is true for upgrade but **not** for refund).

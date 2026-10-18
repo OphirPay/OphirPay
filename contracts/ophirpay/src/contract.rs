@@ -138,6 +138,9 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
+        if Self::is_timelock_enforced(env.clone()) {
+            return Err(PaymentError::TimelockRequired);
+        }
 
         let mut unique_signers = Vec::new(&env);
         for signer in signers.into_iter() {
@@ -429,6 +432,9 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
+        if Self::is_timelock_enforced(env.clone()) {
+            return Err(PaymentError::TimelockRequired);
+        }
         if payment_fee_bps > 1000 || escrow_fee_bps > 1000 || stream_fee_bps > 1000 {
             return Err(PaymentError::FeeTooHigh);
         }
@@ -571,6 +577,109 @@ impl OphirPayContract {
         Ok(count)
     }
 
+    /// Check if timelock is strictly enforced for sensitive admin functions (#1306).
+    pub fn is_timelock_enforced(env: Env) -> bool {
+        env.storage().instance().get(&TIMELOCK_ENFORCED).unwrap_or(false)
+    }
+
+    /// Owner-only: toggle strict timelock enforcement mode (#1306).
+    /// When enabled, direct immediate execution of sensitive admin functions
+    /// is rejected, requiring them to route through `propose_timelocked_op`.
+    pub fn set_timelock_enforced(
+        env: Env,
+        caller: Address,
+        enabled: bool,
+    ) -> Result<(), PaymentError> {
+        caller.require_auth();
+        require_owner(&env, &caller)?;
+        env.storage().instance().set(&TIMELOCK_ENFORCED, &enabled);
+        env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+        record_audit(
+            &env,
+            "timelock_enforcement_toggled",
+            &caller,
+            if enabled { 1 } else { 0 },
+            "Timelock enforcement mode toggled",
+        );
+        Ok(())
+    }
+
+    /// Propose a typed timelocked admin action (#1306).
+    /// Stores the typed operation on-chain and returns the action ID.
+    pub fn propose_timelocked_op(
+        env: Env,
+        caller: Address,
+        op: TimelockedOp,
+    ) -> Result<u64, PaymentError> {
+        caller.require_auth();
+        require_owner(&env, &caller)?;
+
+        let action_type_str = match &op {
+            TimelockedOp::SetFeeConfig(_) => String::from_str(&env, "set_fee_config"),
+            TimelockedOp::SetMultisigConfig(_) => String::from_str(&env, "set_multisig_config"),
+            TimelockedOp::GrantRole(_, _) => String::from_str(&env, "grant_role"),
+            TimelockedOp::ConfigureGovernance(_) => String::from_str(&env, "configure_governance"),
+            TimelockedOp::SetFeeCollector(_) => String::from_str(&env, "set_fee_collector"),
+            TimelockedOp::SetEmitter(_) => String::from_str(&env, "set_emitter"),
+            TimelockedOp::EmergencyPauseAll => String::from_str(&env, "emergency_pause_all"),
+            TimelockedOp::EmergencyUnpauseAll => String::from_str(&env, "emergency_unpause_all"),
+        };
+
+        let now = env.ledger().timestamp();
+        let mut count: u64 = env.storage().instance().get(&TMLOCK_CNT).unwrap_or(0);
+        count = count.saturating_add(1);
+
+        let action = TimelockedAction {
+            id: count,
+            action_type: action_type_str,
+            target: String::from_str(&env, "contract"),
+            data: String::from_str(&env, "typed_op"),
+            proposed_by: caller.clone(),
+            proposed_at: now,
+            unlocks_at: now.saturating_add(TMLOCK_DELAY),
+            executed: false,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&(TIMELOCK_KEY, count), &action);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(TIMELOCK_KEY, count), BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        env.storage()
+            .persistent()
+            .set(&(TIMELOCK_OP_KEY, count), &op);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(TIMELOCK_OP_KEY, count), BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        env.storage().instance().set(&TMLOCK_CNT, &count);
+        env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        env.events().publish(
+            (Symbol::new(&env, "timelock"), Symbol::new(&env, "proposed")),
+            count,
+        );
+
+        record_audit(
+            &env,
+            "timelock_proposed",
+            &caller,
+            count,
+            "Timelocked typed op proposed",
+        );
+
+        Ok(count)
+    }
+
+    /// Read the typed operation stored for an action ID, if any (#1306).
+    pub fn get_timelocked_op(env: Env, action_id: u64) -> Option<TimelockedOp> {
+        env.storage()
+            .persistent()
+            .get(&(TIMELOCK_OP_KEY, action_id))
+    }
+
     /// Execute a timelocked action after the delay has passed.
     /// This marks it as executed; the actual state change is performed by
     /// an off-chain relayer that reads the action data.
@@ -597,6 +706,86 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .extend_ttl(&(TIMELOCK_KEY, action_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        // DISPATCHER (#1306):
+        // If a typed TimelockedOp is registered for this action, dispatch directly
+        // to on-chain state updates, making timelocked admin operations enforceable.
+        if let Some(op) = env.storage().persistent().get::<_, TimelockedOp>(&(TIMELOCK_OP_KEY, action_id)) {
+            match op {
+                TimelockedOp::SetFeeConfig(config) => {
+                    if config.payment_fee_bps > 1000 || config.escrow_fee_bps > 1000 || config.stream_fee_bps > 1000 {
+                        return Err(PaymentError::FeeTooHigh);
+                    }
+                    let mut ver_count: u32 = env.storage().instance().get(&FEE_VER_CNT).unwrap_or(0);
+                    ver_count = ver_count.saturating_add(1);
+                    let version_entry = FeeConfigVersion {
+                        version: ver_count,
+                        config: config.clone(),
+                        changed_at: now,
+                        changed_by: action.proposed_by.clone(),
+                    };
+                    env.storage()
+                        .persistent()
+                        .set(&(FEE_VER_CNT, ver_count), &version_entry);
+                    env.storage()
+                        .persistent()
+                        .extend_ttl(&(FEE_VER_CNT, ver_count), BUMP_MIN_TTL, BUMP_MAX_TTL);
+                    env.storage().instance().set(&FEE_VER_CNT, &ver_count);
+                    env.storage().instance().set(&FEE_KEY, &config);
+                    env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+                    record_audit(&env, "timelock_dispatched_fee_config", &action.proposed_by, action_id, "Fee configuration applied via timelock");
+                }
+                TimelockedOp::SetMultisigConfig(config) => {
+                    if config.threshold == 0 || config.threshold > config.signers.len() {
+                        return Err(PaymentError::InvalidAmount);
+                    }
+                    env.storage().instance().set(&MULTISIG_CONFIG, &config);
+                    env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+                    record_audit(&env, "timelock_dispatched_multisig", &action.proposed_by, action_id, "Multisig config applied via timelock");
+                }
+                TimelockedOp::GrantRole(addr, role) => {
+                    let key = (ROLE_KEY, addr.clone());
+                    env.storage().persistent().set(&key, &role);
+                    env.storage().persistent().extend_ttl(&key, BUMP_MIN_TTL, BUMP_MAX_TTL);
+                    record_audit(&env, "timelock_dispatched_grant_role", &action.proposed_by, action_id, "Role granted via timelock");
+                }
+                TimelockedOp::ConfigureGovernance(gov_conf) => {
+                    if gov_conf.quorum_bps > 10000 {
+                        return Err(PaymentError::InvalidAmount);
+                    }
+                    env.storage().instance().set(&GOV_CONF, &gov_conf);
+                    env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+                    record_audit(&env, "timelock_dispatched_governance", &action.proposed_by, action_id, "Governance config applied via timelock");
+                }
+                TimelockedOp::SetFeeCollector(collector) => {
+                    env.storage().instance().set(&FEE_COLL, &collector);
+                    env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+                    record_audit(&env, "timelock_dispatched_fee_collector", &action.proposed_by, action_id, "Fee collector updated via timelock");
+                }
+                TimelockedOp::SetEmitter(emitter) => {
+                    env.storage().instance().set(&EMITTER_ADDR, &emitter);
+                    env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+                    record_audit(&env, "timelock_dispatched_emitter", &action.proposed_by, action_id, "Emitter updated via timelock");
+                }
+                TimelockedOp::EmergencyPauseAll => {
+                    env.storage().instance().set(&PAUSED, &true);
+                    env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+                    record_audit(&env, "timelock_dispatched_pause", &action.proposed_by, action_id, "Emergency pause all applied via timelock");
+                }
+                TimelockedOp::EmergencyUnpauseAll => {
+                    env.storage().instance().set(&PAUSED, &false);
+                    env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+                    record_audit(&env, "timelock_dispatched_unpause", &action.proposed_by, action_id, "Emergency unpause all applied via timelock");
+                }
+            }
+        } else {
+            // String action fallback for legacy or off-chain relayer triggers
+            if action.action_type == String::from_str(&env, "emergency_pause_all") {
+                env.storage().instance().set(&PAUSED, &true);
+            } else if action.action_type == String::from_str(&env, "emergency_unpause_all") {
+                env.storage().instance().set(&PAUSED, &false);
+            }
+        }
 
         env.events().publish(
             (Symbol::new(&env, "timelock"), Symbol::new(&env, "executed")),
@@ -683,6 +872,9 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
+        if Self::is_timelock_enforced(env.clone()) {
+            return Err(PaymentError::TimelockRequired);
+        }
         if quorum_bps > 10000 {
             return Err(PaymentError::InvalidAmount);
         }

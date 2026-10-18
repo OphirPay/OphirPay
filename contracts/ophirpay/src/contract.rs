@@ -2899,8 +2899,8 @@ impl OphirPayContract {
         reason: String,
         reason_code: RefundReasonCode,
     ) -> Result<u64, PaymentError> {
-        requester.require_auth();
         require_not_paused(&env, PauseScope::Refunds)?;
+        requester.require_auth();
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
@@ -2975,9 +2975,9 @@ impl OphirPayContract {
 
     /// Approve a refund request (owner only). Moves status to Approved.
     pub fn approve_refund(env: Env, caller: Address, refund_id: u64) -> Result<(), PaymentError> {
+        require_not_paused(&env, PauseScope::Refunds)?;
         caller.require_auth();
         require_owner(&env, &caller)?;
-        require_not_paused(&env, PauseScope::Refunds)?;
 
         let mut refund: Refund = env
             .storage()
@@ -3011,9 +3011,9 @@ impl OphirPayContract {
 
     /// Reject a refund request (owner only).
     pub fn reject_refund(env: Env, caller: Address, refund_id: u64) -> Result<(), PaymentError> {
+        require_not_paused(&env, PauseScope::Refunds)?;
         caller.require_auth();
         require_owner(&env, &caller)?;
-        require_not_paused(&env, PauseScope::Refunds)?;
 
         let mut refund: Refund = env
             .storage()
@@ -3047,10 +3047,10 @@ impl OphirPayContract {
 
     /// Process an approved refund — transfers tokens back to requester.
     pub fn process_refund(env: Env, caller: Address, refund_id: u64) -> Result<(), PaymentError> {
+        require_not_paused(&env, PauseScope::Refunds)?;
         let _guard = acquire_reentrancy_lock(&env)?;
         caller.require_auth();
         require_owner(&env, &caller)?;
-        require_not_paused(&env, PauseScope::Refunds)?;
 
         let mut refund: Refund = env
             .storage()

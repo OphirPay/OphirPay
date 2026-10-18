@@ -935,3 +935,77 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+/// Pause enforcement on refund lifecycle methods: approve_refund, reject_refund, process_refund (issue #1282).
+#[test]
+fn test_refund_functions_enforce_pause_guard() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    let tx_hash = String::from_str(&fix.env, "0xrefund_pause_test");
+    let meta = String::from_str(&fix.env, "order_#pause");
+    let payment_id = fix.client.record_payment(
+        &payer,
+        &payee,
+        &2_000_000i128,
+        &fix.token_id,
+        &tx_hash,
+        &meta,
+    );
+
+    let reason = String::from_str(&fix.env, "Need refund");
+    let refund_id = fix.client.request_refund(
+        &payer,
+        &payment_id,
+        &1_000_000i128,
+        &fix.token_id,
+        &reason,
+        &RefundReasonCode::CustomerRequest,
+    );
+    assert_eq!(refund_id, 1);
+
+    // 1. Verify global emergency pause blocks all refund lifecycle functions
+    fix.client.emergency_pause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), true);
+
+    let res_approve = fix.client.try_approve_refund(&fix.owner, &refund_id);
+    assert_eq!(res_approve, Err(Ok(PaymentError::ContractPaused)));
+
+    let res_reject = fix.client.try_reject_refund(&fix.owner, &refund_id);
+    assert_eq!(res_reject, Err(Ok(PaymentError::ContractPaused)));
+
+    let res_process = fix.client.try_process_refund(&fix.owner, &refund_id);
+    assert_eq!(res_process, Err(Ok(PaymentError::ContractPaused)));
+
+    // Unpause globally
+    fix.client.emergency_unpause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), false);
+
+    // 2. Verify scoped pause (scope 4 = Refunds) blocks refund lifecycle functions
+    fix.client.set_scope_paused(&fix.owner, &4u32, &true);
+    assert_eq!(fix.client.is_scope_paused(&4u32), true);
+
+    let res_approve_scoped = fix.client.try_approve_refund(&fix.owner, &refund_id);
+    assert_eq!(res_approve_scoped, Err(Ok(PaymentError::ContractPaused)));
+
+    let res_reject_scoped = fix.client.try_reject_refund(&fix.owner, &refund_id);
+    assert_eq!(res_reject_scoped, Err(Ok(PaymentError::ContractPaused)));
+
+    let res_process_scoped = fix.client.try_process_refund(&fix.owner, &refund_id);
+    assert_eq!(res_process_scoped, Err(Ok(PaymentError::ContractPaused)));
+
+    // Unpause Refunds scope
+    fix.client.set_scope_paused(&fix.owner, &4u32, &false);
+    assert_eq!(fix.client.is_scope_paused(&4u32), false);
+
+    // 3. Normal flow succeeds when unpaused
+    fix.client.approve_refund(&fix.owner, &refund_id);
+    let approved = fix.client.get_refund(&refund_id);
+    assert_eq!(approved.status, RefundStatus::Approved);
+
+    fix.mint(&fix.contract_id, 2_000_000);
+    fix.client.process_refund(&fix.owner, &refund_id);
+    let processed = fix.client.get_refund(&refund_id);
+    assert_eq!(processed.status, RefundStatus::Processed);
+}

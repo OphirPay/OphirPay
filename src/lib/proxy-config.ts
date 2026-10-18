@@ -7,12 +7,10 @@ export function getRateLimitMax(value = process.env.RATE_LIMIT_RPM): number {
   return Math.max(1, parseInt(value || String(DEFAULT_RATE_LIMIT_RPM), 10) || DEFAULT_RATE_LIMIT_RPM);
 }
 
+import { extractClientIp } from "@/lib/client-ip";
+
 export function getClientIp(headers: Pick<Headers, "get">): string {
-  return (
-    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    headers.get("x-real-ip") ||
-    "unknown"
-  );
+  return extractClientIp(headers);
 }
 
 export function generateRequestId(

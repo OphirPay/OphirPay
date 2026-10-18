@@ -935,3 +935,39 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MULTISIG THRESHOLD AND SIGNERS VALIDATION (issue #1355)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Threshold of 0 is rejected with InvalidThreshold, empty signers list
+/// is rejected with EmptySignersList, and threshold exceeding signers count
+/// is rejected with InvalidThreshold.
+#[test]
+fn test_set_multisig_config_rejects_zero_threshold_and_empty_signers() {
+    let fix = TestFixture::new();
+    let s1 = Address::generate(&fix.env);
+    let s2 = Address::generate(&fix.env);
+
+    let mut signers = soroban_sdk::Vec::new(&fix.env);
+    signers.push_back(s1);
+    signers.push_back(s2);
+
+    // 1. Zero threshold rejected with InvalidThreshold
+    let res_zero = fix.client.try_set_multisig_config(&fix.owner, &0u32, &signers, &true);
+    assert_eq!(res_zero, Err(Ok(PaymentError::InvalidThreshold)));
+
+    // 2. Empty signers list rejected with EmptySignersList
+    let empty_signers = soroban_sdk::Vec::new(&fix.env);
+    let res_empty = fix.client.try_set_multisig_config(&fix.owner, &1u32, &empty_signers, &true);
+    assert_eq!(res_empty, Err(Ok(PaymentError::EmptySignersList)));
+
+    // 3. Threshold exceeding signers length rejected with InvalidThreshold
+    let res_overflow = fix.client.try_set_multisig_config(&fix.owner, &3u32, &signers, &true);
+    assert_eq!(res_overflow, Err(Ok(PaymentError::InvalidThreshold)));
+
+    // 4. Valid configuration succeeds
+    let res_ok = fix.client.try_set_multisig_config(&fix.owner, &2u32, &signers, &true);
+    assert!(res_ok.is_ok());
+}
+

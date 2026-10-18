@@ -3,11 +3,22 @@
 import { randomBytes, timingSafeEqual } from "crypto";
 import { extractApiKey } from "@/lib/api-auth";
 
-const CSRF_COOKIE = "__Host-csrf";
+export const CSRF_COOKIE = "__Host-csrf";
 /** Plain-http dev fallback — `__Host-` cookies are rejected without Secure. */
-const CSRF_COOKIE_INSECURE = "csrf";
-const CSRF_HEADER = "x-csrf-token";
+export const CSRF_COOKIE_INSECURE = "csrf";
+export const CSRF_COOKIE_NAME = CSRF_COOKIE;
+export const CSRF_HEADER = "x-csrf-token";
+export const CSRF_HEADER_NAME = CSRF_HEADER;
 const TOKEN_BYTES = 32;
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const EXEMPT_PATHS = [
+  "/api/health",
+  "/api/metrics",
+  "/api/csrf",
+  "/api/csp-report",
+  "/api/openapi.json",
+];
 
 /**
  * Generate a cryptographically random CSRF token.
@@ -70,9 +81,73 @@ export function validateCsrfToken(cookieToken: string | null, headerToken: strin
 export function getCsrfTokenFromCookies(cookieHeader: string | null): string | null {
   if (!cookieHeader) return null;
   const match = cookieHeader.match(
-    new RegExp(`(?:^|;\\s*)(?:${CSRF_COOKIE}|${CSRF_COOKIE_INSECURE})=([^;]*)`)
+    new RegExp(`(?:^|;\\s*)(?:${CSRF_COOKIE}|${CSRF_COOKIE_INSECURE}|ophir_csrf)=([^;]*)`)
   );
   return match?.[1] ?? null;
+}
+
+/**
+ * Determine if a request is exempt from CSRF verification.
+ */
+export function isCsrfExempt(request: {
+  method: string;
+  url?: string;
+  nextUrl?: { pathname: string };
+  headers: Headers;
+}): boolean {
+  const method = request.method.toUpperCase();
+  if (SAFE_METHODS.has(method)) {
+    return true;
+  }
+
+  const pathname =
+    request.nextUrl?.pathname ||
+    new URL(request.url || "http://localhost", "http://localhost").pathname;
+
+  for (const path of EXEMPT_PATHS) {
+    if (pathname === path || pathname.startsWith(`${path}/`)) {
+      return true;
+    }
+  }
+
+  // API Key authentication bypasses CSRF checks
+  if (request.headers.get("x-cron-secret")) return true;
+  if (request.headers.get("x-api-key")?.trim()) return true;
+  const auth = request.headers.get("authorization") || "";
+  if (auth.startsWith("Bearer ") && auth.length > 10) return true;
+  try {
+    if (extractApiKey(request as unknown as Request)) return true;
+  } catch {
+    // If request shape does not match standard Request, proceed
+  }
+
+  return false;
+}
+
+/**
+ * Validate incoming request for Edge/proxy middleware.
+ */
+export function validateRequestCsrf(request: {
+  method: string;
+  headers: Headers;
+  cookies?: { get: (name: string) => { value: string } | undefined };
+}): boolean {
+  const headerToken =
+    request.headers.get(CSRF_HEADER) ||
+    request.headers.get("x-xsrf-token");
+
+  const rawCookie = request.headers.get("cookie");
+  let cookieToken = getCsrfTokenFromCookies(rawCookie);
+
+  if (!cookieToken && request.cookies && typeof request.cookies.get === "function") {
+    cookieToken =
+      request.cookies.get(CSRF_COOKIE)?.value ||
+      request.cookies.get(CSRF_COOKIE_INSECURE)?.value ||
+      request.cookies.get("ophir_csrf")?.value ||
+      null;
+  }
+
+  return validateCsrfToken(cookieToken, headerToken);
 }
 
 /**

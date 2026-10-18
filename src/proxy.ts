@@ -25,6 +25,7 @@ import {
   validateKeyFormat,
   API_KEY_LOOKUP_PATTERN,
 } from "@/lib/api-key-format";
+import { isCsrfExempt, validateRequestCsrf } from "@/lib/csrf";
 
 const RATE_LIMIT_MAX = getRateLimitMax();
 
@@ -66,6 +67,28 @@ export async function proxy(request: NextRequest) {
           },
           {
             status: 401,
+            headers: {
+              "X-Request-Id": requestId,
+            },
+          }
+        );
+      }
+    }
+
+    // 3. CSRF Verification for browser session mutations (#1314)
+    if (!isCsrfExempt(request)) {
+      if (!validateRequestCsrf(request)) {
+        logger.request(request.method, pathname, 403, performance.now() - startedAt, requestId);
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "FORBIDDEN",
+              message: "CSRF token missing or invalid",
+            },
+          },
+          {
+            status: 403,
             headers: {
               "X-Request-Id": requestId,
             },

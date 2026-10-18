@@ -935,3 +935,99 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+/// Test timelocked action dispatcher and enforcement lifecycle (#1306).
+/// Verifies:
+/// 1. Direct execution allowed by default (backward compatibility)
+/// 2. Setting timelock_enforced blocks direct admin execution with TimelockRequired
+/// 3. Proposing a typed TimelockedOp and premature execution rejection
+/// 4. Execution after 24h correctly dispatches to on-chain state changes
+#[test]
+fn test_timelocked_action_dispatcher_lifecycle() {
+    let fix = TestFixture::new();
+
+    // 1. Backward compatibility: Direct set_fee_config succeeds when timelock not enforced
+    assert_eq!(fix.client.is_timelock_enforced(), false);
+    let direct_res = fix.client.try_set_fee_config(
+        &fix.owner,
+        &100u32,
+        &200u32,
+        &300u32,
+        &1_000i128,
+        &100i128,
+        &true,
+    );
+    assert!(direct_res.is_ok());
+    let fee_cfg = fix.client.get_fee_config().unwrap();
+    assert_eq!(fee_cfg.payment_fee_bps, 100u32);
+
+    // 2. Enable strict timelock enforcement mode
+    fix.client.set_timelock_enforced(&fix.owner, &true);
+    assert_eq!(fix.client.is_timelock_enforced(), true);
+
+    // Direct execution must now be rejected with TimelockRequired
+    let rejected_res = fix.client.try_set_fee_config(
+        &fix.owner,
+        &50u32,
+        &50u32,
+        &50u32,
+        &500i128,
+        &50i128,
+        &true,
+    );
+    assert_eq!(rejected_res, Err(Ok(PaymentError::TimelockRequired)));
+
+    // 3. Propose state change via typed TimelockedOp
+    let new_cfg = ophirpay_contract::FeeConfig {
+        payment_fee_bps: 250u32,
+        escrow_fee_bps: 250u32,
+        stream_fee_bps: 250u32,
+        batch_base_fee: 2_000i128,
+        batch_per_item_fee: 200i128,
+        enabled: true,
+    };
+    let op = ophirpay_contract::TimelockedOp::SetFeeConfig(new_cfg);
+    let action_id = fix.client.propose_timelocked_op(&fix.owner, &op);
+    assert_eq!(action_id, 1);
+
+    // Verify stored timelocked op exists
+    assert!(fix.client.get_timelocked_op(&action_id).is_some());
+
+    // 4. Premature execution (before 24h / 86400s) must fail with TimelockNotDue
+    let early_res = fix.client.try_execute_timelocked_action(&action_id);
+    assert_eq!(early_res, Err(Ok(PaymentError::TimelockNotDue)));
+
+    // 5. Advance ledger time by 24 hours (86,400 seconds)
+    let current_time = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(current_time + 86_400);
+
+    // 6. Execute timelocked action -> Dispatcher applies FeeConfig to on-chain state
+    let exec_res = fix.client.try_execute_timelocked_action(&action_id);
+    assert!(exec_res.is_ok());
+
+    let updated_fee = fix.client.get_fee_config().unwrap();
+    assert_eq!(updated_fee.payment_fee_bps, 250u32);
+    assert_eq!(updated_fee.batch_base_fee, 2_000i128);
+
+    // Action cannot be executed twice
+    let double_res = fix.client.try_execute_timelocked_action(&action_id);
+    assert_eq!(double_res, Err(Ok(PaymentError::TimelockAlreadyExecuted)));
+
+    // 7. Test EmergencyPauseAll dispatch via TimelockedOp
+    let pause_op = ophirpay_contract::TimelockedOp::EmergencyPauseAll;
+    let pause_id = fix.client.propose_timelocked_op(&fix.owner, &pause_op);
+    assert_eq!(pause_id, 2);
+
+    fix.env.ledger().set_timestamp(fix.env.ledger().timestamp() + 86_400);
+    fix.client.execute_timelocked_action(&pause_id);
+    assert_eq!(fix.client.is_paused(), true);
+
+    // 8. Test EmergencyUnpauseAll dispatch via TimelockedOp
+    let unpause_op = ophirpay_contract::TimelockedOp::EmergencyUnpauseAll;
+    let unpause_id = fix.client.propose_timelocked_op(&fix.owner, &unpause_op);
+    assert_eq!(unpause_id, 3);
+
+    fix.env.ledger().set_timestamp(fix.env.ledger().timestamp() + 86_400);
+    fix.client.execute_timelocked_action(&unpause_id);
+    assert_eq!(fix.client.is_paused(), false);
+}

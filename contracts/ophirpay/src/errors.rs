@@ -660,5 +660,8 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    // -- Timelock Enforcement (310) ------------------------
+    /// Action requires timelock: direct execution rejected when timelock enforcement is active
+    TimelockRequired = 310,
 }
 

@@ -727,3 +727,61 @@ export async function setScopePaused(
   ];
   return signAndSubmit(caller, CONTRACT_ID, "set_scope_paused", args);
 }
+
+// ── Timelocked Action Dispatcher & Enforcement (#1306) ────────
+
+/**
+ * Pure validation for timelocked action execution (#1306).
+ */
+export function validateTimelockedActionExecution(
+  action: { executed: boolean; unlocksAt: number },
+  now: number,
+): { canExecute: boolean; reason?: string } {
+  if (action.executed) {
+    return {
+      canExecute: false,
+      reason: "Action has already been executed",
+    };
+  }
+  if (now < action.unlocksAt) {
+    return {
+      canExecute: false,
+      reason: `Action is not due yet. Unlocks in ${Math.max(0, action.unlocksAt - now)}s`,
+    };
+  }
+  return {
+    canExecute: true,
+  };
+}
+
+/**
+ * Check if strict timelock enforcement mode is active on-chain (#1306).
+ */
+export async function isTimelockEnforced(
+  sourcePublicKey: string = CHAIN_READ_SOURCE,
+): Promise<boolean> {
+  const result = await simulateContractCall(
+    CONTRACT_ID,
+    "is_timelock_enforced",
+    sourcePublicKey,
+  );
+  if (result.status === "SIMULATION_FAILED" || typeof result.returnValue !== "boolean") {
+    return false;
+  }
+  return result.returnValue;
+}
+
+/**
+ * Owner-only: toggle strict timelock enforcement mode on-chain (#1306).
+ */
+export async function setTimelockEnforced(
+  caller: string,
+  enabled: boolean,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(enabled, { type: "bool" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "set_timelock_enforced", args);
+}
+

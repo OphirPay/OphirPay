@@ -935,3 +935,59 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+
+// ===========================================================================
+// BATCH OVERFLOW & CHECKED ADD VERIFICATION (Issue #1283)
+// ===========================================================================
+
+#[test]
+fn test_create_batch_rejects_arithmetic_overflow_gracefully() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let payee1 = Address::generate(&fix.env);
+    let payee2 = Address::generate(&fix.env);
+
+    // Sum of amounts exceeds i128::MAX (e.g. i128::MAX and 1)
+    let mut payees = soroban_sdk::Vec::new(&fix.env);
+    payees.push_back(payee1);
+    payees.push_back(payee2);
+
+    let mut overflow_amounts = soroban_sdk::Vec::new(&fix.env);
+    overflow_amounts.push_back(i128::MAX);
+    overflow_amounts.push_back(1i128);
+
+    let tx = String::from_str(&fix.env, "overflow_tx");
+
+    // Must return ArithmeticOverflow (code 306) without panic
+    let result = fix.client.try_create_batch(&creator, &payees, &overflow_amounts, &fix.token_id, &tx);
+    assert!(matches!(result, Err(Ok(PaymentError::ArithmeticOverflow))));
+
+    // Invariant: no state modified, locked balance untouched
+    assert_eq!(fix.client.get_locked_balance(), 0);
+    assert_eq!(fix.client.get_payment_count(), 0);
+}
+
+#[test]
+fn test_create_batch_checked_add_boundary_near_max() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let payee1 = Address::generate(&fix.env);
+    let payee2 = Address::generate(&fix.env);
+
+    let mut payees = soroban_sdk::Vec::new(&fix.env);
+    payees.push_back(payee1);
+    payees.push_back(payee2);
+
+    let half = i128::MAX / 2;
+    let mut amounts = soroban_sdk::Vec::new(&fix.env);
+    amounts.push_back(half + 10);
+    amounts.push_back(half + 10);
+
+    let tx = String::from_str(&fix.env, "boundary_tx");
+
+    let result = fix.client.try_create_batch(&creator, &payees, &amounts, &fix.token_id, &tx);
+    assert!(matches!(result, Err(Ok(PaymentError::ArithmeticOverflow))));
+    assert_eq!(fix.client.get_locked_balance(), 0);
+    assert_eq!(fix.client.get_payment_count(), 0);
+}

@@ -662,3 +662,9 @@ pub enum PaymentError {
     PaymentIdempotencyConflict = 309,
 }
 
+#[allow(non_upper_case_globals)]
+impl PaymentError {
+    /// Canonical alias for PaymentError::MathOverflow (error code 306).
+    /// Used across batch total arithmetic bounds checks (#1283).
+    pub const ArithmeticOverflow: PaymentError = PaymentError::MathOverflow;
+}

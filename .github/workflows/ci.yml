@@ -31,6 +31,18 @@ jobs:
           node-version-file: ".nvmrc"
       - run: npm run check:docs-links
 
+  prisma-drift:
+    name: "Prisma — Schema Migration Drift Check (#1308)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - name: Verify Prisma schema and migration sync
+        run: node scripts/verify-prisma-drift.mjs
+
   # ══════════════════════════════════════════════════════════════
   # 1. LINT — ESLint with zero tolerance (issue #677)
   #    The `npm run ci` gate runs this exact command; the workflow used to
@@ -58,6 +70,8 @@ jobs:
       - run: npx tsc --noEmit
       - name: Verify generated API client catalogue is current (issue #822)
         run: node scripts/generate-api-client.mjs --check
+      - name: Verify Prisma schema and migration sync (issue #1308)
+        run: npm run prisma:drift-check
 
   # ══════════════════════════════════════════════════════════════
   # 3. UNIT TESTS — Vitest (3000+ frontend tests)

@@ -17,6 +17,7 @@ OphirPay uses Prisma ORM with **PostgreSQL** as the canonical database engine in
 ┌────────────────────────────────────────────────────────┐
 │            Pre-Commit & Local Validation               │
 │  - npm run db:validate                                 │
+│  - npm run prisma:drift-check (static drift gate)      │
 │  - bash scripts/validate-prisma-migrations.sh          │
 │  - npm test src/__tests__/prisma-schema-ci.test.ts     │
 └──────────────────────────┬─────────────────────────────┘
@@ -24,7 +25,8 @@ OphirPay uses Prisma ORM with **PostgreSQL** as the canonical database engine in
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │           GitHub Actions Prisma CI Pipeline            │
-│  - PostgreSQL 15 Service Container                     │
+│  - Static Drift Gate (scripts/verify-prisma-drift.mjs) │
+│  - PostgreSQL 15/16 Service Container                  │
 │  - npx prisma validate                                 │
 │  - npx prisma generate                                 │
 │  - npx prisma migrate deploy                           │
@@ -43,10 +45,13 @@ Before committing schema or migration updates, run the validation toolchain:
 # 1. Validate Prisma schema syntax and model definitions
 npm run db:validate
 
-# 2. Run structural and destructive migration scan
+# 2. Run static schema-to-migration drift check (no database required)
+npm run prisma:drift-check
+
+# 3. Run structural and destructive migration scan
 bash scripts/validate-prisma-migrations.sh
 
-# 3. Execute unit & integration tests for Prisma schema integrity
+# 4. Execute unit & integration tests for Prisma schema integrity
 npm test src/__tests__/prisma-schema-ci.test.ts
 ```
 
@@ -54,13 +59,19 @@ npm test src/__tests__/prisma-schema-ci.test.ts
 
 ## CI/CD Pipeline Workflow
 
-The dedicated workflow `.github/workflows/prisma-ci.yml` runs automatically on PRs and pushes touching `prisma/**`:
+Prisma drift detection is enforced across two complementary layers in CI:
 
-1. **Syntax & Schema Validation**: Runs `npx prisma validate` against the schema.
-2. **Client Generation**: Ensures `@prisma/client` builds without type errors.
-3. **Migration Deploy Replay**: Executes all migrations in `prisma/migrations/` sequentially against a fresh PostgreSQL test instance.
-4. **Drift Detection**: Uses `prisma migrate diff` against a shadow database to verify that `schema.prisma` strictly matches the applied migrations.
-5. **Schema Regression Tests**: Executes Vitest suite checking relationship integrity, decimal precision on monetary columns, and timestamp constraints.
+1. **Static Drift Gate (`.github/workflows/ci.yml` — `prisma-drift` & `typecheck`)**:
+   - Runs `node scripts/verify-prisma-drift.mjs` on every pull request and push.
+   - Requires zero database containers, verifying in sub-seconds that all models, fields, types, and enums in `prisma/schema.prisma` are accounted for in `prisma/migrations/`.
+   - Prevents unmigrated schema changes from progressing deeper into the pipeline.
+
+2. **Full Fidelity Dynamic Validation (`.github/workflows/prisma-ci.yml`)**:
+   - **Syntax & Schema Validation**: Runs `npx prisma validate` against the schema.
+   - **Client Generation**: Ensures `@prisma/client` builds without type errors.
+   - **Migration Deploy Replay**: Executes all migrations in `prisma/migrations/` sequentially against a fresh PostgreSQL test instance.
+   - **Drift Detection**: Uses `prisma migrate diff` against a shadow database to verify that `schema.prisma` strictly matches the applied migrations.
+   - **Schema Regression Tests**: Executes Vitest suite checking relationship integrity, decimal precision on monetary columns, and timestamp constraints.
 
 ---
 

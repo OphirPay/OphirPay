@@ -1,30 +1,65 @@
 version: 2
 
-# Issue #732 — keep dependency updates flowing without drowning reviewers.
+# Issue #732, #1415 — intelligent Dependabot grouping to prevent reviewer fatigue and CI saturation.
 #
-# Every ecosystem the repo actually pins is covered: the root npm lockfile,
-# both Cargo.lock files (contracts/ophirpay, contracts/emitter) and the pinned
-# GitHub Actions. Each is checked once a week and minor/patch bumps are grouped
-# into a single PR per ecosystem; a major bump still arrives on its own so it
-# gets the attention it needs. `open-pull-requests-limit` caps the backlog a
-# busy week can create.
+# Groups minor and patch updates by ecosystem and domain:
+#   - npm:
+#       - react-ecosystem (next, react, react-dom, @types/react*)
+#       - dev-tools (eslint*, prettier*, vitest*, @vitest*, @playwright*, typescript*)
+#       - utilities (zod*, date-fns*, clsx*, tailwind-merge*)
+#   - cargo (contracts/ophirpay & contracts/emitter):
+#       - soroban-sdk (soroban-sdk*, soroban-env-*)
+#       - rust-tooling (rstest*, proptest*, pretty_assertions*)
+#   - github-actions:
+#       - single monthly bundled update to reduce repository PR noise
 #
-# See CONTRIBUTING.md → "Dependency Updates" for the review flow.
+# Note: Security advisories are excluded from groups by GitHub Dependabot policy
+# and will continue to open individual, high-priority PRs immediately.
 
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
+      - "javascript"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      npm-minor-patch:
+      react-ecosystem:
         patterns:
-          - "*"
+          - "next"
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+        update-types:
+          - "minor"
+          - "patch"
+      dev-tools:
+        patterns:
+          - "eslint*"
+          - "@eslint*"
+          - "prettier*"
+          - "vitest*"
+          - "@vitest*"
+          - "@playwright*"
+          - "playwright*"
+          - "typescript"
+          - "tsx"
+          - "jsdom"
+        update-types:
+          - "minor"
+          - "patch"
+      utilities:
+        patterns:
+          - "zod*"
+          - "date-fns*"
+          - "clsx"
+          - "tailwind-merge"
+          - "dotenv*"
         update-types:
           - "minor"
           - "patch"
@@ -33,15 +68,25 @@ updates:
     directory: "/contracts/ophirpay"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
+      - "rust"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      cargo-ophirpay-minor-patch:
+      soroban-sdk:
         patterns:
-          - "*"
+          - "soroban-sdk*"
+          - "soroban-env-*"
+        update-types:
+          - "minor"
+          - "patch"
+      rust-tooling:
+        patterns:
+          - "rstest*"
+          - "proptest*"
+          - "pretty_assertions*"
         update-types:
           - "minor"
           - "patch"
@@ -50,15 +95,25 @@ updates:
     directory: "/contracts/emitter"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
+      - "rust"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      cargo-emitter-minor-patch:
+      soroban-sdk:
         patterns:
-          - "*"
+          - "soroban-sdk*"
+          - "soroban-env-*"
+        update-types:
+          - "minor"
+          - "patch"
+      rust-tooling:
+        patterns:
+          - "rstest*"
+          - "proptest*"
+          - "pretty_assertions*"
         update-types:
           - "minor"
           - "patch"
@@ -66,14 +121,15 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+      - "ci"
     commit-message:
       prefix: "chore(deps)"
     groups:
-      actions-minor-patch:
+      actions-all:
         patterns:
           - "*"
         update-types:

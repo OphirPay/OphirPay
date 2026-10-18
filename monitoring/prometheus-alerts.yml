@@ -20,8 +20,26 @@ groups:
           description: |
             P95 payment processing time is {{ $value }}s. Check Stellar RPC
             and database performance.
+          runbook_url: "docs/TROUBLESHOOTING.md#payment-processing-latency"
 
-      # ── Webhook Delivery Alerts ──────────────────────────────
+      # ── Webhook Delivery Alerts (issue #1412) ─────────────────
+
+      - alert: OphirPayWebhookHighFailureRate
+        expr: |
+          (
+            sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook",final_outcome="failure"}[5m])) /
+            sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: webhooks
+        annotations:
+          summary: "Webhook delivery failure rate > 5%"
+          description: |
+            Webhook delivery failures exceed 5% over a 5-minute window (current: {{ $value | humanizePercentage }}).
+            Check subscriber endpoints and retry delivery queues.
+          runbook_url: "docs/TROUBLESHOOTING.md#webhook-delivery-failures"
 
       - alert: WebhookDeliveryFailureRateHigh
         expr: |
@@ -29,7 +47,7 @@ groups:
           sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook"}[15m])) > 0.25
         for: 10m
         labels:
-          severity: warning
+          severity: critical
           component: webhooks
         annotations:
           summary: "Webhook delivery failure rate > 25%"
@@ -37,6 +55,7 @@ groups:
             {{ $value | humanizePercentage }} of webhook deliveries have ended
             in failure for at least 10 minutes. Check subscriber endpoints and
             retry attempt distribution.
+          runbook_url: "docs/TROUBLESHOOTING.md#webhook-delivery-failures"
 
       # ── API Health Alerts ────────────────────────────────────
 
@@ -53,6 +72,7 @@ groups:
           description: |
             OphirPay API is returning errors at {{ $value | humanizePercentage }}.
             Check logs for root cause.
+          runbook_url: "docs/TROUBLESHOOTING.md#api-high-error-rate"
 
       - alert: ApiDown
         expr: up{job="ophirpay"} == 0
@@ -65,8 +85,27 @@ groups:
           description: |
             The OphirPay metrics endpoint is not responding to Prometheus scrapes.
             Instance: {{ $labels.instance }}.
+          runbook_url: "docs/TROUBLESHOOTING.md#api-down"
 
-      # ── Soroban RPC Failover Alerts (issue #820) ─────────────
+      # ── Soroban RPC Alerts & Telemetry (issue #1412 & #820) ────
+
+      - alert: OphirPayRpcProviderDegraded
+        expr: |
+          (
+            histogram_quantile(0.95, sum by (le) (rate(ophirpay_endpoint_request_duration_seconds_bucket[5m]))) > 2.5
+          ) or (
+            sum(rate(ophirpay_endpoint_errors_total{status_class="5xx"}[3m])) > 0
+          )
+        for: 3m
+        labels:
+          severity: critical
+          component: rpc
+        annotations:
+          summary: "Soroban RPC provider degraded (> 2.5s latency or 5xx errors)"
+          description: |
+            Soroban RPC provider latency exceeds 2.5s p95 or is returning 5xx responses for 3 minutes.
+            Active endpoint may be failing or degraded. Verify provider status and failover health.
+          runbook_url: "docs/TROUBLESHOOTING.md#soroban-rpc-degraded"
 
       - alert: RpcFailoverDegraded
         expr: ophirpay_rpc_failover_active == 1
@@ -82,6 +121,7 @@ groups:
             Failover count: {{ with printf "ophirpay_rpc_failover_total" | query }}
             {{ . | first | value }}{{ end }}. Check the upstream provider
             status and the rpcFailover block of GET /api/health.
+          runbook_url: "docs/TROUBLESHOOTING.md#soroban-rpc-degraded"
 
       - alert: RpcFailoverFrequent
         expr: increase(ophirpay_rpc_failover_total[30m]) >= 3
@@ -95,4 +135,23 @@ groups:
             {{ printf "%.0f" $value }} failovers in the last 30 minutes — the
             primary endpoint is unstable. Verify the primary provider and the
             probe results logged by the failover module.
-
+          runbook_url: "docs/TROUBLESHOOTING.md#soroban-rpc-degraded"
+
+      # ── Database Health Alerts (issue #1412) ───────────────────
+
+      - alert: OphirPayDatabasePoolExhaustion
+        expr: |
+          (
+            rate(ophirpay_db_query_duration_seconds_sum[5m]) /
+            rate(ophirpay_db_query_duration_seconds_count[5m])
+          ) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Prisma database pool wait / query latency > 500ms"
+          description: |
+            Average database query latency and pool queue wait time is {{ $value | humanizeDuration }} (> 500ms).
+            Database connection pool may be exhausted or experiencing contention.
+          runbook_url: "docs/TROUBLESHOOTING.md#database-pool-exhaustion"

@@ -124,3 +124,24 @@ describe("helm/ophirpay config keys (#683)", () => {
     expect(rawValues).toMatch(/build\*?\*? time/i);
   });
 });
+
+describe("helm/ophirpay autoscaling and replica management (#1331)", () => {
+  const rawValues = load(
+    readFileSync(join(chartDir, "values.yaml"), "utf8"),
+  ) as { autoscaling: { enabled: boolean }; replicaCount: number };
+
+  it("enables autoscaling by default and sets default replicaCount", () => {
+    expect(rawValues.autoscaling.enabled).toBe(true);
+    expect(rawValues.replicaCount).toBe(2);
+  });
+
+  it("wraps spec.replicas in if not .Values.autoscaling.enabled in deployment template", () => {
+    const deployment = readFileSync(
+      join(templatesDir, "deployment.yaml"),
+      "utf8",
+    );
+    expect(deployment).toContain("{{- if not .Values.autoscaling.enabled }}");
+    expect(deployment).toContain("replicas: {{ .Values.replicaCount }}");
+  });
+});
+

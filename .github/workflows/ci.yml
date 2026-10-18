@@ -373,6 +373,25 @@ jobs:
           reject "kind: NetworkPolicy" /tmp/disabled.yaml
           reject "kind: ServiceAccount" /tmp/disabled.yaml
 
+          # Issue #1331: Deployment must omit spec.replicas when autoscaling is enabled
+          # to avoid resetting replica count on every helm upgrade.
+          # When autoscaling is disabled, spec.replicas must be rendered.
+          deploy_enabled=$(sed -n '/kind: Deployment/,/---/p' /tmp/enabled.yaml)
+          if echo "$deploy_enabled" | grep -q 'replicas:'; then
+            echo "::error::Deployment unexpectedly contains 'replicas:' while autoscaling is enabled"
+            fail=1
+          else
+            echo "✅ Deployment contains no 'replicas:' while autoscaling is enabled"
+          fi
+
+          deploy_disabled=$(sed -n '/kind: Deployment/,/---/p' /tmp/disabled.yaml)
+          if echo "$deploy_disabled" | grep -q 'replicas: 2'; then
+            echo "✅ Deployment renders 'replicas: 2' when autoscaling is disabled"
+          else
+            echo "::error::Deployment is missing 'replicas: 2' when autoscaling is disabled"
+            fail=1
+          fi
+
           exit "$fail"
       
       - name: Validate with kubeconform

@@ -10,6 +10,12 @@ import {
   unauthorizedError,
   handleApiError,
 } from "@/lib/api-response";
+import {
+  validationProblemDetails,
+  unauthorizedProblemDetails,
+  csrfProblemDetails,
+  handleApiProblemError,
+} from "@/lib/api-errors";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -119,20 +125,22 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
 }));
 
 export const POST = withMetrics("POST /api/payments", withRequestLogging(async function POST(request: Request) {
+  const instance = "/api/payments";
   try {
     const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
+    if (csrfError) return csrfProblemDetails(instance);
 
     const auth = await getAuthContext(request);
     if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+      return unauthorizedProblemDetails(
+        "Authentication required. Connect your wallet or provide an API key.",
+        instance
       );
     }
 
     const body = await request.json();
     const parsed = createPaymentSchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error);
+    if (!parsed.success) return validationProblemDetails(parsed.error, instance);
 
     const payment = await prisma.payment.create({
       data: {
@@ -181,6 +189,6 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
 
     return successResponse(payment, undefined, 201);
   } catch (err) {
-    return handleApiError(err, "POST /api/payments");
+    return handleApiProblemError(err, instance);
   }
 }));

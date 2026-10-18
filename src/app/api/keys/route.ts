@@ -13,7 +13,8 @@ import { getAuthContext } from "@/lib/auth-session";
 import {
   deriveKeyPrefix,
   generateApiKey,
-  hashApiKeyV1,
+  hashApiKeyV2,
+  assertMinimumKeyEntropy,
   API_SCOPES,
 } from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -117,10 +118,13 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
     const quota = await consumeApiKeyMutationQuota(auth.userId);
     if (!quota.allowed) return apiKeyQuotaError(quota);
 
-    // `generateApiKey` mints 32 CSPRNG bytes (issue #701) and fails closed if
-    // the result ever drifts from the documented `oph_` + 64-hex format.
+    // `generateApiKey` mints 32 CSPRNG bytes (issue #701, #1397) and fails closed if
+    // the result ever drifts from the documented format.
     const rawKey = generateApiKey();
-    const keyHash = hashApiKeyV1(rawKey);
+    // Enforce minimum entropy threshold (#1287): minimum 32 bytes (256-bit entropy)
+    assertMinimumKeyEntropy(rawKey);
+    // Hash new keys with Argon2id slow KDF with per-key salt (#1287)
+    const keyHash = await hashApiKeyV2(rawKey);
     const prefix = deriveKeyPrefix(rawKey);
     const initiatedBy = describeKeyInitiator(auth);
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createHash } from "node:crypto";
+import { hashApiKeyV2 } from "@/lib/api-auth";
 
 // Mock dependencies
 //
@@ -332,11 +332,10 @@ describe("API Routes: Auth, CSRF & Keys", () => {
       };
       // Stored digest is version-tagged; the lookup prefix is the raw key's
       // first 8 characters (a mismatch here breaks every authenticated call).
-      expect(createArgs.data.keyHash).toMatch(/^v1:[a-f0-9]{64}$/);
+      // Issue #1287: New API keys are hashed with Argon2id v2 before storage.
+      expect(createArgs.data.keyHash).toMatch(/^v2:\$argon2id\$/);
       expect(createArgs.data.prefix).toBe(data.data.key.slice(0, 8));
-      expect(createArgs.data.keyHash).toBe(
-        `v1:${createHash("sha256").update(data.data.key).digest("hex")}`
-      );
+      expect(createArgs.data.keyHash).toBe(await hashApiKeyV2(data.data.key));
     });
 
     it("DELETE returns 401 when unauthenticated", async () => {

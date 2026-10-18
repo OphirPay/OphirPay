@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import crypto from "crypto";
+import argon2 from "argon2";
 import prisma from "@/lib/prisma";
 import { unauthorizedError, forbiddenError } from "@/lib/api-response";
 import { NextResponse } from "next/server";
@@ -70,6 +71,14 @@ export function generateApiKey(options?: { env?: "live" | "test" }): string {
 // ── Hashing ────────────────────────────────────────────────────
 
 /**
+ * Standard slow KDF digest version (#1287): Argon2id.
+ */
+export const API_KEY_DIGEST_VERSION_V2 = "v2";
+
+/** Minimum required entropy for API keys: 32 bytes (256-bit entropy) (#1287). */
+export const MIN_API_KEY_ENTROPY_BYTES = 32;
+
+/**
  * Legacy digest: unsalted SHA-256 hex. Retained so keys created before the
  * `v1:` tag (and before the 32-byte format) continue to authenticate.
  */
@@ -78,7 +87,7 @@ export function hashApiKey(rawKey: string): string {
 }
 
 /**
- * Current digest: `v1:<sha256 hex>`. The version tag is stored in the same
+ * Previous digest: `v1:<sha256 hex>`. The version tag is stored in the same
  * `keyHash` column, so a future pepper/KDF migration has somewhere to live
  * without a schema change — older digests keep authenticating meanwhile.
  */
@@ -87,12 +96,174 @@ export function hashApiKeyV1(rawKey: string): string {
 }
 
 /**
- * Every stored digest a raw key may match, newest format first. The auth
- * lookup queries `keyHash: { in: … }` with these so pre-#701 keys (bare
- * SHA-256) and post-#701 keys (`v1:` prefixed) both resolve.
+ * Derive a unique, deterministic 16-byte salt for an API key (#1287).
+ * Ensures unique salt per credential while maintaining O(1) indexed database lookups.
+ */
+export function deriveApiKeySalt(rawKey: string): Buffer {
+  return crypto
+    .createHash("sha256")
+    .update(`${rawKey}:ophirpay:salt:v2`)
+    .digest()
+    .subarray(0, 16);
+}
+
+/**
+ * Current standard slow KDF digest: `v2:$argon2id$...` (#1287).
+ * Uses Argon2id memory-hard hashing with a per-key salt, resistant to GPU/ASIC brute-force.
+ */
+export async function hashApiKeyV2(rawKey: string): Promise<string> {
+  const salt = deriveApiKeySalt(rawKey);
+  const digest = await argon2.hash(rawKey, {
+    type: argon2.argon2id,
+    salt,
+    memoryCost: 4096, // 4MB RAM per hash
+    timeCost: 2,      // 2 iterations
+    parallelism: 1,
+  });
+  return `${API_KEY_DIGEST_VERSION_V2}:${digest}`;
+}
+
+/**
+ * Verify a raw API key against a stored keyHash (#1287).
+ * Supports:
+ *   - v2 Argon2id: `v2:$argon2id$...` or `$argon2id$...`
+ *   - v1 tagged SHA-256: `v1:<hex>`
+ *   - legacy bare SHA-256: `<hex>`
+ */
+export async function verifyApiKeyDigest(
+  rawKey: string,
+  storedHash: string
+): Promise<boolean> {
+  if (!storedHash || typeof storedHash !== "string") return false;
+
+  if (storedHash.startsWith("v2:")) {
+    const rawArgon = storedHash.slice(3);
+    try {
+      return await argon2.verify(rawArgon, rawKey);
+    } catch {
+      return false;
+    }
+  }
+
+  if (storedHash.startsWith("$argon2id$")) {
+    try {
+      return await argon2.verify(storedHash, rawKey);
+    } catch {
+      return false;
+    }
+  }
+
+  if (storedHash.startsWith("v1:")) {
+    const expected = hashApiKeyV1(rawKey);
+    if (storedHash.length !== expected.length) return false;
+    return crypto.timingSafeEqual(
+      Buffer.from(storedHash),
+      Buffer.from(expected)
+    );
+  }
+
+  // Legacy bare 64-character SHA-256
+  const expected = hashApiKey(rawKey);
+  if (storedHash.length !== expected.length) return false;
+  return crypto.timingSafeEqual(
+    Buffer.from(storedHash),
+    Buffer.from(expected)
+  );
+}
+
+/**
+ * Verify minimum entropy for an API key (#1287).
+ * Standardized keys must contain at least 32 CSPRNG bytes (64 hex characters = 256 bits).
+ */
+export function validateKeyEntropy(rawKey: string): {
+  valid: boolean;
+  entropyBytes: number;
+  error?: string;
+} {
+  if (!rawKey || typeof rawKey !== "string") {
+    return { valid: false, entropyBytes: 0, error: "API key must be a non-empty string" };
+  }
+
+  const trimmed = rawKey.trim();
+
+  // Match standardized format: op_{env}_{entropy_hex}_{crc}
+  const stdMatch = /^op_(?:live|test)_([0-9a-fA-F]+)_[0-9a-fA-F]{8}$/.exec(trimmed);
+  if (stdMatch && stdMatch[1]) {
+    const hexLen = stdMatch[1].length;
+    const bytes = hexLen / 2;
+    if (bytes < MIN_API_KEY_ENTROPY_BYTES) {
+      return {
+        valid: false,
+        entropyBytes: bytes,
+        error: `API key entropy below minimum requirement: ${bytes} bytes provided, minimum ${MIN_API_KEY_ENTROPY_BYTES} bytes required`,
+      };
+    }
+    return { valid: true, entropyBytes: bytes };
+  }
+
+  // Match legacy prefix: oph_{entropy_hex}
+  const legMatch = /^oph_([0-9a-fA-F]+)$/.exec(trimmed);
+  if (legMatch && legMatch[1]) {
+    const hexLen = legMatch[1].length;
+    const bytes = hexLen / 2;
+    if (bytes < MIN_API_KEY_ENTROPY_BYTES) {
+      return {
+        valid: false,
+        entropyBytes: bytes,
+        error: `API key entropy below minimum requirement: ${bytes} bytes provided, minimum ${MIN_API_KEY_ENTROPY_BYTES} bytes required`,
+      };
+    }
+    return { valid: true, entropyBytes: bytes };
+  }
+
+  const rawBytes = Buffer.byteLength(trimmed, "utf8");
+  if (rawBytes < MIN_API_KEY_ENTROPY_BYTES) {
+    return {
+      valid: false,
+      entropyBytes: rawBytes,
+      error: `API key entropy below minimum requirement: ${rawBytes} bytes provided, minimum ${MIN_API_KEY_ENTROPY_BYTES} bytes required`,
+    };
+  }
+
+  return { valid: true, entropyBytes: rawBytes };
+}
+
+/** Throw an error if rawKey does not meet the minimum entropy requirement (#1287). */
+export function assertMinimumKeyEntropy(rawKey: string): void {
+  const result = validateKeyEntropy(rawKey);
+  if (!result.valid) {
+    throw new Error(result.error);
+  }
+}
+
+/**
+ * Synchronous lookup hashes for backward compatibility with v1 and legacy SHA-256.
  */
 export function apiKeyLookupHashes(rawKey: string): string[] {
   return [hashApiKeyV1(rawKey), hashApiKey(rawKey)];
+}
+
+/**
+ * Asynchronous lookup hashes: newest Argon2id v2 format first, followed by v1 and legacy (#1287).
+ */
+export async function apiKeyLookupHashesV2(rawKey: string): Promise<string[]> {
+  const v2 = await hashApiKeyV2(rawKey);
+  return [v2, ...apiKeyLookupHashes(rawKey)];
+}
+
+/**
+ * Migrate an API key to Argon2id v2 during the migration window (#1287).
+ */
+export async function migrateApiKeyToV2(
+  keyId: string,
+  rawKey: string
+): Promise<string> {
+  const v2Hash = await hashApiKeyV2(rawKey);
+  await prisma.apiKey.update({
+    where: { id: keyId },
+    data: { keyHash: v2Hash },
+  });
+  return v2Hash;
 }
 
 // ── Header Extraction ──────────────────────────────────────────
@@ -138,7 +309,11 @@ export async function authenticateRequest(
   if (!isStandardValid && !isLegacyValid) return null;
 
   const prefix = deriveKeyPrefix(rawKey);
-  const keyHashes = apiKeyLookupHashes(rawKey);
+  // Standard keys query Argon2id v2 first, then fallback to v1 & legacy SHA-256.
+  // Legacy formats query existing SHA-256 digests.
+  const keyHashes = isStandardValid
+    ? await apiKeyLookupHashesV2(rawKey)
+    : apiKeyLookupHashes(rawKey);
 
   try {
     const apiKey = await prisma.apiKey.findFirst({

@@ -11,7 +11,8 @@ import { getAuthContext } from "@/lib/auth-session";
 import {
   deriveKeyPrefix,
   generateApiKey,
-  hashApiKeyV1,
+  hashApiKeyV2,
+  assertMinimumKeyEntropy,
 } from "@/lib/api-auth";
 import { verifyCsrf } from "@/lib/csrf";
 import { logger } from "@/lib/logger";
@@ -50,6 +51,8 @@ export async function POST(
     const { id } = await params;
     const now = new Date();
     const rawKey = generateApiKey();
+    assertMinimumKeyEntropy(rawKey);
+    const replacementHash = await hashApiKeyV2(rawKey);
     const replacementPrefix = deriveKeyPrefix(rawKey);
     const graceLimit = new Date(now.getTime() + ROTATION_GRACE_MS);
 
@@ -91,7 +94,7 @@ export async function POST(
       const replacement = await tx.apiKey.create({
         data: {
           name: previous.name,
-          keyHash: hashApiKeyV1(rawKey),
+          keyHash: replacementHash,
           prefix: replacementPrefix,
           userId: auth.userId,
           scopes: previous.scopes,

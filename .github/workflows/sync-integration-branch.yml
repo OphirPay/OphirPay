@@ -1,0 +1,173 @@
+name: "🔄 Sync Integration Branch"
+
+# When commits land directly on `main` (hotfixes, external contributions, or
+# direct administrative merges), `integration/staging` falls behind.
+#
+# This workflow runs on pushes to `main` and attempts to fast-forward or
+# cleanly back-merge `main` into `integration/staging`. If there are merge
+# conflicts, it aborts the merge and opens (or updates) an alert issue with
+# the conflicting file list so maintainers can intervene immediately.
+#
+# The workflow is a self-retiring no-op once `integration/staging` is deleted.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: sync-integration-branch
+  cancel-in-progress: false
+
+jobs:
+  sync-branch:
+    name: "🔄 Back-merge main into integration/staging"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check if integration branch exists
+        id: check-branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INTEGRATION_BRANCH: "integration/staging"
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${INTEGRATION_BRANCH}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Branch '${INTEGRATION_BRANCH}' exists. Proceeding with sync."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Branch '${INTEGRATION_BRANCH}' does not exist (batch mode inactive). Skipping."
+          fi
+
+      - name: Checkout repository
+        if: steps.check-branch.outputs.exists == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git identity
+        if: steps.check-branch.outputs.exists == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Back-merge main into integration/staging
+        if: steps.check-branch.outputs.exists == 'true'
+        id: merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INTEGRATION_BRANCH: "integration/staging"
+        run: |
+          set -uo pipefail
+
+          # Fetch latest state of both branches
+          git fetch origin main:main || true
+          git fetch origin "${INTEGRATION_BRANCH}:${INTEGRATION_BRANCH}" || true
+
+          # Checkout integration branch
+          git checkout "${INTEGRATION_BRANCH}"
+
+          # Check how many commits main is ahead of integration/staging
+          BEHIND_COUNT=$(git rev-list --count "${INTEGRATION_BRANCH}..main")
+          echo "integration/staging is ${BEHIND_COUNT} commit(s) behind main."
+
+          if [ "$BEHIND_COUNT" -eq 0 ]; then
+            echo "integration/staging is already up-to-date with main. Nothing to do."
+            echo "status=up_to_date" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Attempt merge
+          echo "Attempting to merge main into ${INTEGRATION_BRANCH}..."
+          if git merge --no-edit origin/main -m "chore(sync): back-merge main into ${INTEGRATION_BRANCH} [skip ci]"; then
+            echo "Merge succeeded cleanly. Pushing to origin..."
+            git push origin "${INTEGRATION_BRANCH}"
+            echo "status=synced" >> "$GITHUB_OUTPUT"
+            echo "Successfully synced main into ${INTEGRATION_BRANCH}."
+          else
+            echo "Merge conflict detected!"
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+            echo "Conflicting files:"
+            echo "$CONFLICT_FILES"
+
+            # Abort merge to leave workspace clean
+            git merge --abort
+
+            # Export conflict details to outputs
+            echo "status=conflict" >> "$GITHUB_OUTPUT"
+            {
+              echo "conflicts<<EOF"
+              echo "$CONFLICT_FILES"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report or update conflict issue
+        if: steps.check-branch.outputs.exists == 'true' && steps.merge.outputs.status == 'conflict'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFLICT_FILES: ${{ steps.merge.outputs.conflicts }}
+          INTEGRATION_BRANCH: "integration/staging"
+          RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          set -euo pipefail
+
+          TITLE="[Sync Alert] Merge conflict: main into ${INTEGRATION_BRANCH}"
+
+          # Search if an open conflict issue already exists
+          EXISTING_ISSUE=$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open \
+            --search "${TITLE} in:title" --json number --jq '.[0].number // empty')
+
+          BODY=$(cat <<EOF
+          ### ⚠️ Automated Sync Conflict Detected
+
+          A push to \`main\` could not be cleanly merged into \`${INTEGRATION_BRANCH}\`.
+
+          - **Workflow Run**: [View Details](${RUN_URL})
+          - **Triggered Commit**: \`${GITHUB_SHA}\`
+
+          #### 📂 Conflicting Files:
+          \`\`\`
+          ${CONFLICT_FILES}
+          \`\`\`
+
+          #### 🛠️ Manual Resolution Instructions:
+          \`\`\`bash
+          git fetch origin
+          git checkout ${INTEGRATION_BRANCH}
+          git pull origin ${INTEGRATION_BRANCH}
+          git merge origin/main
+          # Resolve conflicts in the files listed above
+          git add <resolved-files>
+          git commit -m "chore: resolve merge conflicts from main into ${INTEGRATION_BRANCH}"
+          git push origin ${INTEGRATION_BRANCH}
+          \`\`\`
+
+          <sub>Automated by <code>.github/workflows/sync-integration-branch.yml</code>.</sub>
+          EOF
+          )
+
+          if [ -n "$EXISTING_ISSUE" ]; then
+            echo "Updating existing conflict tracking issue #${EXISTING_ISSUE}..."
+            gh issue comment "$EXISTING_ISSUE" --repo "${GITHUB_REPOSITORY}" --body "$BODY"
+          else
+            echo "Creating new conflict tracking issue..."
+            gh issue create --repo "${GITHUB_REPOSITORY}" \
+              --title "$TITLE" \
+              --body "$BODY" \
+              --label "ci,merge-conflict" || \
+            gh issue create --repo "${GITHUB_REPOSITORY}" \
+              --title "$TITLE" \
+              --body "$BODY"
+          fi
+
+          echo "::error title=Sync Conflict::Merge conflict occurred while back-merging main into ${INTEGRATION_BRANCH}."
+          exit 1

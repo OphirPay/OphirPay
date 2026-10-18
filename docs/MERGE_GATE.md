@@ -34,12 +34,27 @@ checks for an ordinary pull request:
 - `db-backup.yml` — scheduled database backup.
 - `scorecard.yml` — scheduled OpenSSF scorecard analysis.
 - `stale.yml` — scheduled issue and PR housekeeping.
+- `sync-integration-branch.yml` — automated back-merge from `main` into `integration/staging` on push.
+- `prompt-promotion-pr.yml` — maintainer reminder to promote `integration/staging` to `main`.
 
 `docker-smoke.yml` may run on pull requests, but it is an auxiliary deployment
 smoke test unless branch protection explicitly marks its check required. Review
 the repository’s branch-protection settings when changing the required list;
 this document describes the intended gate, not a replacement for GitHub
 settings.
+
+## Automated integration branch synchronization
+
+When direct commits or external PRs land on `main`, `integration/staging` risks
+falling behind. The `.github/workflows/sync-integration-branch.yml` workflow automatically
+back-merges `main` into `integration/staging` upon push:
+
+1. **Self-Retiring Guard**: If `integration/staging` does not exist (batch mode inactive), the workflow exits as a clean no-op.
+2. **Automated Clean Sync**: When fast-forward or clean merge is possible, `main` is merged and pushed directly to `integration/staging`.
+3. **Conflict Escalation Protocol**: If merge conflicts occur:
+   - The in-progress merge is immediately aborted (`git merge --abort`) to prevent corrupted states.
+   - A tracking issue labeled `ci,merge-conflict` is created (or updated) with the exact conflicting files and resolution steps.
+   - Maintainers are prompted to resolve conflicts manually and push to `integration/staging`.
 
 ## One-command local gate
 

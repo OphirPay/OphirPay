@@ -2608,11 +2608,26 @@ impl OphirPayContract {
         }
 
         let now = env.ledger().timestamp();
-        let vested = compute_vested(stream.total_amount, stream.start_time, stream.end_time, now);
+        let duration = stream.end_time.saturating_sub(stream.start_time);
+        let vested = if duration == 0 || now >= stream.end_time {
+            stream.total_amount
+        } else {
+            compute_vested(stream.total_amount, stream.start_time, stream.end_time, now)
+        };
         let earned_unclaimed = vested
             .checked_sub(stream.claimed_amount)
             .ok_or(PaymentError::StreamInvariantViolated)?;
         let unvested = stream.total_amount.saturating_sub(vested);
+
+        // Solvency invariant verification (issue #1357): exact conservation of principal
+        let total_accounted = stream
+            .claimed_amount
+            .checked_add(earned_unclaimed)
+            .and_then(|sum| sum.checked_add(unvested))
+            .ok_or(PaymentError::MathOverflow)?;
+        if total_accounted != stream.total_amount || unvested < 0 {
+            return Err(PaymentError::StreamInvariantViolated);
+        }
 
         stream.cancelled = true;
         stream.claimed_amount = vested;

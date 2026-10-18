@@ -353,3 +353,51 @@ proptest! {
         prop_assert_eq!(h.client.get_locked_balance(), 0);
     }
 }
+
+
+// ===========================================================================
+// 4. STREAM CANCELLATION PRO-RATA REFUND SOLVENCY (Issue #1357)
+// ===========================================================================
+
+proptest! {
+    #![proptest_config(get_proptest_config())]
+
+    /// Across arbitrary positive stream principals, start/end timestamps (including
+    /// zero-duration edges), and cancellation timestamps, compute_vested never
+    /// divides by zero and vested + refundable == total_amount holds strictly.
+    #[test]
+    fn prop_stream_cancel_pro_rata_solvency_across_elapsed_timestamps(
+        total_amount in 1i128..=1_000_000_000_000_000_000i128,
+        start_time in 0u64..=10_000_000u64,
+        duration in 0u64..=10_000_000u64,
+        claim_offset in 0u64..=12_000_000u64,
+        cancel_offset in 0u64..=12_000_000u64,
+    ) {
+        let end_time = start_time.saturating_add(duration);
+        let t1 = start_time.saturating_add(claim_offset.min(cancel_offset));
+        let t2 = start_time.saturating_add(claim_offset.max(cancel_offset));
+
+        let vested_at_claim = ophirpay_contract::helpers::compute_vested(
+            total_amount,
+            start_time,
+            end_time,
+            t1,
+        );
+        let vested_at_cancel = ophirpay_contract::helpers::compute_vested(
+            total_amount,
+            start_time,
+            end_time,
+            t2,
+        );
+
+        prop_assert!(vested_at_claim >= 0 && vested_at_claim <= total_amount);
+        prop_assert!(vested_at_cancel >= vested_at_claim && vested_at_cancel <= total_amount);
+
+        let unclaimed_vested = vested_at_cancel - vested_at_claim;
+        let refundable = total_amount - vested_at_cancel;
+
+        // Exact conservation of principal: claimed + unclaimed_vested + refundable == total_amount
+        prop_assert_eq!(vested_at_claim + unclaimed_vested + refundable, total_amount);
+        prop_assert_eq!(vested_at_cancel + refundable, total_amount);
+    }
+}

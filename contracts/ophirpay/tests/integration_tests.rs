@@ -935,3 +935,105 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+
+// ===========================================================================
+// STREAM CANCELLATION PRO-RATA REFUND VERIFICATION (Issue #1357)
+// ===========================================================================
+
+#[test]
+fn test_cancel_stream_pro_rata_refund_at_0_25_50_75_100_percent() {
+    let scenarios = [
+        (0u64, 0i128, 1_000_000i128),
+        (25u64, 250_000i128, 750_000i128),
+        (50u64, 500_000i128, 500_000i128),
+        (75u64, 750_000i128, 250_000i128),
+        (100u64, 1_000_000i128, 0i128),
+    ];
+
+    for (pct, expected_recipient, expected_refund) in scenarios {
+        let fix = TestFixture::new();
+        let creator = Address::generate(&fix.env);
+        let recipient = Address::generate(&fix.env);
+        let total = 1_000_000i128;
+        fix.mint(&creator, total);
+
+        let now = 10_000u64;
+        let duration = 100u64;
+        let end_time = now + duration;
+        fix.env.ledger().set_timestamp(now);
+
+        let stream_id = fix.client.create_stream(
+            &creator,
+            &recipient,
+            &total,
+            &fix.token_id,
+            &now,
+            &end_time,
+            &String::from_str(&fix.env, "pro-rata test"),
+        );
+
+        let cancel_time = now + (duration * pct) / 100;
+        fix.env.ledger().set_timestamp(cancel_time);
+
+        let refunded = fix.client.cancel_stream(&creator, &stream_id);
+        assert_eq!(refunded, expected_refund, "failed at pct: {}", pct);
+        assert_eq!(fix.token_client.balance(&creator), expected_refund);
+        assert_eq!(fix.token_client.balance(&recipient), expected_recipient);
+
+        // Conservation of funds: recipient + creator refund == total principal
+        assert_eq!(
+            fix.token_client.balance(&recipient) + fix.token_client.balance(&creator),
+            total
+        );
+
+        // Stream state integrity
+        let stream = fix.client.get_stream(&stream_id);
+        assert!(stream.cancelled);
+        assert_eq!(stream.claimed_amount, expected_recipient);
+    }
+}
+
+#[test]
+fn test_cancel_stream_after_partial_claim_and_odd_duration() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    let total = 1_000_003i128; // prime number principal
+    fix.mint(&creator, total);
+
+    let start = 5000u64;
+    let end = 5333u64; // 333 seconds duration
+    fix.env.ledger().set_timestamp(start);
+
+    let stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total,
+        &fix.token_id,
+        &start,
+        &end,
+        &String::from_str(&fix.env, "odd duration"),
+    );
+
+    // At 25% duration (83 seconds later): recipient claims
+    fix.env.ledger().set_timestamp(start + 83);
+    let first_claim = fix.client.claim_stream(&recipient, &stream_id);
+    assert!(first_claim > 0);
+    assert_eq!(fix.token_client.balance(&recipient), first_claim);
+
+    // At 75% duration (250 seconds later): creator cancels
+    fix.env.ledger().set_timestamp(start + 250);
+    let refund = fix.client.cancel_stream(&creator, &stream_id);
+
+    let recipient_final = fix.token_client.balance(&recipient);
+    let creator_final = fix.token_client.balance(&creator);
+
+    // Solvency invariant holds: exact conservation of tokens
+    assert_eq!(recipient_final + creator_final, total);
+    assert_eq!(refund, creator_final);
+
+    let stream = fix.client.get_stream(&stream_id);
+    assert!(stream.cancelled);
+    assert_eq!(stream.claimed_amount, recipient_final);
+}

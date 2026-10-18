@@ -9,7 +9,7 @@
 //! 2. Include reentrancy-shaped call sequences asserting ReentrantCall rejection.
 //! 3. Runs in CI with bounded iterations (ProptestConfig::with_cases(64)).
 
-use ophirpay_contract::{OphirPayContract, OphirPayContractClient, PaymentError};
+use ophirpay_contract::{compute_vested, OphirPayContract, OphirPayContractClient, PaymentError};
 use proptest::prelude::*;
 use proptest::test_runner::Config as ProptestConfig;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -640,3 +640,192 @@ fn test_reentrancy_lock_lifecycle_and_clean_release() {
     assert_eq!(h.client.is_reentrancy_locked(), false);
     assert_eq!(h.client.get_locked_balance(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Stream Vesting Curve Invariant Proptests (#1297)
+// ═══════════════════════════════════════════════════════════════════════════
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(500))]
+
+    /// Invariant 1: Monotonicity — vested amount never decreases as time advances.
+    #[test]
+    fn prop_vesting_curve_monotonicity(
+        total_amount in 1i128..=i128::MAX,
+        start_time in 1u64..=(u64::MAX / 2),
+        duration in 1u64..=(u64::MAX / 2 - 1),
+        offset_a in 0u64..=u64::MAX,
+        offset_b in 0u64..=u64::MAX,
+    ) {
+        let end_time = start_time + duration;
+        let t1 = core::cmp::min(offset_a, offset_b);
+        let t2 = core::cmp::max(offset_a, offset_b);
+
+        let v1 = compute_vested(total_amount, start_time, end_time, t1);
+        let v2 = compute_vested(total_amount, start_time, end_time, t2);
+
+        prop_assert!(
+            v1 <= v2,
+            "Monotonicity invariant violated: v1 ({}) > v2 ({}) for t1 ({}) <= t2 ({}) with total_amount = {}, start = {}, end = {}",
+            v1, v2, t1, t2, total_amount, start_time, end_time
+        );
+    }
+
+    /// Invariant 2: Boundedness — vested amount is strictly in [0, total_amount],
+    /// exactly 0 before start_time, and exactly total_amount at or after end_time.
+    #[test]
+    fn prop_vesting_curve_boundedness(
+        total_amount in 0i128..=i128::MAX,
+        start_time in 0u64..=u64::MAX,
+        duration in 0u64..=u64::MAX,
+        now in 0u64..=u64::MAX,
+    ) {
+        let end_time = start_time.saturating_add(duration);
+        let vested = compute_vested(total_amount, start_time, end_time, now);
+
+        prop_assert!(vested >= 0, "Vested amount must be non-negative, got {}", vested);
+        prop_assert!(
+            vested <= total_amount,
+            "Vested amount ({}) exceeded total_amount ({})",
+            vested, total_amount
+        );
+
+        if now <= start_time && now < end_time {
+            prop_assert_eq!(vested, 0, "Before start_time, vested must be 0");
+        }
+        if now >= end_time {
+            prop_assert_eq!(vested, total_amount, "At or after end_time, vested must equal total_amount");
+        }
+    }
+
+    /// Invariant 3: No panics — arbitrary inputs (even extreme bounds) must execute cleanly.
+    #[test]
+    fn prop_vesting_curve_no_panics_on_arbitrary_inputs(
+        total_amount in any::<i128>(),
+        start_time in any::<u64>(),
+        end_time in any::<u64>(),
+        now in any::<u64>(),
+    ) {
+        let _ = compute_vested(total_amount, start_time, end_time, now);
+    }
+
+    /// Invariant 4: Claimed ceiling — incremental claims satisfy claimable = vested - claimed >= 0.
+    #[test]
+    fn prop_vesting_curve_incremental_claims_ceiling(
+        total_amount in 1i128..=1_000_000_000_000_000i128,
+        start_time in 1_000u64..=1_000_000u64,
+        duration in 100u64..=10_000_000u64,
+        offsets in proptest::collection::vec(0u64..=20_000_000u64, 1..=8),
+    ) {
+        let end_time = start_time + duration;
+        let mut sorted_offsets = offsets;
+        sorted_offsets.sort_unstable();
+
+        let mut claimed = 0i128;
+        for offset in sorted_offsets {
+            let t = start_time.saturating_add(offset);
+            let vested = compute_vested(total_amount, start_time, end_time, t);
+
+            let claimable = vested.checked_sub(claimed);
+            prop_assert!(claimable.is_some(), "Subtraction underflow on claimable");
+            let claimable = claimable.unwrap();
+            prop_assert!(
+                claimable >= 0,
+                "Claimable amount was negative: {} (vested={}, claimed={})",
+                claimable, vested, claimed
+            );
+
+            claimed += claimable;
+            prop_assert!(claimed <= total_amount, "Cumulative claimed exceeded total_amount");
+            prop_assert_eq!(claimed, vested, "Cumulative claimed must match vested amount");
+        }
+    }
+}
+
+/// 10,000+ randomized iterations stress test over stream vesting curve and boundary edge cases.
+#[test]
+fn test_vesting_curve_10k_stress_and_edge_cases() {
+    // 1. Explicit boundary edge cases
+    // a) Zero duration (start == end)
+    assert_eq!(compute_vested(1000, 100, 100, 100), 1000);
+    assert_eq!(compute_vested(1000, 100, 100, 99), 0);
+    assert_eq!(compute_vested(1000, 100, 100, 101), 1000);
+
+    // b) start == now
+    assert_eq!(compute_vested(1000, 100, 200, 100), 0);
+
+    // c) end == now
+    assert_eq!(compute_vested(1000, 100, 200, 200), 1000);
+
+    // d) zero total_amount
+    assert_eq!(compute_vested(0, 100, 200, 150), 0);
+
+    // e) max i128 total_amount (checked arithmetic / 128-bit overflow mitigation)
+    let max_v = compute_vested(i128::MAX, 0, 1000, 500);
+    assert!(max_v > 0);
+    assert!(max_v <= i128::MAX);
+    let expected_half = i128::MAX / 2;
+    let diff = (max_v - expected_half).abs();
+    assert!(diff <= 1000);
+
+    // f) exact fractional arithmetic check at 25%, 50%, 75%
+    let total = 1_000_000i128;
+    assert_eq!(compute_vested(total, 1000, 2000, 1250), 250_000);
+    assert_eq!(compute_vested(total, 1000, 2000, 1500), 500_000);
+    assert_eq!(compute_vested(total, 1000, 2000, 1750), 750_000);
+
+    // 2. 10,000+ iterations randomized stress verification
+    struct XorShift64(u64);
+    impl XorShift64 {
+        fn next(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.0 = x;
+            x
+        }
+    }
+
+    let mut rng = XorShift64(0x853c49e6748fea9b);
+    for iter in 0..12_000 {
+        let total_amount = match iter % 6 {
+            0 => 0i128,
+            1 => 1i128,
+            2 => i128::MAX,
+            3 => rng.next() as i128,
+            4 => (((rng.next() as u128) | ((rng.next() as u128) << 64)) & 0x7FFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF) as i128,
+            _ => (rng.next() % 1_000_000_000) as i128,
+        }.abs();
+
+        let start_time = rng.next() % 1_000_000;
+        let duration = match iter % 5 {
+            0 => 0u64,
+            1 => 1u64,
+            _ => rng.next() % 10_000_000 + 1,
+        };
+        let end_time = start_time.saturating_add(duration);
+
+        let t1 = rng.next() % 12_000_000;
+        let t2 = t1.saturating_add(rng.next() % 1_000_000);
+
+        let v1 = compute_vested(total_amount, start_time, end_time, t1);
+        let v2 = compute_vested(total_amount, start_time, end_time, t2);
+
+        // Invariant 1: Monotonicity
+        assert!(v1 <= v2, "Monotonicity violated at iter {}: v1 ({}) > v2 ({})", iter, v1, v2);
+
+        // Invariant 2: Boundedness
+        assert!(v1 >= 0 && v1 <= total_amount, "Boundedness violated for v1 at iter {}", iter);
+        assert!(v2 >= 0 && v2 <= total_amount, "Boundedness violated for v2 at iter {}", iter);
+
+        // Invariant 3: Boundaries
+        if t1 <= start_time && t1 < end_time {
+            assert_eq!(v1, 0, "Boundary violated at iter {}", iter);
+        }
+        if t2 >= end_time {
+            assert_eq!(v2, total_amount, "End boundary violated at iter {}", iter);
+        }
+    }
+}
+

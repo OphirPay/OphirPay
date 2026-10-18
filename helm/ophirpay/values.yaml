@@ -92,6 +92,27 @@ pdb:
 networkPolicy:
   enabled: true
 
+# ── Database migrations Job (issue #1335) ──────────────────────
+# Runs `prisma migrate deploy` as a pre-install / pre-upgrade hook
+# before new application pods are scheduled. A failed migration aborts
+# the Helm release without impacting existing running pods.
+migrations:
+  enabled: false
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  backoffLimit: 2
+  restartPolicy: Never
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+
 # ── Runtime configuration (rendered into a ConfigMap) ──────────
 # Every key here must be a real variable documented in `.env.example`;
 # `src/__tests__/helm-config.test.ts` fails the build when a key is not, so a

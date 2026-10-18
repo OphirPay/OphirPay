@@ -160,6 +160,30 @@ export async function claimEscrow(
   ]);
 }
 
+export async function raiseEscrowDispute(
+  initiator: string,
+  escrowId: number,
+  reason: string,
+): Promise<ContractCallResult> {
+  return signAndSubmit(initiator, CONTRACT_ID, "raise_dispute", [
+    nativeToScVal(initiator, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+    nativeToScVal(reason, { type: "string" }),
+  ]);
+}
+
+export async function resolveEscrowDispute(
+  arbiter: string,
+  escrowId: number,
+  refundBuyer: boolean,
+): Promise<ContractCallResult> {
+  return signAndSubmit(arbiter, CONTRACT_ID, "resolve_dispute", [
+    nativeToScVal(arbiter, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+    nativeToScVal(refundBuyer, { type: "bool" }),
+  ]);
+}
+
 export async function getContractOwner(): Promise<string> {
   const result = await simulateContractCall(CONTRACT_ID, "get_owner", CHAIN_READ_SOURCE);
   if (result.status !== "SIMULATED" || typeof result.returnValue !== "string") {

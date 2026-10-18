@@ -109,10 +109,14 @@ const paymentStatusValues = [
 /** Status filter accepted by the payment CSV export endpoint. */
 export const paymentStatusSchema = z.enum(paymentStatusValues);
 
-/** Query params for GET /api/payments/export — same filters as the list route. */
+/** Query params for GET /api/payments/export — filtered CSV and JSON export (issue #1296). */
 export const paymentExportParamsSchema = z.object({
   status: paymentStatusSchema.optional(),
   search: z.string().optional(),
+  format: z.enum(["csv", "json"]).default("csv").optional(),
+  asset: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
 });
 
 // ── Batch Schemas ─────────────────────────────────────────────

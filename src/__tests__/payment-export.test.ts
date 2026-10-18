@@ -5,10 +5,12 @@ import { Prisma, type Payment } from "@prisma/client";
 import {
   MAX_EXPORT_ROWS,
   PAYMENT_EXPORT_COLUMNS,
+  STANDARD_PAYMENT_EXPORT_COLUMNS,
   paymentToCsvRow,
+  serializePaymentsToJson,
   buildPaymentExportFilename,
 } from "@/lib/payment-export";
-import { toCsvString, createCsvResponse } from "@/lib/export-csv";
+import { toCsvString, createCsvResponse, createJsonResponse } from "@/lib/export-csv";
 
 /** Build a realistic Prisma Payment row for the mapper under test. */
 function makePayment(overrides: Partial<Payment> = {}): Payment {
@@ -165,3 +167,63 @@ describe("MAX_EXPORT_ROWS", () => {
     expect(MAX_EXPORT_ROWS).toBeGreaterThan(0);
   });
 });
+
+describe("JSON export serialization (issue #1296)", () => {
+  it("serializes payment rows into parseable JSON with all standard fields", () => {
+    const payment = makePayment({
+      sourceAccountId: "G_SENDER_123",
+      destAccountId: "G_RECIPIENT_456",
+      assetCode: "USDC",
+      memo: "refund-order-99",
+    });
+    const jsonStr = serializePaymentsToJson([payment]);
+    const parsed = JSON.parse(jsonStr);
+
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed).toHaveLength(1);
+    const item = parsed[0];
+
+    // Standard columns required by issue #1296:
+    // timestamp, transaction hash, sender, recipient, asset, amount, fee, memo, status
+    expect(item.timestamp).toBe("2026-08-26T10:00:00.000Z");
+    expect(item.transactionHash).toBe(
+      "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+    );
+    expect(item.sender).toBe("G_SENDER_123");
+    expect(item.recipient).toBe("G_RECIPIENT_456");
+    expect(item.asset).toBe("USDC");
+    expect(item.amount).toBe("100.2500000");
+    expect(item.fee).toBe("0.0000100");
+    expect(item.memo).toBe("refund-order-99");
+    expect(item.status).toBe("COMPLETED");
+  });
+
+  it("exposes all 9 standard columns in STANDARD_PAYMENT_EXPORT_COLUMNS", () => {
+    const headers = STANDARD_PAYMENT_EXPORT_COLUMNS.map((c) => c.header);
+    expect(headers).toContain("Timestamp");
+    expect(headers).toContain("Transaction Hash");
+    expect(headers).toContain("Sender");
+    expect(headers).toContain("Recipient");
+    expect(headers).toContain("Asset");
+    expect(headers).toContain("Amount");
+    expect(headers).toContain("Fee");
+    expect(headers).toContain("Memo");
+    expect(headers).toContain("Status");
+    expect(headers).toHaveLength(9);
+  });
+
+  it("buildPaymentExportFilename supports both csv and json extensions", () => {
+    const date = new Date("2026-10-18T10:00:00.000Z");
+    expect(buildPaymentExportFilename("csv", date)).toBe("ophirpay-payments-2026-10-18.csv");
+    expect(buildPaymentExportFilename("json", date)).toBe("ophirpay-payments-2026-10-18.json");
+  });
+
+  it("createJsonResponse sets json headers and attachment filename", async () => {
+    const res = createJsonResponse("ophirpay-payments-2026-10-18.json", '{"test":true}');
+    expect(res.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+    expect(res.headers.get("Content-Disposition")).toContain("ophirpay-payments-2026-10-18.json");
+    const body = await res.json();
+    expect(body).toEqual({ test: true });
+  });
+});
+

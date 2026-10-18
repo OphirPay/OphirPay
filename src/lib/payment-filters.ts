@@ -14,6 +14,9 @@ import { buildFallbackWhere } from "@/lib/full-text-search";
 export interface PaymentFilters {
   status?: string;
   search?: string;
+  asset?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 export function buildPaymentWhere(
@@ -26,6 +29,27 @@ export function buildPaymentWhere(
     // string here. Invalid values surface as a Prisma validation error, the
     // same behavior the list route had before this helper existed.
     where.status = filters.status as PaymentStatus;
+  }
+  if (filters.asset) {
+    where.assetCode = filters.asset;
+  }
+  if (filters.startDate || filters.endDate) {
+    const dateFilter: Prisma.DateTimeFilter = {};
+    if (filters.startDate) {
+      const start = new Date(filters.startDate);
+      if (!Number.isNaN(start.getTime())) {
+        dateFilter.gte = start;
+      }
+    }
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      if (!Number.isNaN(end.getTime())) {
+        dateFilter.lte = end;
+      }
+    }
+    if (Object.keys(dateFilter).length > 0) {
+      where.createdAt = dateFilter;
+    }
   }
   if (filters.search) {
     // Issue #157 — server-side reconciliation search. The predicates live in

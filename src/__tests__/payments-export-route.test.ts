@@ -169,4 +169,87 @@ describe("GET /api/payments/export", () => {
     expect(res.status).toBe(400);
     expect(mockFindMany).not.toHaveBeenCalled();
   });
+
+  it("exports JSON format with application/json headers when format=json (issue #1296)", async () => {
+    mockGetAuthContext.mockResolvedValue({ userId: "user-1" });
+    mockFindMany.mockResolvedValue([
+      makePayment({
+        sourceAccountId: "G_SOURCE_ABC",
+        destAccountId: "G_DEST_XYZ",
+        assetCode: "USDC",
+      }),
+    ]);
+
+    const res = await GET(
+      new Request("http://localhost/api/payments/export?format=json")
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+    expect(res.headers.get("Content-Disposition")).toContain(".json");
+
+    const body = await res.json();
+    expect(Array.isArray(body)).toBe(true);
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({
+      sender: "G_SOURCE_ABC",
+      recipient: "G_DEST_XYZ",
+      asset: "USDC",
+      amount: "100.2500000",
+      fee: "0.0000100",
+      status: "COMPLETED",
+    });
+  });
+
+  it("filters by asset and date range (issue #1296)", async () => {
+    mockGetAuthContext.mockResolvedValue({ userId: "user-1" });
+    mockFindMany.mockResolvedValue([]);
+
+    const startDate = "2026-08-01T00:00:00.000Z";
+    const endDate = "2026-08-31T23:59:59.999Z";
+
+    const res = await GET(
+      new Request(
+        `http://localhost/api/payments/export?asset=USDC&startDate=${startDate}&endDate=${endDate}`
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: "user-1",
+          assetCode: "USDC",
+          createdAt: {
+            gte: new Date(startDate),
+            lte: new Date(endDate),
+          },
+        }),
+      })
+    );
+  });
+
+  it("enforces rate limits and returns 429 on abuse (issue #1296)", async () => {
+    mockGetAuthContext.mockResolvedValue({ userId: "user-rate-limited" });
+    mockFindMany.mockResolvedValue([]);
+
+    // Consume up to limit (10 requests)
+    for (let i = 0; i < 10; i++) {
+      const okRes = await GET(
+        new Request("http://localhost/api/payments/export")
+      );
+      expect(okRes.status).toBe(200);
+    }
+
+    // 11th request triggers rate limit
+    const blockedRes = await GET(
+      new Request("http://localhost/api/payments/export")
+    );
+
+    expect(blockedRes.status).toBe(429);
+    expect(blockedRes.headers.get("Retry-After")).toBeDefined();
+    const body = await blockedRes.json();
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe("RATE_LIMITED");
+  });
 });

@@ -111,3 +111,21 @@ export function createCsvResponse(
     },
   });
 }
+
+/**
+ * Create a JSON Response object for API download endpoints (issue #1296).
+ * `extraHeaders` lets callers attach metadata (e.g. X-Export-Truncated).
+ */
+export function createJsonResponse(
+  filename: string,
+  jsonString: string,
+  extraHeaders: Record<string, string> = {}
+): Response {
+  return new Response(jsonString, {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      ...extraHeaders,
+    },
+  });
+}

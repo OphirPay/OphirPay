@@ -122,3 +122,9 @@ ophirpay_sse_open_connections 0
 # HELP ophirpay_sse_dropped_events_total SSE events shed by the bounded slow-consumer buffer
 # TYPE ophirpay_sse_dropped_events_total counter
 ophirpay_sse_dropped_events_total 0
+
+# HELP ophirpay_rpc_call_duration_seconds Soroban RPC call latency histogram
+# TYPE ophirpay_rpc_call_duration_seconds histogram
+
+# HELP ophirpay_db_query_duration_seconds Database query duration histogram by model and operation
+# TYPE ophirpay_db_query_duration_seconds histogram

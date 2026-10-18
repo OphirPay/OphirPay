@@ -196,6 +196,9 @@ export function resetMetricsForTest(): void {
   for (const reason of ["rate_limited", "deduplicated", "oversized"] as CspReportDropReason[]) {
     cspReportsDropped.set(reason, 0);
   }
+  rpcCallMetrics.clear();
+  dbQueryMetrics.clear();
+  endpointMetrics.clear();
 }
 
 // ── Per-endpoint latency histograms and error counts ──────────
@@ -295,3 +298,146 @@ export function getEndpointMetrics(): EndpointMetricEntry[] {
 export function resetEndpointMetrics(): void {
   endpointMetrics.clear();
 }
+
+// ── Soroban RPC Call Latency Histograms (#1304) ────────────────
+//
+// Buckets: 100ms, 500ms, 1s, 3s, 5s, 10s (seconds).
+export const RPC_LATENCY_BUCKET_BOUNDS = [0.1, 0.5, 1, 3, 5, 10];
+
+export interface RpcCallMetricEntry {
+  endpoint: string;
+  status: "success" | "error";
+  observation: {
+    latencySum: number;
+    latencyCount: number;
+    buckets: number[];
+  };
+}
+
+const rpcCallMetrics = new Map<string, {
+  latencySum: number;
+  latencyCount: number;
+  buckets: number[];
+}>();
+
+/**
+ * Record a single Soroban RPC call's latency and status.
+ */
+export function recordRpcCallLatency(
+  endpoint: string,
+  status: "success" | "error",
+  durationSeconds: number
+): void {
+  const key = `${endpoint}|${status}`;
+  let obs = rpcCallMetrics.get(key);
+  if (!obs) {
+    obs = {
+      latencySum: 0,
+      latencyCount: 0,
+      buckets: new Array(RPC_LATENCY_BUCKET_BOUNDS.length + 1).fill(0),
+    };
+    rpcCallMetrics.set(key, obs);
+  }
+
+  obs.latencySum += durationSeconds;
+  obs.latencyCount += 1;
+
+  for (let i = 0; i < RPC_LATENCY_BUCKET_BOUNDS.length; i++) {
+    if (durationSeconds <= RPC_LATENCY_BUCKET_BOUNDS[i]!) {
+      obs.buckets[i] += 1;
+    }
+  }
+  obs.buckets[RPC_LATENCY_BUCKET_BOUNDS.length] += 1; // +Inf
+}
+
+export function getRpcCallMetrics(): RpcCallMetricEntry[] {
+  const entries: RpcCallMetricEntry[] = [];
+  for (const [key, observation] of rpcCallMetrics.entries()) {
+    const [endpoint, status] = key.split("|");
+    entries.push({
+      endpoint: endpoint ?? "unknown",
+      status: (status as "success" | "error") || "success",
+      observation,
+    });
+  }
+  return entries;
+}
+
+export function resetRpcCallMetrics(): void {
+  rpcCallMetrics.clear();
+}
+
+// ── Prisma Database Query Latency Histograms (#1304) ───────────
+//
+// Buckets: 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s (seconds).
+export const DB_LATENCY_BUCKET_BOUNDS = [
+  0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5,
+];
+
+export interface DbQueryMetricEntry {
+  model: string;
+  operation: string;
+  observation: {
+    latencySum: number;
+    latencyCount: number;
+    buckets: number[];
+  };
+}
+
+const dbQueryMetrics = new Map<string, {
+  latencySum: number;
+  latencyCount: number;
+  buckets: number[];
+}>();
+
+/**
+ * Record a single Prisma query's latency by model and operation.
+ */
+export function recordDbQueryLatency(
+  model: string,
+  operation: string,
+  durationSeconds: number
+): void {
+  // Update aggregate legacy counters as well
+  counters.db_query_duration_seconds_sum += durationSeconds;
+  counters.db_query_duration_seconds_count += 1;
+
+  const key = `${model}|${operation}`;
+  let obs = dbQueryMetrics.get(key);
+  if (!obs) {
+    obs = {
+      latencySum: 0,
+      latencyCount: 0,
+      buckets: new Array(DB_LATENCY_BUCKET_BOUNDS.length + 1).fill(0),
+    };
+    dbQueryMetrics.set(key, obs);
+  }
+
+  obs.latencySum += durationSeconds;
+  obs.latencyCount += 1;
+
+  for (let i = 0; i < DB_LATENCY_BUCKET_BOUNDS.length; i++) {
+    if (durationSeconds <= DB_LATENCY_BUCKET_BOUNDS[i]!) {
+      obs.buckets[i] += 1;
+    }
+  }
+  obs.buckets[DB_LATENCY_BUCKET_BOUNDS.length] += 1; // +Inf
+}
+
+export function getDbQueryMetrics(): DbQueryMetricEntry[] {
+  const entries: DbQueryMetricEntry[] = [];
+  for (const [key, observation] of dbQueryMetrics.entries()) {
+    const [model, operation] = key.split("|");
+    entries.push({
+      model: model ?? "$raw",
+      operation: operation ?? "query",
+      observation,
+    });
+  }
+  return entries;
+}
+
+export function resetDbQueryMetrics(): void {
+  dbQueryMetrics.clear();
+}
+

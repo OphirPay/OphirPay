@@ -1,8 +1,7 @@
-// SPDX-License-Identifier: MIT
-
 import { rpc } from "@stellar/stellar-sdk";
 import { logger } from "@/lib/logger";
 import { getFailoverProbeTimeoutMs, getSorobanTimeoutMs } from "@/lib/timeout";
+import { recordRpcCallLatency } from "@/lib/metrics-counters";
 
 /**
  * Soroban RPC failover with caching and circuit breaking.
@@ -215,6 +214,7 @@ function createRpcServer(url: string): rpc.Server {
 async function probeHealth(url: string): Promise<boolean> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), probeTimeoutMs());
+  const start = performance.now();
 
   try {
     const res = await fetch(url, {
@@ -223,17 +223,44 @@ async function probeHealth(url: string): Promise<boolean> {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
       signal: controller.signal,
     });
+    const duration = (performance.now() - start) / 1000;
     if (!res.ok) {
+      recordRpcCallLatency(url, "error", duration);
       recordProbeFailure(url, `HTTP ${res.status}`);
       return false;
     }
+    recordRpcCallLatency(url, "success", duration);
     recordProbeSuccess(url);
     return true;
   } catch (err) {
+    const duration = (performance.now() - start) / 1000;
+    recordRpcCallLatency(url, "error", duration);
     recordProbeFailure(url, reasonFromError(err));
     return false;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * Instruments an arbitrary Soroban RPC operation against an endpoint,
+ * measuring duration and recording latency to the Prometheus histogram (#1304).
+ */
+export async function instrumentRpcCall<T>(
+  url: string,
+  _operationName: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const start = performance.now();
+  try {
+    const result = await fn();
+    const duration = (performance.now() - start) / 1000;
+    recordRpcCallLatency(url, "success", duration);
+    return result;
+  } catch (err) {
+    const duration = (performance.now() - start) / 1000;
+    recordRpcCallLatency(url, "error", duration);
+    throw err;
   }
 }
 

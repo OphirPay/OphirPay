@@ -7,6 +7,10 @@ import {
   getEndpointMetrics,
   recordRpcFailoverState,
   LATENCY_BUCKET_BOUNDS,
+  getRpcCallMetrics,
+  RPC_LATENCY_BUCKET_BOUNDS,
+  getDbQueryMetrics,
+  DB_LATENCY_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
 import { getRpcFailoverState } from "@/lib/rpc-failover";
 import { timingSafeEqual } from "@/lib/crypto";
@@ -261,6 +265,50 @@ function buildMetrics(): string {
     "# TYPE ophirpay_sse_dropped_events_total counter",
     `ophirpay_sse_dropped_events_total ${c.sse_dropped_events_total}`
   );
+
+  // ── Soroban RPC Call Latency Histograms (#1304) ────────────────
+  lines.push(
+    "",
+    "# HELP ophirpay_rpc_call_duration_seconds Soroban RPC call latency histogram",
+    "# TYPE ophirpay_rpc_call_duration_seconds histogram"
+  );
+  for (const entry of getRpcCallMetrics()) {
+    const { endpoint, status, observation } = entry;
+    const baseLabels = `endpoint="${escapeLabelValue(endpoint)}",status="${status}"`;
+    for (let i = 0; i < RPC_LATENCY_BUCKET_BOUNDS.length; i++) {
+      const le = RPC_LATENCY_BUCKET_BOUNDS[i];
+      lines.push(
+        `ophirpay_rpc_call_duration_seconds_bucket{${baseLabels},le="${le}"} ${observation.buckets[i]}`
+      );
+    }
+    lines.push(
+      `ophirpay_rpc_call_duration_seconds_bucket{${baseLabels},le="+Inf"} ${observation.buckets[RPC_LATENCY_BUCKET_BOUNDS.length]}`,
+      `ophirpay_rpc_call_duration_seconds_sum{${baseLabels}} ${observation.latencySum}`,
+      `ophirpay_rpc_call_duration_seconds_count{${baseLabels}} ${observation.latencyCount}`
+    );
+  }
+
+  // ── Prisma Database Query Latency Histograms (#1304) ───────────
+  lines.push(
+    "",
+    "# HELP ophirpay_db_query_duration_seconds Database query duration histogram by model and operation",
+    "# TYPE ophirpay_db_query_duration_seconds histogram"
+  );
+  for (const entry of getDbQueryMetrics()) {
+    const { model, operation, observation } = entry;
+    const baseLabels = `model="${escapeLabelValue(model)}",operation="${escapeLabelValue(operation)}"`;
+    for (let i = 0; i < DB_LATENCY_BUCKET_BOUNDS.length; i++) {
+      const le = DB_LATENCY_BUCKET_BOUNDS[i];
+      lines.push(
+        `ophirpay_db_query_duration_seconds_bucket{${baseLabels},le="${le}"} ${observation.buckets[i]}`
+      );
+    }
+    lines.push(
+      `ophirpay_db_query_duration_seconds_bucket{${baseLabels},le="+Inf"} ${observation.buckets[DB_LATENCY_BUCKET_BOUNDS.length]}`,
+      `ophirpay_db_query_duration_seconds_sum{${baseLabels}} ${observation.latencySum}`,
+      `ophirpay_db_query_duration_seconds_count{${baseLabels}} ${observation.latencyCount}`
+    );
+  }
 
   return lines.join("\n") + "\n";
 }

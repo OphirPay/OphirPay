@@ -3,7 +3,8 @@
 
 use ophirpay_contract::{
     BatchCreateResult, OphirPayContract, OphirPayContractClient, Payment, PaymentError,
-    RefundReasonCode, RefundStatus,
+    RefundReasonCode, RefundStatus, PAUSE_ALL, PAUSE_ESCROWS, PAUSE_GOVERNANCE,
+    PAUSE_PAYMENTS, PAUSE_STREAMS,
 };
 use ophirpay_emitter::{EmitterError, PaymentEventEmitter, PaymentEventEmitterClient};
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -935,3 +936,86 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+/// Test granular subsystem capability bitflags and surgical pausing (#1358).
+/// Verifies that pausing escrows does not block standard direct payments,
+/// admin can halt and resume single subsystems, emergency pause/unpause works,
+/// and unauthorized callers are rejected.
+#[test]
+fn test_subsystem_pause_bitflags_isolation() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let rando = Address::generate(&fix.env);
+    fix.mint(&payer, 1_000_000);
+
+    // Verify bitflags constants
+    assert_eq!(PAUSE_ALL, 255);
+    assert_eq!(PAUSE_GOVERNANCE, 8);
+    assert_eq!(PAUSE_STREAMS, 4);
+
+    // Initial state: no subsystem flags set
+    assert_eq!(fix.client.get_pause_flags(), 0);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_ESCROWS), false);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_PAYMENTS), false);
+
+    // Non-owner cannot set subsystem pause
+    let unauth = fix.client.try_set_subsystem_pause(&rando, &PAUSE_ESCROWS, &true);
+    assert_eq!(unauth, Err(Ok(PaymentError::Unauthorized)));
+
+    // Owner pauses escrows surgically
+    fix.client.set_subsystem_pause(&fix.owner, &PAUSE_ESCROWS, &true);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_ESCROWS), true);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_PAYMENTS), false);
+    assert_eq!(fix.client.get_pause_flags(), PAUSE_ESCROWS);
+
+    // Escrow creation must fail with ContractPaused
+    let escrow_res = fix.client.try_create_escrow(
+        &payer,
+        &payee,
+        &Option::<Address>::None,
+        &500i128,
+        &fix.token_id,
+        &(fix.env.ledger().timestamp() + 86_400),
+        &String::from_str(&fix.env, "escrow_meta"),
+    );
+    assert_eq!(escrow_res, Err(Ok(PaymentError::ContractPaused)));
+
+    // Direct payment must succeed unaffected
+    let tx = String::from_str(&fix.env, "0xactive_payment");
+    let meta = String::from_str(&fix.env, "payment_meta");
+    let p_id = fix.client.record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert_eq!(p_id, 1);
+
+    // Now pause direct payments as well
+    fix.client.set_subsystem_pause(&fix.owner, &PAUSE_PAYMENTS, &true);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_PAYMENTS), true);
+    assert_eq!(fix.client.get_pause_flags(), PAUSE_ESCROWS | PAUSE_PAYMENTS);
+
+    let payment_res = fix.client.try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert_eq!(payment_res, Err(Ok(PaymentError::ContractPaused)));
+
+    // Unpause payments; escrows remain paused
+    fix.client.set_subsystem_pause(&fix.owner, &PAUSE_PAYMENTS, &false);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_PAYMENTS), false);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_ESCROWS), true);
+    assert_eq!(fix.client.get_pause_flags(), PAUSE_ESCROWS);
+
+    // Payments succeed again
+    let p_id_2 = fix.client.record_payment(&payer, &payee, &200i128, &fix.token_id, &tx, &meta);
+    assert_eq!(p_id_2, 2);
+
+    // Emergency pause all halts everything
+    fix.client.emergency_pause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), true);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_PAYMENTS), true);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_ESCROWS), true);
+
+    // Emergency unpause restores everything cleanly
+    fix.client.emergency_unpause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), false);
+    assert_eq!(fix.client.get_pause_flags(), 0);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_PAYMENTS), false);
+    assert_eq!(fix.client.is_subsystem_paused(&PAUSE_ESCROWS), false);
+}
+

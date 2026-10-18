@@ -216,12 +216,44 @@ pub fn is_scope_flag_set(env: &Env, scope: PauseScope) -> bool {
         .unwrap_or(false)
 }
 
+/// Map a PauseScope to its bitflag constant.
+pub fn scope_to_pause_flag(scope: PauseScope) -> u32 {
+    match scope {
+        PauseScope::Payments => PAUSE_PAYMENTS,
+        PauseScope::Escrows => PAUSE_ESCROWS,
+        PauseScope::Streams => PAUSE_STREAMS,
+        PauseScope::Recurring => PAUSE_RECURRING,
+        PauseScope::Refunds => PAUSE_REFUNDS,
+        PauseScope::Governance => PAUSE_GOVERNANCE,
+        PauseScope::Hooks => PAUSE_HOOKS,
+        PauseScope::Batches => PAUSE_BATCHES,
+    }
+}
+
+/// Retrieve the current bitflag state of paused subsystems.
+pub fn get_stored_pause_flags(env: &Env) -> u32 {
+    env.storage().instance().get(&PAUSE_FLAGS).unwrap_or(0)
+}
+
+/// Guard: reject operations if the contract is globally paused OR if the specific
+/// subsystem bitflag is currently set.
+pub fn require_subsystem_active(env: &Env, subsystem: u32) -> Result<(), PaymentError> {
+    let globally_paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
+    let flags: u32 = get_stored_pause_flags(env);
+    if globally_paused || (flags & subsystem) != 0 {
+        return Err(PaymentError::ContractPaused);
+    }
+    Ok(())
+}
+
 /// Guard: reject all write operations while the contract is globally paused OR
 /// the scope that owns the operation is paused. The global pause is checked
-/// first so it always overrides the per-scope flags.
+/// first so it always overrides the per-scope flags. Also checks the subsystem bitflag.
 pub fn require_not_paused(env: &Env, scope: PauseScope) -> Result<(), PaymentError> {
     let globally_paused: bool = env.storage().instance().get(&PAUSED).unwrap_or(false);
-    if globally_paused || is_scope_flag_set(env, scope) {
+    let flags: u32 = get_stored_pause_flags(env);
+    let flag = scope_to_pause_flag(scope);
+    if globally_paused || is_scope_flag_set(env, scope) || (flags & flag) != 0 {
         return Err(PaymentError::ContractPaused);
     }
     Ok(())

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
-import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import {
   successResponse,
@@ -9,7 +8,10 @@ import {
   badRequestError,
   unauthorizedError,
   handleApiError,
+  jsonSafe,
 } from "@/lib/api-response";
+import { NextResponse } from "next/server";
+import { checkIdempotency, saveIdempotencyRecord } from "@/lib/idempotency";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
@@ -130,6 +132,36 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
       );
     }
 
+    // Idempotency guard (issue #1302): require Idempotency-Key header and replay 409 on duplicates
+    const idempotency = await checkIdempotency(request, "payments", auth.userId);
+    if ("errorResponse" in idempotency) {
+      return idempotency.errorResponse;
+    }
+    if (idempotency.isDuplicate) {
+      return idempotency.conflictResponse;
+    }
+    const idempotencyKey = idempotency.key;
+
+    // Secondary check against database in case key was committed in previous run
+    const existingPayment = await prisma.payment.findFirst({
+      where: { userId: auth.userId, idempotencyKey },
+    });
+    if (existingPayment) {
+      const cachedBody = {
+        success: true,
+        data: jsonSafe(existingPayment),
+        meta: { timestamp: new Date().toISOString(), deduplicated: true },
+      };
+      await saveIdempotencyRecord(idempotencyKey, "payments", cachedBody, 201, auth.userId);
+      return NextResponse.json(cachedBody, {
+        status: 409,
+        headers: {
+          "X-Idempotency-Status": "CONFLICT",
+          "X-Idempotency-Key": idempotencyKey,
+        },
+      });
+    }
+
     const body = await request.json();
     const parsed = createPaymentSchema.safeParse(body);
     if (!parsed.success) return validationError(parsed.error);
@@ -141,9 +173,8 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
         assetIssuer: parsed.data.assetIssuer,
         description: parsed.data.description,
         memo: parsed.data.memo,
-        // Server-generated idempotency key — every attempt (original or
-        // retried) carries its own key, so attempts are never confused.
-        idempotencyKey: crypto.randomUUID(),
+        // Client-supplied idempotency key (issue #1302)
+        idempotencyKey,
         status: "CREATED",
         // The authenticated user owns the record; sourceAccountId is a
         // Stellar account reference, NOT the User FK (previously this
@@ -178,6 +209,13 @@ export const POST = withMetrics("POST /api/payments", withRequestLogging(async f
       { scope: "analytics", subject: auth.userId },
       { scope: "audit-log" },
     ]);
+
+    const resData = {
+      success: true,
+      data: jsonSafe(payment),
+      meta: { timestamp: new Date().toISOString() },
+    };
+    await saveIdempotencyRecord(idempotencyKey, "payments", resData, 201, auth.userId);
 
     return successResponse(payment, undefined, 201);
   } catch (err) {

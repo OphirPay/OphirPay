@@ -35,10 +35,15 @@ function csrfHeaders(): Record<string, string> {
   return { "x-csrf-token": token, cookie: `__Host-csrf=${token}` };
 }
 
-function postRequest(url: string, body?: unknown): Request {
+function postRequest(url: string, body?: unknown, headers: Record<string, string> = {}): Request {
   return new Request(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": "test-idempotency-key-" + Math.random().toString(36).substring(2, 10),
+      ...csrfHeaders(),
+      ...headers,
+    },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 }

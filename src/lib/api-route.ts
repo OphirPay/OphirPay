@@ -7,6 +7,12 @@ import { unauthorizedError, validationError, handleApiError } from "@/lib/api-re
 import { verifyCsrf } from "@/lib/csrf";
 import { withMetrics } from "@/lib/metrics-middleware";
 import { withRequestLogging } from "@/lib/request-logging";
+import {
+  checkIdempotency,
+  saveIdempotencyRecord,
+} from "@/lib/idempotency";
+
+export * from "@/lib/idempotency";
 
 export interface ApiRouteOptions<TBody extends z.ZodTypeAny = any, TQuery extends z.ZodTypeAny = any> {
   /** The name of the route for metrics, e.g. "GET /api/payments" */
@@ -19,6 +25,8 @@ export interface ApiRouteOptions<TBody extends z.ZodTypeAny = any, TQuery extend
   bodySchema?: TBody;
   /** Schema to parse the search params. */
   querySchema?: TQuery;
+  /** Whether to enforce request idempotency key on POST mutation routes (issue #1302). */
+  idempotency?: boolean | { required?: boolean; scope?: string; ttlMs?: number };
 }
 
 export interface ApiRouteContext<TBody = any, TQuery = any, TParams = any> {
@@ -26,6 +34,7 @@ export interface ApiRouteContext<TBody = any, TQuery = any, TParams = any> {
   auth: NonNullable<Awaited<ReturnType<typeof getAuthContext>>> | null;
   body: TBody | undefined;
   query: TQuery | undefined;
+  idempotencyKey?: string | null;
 }
 
 export function apiRoute<
@@ -56,7 +65,26 @@ export function apiRoute<
         }
       }
 
-      // 3. Body Parsing
+      // 3. Idempotency Check (issue #1302)
+      let idempotencyKey: string | null = null;
+      const idempotencyOpt = options.idempotency;
+      const shouldCheckIdempotency = Boolean(idempotencyOpt) && request.method === "POST";
+      if (shouldCheckIdempotency) {
+        const scope =
+          (typeof idempotencyOpt === "object" && idempotencyOpt.scope) ||
+          options.name ||
+          "mutation";
+        const check = await checkIdempotency(request, scope, auth?.userId);
+        if ("errorResponse" in check) {
+          return check.errorResponse;
+        }
+        if (check.isDuplicate) {
+          return check.conflictResponse;
+        }
+        idempotencyKey = check.key;
+      }
+
+      // 4. Body Parsing
       let parsedBody: any = undefined;
       if (options.bodySchema) {
         let rawBody;
@@ -70,7 +98,7 @@ export function apiRoute<
         parsedBody = parsed.data;
       }
 
-      // 4. Query Parsing
+      // 5. Query Parsing
       let parsedQuery: any = undefined;
       if (options.querySchema) {
         const url = new URL(request.url);
@@ -80,14 +108,32 @@ export function apiRoute<
         parsedQuery = parsed.data;
       }
 
-      const awaitedParams = params ? await params : undefined as any;
+      const awaitedParams = params ? await params : (undefined as any);
 
-      return await handler(request, {
+      const response = await handler(request, {
         params: awaitedParams,
         auth,
         body: parsedBody as z.infer<TBody>,
         query: parsedQuery as z.infer<TQuery>,
+        idempotencyKey,
       });
+
+      // Save successful response for idempotency caching if enabled
+      if (idempotencyKey && response.ok) {
+        const scope =
+          (typeof idempotencyOpt === "object" && idempotencyOpt.scope) ||
+          options.name ||
+          "mutation";
+        try {
+          const clone = response.clone();
+          const json = await clone.json();
+          await saveIdempotencyRecord(idempotencyKey, scope, json, response.status, auth?.userId);
+        } catch {
+          // Non-JSON response or body already read; skip caching
+        }
+      }
+
+      return response;
     } catch (err) {
       return handleApiError(err, options.name || `${request.method} ${request.url}`);
     }

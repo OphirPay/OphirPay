@@ -32,6 +32,7 @@ vi.mock("@/lib/auth-session", () => ({
 
 import { generateCsrfToken } from "@/lib/csrf";
 import { POST } from "@/app/api/batches/route";
+import { clearIdempotencyStore } from "@/lib/idempotency";
 
 function csrfHeaders(): Record<string, string> {
   const token = generateCsrfToken();
@@ -108,6 +109,7 @@ function makeTx() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearIdempotencyStore();
   mockGetAuthContext.mockResolvedValue({ userId: USER_ID });
   mockFindFirst.mockResolvedValue(null);
   mockFindUnique.mockResolvedValue(makeBatch());
@@ -150,14 +152,10 @@ describe("POST /api/batches — idempotent re-submission", () => {
     });
   });
 
-  it("generates a server-side key when the client sends none", async () => {
+  it("requires Idempotency-Key header when client sends none (issue #1302)", async () => {
     const res = await POST(makeRequest(makeBody()));
 
-    expect(res.status).toBe(201);
-    const [createArgs] = mockBatchCreate.mock.calls[0];
-    expect(createArgs.data.idempotencyKey).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-    );
+    expect(res.status).toBe(400);
   });
 
   it("returns the original batch on a full retry with the same key (no duplicates)", async () => {
@@ -168,7 +166,7 @@ describe("POST /api/batches — idempotent re-submission", () => {
       makeRequest(makeBody(), { "Idempotency-Key": KEY_HEADER })
     );
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.data.id).toBe(BATCH_ID);
     expect(body.meta.deduplicated).toBe(true);
@@ -190,7 +188,7 @@ describe("POST /api/batches — idempotent re-submission", () => {
       makeRequest(makeBody(), { "Idempotency-Key": KEY_HEADER })
     );
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.meta.deduplicated).toBe(true);
     expect(body.meta.resumed).toBe(true);
@@ -219,7 +217,7 @@ describe("POST /api/batches — idempotent re-submission", () => {
       })
     );
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.meta.deduplicated).toBe(true);
     expect(mockFindFirst).toHaveBeenCalledWith({
@@ -264,7 +262,7 @@ describe("POST /api/batches — idempotent re-submission", () => {
       makeRequest(makeBody({ idempotencyKey: `  ${KEY_BODY}  ` }))
     );
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.meta.deduplicated).toBe(true);
     expect(mockFindFirst).toHaveBeenCalledWith({
@@ -291,7 +289,7 @@ describe("POST /api/batches — idempotent re-submission", () => {
       makeRequest(makeBody(), { "Idempotency-Key": KEY_HEADER })
     );
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.meta.deduplicated).toBe(true);
     expect(body.data.id).toBe(BATCH_ID);

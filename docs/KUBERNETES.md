@@ -37,6 +37,21 @@ new image with the desired network, RPC, Horizon, contract, and app URL values,
 then deploy that immutable tag. Non-public values such as `DATABASE_URL`,
 `AUTH_SECRET`, and `STELLAR_NETWORK_PASSPHRASE` are read at runtime.
 
+### Automatic pod rollout on config and secret updates
+
+The Deployment pod template contains the configuration checksum annotation:
+
+```yaml
+checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+```
+
+Whenever any configuration or secret value in `values.config` or `values.secrets`
+is modified and applied via `helm upgrade`, the SHA256 checksum changes,
+automatically triggering a zero-downtime rolling update (`RollingUpdate` strategy)
+of the Deployment pods so that running containers always pick up the updated
+environment variables.
+
+
 ## Install and migrate
 
 Render before applying anything:

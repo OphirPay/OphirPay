@@ -16,6 +16,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import crypto from "node:crypto";
 import { load } from "js-yaml";
 
 const repoRoot = process.cwd();
@@ -124,3 +125,71 @@ describe("helm/ophirpay config keys (#683)", () => {
     expect(rawValues).toMatch(/build\*?\*? time/i);
   });
 });
+
+describe("helm rollout on config/secret changes (#1332)", () => {
+  const deploymentYaml = readFileSync(
+    join(templatesDir, "deployment.yaml"),
+    "utf8",
+  );
+
+  it("includes checksum/config annotation in Deployment pod template", () => {
+    expect(deploymentYaml).toContain("checksum/config:");
+    expect(deploymentYaml).toMatch(
+      /checksum\/config:\s*\{\{\s*include\s*\(print\s*\$\.Template\.BasePath\s*"\/config\.yaml"\)\s*\.\s*\|\s*sha256sum\s*\}\}/,
+    );
+  });
+
+  it("preserves podAnnotations in Deployment pod template", () => {
+    expect(deploymentYaml).toMatch(
+      /\{\{- with \.Values\.podAnnotations \}\}\s*\{\{- toYaml \. \| nindent 8 \}\}\s*\{\{- end \}\}/,
+    );
+  });
+
+  it("calculates a distinct SHA-256 hash when config or secret values change", () => {
+    const renderConfig = (cfg: Record<string, string>, sec: Record<string, string>) => {
+      const configLines = Object.entries(cfg)
+        .map(([k, v]) => `  ${k}: "${v}"`)
+        .join("\n");
+      const secretLines = Object.entries(sec)
+        .map(([k, v]) => `  ${k}: "${v}"`)
+        .join("\n");
+      return `ConfigMap:\n${configLines}\n---\nSecret:\n${secretLines}`;
+    };
+
+    const baseRender = renderConfig(values.config, values.secrets);
+    const baseHash = crypto.createHash("sha256").update(baseRender).digest("hex");
+
+    // Modify config
+    const modifiedConfig = { ...values.config, NODE_ENV: "staging" };
+    const configChangedRender = renderConfig(modifiedConfig, values.secrets);
+    const configChangedHash = crypto
+      .createHash("sha256")
+      .update(configChangedRender)
+      .digest("hex");
+
+    expect(configChangedHash).not.toEqual(baseHash);
+
+    // Modify secrets
+    const modifiedSecrets = {
+      ...values.secrets,
+      DATABASE_URL: "postgresql://staging-user:secret@postgres.svc:5432/ophirpay",
+    };
+    const secretChangedRender = renderConfig(values.config, modifiedSecrets);
+    const secretChangedHash = crypto
+      .createHash("sha256")
+      .update(secretChangedRender)
+      .digest("hex");
+
+    expect(secretChangedHash).not.toEqual(baseHash);
+  });
+
+  it("documents checksum/config rolling update in docs/KUBERNETES.md", () => {
+    const kubernetesDoc = readFileSync(
+      join(repoRoot, "docs", "KUBERNETES.md"),
+      "utf8",
+    );
+    expect(kubernetesDoc).toContain("checksum/config");
+    expect(kubernetesDoc).toMatch(/rolling update/i);
+  });
+});
+

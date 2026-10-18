@@ -375,6 +375,49 @@ jobs:
 
           exit "$fail"
       
+      - name: Assert config and secret changes trigger pod rollout checksum
+        # AC of #1332: changing any config or secrets value must change the
+        # pod template checksum/config annotation to trigger a rolling update.
+        run: |
+          set -euo pipefail
+
+          # Base checksum with default values
+          BASE_CHECKSUM=$(helm template ophirpay helm/ophirpay --show-only templates/deployment.yaml \
+            | grep 'checksum/config:' | head -1 | awk '{print $2}' | tr -d '"'\' | tr -d ' ')
+
+          if [ -z "$BASE_CHECKSUM" ]; then
+            echo "::error::Deployment is missing checksum/config pod annotation"
+            exit 1
+          fi
+          echo "Base config checksum: $BASE_CHECKSUM"
+
+          # Modified config value
+          CONFIG_CHANGED_CHECKSUM=$(helm template ophirpay helm/ophirpay --show-only templates/deployment.yaml \
+            --set config.NODE_ENV=staging \
+            | grep 'checksum/config:' | head -1 | awk '{print $2}' | tr -d '"'\' | tr -d ' ')
+
+          # Modified secret value
+          SECRET_CHANGED_CHECKSUM=$(helm template ophirpay helm/ophirpay --show-only templates/deployment.yaml \
+            --set secrets.DATABASE_URL=postgres://new-database-url:5432/ophirpay \
+            | grep 'checksum/config:' | head -1 | awk '{print $2}' | tr -d '"'\' | tr -d ' ')
+
+          fail=0
+          if [ "$BASE_CHECKSUM" = "$CONFIG_CHANGED_CHECKSUM" ]; then
+            echo "::error::checksum/config did not change when config value changed"
+            fail=1
+          else
+            echo "✅ Config change changed checksum: $BASE_CHECKSUM -> $CONFIG_CHANGED_CHECKSUM"
+          fi
+
+          if [ "$BASE_CHECKSUM" = "$SECRET_CHANGED_CHECKSUM" ]; then
+            echo "::error::checksum/config did not change when secret value changed"
+            fail=1
+          else
+            echo "✅ Secret change changed checksum: $BASE_CHECKSUM -> $SECRET_CHANGED_CHECKSUM"
+          fi
+
+          exit "$fail"
+
       - name: Validate with kubeconform
         run: |
           kubeconform -strict -summary /tmp/default.yaml

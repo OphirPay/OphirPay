@@ -41,6 +41,8 @@ const BatchConfirmDialog = dynamic(
 );
 import Link from "next/link";
 import type { BatchRecipientInput } from "@/lib/stellar";
+import { StatusAnnouncer } from "@/components/ui/StatusAnnouncer";
+import { ARIA } from "@/lib/aria-labels";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -938,6 +940,19 @@ export default function NewBatchPage() {
                 : ""}
           </p>
         )}
+        <StatusAnnouncer
+          message={
+            step === "building"
+              ? ARIA.TRANSACTION_PREPARING
+              : step === "signing"
+                ? ARIA.TRANSACTION_SIGNING
+                : step === "submitting"
+                  ? ARIA.TRANSACTION_SUBMITTING
+                  : step === "done"
+                    ? ARIA.TRANSACTION_CONFIRMED
+                    : null
+          }
+        />
       </div>
 
       {/* Confirmation dialog */}

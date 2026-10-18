@@ -177,3 +177,54 @@ test("the accessibility matrix runs on every configured browser project", () => 
     expect.arrayContaining(["chromium", "firefox", "mobile-chrome"])
   );
 });
+
+test.describe("ARIA live region status announcements (Issue #1292)", () => {
+  test("header wallet button contains a polite ARIA live region", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+
+    const liveRegion = page.locator("[data-testid='status-announcer']").first();
+    await expect(liveRegion).toBeAttached();
+    await expect(liveRegion).toHaveAttribute("aria-live", "polite");
+    await expect(liveRegion).toHaveAttribute("aria-atomic", "true");
+    await expect(liveRegion).toHaveClass(/sr-only/);
+
+    // Live region passes axe check with zero violations
+    const results = await new AxeBuilder({ page })
+      .include("[data-testid='status-announcer']")
+      .analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("wallet selector modal provides live status announcements", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+
+    const connectButton = page.getByRole("button", { name: /connect wallet/i });
+    if (await connectButton.isVisible()) {
+      await connectButton.click();
+      const modal = page.getByRole("dialog");
+      await expect(modal).toBeVisible();
+
+      const modalLiveRegion = modal.locator("[data-testid='status-announcer']");
+      await expect(modalLiveRegion).toBeAttached();
+      await expect(modalLiveRegion).toHaveAttribute("aria-live", "polite");
+      await expect(modalLiveRegion).toHaveAttribute("aria-atomic", "true");
+
+      const results = await new AxeBuilder({ page })
+        .include("[role='dialog']")
+        .analyze();
+      expect(results.violations.filter((v) => BLOCKING_IMPACTS.has(v.impact ?? ""))).toEqual([]);
+    }
+  });
+
+  test("transaction send page includes live status announcements", async ({ page }) => {
+    await page.goto("/send");
+    await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+
+    const liveRegion = page.locator("[data-testid='status-announcer']");
+    await expect(liveRegion.first()).toBeAttached();
+    await expect(liveRegion.first()).toHaveAttribute("aria-live", "polite");
+    await expect(liveRegion.first()).toHaveAttribute("aria-atomic", "true");
+  });
+});

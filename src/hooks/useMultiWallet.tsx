@@ -19,6 +19,8 @@ import {
   notifySessionRevoked,
   resetPendingWork,
 } from "@/lib/session-lifecycle";
+import { ARIA } from "@/lib/aria-labels";
+import { shortenAddress } from "@/lib/utils";
 
 // ── Context ───────────────────────────────────────────────────
 
@@ -32,6 +34,8 @@ interface WalletContextType {
   isConnecting: boolean;
   error: string | null;
   availableWallets: WalletId[];
+  statusAnnouncement: string | null;
+  announceStatus: (message: string | null) => void;
 }
 
 // ── Initial State ─────────────────────────────────────────────
@@ -52,6 +56,11 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availableWallets, setAvailableWallets] = useState<WalletId[]>([]);
+  const [statusAnnouncement, setStatusAnnouncement] = useState<string | null>(null);
+
+  const announceStatus = useCallback((message: string | null) => {
+    setStatusAnnouncement(message);
+  }, []);
 
   // Detect available wallets on mount
   useEffect(() => {
@@ -122,6 +131,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     async (walletId: WalletId) => {
       setIsConnecting(true);
       setError(null);
+      setStatusAnnouncement(`${ARIA.WALLET_CONNECTING} (${walletId})`);
 
       try {
         const connector = getWalletConnector(walletId);
@@ -159,6 +169,9 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
         // Open a server-side session so API routes can authorize this user.
         // Wallets that support message signing prove ownership by signing a
         // challenge; the session route rejects fresh sessions without proof.
+        if (connector.signMessage) {
+          setStatusAnnouncement(ARIA.TRANSACTION_SIGNING);
+        }
         const sessionOk = await establishSession(
           publicKey,
           network || "TESTNET",
@@ -172,9 +185,10 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
           // "connected" state with no server session behind it.
           setWallet(initialWalletState);
           setActiveWalletId(null);
-          setError(
-            "Wallet connected, but the server rejected the session. You may have declined the signature request — reconnect and approve it to use API features."
-          );
+          const errorMsg =
+            "Wallet connected, but the server rejected the session. You may have declined the signature request — reconnect and approve it to use API features.";
+          setError(errorMsg);
+          setStatusAnnouncement(`${ARIA.WALLET_CONNECTION_FAILED}: Session rejected`);
           return;
         }
         if (!sessionOk) {
@@ -185,10 +199,13 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
             `[OphirPay] Session not established — ${connector.name} has no signMessage support. Use Freighter, xBull, or Albedo for full API access.`
           );
         }
+
+        setStatusAnnouncement(`${ARIA.WALLET_CONNECTED}: ${shortenAddress(publicKey)}`);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to connect wallet";
         setError(message);
+        setStatusAnnouncement(`${ARIA.WALLET_CONNECTION_FAILED}: ${message}`);
       } finally {
         setIsConnecting(false);
       }
@@ -205,6 +222,7 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
     setWallet(initialWalletState);
     setActiveWalletId(null);
     setError(null);
+    setStatusAnnouncement(ARIA.WALLET_DISCONNECTED);
 
     // Issue #1379: a disconnect is a full session teardown, not just a UI
     // reset. Clear the persisted wallet session, drop any pending-work flags,
@@ -251,6 +269,8 @@ export function MultiWalletProvider({ children }: { children: React.ReactNode })
         isConnecting,
         error,
         availableWallets,
+        statusAnnouncement,
+        announceStatus,
       }}
     >
       {children}

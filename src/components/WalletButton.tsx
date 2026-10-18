@@ -12,6 +12,8 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { WalletSelector } from "@/components/WalletSelector";
 import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
 import { usePendingWork } from "@/hooks/usePendingWork";
+import { StatusAnnouncer } from "@/components/ui/StatusAnnouncer";
+import { ARIA } from "@/lib/aria-labels";
 import {
   hasPendingWork,
   type PendingWork,
@@ -34,8 +36,16 @@ function describePendingWork(work: PendingWork): string {
 }
 
 export function WalletButton() {
-  const { wallet, connect, disconnect, fetchBalance, isConnecting, error, availableWallets } =
-    useWallet();
+  const {
+    wallet,
+    connect,
+    disconnect,
+    fetchBalance,
+    isConnecting,
+    error,
+    availableWallets,
+    statusAnnouncement,
+  } = useWallet();
   const [showSelector, setShowSelector] = useState(false);
   const [connectingWallet, setConnectingWallet] = useState<WalletId | null>(null);
   // Issue #1379: warn before discarding unsaved drafts / in-flight payments.
@@ -74,6 +84,7 @@ export function WalletButton() {
   if (wallet.connected && wallet.publicKey) {
     return (
       <>
+      <StatusAnnouncer message={statusAnnouncement} />
       <div className="flex items-center gap-3">
         {/* Balance */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
@@ -191,6 +202,10 @@ export function WalletButton() {
 
   return (
     <div className="flex flex-col items-end gap-1">
+      <StatusAnnouncer
+        message={statusAnnouncement || (error ? `${ARIA.ERROR}: ${error}` : null)}
+        politeness={error ? "assertive" : "polite"}
+      />
       <Tooltip content="Install Freighter wallet extension" position="bottom">
         <Button
           onClick={() => setShowSelector(true)}

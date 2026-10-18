@@ -6,6 +6,8 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
 import { cn } from "@/lib/utils";
+import { StatusAnnouncer } from "@/components/ui/StatusAnnouncer";
+import { ARIA } from "@/lib/aria-labels";
 
 interface WalletSelectorProps {
   availableWallets: WalletId[];
@@ -55,6 +57,18 @@ export function WalletSelector({
         </p>
       }
     >
+      <StatusAnnouncer
+        message={
+          isConnecting
+            ? connectingWallet
+              ? `${ARIA.WALLET_CONNECTING} (${connectingWallet})`
+              : ARIA.WALLET_CONNECTING
+            : error
+              ? `${ARIA.ERROR}: ${error}`
+              : null
+        }
+        politeness={error ? "assertive" : "polite"}
+      />
       {/* Wallet list */}
       <div className="space-y-1">
         {WALLET_REGISTRY.sort((a, b) => a.priority - b.priority).map((wallet) => {

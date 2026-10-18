@@ -52,6 +52,13 @@ export interface RateLimitStore {
   reset(key: string): Promise<void>;
 }
 
+import {
+  createRateLimitHeaders,
+  type RateLimitTelemetry,
+} from "@/lib/rate-limit-headers";
+
+export { createRateLimitHeaders, type RateLimitTelemetry };
+
 /**
  * Seconds (rounded up) until the current window resets.
  *
@@ -60,6 +67,23 @@ export interface RateLimitStore {
  */
 export function getRetryAfterSeconds(result: RateLimitResult): number {
   return Math.max(0, Math.ceil((result.resetAt - Date.now()) / 1000));
+}
+
+/**
+ * Convert a RateLimitResult into standard rate limit telemetry response headers.
+ * Populates X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, and
+ * Retry-After (when limit is exhausted or request is rejected).
+ */
+export function buildRateLimitTelemetryHeaders(
+  result: RateLimitResult,
+  limit: number
+): Record<string, string> {
+  return createRateLimitHeaders({
+    limit,
+    remaining: result.remaining,
+    resetAt: result.resetAt,
+    allowed: result.allowed,
+  });
 }
 
 // ── In-Memory Store ────────────────────────────────────────────

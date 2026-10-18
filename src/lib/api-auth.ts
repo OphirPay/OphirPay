@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
@@ -15,6 +15,7 @@ import {
   API_SCOPES,
   ADMIN_SCOPE,
   hasScope,
+  getMissingScopes,
   type ApiScope,
 } from "@/lib/api-scopes";
 
@@ -22,6 +23,7 @@ export {
   API_SCOPES,
   ADMIN_SCOPE,
   hasScope,
+  getMissingScopes,
   type ApiScope,
 };
 
@@ -217,6 +219,26 @@ export function withApiAuth(
  *   if (!("userId" in auth)) return auth;   // 401/403 Response
  *   // auth.userId / auth.scopes available
  */
+/**
+ * Generate a 403 Forbidden response with INSUFFICIENT_SCOPE error code.
+ */
+export function scopeForbiddenError(
+  required: ApiScope | ApiScope[],
+  currentScopes: string[] = []
+): NextResponse {
+  const requiredList = Array.isArray(required) ? required : [required];
+  const missing = getMissingScopes(currentScopes, requiredList);
+  return forbiddenError(
+    `Missing required scope: ${missing.length ? missing.join(", ") : requiredList.join(", ")}`,
+    {
+      code: "INSUFFICIENT_SCOPE",
+      required: requiredList,
+      missing,
+      has: currentScopes,
+    }
+  );
+}
+
 export async function requireScopes(
   request: Request,
   required: ApiScope | ApiScope[]
@@ -230,14 +252,65 @@ export async function requireScopes(
 
   const requiredList = Array.isArray(required) ? required : [required];
   if (!hasScope(auth.scopes, requiredList)) {
-    return forbiddenError(
-      `This API key lacks the required scope(s): ${requiredList.join(", ")}. ` +
-        `Its effective scopes are: ${auth.scopes.length ? auth.scopes.join(", ") : "(none)"}`,
-      { required: requiredList, has: auth.scopes }
-    );
+    return scopeForbiddenError(requiredList, auth.scopes);
   }
 
   return auth;
+}
+
+/**
+ * Validate that the request has the required scope.
+ * Supports:
+ *   - requireScope(scope)(request)
+ *   - requireScope(scope, request)
+ *   - requireScope(request, scope)
+ */
+export function requireScope(
+  scope: ApiScope
+): (request: Request) => Promise<AuthResult | NextResponse>;
+export function requireScope(
+  scope: ApiScope,
+  request: Request
+): Promise<AuthResult | NextResponse>;
+export function requireScope(
+  request: Request,
+  scope: ApiScope
+): Promise<AuthResult | NextResponse>;
+export function requireScope(
+  arg1: ApiScope | Request,
+  arg2?: Request | ApiScope
+): unknown {
+  if (typeof arg1 === "string" && !arg2) {
+    return (req: Request) => requireScopes(req, arg1);
+  }
+  if (typeof arg1 === "string" && arg2 && typeof arg2 !== "string") {
+    return requireScopes(arg2, arg1);
+  }
+  if (typeof arg1 !== "string" && typeof arg2 === "string") {
+    return requireScopes(arg1, arg2);
+  }
+  throw new Error("Invalid arguments to requireScope");
+}
+
+/**
+ * Assert that an authenticated context (session or API key) has the required scope.
+ * Wallet sessions possess full user access; API keys are verified against granted scopes.
+ */
+export function assertScope(
+  auth: { scopes?: string[]; isSession?: boolean; keyId?: string } | null | undefined,
+  required: ApiScope | ApiScope[]
+): NextResponse | null {
+  if (!auth) return null;
+  if (auth.isSession === true) return null;
+  const isApiKey = auth.isSession === false || Boolean(auth.keyId);
+  if (!isApiKey) return null;
+
+  const scopes = auth.scopes ?? [];
+  const requiredList = Array.isArray(required) ? required : [required];
+  if (!hasScope(scopes, requiredList)) {
+    return scopeForbiddenError(requiredList, scopes);
+  }
+  return null;
 }
 
 /**

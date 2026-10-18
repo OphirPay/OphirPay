@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 
 /**
  * Wallet session authentication for OphirPay.
@@ -171,13 +171,15 @@ export interface AuthContext {
   userId: string;
   publicKey?: string;
   keyId?: string;
+  scopes?: string[];
+  isSession?: boolean;
 }
 
 /**
  * Resolve the authenticated user for a request:
  *
- *   1. Signed wallet session cookie (browser UI)  →  { userId, publicKey }
- *   2. API key (machine-to-machine)               →  { userId, keyId }
+ *   1. Signed wallet session cookie (browser UI)  →  { userId, publicKey, isSession: true }
+ *   2. API key (machine-to-machine)               →  { userId, keyId, scopes, isSession: false }
  *
  * Returns null when the caller is unauthenticated. Route handlers should
  * respond with 401 in that case.
@@ -201,7 +203,7 @@ export async function getAuthContext(
           create: { stellarAddress: session.pk },
         });
       }
-      return { userId: user.id, publicKey: session.pk };
+      return { userId: user.id, publicKey: session.pk, isSession: true };
     } catch {
       // DB unavailable — treat as unauthenticated rather than failing open
       return null;
@@ -209,7 +211,14 @@ export async function getAuthContext(
   }
 
   const apiAuth = await authenticateRequest(request);
-  if (apiAuth) return { userId: apiAuth.userId, keyId: apiAuth.keyId };
+  if (apiAuth) {
+    return {
+      userId: apiAuth.userId,
+      keyId: apiAuth.keyId,
+      scopes: apiAuth.scopes,
+      isSession: false,
+    };
+  }
 
   return null;
 }

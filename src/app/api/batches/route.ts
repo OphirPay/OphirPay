@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
 import type { PaymentStatus } from "@prisma/client";
@@ -14,6 +14,7 @@ import {
 } from "@/lib/api-response";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
+import { assertScope } from "@/lib/api-auth";
 import { verifyCsrf } from "@/lib/csrf";
 import { incMetric } from "@/lib/metrics-counters";
 import crypto from "crypto";
@@ -182,6 +183,9 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
+
+    const scopeError = assertScope(auth, "batches:create");
+    if (scopeError) return scopeError;
 
     const body = await request.json();
 

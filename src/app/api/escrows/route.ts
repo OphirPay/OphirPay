@@ -1,8 +1,9 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
 import { successResponse, handleApiError, badRequestError, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
+import { assertScope } from "@/lib/api-auth";
 import { verifyCsrf } from "@/lib/csrf";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
@@ -57,6 +58,9 @@ export const POST = withMetrics("POST /api/escrows", withRequestLogging(async fu
     if (!auth) {
       return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
     }
+
+    const scopeError = assertScope(auth, "escrow:write");
+    if (scopeError) return scopeError;
 
     const body = await request.json().catch(() => ({}));
     const { depositor, beneficiary, amount, asset, deadline, metadata } = body;

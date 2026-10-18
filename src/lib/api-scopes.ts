@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 
 // ── Scopes ─────────────────────────────────────────────────────
 //
@@ -17,11 +17,37 @@ export const API_SCOPES = [
   "write:payments",
   "read:analytics",
   "admin",
+  "batches:create",
+  "batches:read",
+  "batches:write",
+  "escrow:read",
+  "escrow:write",
+  "escrow:release",
+  "webhooks:read",
+  "webhooks:write",
+  "payments:read",
+  "payments:write",
 ] as const;
 
-export type ApiScope = (typeof API_SCOPES)[number];
+export type ApiScope = (typeof API_SCOPES)[number] | (string & {});
 
 export const ADMIN_SCOPE: ApiScope = "admin";
+
+/** Scope alias mappings for compatibility with standard and namespaced forms. */
+const SCOPE_ALIASES: Record<string, string[]> = {
+  "batches:create": ["batches:write", "admin"],
+  "batches:read": ["admin"],
+  "batches:write": ["admin"],
+  "escrow:write": ["admin"],
+  "escrow:release": ["escrow:write", "admin"],
+  "escrow:read": ["admin"],
+  "webhooks:write": ["admin"],
+  "webhooks:read": ["admin"],
+  "write:payments": ["payments:write", "admin"],
+  "payments:write": ["write:payments", "admin"],
+  "read:payments": ["payments:read", "admin"],
+  "payments:read": ["read:payments", "admin"],
+};
 
 /**
  * Whether a key's scopes satisfy a set of required scopes.
@@ -30,10 +56,36 @@ export const ADMIN_SCOPE: ApiScope = "admin";
  */
 export function hasScope(
   keyScopes: string[] | null | undefined,
-  required: ApiScope[]
+  required: ApiScope | ApiScope[]
 ): boolean {
-  if (!required.length) return true;
+  const requiredList = Array.isArray(required) ? required : [required];
+  if (!requiredList.length) return true;
   const scopes = new Set(keyScopes ?? []);
   if (scopes.has(ADMIN_SCOPE)) return true;
-  return required.every((s) => scopes.has(s));
+
+  return requiredList.every((req) => {
+    if (scopes.has(req)) return true;
+    const aliases = SCOPE_ALIASES[req];
+    if (aliases && aliases.some((a) => scopes.has(a))) return true;
+    return false;
+  });
+}
+
+/**
+ * Identify missing scopes from a user's scope list.
+ */
+export function getMissingScopes(
+  keyScopes: string[] | null | undefined,
+  required: ApiScope | ApiScope[]
+): string[] {
+  const requiredList = Array.isArray(required) ? required : [required];
+  const scopes = new Set(keyScopes ?? []);
+  if (scopes.has(ADMIN_SCOPE)) return [];
+
+  return requiredList.filter((req) => {
+    if (scopes.has(req)) return false;
+    const aliases = SCOPE_ALIASES[req];
+    if (aliases && aliases.some((a) => scopes.has(a))) return false;
+    return true;
+  });
 }

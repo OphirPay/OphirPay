@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 // SPDX-License-Identifier: MIT
 
 import { useState, useEffect, useCallback } from "react";
@@ -45,6 +45,16 @@ const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   "read:payments": "View payments and payment history",
   "write:payments": "Create and submit payments",
   "read:analytics": "Read analytics and reporting data",
+  "batches:create": "Create payout batches",
+  "batches:read": "View payout batches",
+  "batches:write": "Create and manage payout batches",
+  "escrow:read": "View escrow deposits and releases",
+  "escrow:write": "Create and modify escrow contracts",
+  "escrow:release": "Release funds from escrow contracts",
+  "webhooks:read": "View webhook endpoints and delivery logs",
+  "webhooks:write": "Create, modify, and delete webhooks",
+  "payments:read": "View payments and transaction history",
+  "payments:write": "Create and submit payments",
   admin: "Full access to all API capabilities",
 };
 

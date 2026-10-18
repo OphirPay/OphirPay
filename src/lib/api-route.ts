@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { z } from "zod";
@@ -8,11 +8,17 @@ import { verifyCsrf } from "@/lib/csrf";
 import { withMetrics } from "@/lib/metrics-middleware";
 import { withRequestLogging } from "@/lib/request-logging";
 
+import { assertScope, requireScope, type ApiScope } from "@/lib/api-auth";
+export { requireScope, assertScope };
+
 export interface ApiRouteOptions<TBody extends z.ZodTypeAny = any, TQuery extends z.ZodTypeAny = any> {
   /** The name of the route for metrics, e.g. "GET /api/payments" */
   name?: string;
   /** Whether to require authentication. Default is true. Use "opt-out" for public routes. */
   auth?: boolean | "opt-out";
+  /** Required scope(s) for API key callers. */
+  scope?: ApiScope | ApiScope[];
+  scopes?: ApiScope | ApiScope[];
   /** Whether to verify CSRF for mutating methods (POST, PUT, PATCH, DELETE). Default is true. Use "opt-out" for exempt routes. */
   csrf?: boolean | "opt-out";
   /** Schema to parse the request body. */
@@ -53,6 +59,11 @@ export function apiRoute<
         auth = await getAuthContext(request);
         if (!auth) {
           return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
+        }
+        const requiredScope = options.scope ?? options.scopes;
+        if (requiredScope) {
+          const scopeError = assertScope(auth, requiredScope);
+          if (scopeError) return scopeError;
         }
       }
 

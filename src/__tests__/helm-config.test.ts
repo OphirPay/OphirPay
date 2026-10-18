@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { load } from "js-yaml";
 
@@ -124,3 +124,74 @@ describe("helm/ophirpay config keys (#683)", () => {
     expect(rawValues).toMatch(/build\*?\*? time/i);
   });
 });
+
+describe("helm staging and production values files (#1330)", () => {
+  const baseValuesRaw = readFileSync(join(chartDir, "values.yaml"), "utf8");
+  const stagingValuesPath = join(chartDir, "values-staging.yaml");
+  const productionValuesPath = join(chartDir, "values-production.yaml");
+
+  it("ensures base values.yaml is environment-neutral", () => {
+    expect(baseValuesRaw).not.toContain("host: ophirpay.com");
+    expect(baseValuesRaw).not.toContain("cluster-issuer: letsencrypt-prod");
+    const baseValues = load(baseValuesRaw) as { ingress?: { enabled?: boolean } };
+    expect(baseValues.ingress?.enabled).toBe(false);
+  });
+
+  it("loads and validates values-staging.yaml", () => {
+    expect(existsSync(stagingValuesPath)).toBe(true);
+    const stagingRaw = readFileSync(stagingValuesPath, "utf8");
+    const stagingValues = load(stagingRaw) as {
+      replicaCount?: number;
+      ingress?: {
+        enabled?: boolean;
+        annotations?: Record<string, string>;
+        hosts?: { host?: string }[];
+        tls?: { hosts?: string[] }[];
+      };
+      config?: Record<string, string>;
+    };
+
+    expect(stagingValues.replicaCount).toBe(1);
+    expect(stagingValues.ingress?.enabled).toBe(true);
+    expect(stagingValues.ingress?.annotations?.["cert-manager.io/cluster-issuer"]).toBe(
+      "letsencrypt-staging",
+    );
+    expect(stagingValues.ingress?.hosts?.[0]?.host).toBe("staging.ophirpay.com");
+    expect(stagingValues.ingress?.tls?.[0]?.hosts?.[0]).toBe("staging.ophirpay.com");
+    expect(stagingValues.config?.NEXT_PUBLIC_STELLAR_NETWORK).toBe("TESTNET");
+    expect(stagingValues.config?.NEXT_PUBLIC_APP_URL).toBe(
+      "https://staging.ophirpay.com",
+    );
+  });
+
+  it("loads and validates values-production.yaml", () => {
+    expect(existsSync(productionValuesPath)).toBe(true);
+    const prodRaw = readFileSync(productionValuesPath, "utf8");
+    const prodValues = load(prodRaw) as {
+      replicaCount?: number;
+      ingress?: {
+        enabled?: boolean;
+        annotations?: Record<string, string>;
+        hosts?: { host?: string }[];
+        tls?: { hosts?: string[] }[];
+      };
+      config?: Record<string, string>;
+    };
+
+    expect(prodValues.replicaCount).toBe(2);
+    expect(prodValues.ingress?.enabled).toBe(true);
+    expect(prodValues.ingress?.annotations?.["cert-manager.io/cluster-issuer"]).toBe(
+      "letsencrypt-prod",
+    );
+    expect(prodValues.ingress?.hosts?.[0]?.host).toBe("ophirpay.com");
+    expect(prodValues.ingress?.tls?.[0]?.hosts?.[0]).toBe("ophirpay.com");
+    expect(prodValues.config?.NEXT_PUBLIC_APP_URL).toBe("https://ophirpay.com");
+  });
+
+  it("documents values-staging.yaml and values-production.yaml in docs/KUBERNETES.md", () => {
+    const k8sDoc = readFileSync(join(repoRoot, "docs", "KUBERNETES.md"), "utf8");
+    expect(k8sDoc).toContain("values-staging.yaml");
+    expect(k8sDoc).toContain("values-production.yaml");
+  });
+});
+

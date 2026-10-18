@@ -375,11 +375,59 @@ jobs:
 
           exit "$fail"
       
+      - name: Render and assert staging and production environment values
+        # AC of #1330: render and validate values-staging.yaml and values-production.yaml
+        run: |
+          set -euo pipefail
+
+          # Render staging values
+          helm template ophirpay helm/ophirpay -f helm/ophirpay/values-staging.yaml > /tmp/staging.yaml
+
+          # Render production values
+          helm template ophirpay helm/ophirpay -f helm/ophirpay/values-production.yaml > /tmp/production.yaml
+
+          fail=0
+          expect() {
+            if grep -q -- "$1" "$2"; then
+              echo "✅ $2 contains '$1'"
+            else
+              echo "::error::$2 is missing '$1'"
+              fail=1
+            fi
+          }
+          reject() {
+            if grep -q -- "$1" "$2"; then
+              echo "::error::$2 unexpectedly contains '$1'"
+              fail=1
+            else
+              echo "✅ $2 has no '$1'"
+            fi
+          }
+
+          # Base default values must not reference production domain
+          reject "ophirpay.com" /tmp/default.yaml
+          reject "letsencrypt-prod" /tmp/default.yaml
+
+          # Staging asserts
+          expect "staging.ophirpay.com" /tmp/staging.yaml
+          expect "letsencrypt-staging" /tmp/staging.yaml
+          expect "ophirpay-staging-tls" /tmp/staging.yaml
+          expect "replicas: 1" /tmp/staging.yaml
+
+          # Production asserts
+          expect "host: ophirpay.com" /tmp/production.yaml
+          expect "letsencrypt-prod" /tmp/production.yaml
+          expect "ophirpay-tls" /tmp/production.yaml
+
+          exit "$fail"
+
       - name: Validate with kubeconform
         run: |
           kubeconform -strict -summary /tmp/default.yaml
           kubeconform -strict -summary /tmp/enabled.yaml
           kubeconform -strict -summary /tmp/disabled.yaml
+          kubeconform -strict -summary /tmp/staging.yaml
+          kubeconform -strict -summary /tmp/production.yaml
 
       - name: Assert rendered config keys against .env.example
         # AC of #730: a broken template or an unknown config key must fail the

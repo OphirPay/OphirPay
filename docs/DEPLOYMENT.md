@@ -200,23 +200,46 @@ services:
       - NODE_ENV=production
 ```
 
-### Docker Build Only (Without Compose)
+### Build-Time Configuration (`NEXT_PUBLIC_*`)
+
+Next.js inlines all `NEXT_PUBLIC_*` variables into the static JavaScript client bundle at **build time**. Passing these variables solely via `-e` during `docker run` has **no effect** on the client bundle, causing images to run without active contract IDs or network settings.
+
+The `Dockerfile` builder stage declares `ARG` and `ENV` definitions with Testnet defaults matching `.env.example`. When building staging or production images, provide the appropriate `--build-arg` flags:
+
+#### Building a Staging Image
+```bash
+docker build \
+  --build-arg NEXT_PUBLIC_STELLAR_NETWORK=TESTNET \
+  --build-arg NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban-testnet.stellar.org:443 \
+  --build-arg NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org \
+  --build-arg NEXT_PUBLIC_CONTRACT_ID=CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET \
+  --build-arg NEXT_PUBLIC_EMITTER_CONTRACT_ID=CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN \
+  --build-arg NEXT_PUBLIC_APP_URL=https://staging.ophirpay.com \
+  -t ophirpay:staging .
+```
+
+#### Building a Production Image
+```bash
+docker build \
+  --build-arg NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
+  --build-arg NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org:443 \
+  --build-arg NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \
+  --build-arg NEXT_PUBLIC_CONTRACT_ID=<mainnet-ophirpay-contract-id> \
+  --build-arg NEXT_PUBLIC_EMITTER_CONTRACT_ID=<mainnet-emitter-contract-id> \
+  --build-arg NEXT_PUBLIC_APP_URL=https://ophirpay.com \
+  -t ophirpay:production .
+```
+
+### Running the Container (Runtime Environment)
+
+Only server-side secrets and connection strings are required at runtime:
 
 ```bash
-# Build the image
-docker build -t ophirpay .
-
-# Run with environment variables
 docker run -p 3000:3000 \
-  -e DATABASE_URL="postgresql://..." \
-  -e NEXT_PUBLIC_STELLAR_NETWORK=TESTNET \
-  -e NEXT_PUBLIC_STELLAR_RPC_URL="https://soroban-testnet.stellar.org:443" \
-  -e NEXT_PUBLIC_STELLAR_HORIZON_URL="https://horizon-testnet.stellar.org" \
+  -e DATABASE_URL="postgresql://user:password@host:5432/ophirpay" \
+  -e AUTH_SECRET="$(openssl rand -hex 32)" \
   -e STELLAR_NETWORK_PASSPHRASE="Test SDF Network ; September 2015" \
-  -e NEXT_PUBLIC_CONTRACT_ID="CCQGGU..." \
-  -e NEXT_PUBLIC_EMITTER_CONTRACT_ID="CDAVU2..." \
-  -e NEXT_PUBLIC_APP_URL="http://localhost:3000" \
-  ophirpay
+  ophirpay:staging
 ```
 
 ### Docker Image Details

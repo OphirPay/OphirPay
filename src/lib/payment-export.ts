@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: MIT
 
 import type { Payment } from "@prisma/client";
+import { escapeField } from "@/lib/export-csv";
 
 /**
  * Pure row-shaping for the payment CSV export. No Prisma client or auth
  * imports, so it can be unit-tested without a database or a session.
  */
 
-/** Upper bound on exported rows — the CSV is materialised as a single string. */
+/** Upper bound on exported rows — capped to protect database resources. */
 export const MAX_EXPORT_ROWS = 10_000;
+
+/** Chunk size for streaming CSV export (Issue #1369). */
+export const EXPORT_CHUNK_SIZE = 250;
 
 /** A CSV-friendly, fully-stringified view of a payment record. */
 export interface PaymentExportRow {
@@ -68,3 +72,19 @@ export function paymentToCsvRow(payment: Payment): PaymentExportRow {
 export function buildPaymentExportFilename(now: Date = new Date()): string {
   return `ophirpay-payments-${now.toISOString().split("T")[0]}.csv`;
 }
+
+/** Pre-rendered CSV header row with CRLF line termination. */
+export const PAYMENT_EXPORT_HEADER =
+  PAYMENT_EXPORT_COLUMNS.map((c) => escapeField(c.header)).join(",") + "\r\n";
+
+/** Format a single PaymentExportRow into a valid CSV line. */
+export function formatPaymentCsvRow(row: PaymentExportRow): string {
+  return PAYMENT_EXPORT_COLUMNS.map((c) => escapeField(String(row[c.key] ?? ""))).join(",");
+}
+
+/** Format an array of Payment records into a chunk of CRLF-terminated CSV lines. */
+export function formatPaymentCsvChunk(payments: Payment[]): string {
+  if (payments.length === 0) return "";
+  return payments.map((p) => formatPaymentCsvRow(paymentToCsvRow(p))).join("\r\n") + "\r\n";
+}
+

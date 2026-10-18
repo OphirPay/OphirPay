@@ -74,7 +74,7 @@ export function toCsvString<T extends object>(
   return [header, ...rows].join("\n");
 }
 
-function escapeField(value: string): string {
+export function escapeField(value: string): string {
   // CSV formula-injection guard (OWASP): spreadsheet apps evaluate cells that
   // begin with = + - @ as formulas (including DDE/UNC paths). Neutralize by
   // prefixing a single quote, which the spreadsheet renders literally.

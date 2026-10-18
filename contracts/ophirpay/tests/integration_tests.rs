@@ -935,3 +935,92 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+/// Test multi-token balance integrity verification for emergency_withdraw (#1354).
+/// Ensures that locked escrows and streams in one asset (Token A) do not incorrectly
+/// restrict emergency withdrawal of liquid unlocked balances in another asset (Token B),
+/// and that withdrawal limits and post-transfer balances strictly enforce per-token invariants.
+#[test]
+fn test_emergency_withdraw_multi_token_isolation_and_balance_integrity() {
+    let fix = TestFixture::new();
+
+    let admin_b = Address::generate(&fix.env);
+    let token_b_id = fix.env.register_stellar_asset_contract_v2(admin_b.clone()).address();
+    let token_b_admin_client = token::StellarAssetClient::new(&fix.env, &token_b_id);
+    let token_b_client = token::Client::new(&fix.env, &token_b_id);
+
+    let user1 = Address::generate(&fix.env);
+    let user2 = Address::generate(&fix.env);
+
+    // Fund user1 with Token A (fix.token_id)
+    fix.token_admin_client.mint(&user1, &3_000i128);
+
+    // Lock 1,000 Token A via escrow
+    let escrow_id = fix.client.create_escrow(
+        &user1,
+        &user2,
+        &Option::<Address>::None,
+        &1_000i128,
+        &fix.token_id,
+        &(fix.env.ledger().timestamp() + 86_400),
+        &String::from_str(&fix.env, "escrow A"),
+    );
+    assert_eq!(escrow_id, 1);
+
+    // Lock 500 Token A via payment stream
+    let now = fix.env.ledger().timestamp();
+    let stream_id = fix.client.create_stream(
+        &user1,
+        &user2,
+        &500i128,
+        &fix.token_id,
+        &now,
+        &(now + 3_600),
+        &String::from_str(&fix.env, "stream A"),
+    );
+    assert_eq!(stream_id, 1);
+
+    // Fund the contract directly with 2,000 Token B (no locks in Token B)
+    token_b_admin_client.mint(&fix.contract_id, &2_000i128);
+
+    // Verify per-token locked balances and aggregate locked balance
+    assert_eq!(fix.client.get_token_locked_balance(&fix.token_id), 1_500i128);
+    assert_eq!(fix.client.get_token_locked_balance(&token_b_id), 0i128);
+    assert_eq!(fix.client.get_locked_balance(), 1_500i128);
+
+    // Isolation Test: Owner withdraws all 2,000 Token B.
+    // In buggy single-counter logic, 1500 locked in Token A would incorrectly block withdrawing 2000 Token B.
+    // In our isolated logic, Token B has 0 locked, so full 2000 withdrawal succeeds!
+    let res_b = fix.client.try_emergency_withdraw(&fix.owner, &token_b_id, &2_000i128);
+    assert!(res_b.is_ok());
+    assert_eq!(token_b_client.balance(&fix.contract_id), 0i128);
+    assert_eq!(token_b_client.balance(&fix.owner), 2_000i128);
+
+    // Token A Boundary Test: Contract currently holds 1,500 Token A (all locked).
+    // Mint 500 unencumbered Token A to contract. Total = 2,000, Locked = 1,500, Unlocked = 500.
+    fix.token_admin_client.mint(&fix.contract_id, &500i128);
+    assert_eq!(fix.token_client.balance(&fix.contract_id), 2_000i128);
+
+    // Attempting to withdraw 501 Token A must fail with NoTokensToWithdraw
+    let res_over = fix.client.try_emergency_withdraw(&fix.owner, &fix.token_id, &501i128);
+    assert_eq!(res_over, Err(Ok(PaymentError::NoTokensToWithdraw)));
+
+    // Withdrawing exactly 500 Token A succeeds
+    let res_exact = fix.client.try_emergency_withdraw(&fix.owner, &fix.token_id, &500i128);
+    assert!(res_exact.is_ok());
+    assert_eq!(fix.token_client.balance(&fix.contract_id), 1_500i128);
+
+    // Now all remaining 1,500 Token A is locked; withdrawing 1 fails
+    let res_locked = fix.client.try_emergency_withdraw(&fix.owner, &fix.token_id, &1i128);
+    assert_eq!(res_locked, Err(Ok(PaymentError::NoTokensToWithdraw)));
+
+    // Cancel stream to release 500 Token A
+    fix.client.cancel_stream(&user1, &stream_id);
+    assert_eq!(fix.client.get_token_locked_balance(&fix.token_id), 1_000i128);
+    assert_eq!(fix.client.get_locked_balance(), 1_000i128);
+
+    // Release escrow to release remaining 1,000 Token A
+    fix.client.release_escrow(&fix.owner, &escrow_id);
+    assert_eq!(fix.client.get_token_locked_balance(&fix.token_id), 0i128);
+    assert_eq!(fix.client.get_locked_balance(), 0i128);
+}

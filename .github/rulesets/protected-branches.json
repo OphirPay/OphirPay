@@ -1,0 +1,52 @@
+{
+  "name": "Protected Branches (main & integration/staging)",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main",
+        "refs/heads/integration/staging"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          { "context": "ci / 🛠️ Typecheck" },
+          { "context": "ci / 🔍 ESLint (zero warnings)" },
+          { "context": "ci / 🧪 Unit tests" },
+          { "context": "ci / 🏗️ Next.js build" },
+          { "context": "ci / 🛡️ Deploy configuration guards" },
+          { "context": "ci / 🦀 Contract WASM and Rust tests (ophirpay)" },
+          { "context": "ci / 🦀 Contract WASM and Rust tests (emitter)" },
+          { "context": "ci / 🔐 Secrets scan" },
+          { "context": "ci / ☸️ Helm lint/render" },
+          { "context": "prisma-ci / 🗄️ Prisma schema and migration replay" },
+          { "context": "contract-regression / 🛡️ Contract regression guard" },
+          { "context": "enforce-base / 🚧 Enforce Integration Branch" }
+        ]
+      }
+    }
+  ]
+}

@@ -41,6 +41,33 @@ the repository’s branch-protection settings when changing the required list;
 this document describes the intended gate, not a replacement for GitHub
 settings.
 
+## Repository ruleset & branch protection
+
+Branch protection policies are version-controlled in the repository under
+`.github/rulesets/protected-branches.json`. This ruleset covers both `main`
+and `integration/staging` to guarantee:
+
+1. **Pull Request Enforcement**: Direct pushes to `main` and `integration/staging` are strictly rejected. Changes must be merged via reviewed pull requests.
+2. **Merge Gate Enforcement**: A pull request cannot be merged unless all status checks listed in the table above pass successfully.
+3. **Branch Immutability**:
+   - `deletion` protection prevents accidental or malicious deletion of `integration/staging` (which would silently disarm the batch integration mode).
+   - `non_fast_forward` protection blocks force-pushes (`git push --force`).
+
+### Applying and Verifying Rulesets
+
+Maintainers can verify or deploy the ruleset using `scripts/apply-ruleset.sh`:
+
+```bash
+# Verify ruleset JSON validity
+bash scripts/apply-ruleset.sh --verify
+
+# Preview ruleset payload without applying
+bash scripts/apply-ruleset.sh --dry-run
+
+# Deploy ruleset to the repository
+bash scripts/apply-ruleset.sh
+```
+
 ## One-command local gate
 
 ```bash

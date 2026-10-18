@@ -22,3 +22,5 @@ export { useFormSubmit, useFormReset } from "@/lib/form-helpers";
 export { useXlmPrice } from "./usePrice";
 export { useCurrencyDisplay } from "./useCurrencyDisplay";
 export type { DisplayCurrency } from "./useCurrencyDisplay";
+export { useFeeStats, stroopsToXlm } from "./useFeeStats";
+export type { FeeTierDetails, FeeStatsState, UseFeeStatsOptions } from "./useFeeStats";

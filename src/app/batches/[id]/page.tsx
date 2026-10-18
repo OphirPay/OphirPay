@@ -7,6 +7,7 @@ import { timeAgo, getStatusColor, formatAmount, shortenAddress } from "@/lib/uti
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
+import { BatchProgressTracker } from "@/components/batch/batch-progress";
 import type { BatchWithProgress } from "@/types";
 
 export default function BatchDetailPage() {
@@ -119,58 +120,14 @@ export default function BatchDetailPage() {
             </div>
           </div>
 
-          {/* Progress */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Progress
-              </h2>
-              <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
-                {batch.progress.percentComplete}%
-              </span>
-            </div>
-
-            {/* Progress bar */}
-            <div className="h-2.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500 ease-out"
-                style={{
-                  width: `${batch.progress.percentComplete}%`,
-                  backgroundColor:
-                    batch.progress.failed > 0
-                      ? batch.progress.percentComplete === 100
-                        ? "#ef4444"
-                        : "#f59e0b"
-                      : "#10b981",
-                }}
-              />
-            </div>
-
-            {/* Counts */}
-            <div className="flex items-center gap-6 mt-3">
-              <div className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-blue-500" />
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {batch.progress.pending} pending
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-green-500" />
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {batch.progress.sent} sent
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-red-500" />
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {batch.progress.failed} failed
-                </span>
-              </div>
-              <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
-                {batch.progress.total} total
-              </span>
-            </div>
-          </div>
+          {/* Real-time SSE Progress Tracker with polling fallback */}
+          <BatchProgressTracker
+            batchId={batch.id}
+            initialProgress={batch.progress}
+            initialStatus={batch.status}
+            onCompleted={() => refetch()}
+            onProgressUpdate={() => refetch()}
+          />
 
           {/* Per-item status table */}
           <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">

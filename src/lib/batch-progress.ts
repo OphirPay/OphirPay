@@ -73,3 +73,52 @@ export function computeBatchProgress(
 
   return { total, pending, sent, failed, percentComplete };
 }
+
+import type { BatchEventType, BatchStreamStatus } from "@/types/batch";
+
+/**
+ * Maps high-level database batch status to granular SSE stream lifecycle state.
+ */
+export function mapBatchStatusToStreamState(status: string): BatchStreamStatus {
+  switch (status.toUpperCase()) {
+    case "CREATED":
+    case "PENDING":
+      return "queued";
+    case "SIMULATING":
+      return "simulating";
+    case "SIGNING":
+      return "signing";
+    case "PROCESSING":
+      return "processing";
+    case "COMPLETED":
+    case "CONFIRMED":
+      return "completed";
+    case "CANCELLED":
+      return "cancelled";
+    case "FAILED":
+    default:
+      return "failed";
+  }
+}
+
+/**
+ * Formats a message into a standard Server-Sent Event text payload.
+ */
+export function formatBatchSseEvent(event: BatchEventType, data: unknown): string {
+  const serialized = typeof data === "string" ? data : JSON.stringify(data);
+  return `event: ${event}\ndata: ${serialized}\n\n`;
+}
+
+/**
+ * Determines whether a batch has reached an immutable terminal state.
+ */
+export function isBatchTerminalStatus(status: string): boolean {
+  const upper = status.toUpperCase();
+  return (
+    upper === "COMPLETED" ||
+    upper === "CONFIRMED" ||
+    upper === "FAILED" ||
+    upper === "CANCELLED"
+  );
+}
+

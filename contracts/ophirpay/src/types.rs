@@ -378,4 +378,21 @@ pub struct HookList {
     pub total: u32,
     pub truncated: bool,
 }
-
+
+// ── Subsystem Pause Bitflags (Issue #1358) ────────────────────
+pub const PAUSE_PAYMENTS: u32 = 1;      // 1 << 0
+pub const PAUSE_ESCROWS: u32 = 2;       // 1 << 1
+pub const PAUSE_STREAMS: u32 = 4;       // 1 << 2
+pub const PAUSE_GOVERNANCE: u32 = 8;    // 1 << 3
+pub const PAUSE_RECURRING: u32 = 16;    // 1 << 4
+pub const PAUSE_REFUNDS: u32 = 32;      // 1 << 5
+pub const PAUSE_HOOKS: u32 = 64;        // 1 << 6
+pub const PAUSE_BATCHES: u32 = 128;     // 1 << 7
+pub const PAUSE_ALL: u32 = PAUSE_PAYMENTS
+    | PAUSE_ESCROWS
+    | PAUSE_STREAMS
+    | PAUSE_GOVERNANCE
+    | PAUSE_RECURRING
+    | PAUSE_REFUNDS
+    | PAUSE_HOOKS
+    | PAUSE_BATCHES;

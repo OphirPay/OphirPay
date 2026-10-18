@@ -10,6 +10,7 @@ pub const STREAM_COUNT: Symbol = symbol_short!("STR_CNT");
 pub const BATCH_COUNT: Symbol = symbol_short!("BAT_CNT");
 pub const OWNER: Symbol = symbol_short!("OWNER");
 pub const PAUSED: Symbol = symbol_short!("PAUSED");
+pub const PAUSE_FLAGS: Symbol = symbol_short!("PAUS_FLG");
 pub const VERSION: Symbol = symbol_short!("VERSION");
 pub const UPGRADE_HASH: Symbol = symbol_short!("UPG_HASH");
 pub const UPGRADE_TIMELOCK: Symbol = symbol_short!("UPG_LOCK");

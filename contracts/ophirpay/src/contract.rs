@@ -9,7 +9,7 @@ use crate::types::*;
 use crate::errors::*;
 use crate::events::*;
 use crate::helpers::*;
-use crate::spending_limit::is_spending_limit_expired;
+use crate::spending_limit::*;
 // ── Contract Version ───────────────────────────────────────────
 pub const CONTRACT_VERSION: u32 = 2;
 
@@ -1058,31 +1058,15 @@ impl OphirPayContract {
             }
         }
 
-        // Check per-user spending limits
-        if let Some(limit) = spending_limit {
-            let day_seconds: u64 = 86400;
-            let month_seconds: u64 = 30 * 86400;
-
-            // NOTE: this is a read-only check (MEDIUM-1 audit fix). It never
-            // mutates storage — the counters are updated by atomic_spend, which
-            // is the only authorized write path. Previously any address could
-            // call check_spending repeatedly to burn a user's allowance.
-            let daily_spend = if now.saturating_sub(limit.last_reset_day) >= day_seconds {
-                0
-            } else {
-                limit.current_daily_spend
-            };
-            let monthly_spend = if now.saturating_sub(limit.last_reset_month) >= month_seconds {
-                0
-            } else {
-                limit.current_monthly_spend
-            };
+        // Check per-user spending limits with sliding-window evaluation (#1313)
+        if let Some(mut limit) = spending_limit {
+            refresh_spending_windows(&mut limit, now);
 
             // Check limits
-            if daily_spend.saturating_add(amount) > limit.daily_limit {
+            if limit.current_daily_spend.saturating_add(amount) > limit.daily_limit {
                 return SpendCheckResult::Rejected;
             }
-            if monthly_spend.saturating_add(amount) > limit.monthly_limit {
+            if limit.current_monthly_spend.saturating_add(amount) > limit.monthly_limit {
                 return SpendCheckResult::Rejected;
             }
         }
@@ -1133,43 +1117,8 @@ impl OphirPayContract {
             return Ok(existing_id);
         }
 
-        // Check spending limits with expiry enforcement
-        let key = (SPEND_LIMIT_KEY, payer.clone());
-        if let Some(mut limit) = env.storage().persistent().get::<_, SpendingLimit>(&key) {
-            if !limit.is_active {
-                return Err(PaymentError::SpendingLimitExpired);
-            }
-
-            // Check expiry
-            let now = env.ledger().timestamp();
-            if is_spending_limit_expired(limit.expires_at, now) {
-                limit.is_active = false;
-                env.storage().persistent().set(&key, &limit);
-                env.storage().persistent().extend_ttl(&key, BUMP_MIN_TTL, BUMP_MAX_TTL);
-                return Err(PaymentError::SpendingLimitExpired);
-            }
-
-            let day_seconds: u64 = 86400;
-            let month_seconds: u64 = 30 * 86400;
-            if now.saturating_sub(limit.last_reset_day) >= day_seconds {
-                limit.current_daily_spend = 0;
-                limit.last_reset_day = now;
-            }
-            if now.saturating_sub(limit.last_reset_month) >= month_seconds {
-                limit.current_monthly_spend = 0;
-                limit.last_reset_month = now;
-            }
-            if limit.current_daily_spend.saturating_add(amount) > limit.daily_limit {
-                return Err(PaymentError::SpendingLimitExpired);
-            }
-            if limit.current_monthly_spend.saturating_add(amount) > limit.monthly_limit {
-                return Err(PaymentError::SpendingLimitExpired);
-            }
-            limit.current_daily_spend = limit.current_daily_spend.saturating_add(amount);
-            limit.current_monthly_spend = limit.current_monthly_spend.saturating_add(amount);
-            env.storage().persistent().set(&key, &limit);
-            env.storage().persistent().extend_ttl(&key, BUMP_MIN_TTL, BUMP_MAX_TTL);
-        }
+        // Check spending limits with expiry enforcement and sliding-window quota (#1313)
+        check_and_update_spending_limit(&env, &payer, amount)?;
 
         // Collect protocol fee atomically (only after limit check passes).
         // If fee transfer fails, the entire atomic_spend reverts.
@@ -3348,6 +3297,22 @@ impl OphirPayContract {
             return Err(PaymentError::BatchTooLarge);
         }
 
+        // Pre-calculate total batch sum and verify against spending limit upfront (#1313)
+        let mut pre_total: i128 = 0;
+        for i in 0..len {
+            let amt = if i < amounts.len() {
+                amounts.get(i).unwrap_or(0)
+            } else {
+                0
+            };
+            if amt > 0 {
+                pre_total = pre_total.checked_add(amt).ok_or(PaymentError::MathOverflow)?;
+            }
+        }
+        if pre_total > 0 {
+            check_and_update_spending_limit(&env, &creator, pre_total)?;
+        }
+
         let mut total_amount: i128 = 0;
         let mut pay_count: u64 = env.storage().instance().get(&PAYMENT_COUNT).unwrap_or(0);
         let mut payment_ids: Vec<u64> = Vec::new(&env);
@@ -3500,4 +3465,4 @@ impl OphirPayContract {
         }
     }
 }
-
+

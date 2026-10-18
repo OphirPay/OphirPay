@@ -660,5 +660,7 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    /// Spending limit exceeded: requested amount exceeds daily or monthly quota
+    SpendingLimitExceeded = 310,
 }
 

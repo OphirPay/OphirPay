@@ -316,6 +316,7 @@ export enum PaymentError {
   StreamInvariantViolated = 307,
   InvalidPauseScope = 308,
   PaymentIdempotencyConflict = 309,
+  SpendingLimitExceeded = 310,
 }
 
 export const PAYMENT_ERROR_NAMES: Record<number, string> = {
@@ -628,6 +629,7 @@ export const PAYMENT_ERROR_NAMES: Record<number, string> = {
   307: "StreamInvariantViolated",
   308: "InvalidPauseScope",
   309: "PaymentIdempotencyConflict",
+  310: "SpendingLimitExceeded",
 };
 
 export const PAYMENT_ERROR_DISCRIMINANTS: Record<string, number> = {
@@ -940,6 +942,7 @@ export const PAYMENT_ERROR_DISCRIMINANTS: Record<string, number> = {
   "StreamInvariantViolated": 307,
   "InvalidPauseScope": 308,
   "PaymentIdempotencyConflict": 309,
+  "SpendingLimitExceeded": 310,
 };
 
 export const ERROR_MESSAGES: Record<number, string> = {
@@ -1252,4 +1255,5 @@ export const ERROR_MESSAGES: Record<number, string> = {
   307: "Stream accounting invariant violated: refused to pay an inconsistent amount",
   308: "Pause scope not recognized: unknown scope identifier",
   309: "Idempotency key was reused for a different payment payload",
+  310: "Spending limit exceeded: requested amount exceeds daily or monthly quota",
 };

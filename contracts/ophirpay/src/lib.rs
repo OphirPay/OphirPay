@@ -8,7 +8,7 @@ pub mod errors;
 pub mod events;
 pub mod helpers;
 pub mod contract;
-mod spending_limit;
+pub mod spending_limit;
 
 #[cfg(test)]
 mod test;
@@ -23,6 +23,7 @@ pub use events::*;
 pub use helpers::*;
 pub use storage::*;
 pub use types::*;
+pub use spending_limit::*;
 
 // `test.rs` resolves `Env`/`Address`/`token` through `use crate::*;`, which used
 // to work because the single-file lib.rs imported soroban_sdk at the root.

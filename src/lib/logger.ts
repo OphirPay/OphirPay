@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import { getCurrentRequestId } from "@/lib/request-id-context";
+
 /**
  * Structured logger for API requests and application events.
  * In production, replace console.log with a proper logger (e.g., pino, winston).
@@ -59,11 +61,16 @@ function formatEntry(entry: LogEntry): string {
 }
 
 function log(level: LogLevel, message: string, context?: Record<string, unknown>) {
+  const activeRequestId = getCurrentRequestId();
+  const mergedContext = activeRequestId
+    ? { requestId: activeRequestId, ...context }
+    : context;
+
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
     level,
     message,
-    context,
+    context: mergedContext,
   };
 
   const line = formatEntry(entry);

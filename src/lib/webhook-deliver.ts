@@ -9,6 +9,7 @@ import {
   getWebhookTimeoutMs,
   isTimeoutError,
 } from "@/lib/timeout";
+import { getCurrentRequestId } from "@/lib/request-id-context";
 import crypto from "crypto";
 
 export interface WebhookPayload {
@@ -17,6 +18,8 @@ export interface WebhookPayload {
   data: Record<string, unknown>;
   /** Present and true only for integrator test events — never real payments. */
   test?: boolean;
+  /** Originating request correlation ID for end-to-end distributed tracing (#1303). */
+  requestId?: string;
 }
 
 export interface WebhookDeliveryResult {
@@ -219,16 +222,21 @@ export function buildWebhookRequestPreview(
   payload: WebhookPayload,
   secret: string
 ): WebhookRequestPreview {
-  const { body, signature, timestamp } = buildSignedPayload(payload, secret);
+  const reqId = payload.requestId || getCurrentRequestId();
+  const enrichedPayload: WebhookPayload =
+    reqId && !payload.requestId ? { ...payload, requestId: reqId } : payload;
+
+  const { body, signature, timestamp } = buildSignedPayload(enrichedPayload, secret);
   return {
-    canonicalBody: canonicalizeWebhookBody(payload),
+    canonicalBody: canonicalizeWebhookBody(enrichedPayload),
     body,
     signature,
     headers: {
       "Content-Type": "application/json",
       [WEBHOOK_SIGNATURE_HEADER]: signature,
-      "X-OphirPay-Event": payload.event,
+      "X-OphirPay-Event": enrichedPayload.event,
       [WEBHOOK_TIMESTAMP_HEADER]: timestamp,
+      ...(reqId ? { "X-Request-Id": reqId } : {}),
     },
   };
 }

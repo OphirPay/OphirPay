@@ -935,3 +935,118 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ===========================================================================
+// MEMO BYTE-LENGTH & CHARACTER VALIDATION TESTS (issue #1360)
+// ===========================================================================
+
+#[test]
+fn test_memo_validation_accepts_empty_64_byte_boundary_and_utf8() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    fix.mint(&payer, 100_000);
+
+    // 1. Empty metadata and 1-char tx_hash succeed
+    let tx1 = String::from_str(&fix.env, "tx1");
+    let meta_empty = String::from_str(&fix.env, "");
+    let res1 = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx1,
+        &meta_empty,
+    );
+    assert!(res1.is_ok());
+
+    // 2. Exact 64-byte ASCII string succeeds
+    let tx2 = String::from_str(&fix.env, "tx2");
+    let exact_64 = "a".repeat(64);
+    let meta_64 = String::from_str(&fix.env, &exact_64);
+    let res2 = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx2,
+        &meta_64,
+    );
+    assert!(res2.is_ok());
+
+    // 3. Exact 64-byte UTF-8 emoji string (16 4-byte characters) succeeds
+    let tx3 = String::from_str(&fix.env, "tx3");
+    let emoji_64 = "🚀".repeat(16);
+    let meta_emoji = String::from_str(&fix.env, &emoji_64);
+    let res3 = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx3,
+        &meta_emoji,
+    );
+    assert!(res3.is_ok());
+}
+
+#[test]
+fn test_memo_validation_rejects_oversized_and_control_chars_in_record_payment_and_create_batch() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    fix.mint(&payer, 100_000);
+
+    // 1. 65-byte oversized string fails with MemoTooLong
+    let tx_ok = String::from_str(&fix.env, "tx_ok");
+    let oversized_65 = "a".repeat(65);
+    let meta_65 = String::from_str(&fix.env, &oversized_65);
+    let res_oversized = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx_ok,
+        &meta_65,
+    );
+    assert_eq!(res_oversized, Err(Ok(PaymentError::MemoTooLong)));
+
+    // 2. Oversized tx_hash also fails with MemoTooLong
+    let tx_oversized = String::from_str(&fix.env, &oversized_65);
+    let meta_ok = String::from_str(&fix.env, "ok");
+    let res_tx_long = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx_oversized,
+        &meta_ok,
+    );
+    assert_eq!(res_tx_long, Err(Ok(PaymentError::MemoTooLong)));
+
+    // 3. String containing ASCII control characters fails with MemoTooLong
+    let ctrl_meta = String::from_str(&fix.env, "memo\x00with_null");
+    let res_ctrl = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &tx_ok,
+        &ctrl_meta,
+    );
+    assert_eq!(res_ctrl, Err(Ok(PaymentError::MemoTooLong)));
+
+    // 4. create_batch rejects oversized 65-byte tx_hash with MemoTooLong
+    let mut payees = Vec::new(&fix.env);
+    payees.push_back(payee.clone());
+    let mut amounts = Vec::new(&fix.env);
+    amounts.push_back(500i128);
+
+    let res_batch = fix.client.try_create_batch(
+        &payer,
+        &payees,
+        &amounts,
+        &fix.token_id,
+        &String::from_str(&fix.env, &oversized_65),
+    );
+    assert!(matches!(res_batch, Err(Ok(PaymentError::MemoTooLong))));
+}

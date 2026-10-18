@@ -51,6 +51,31 @@ pub const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 // `get_reason_code_analytics`.
 pub const MAX_READER_ENTRIES: u32 = 100;
 
+/// Maximum UTF-8 byte length permitted for payment/batch memo and metadata strings (#1360).
+/// Prevents oversized strings from bloating persistent storage or exceeding Soroban event
+/// payload limits during contract execution.
+pub const MAX_MEMO_BYTES: u32 = 64;
+
+/// Validate that a memo or metadata string does not exceed [`MAX_MEMO_BYTES`] (64 bytes)
+/// and does not contain disallowed ASCII control characters (`0x00..=0x1F` except `\t`/`\n`, or `0x7F`).
+pub fn validate_memo_text(memo: &String) -> Result<(), PaymentError> {
+    let len = memo.len();
+    if len > MAX_MEMO_BYTES {
+        return Err(PaymentError::MemoTooLong);
+    }
+    let byte_len = len as usize;
+    if byte_len > 0 {
+        let mut buf = [0u8; MAX_MEMO_BYTES as usize];
+        memo.copy_into_slice(&mut buf[..byte_len]);
+        for &b in &buf[..byte_len] {
+            if (b < 0x20 && b != b'\t' && b != b'\n') || b == 0x7f {
+                return Err(PaymentError::MemoTooLong);
+            }
+        }
+    }
+    Ok(())
+}
+
 // ── Contract ───────────────────────────────────────────────────
 
 #[contract]
@@ -1110,6 +1135,8 @@ impl OphirPayContract {
         if tx_hash.len() == 0 {
             return Err(PaymentError::InvalidAmount);
         }
+        validate_memo_text(&tx_hash)?;
+        validate_memo_text(&metadata)?;
 
         let idempotency_key = (PAYMENT_IDEMPOTENCY_KEY, payer.clone(), tx_hash.clone());
         if let Some(existing_id) = env
@@ -2042,6 +2069,8 @@ impl OphirPayContract {
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
+        validate_memo_text(&tx_hash)?;
+        validate_memo_text(&metadata)?;
 
         // Idempotency (#804): (payer, tx_hash) identifies a payment. Replaying
         // the same call returns the original id; replaying it with a different
@@ -2206,6 +2235,7 @@ impl OphirPayContract {
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
+        validate_memo_text(&metadata)?;
 
         // Transfer tokens from depositor to this contract (reentrancy-guarded, MEDIUM-4)
         let token_client = token::Client::new(&env, &asset);
@@ -2462,6 +2492,7 @@ impl OphirPayContract {
         if end_time <= start_time {
             return Err(PaymentError::InvalidAmount);
         }
+        validate_memo_text(&metadata)?;
 
         // Transfer total amount from creator to contract (reentrancy-guarded, MEDIUM-4)
         let token_client = token::Client::new(&env, &asset);
@@ -3339,6 +3370,7 @@ impl OphirPayContract {
     ) -> Result<BatchCreateResult, PaymentError> {
         creator.require_auth();
         require_not_paused(&env, PauseScope::Batches)?;
+        validate_memo_text(&tx_hash)?;
 
         let len = payees.len();
         if len == 0 {

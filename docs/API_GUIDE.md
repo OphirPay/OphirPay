@@ -509,6 +509,23 @@ npm test            # vitest run
 
 ---
 
+## 10. Interactive API Documentation (/docs/api & /api/openapi.json)
+
+OphirPay provides a hosted, interactive API documentation browser at `/docs/api` and a compiled OpenAPI 3.1 endpoint at `/api/openapi.json` (#1416):
+
+- **Interactive Viewer (`/docs/api`)**:
+  - Built with a CSP-compliant React console (zero inline scripts, avoiding `unsafe-inline` vulnerabilities).
+  - Categorizes all 40+ endpoints by subsystem tags (Payments, Escrows, Streams, Batches, Refunds, Governance, Multisig, etc.).
+  - Features live "Try it out" capabilities configured for the **Stellar Testnet** environment (`https://horizon-testnet.stellar.org`).
+  - Generates copy-pasteable `curl` commands with real-time parameter interpolation and Bearer API key authorization.
+
+- **Compiled Schema Endpoint (`GET /api/openapi.json`)**:
+  - Parses `docs/openapi.yaml` into strict OpenAPI 3.1 JSON format.
+  - Automatically enriches server lists with Stellar Testnet development gateways.
+  - Returns `Cache-Control: public, max-age=300` and `X-Content-Type-Options: nosniff`.
+
+---
+
 ## Checklist
 
 Use this checklist before opening (or requesting review of) a PR that adds or

@@ -6,13 +6,13 @@ import { getRateLimitStore } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import {
   buildCsp,
-  CSP_POLICY,
   generateNonce,
   generateRequestId,
   getClientIp,
   getRateLimitMax,
   RATE_LIMIT_WINDOW_MS,
 } from "@/lib/proxy-config";
+import { applySecurityHeaders } from "@/lib/security-headers";
 
 import {
   handleCorsPreflight,
@@ -133,11 +133,9 @@ export async function proxy(request: NextRequest) {
     const response = NextResponse.next({ request: { headers: requestHeaders } });
 
     // Security, CORS, and observability headers
+    applySecurityHeaders(response.headers, { isApi: true });
     response.headers.set("X-Request-Id", requestId);
     response.headers.set("X-Api-Version", "1.0.0");
-    response.headers.set("X-Content-Type-Options", "nosniff");
-    response.headers.set("X-Frame-Options", "DENY");
-    response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     response.headers.set("X-RateLimit-Limit", String(RATE_LIMIT_MAX));
     response.headers.set("X-RateLimit-Remaining", String(remaining));
     response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetAt / 1000)));
@@ -197,30 +195,9 @@ export async function proxy(request: NextRequest) {
   pageRequestHeaders.set("x-request-id", requestId);
 
   const response = NextResponse.next({ request: { headers: pageRequestHeaders } });
-  response.headers.set("Content-Security-Policy", csp);
+  applySecurityHeaders(response.headers, { isApi: false, nonce });
   response.headers.set("X-Request-Id", requestId);
   response.headers.set("X-Api-Version", "1.0.0");
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-
-  // Reporting API (issue #698) — tells the browser where to POST violation
-  // reports.  `Report-To` is the older format (Chrome 70+ / Edge 79+);
-  // `Reporting-Endpoints` is the newer NEL-aligned format (Chrome 96+).
-  // We set both so all Chromium-based browsers are covered.
-  const cspReportEndpoint = CSP_POLICY.reportUri;
-  const reportToValue = JSON.stringify({
-    group: CSP_POLICY.reportingGroup,
-    max_age: 10886400, // 126 days
-    endpoints: [{ url: cspReportEndpoint }],
-    include_subdomains: false,
-  });
-  response.headers.set("Report-To", reportToValue);
-  // The modern Reporting-Endpoints header (a simple name=url pair).
-  response.headers.set(
-    "Reporting-Endpoints",
-    `${CSP_POLICY.reportingGroup}="${cspReportEndpoint}"`
-  );
 
   return response;
 }

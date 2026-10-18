@@ -24,6 +24,24 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.service.targetPort }}
+    # Prometheus metrics scraper ingress (Issue #1344).
+    {{- if and .Values.networkPolicy.metrics (default true .Values.networkPolicy.metrics.enabled) }}
+    {{- if or .Values.networkPolicy.metrics.namespaceSelector .Values.networkPolicy.metrics.podSelector }}
+    - from:
+        -
+          {{- with .Values.networkPolicy.metrics.namespaceSelector }}
+          namespaceSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.networkPolicy.metrics.podSelector }}
+          podSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+    {{- end }}
+    {{- end }}
   egress:
     # Cluster DNS — without this every in-cluster name fails to resolve.
     - to:

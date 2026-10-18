@@ -317,6 +317,8 @@ export enum PaymentError {
   InvalidPauseScope = 308,
   PaymentIdempotencyConflict = 309,
   DisputeCoolingOffActive = 310,
+  StreamDurationTooShort = 311,
+  StreamDurationTooLong = 312,
 }
 
 export const PAYMENT_ERROR_NAMES: Record<number, string> = {
@@ -630,6 +632,8 @@ export const PAYMENT_ERROR_NAMES: Record<number, string> = {
   308: "InvalidPauseScope",
   309: "PaymentIdempotencyConflict",
   310: "DisputeCoolingOffActive",
+  311: "StreamDurationTooShort",
+  312: "StreamDurationTooLong",
 };
 
 export const PAYMENT_ERROR_DISCRIMINANTS: Record<string, number> = {
@@ -943,6 +947,8 @@ export const PAYMENT_ERROR_DISCRIMINANTS: Record<string, number> = {
   "InvalidPauseScope": 308,
   "PaymentIdempotencyConflict": 309,
   "DisputeCoolingOffActive": 310,
+  "StreamDurationTooShort": 311,
+  "StreamDurationTooLong": 312,
 };
 
 export const ERROR_MESSAGES: Record<number, string> = {
@@ -1256,4 +1262,6 @@ export const ERROR_MESSAGES: Record<number, string> = {
   308: "Pause scope not recognized: unknown scope identifier",
   309: "Idempotency key was reused for a different payment payload",
   310: "Dispute cooling-off period is active: resolution attempted prematurely",
+  311: "Stream duration is too short: minimum duration is 60 seconds",
+  312: "Stream duration is too long: maximum duration is 5 years",
 };

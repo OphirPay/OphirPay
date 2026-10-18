@@ -1082,3 +1082,90 @@ fn test_configurable_min_dispute_period_enforced() {
     assert!(ok_res.is_ok());
 }
 
+// ══════════════════════════════════════════════════════════════════
+// Payment Stream Duration Bounds Tests (Issue #1350)
+// ══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_create_stream_duration_too_short_fails() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 10_000);
+
+    let start_time = fix.env.ledger().timestamp();
+    // 59 seconds: shorter than MIN_STREAM_DURATION (60s)
+    let end_time = start_time + 59;
+
+    let res = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "too short stream"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::StreamDurationTooShort)));
+}
+
+#[test]
+fn test_create_stream_duration_too_long_fails() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 10_000);
+
+    let start_time = fix.env.ledger().timestamp();
+    // 5 years + 1 second: exceeds MAX_STREAM_DURATION (157_680_000s)
+    let max_duration = 5 * 365 * 86_400;
+    let end_time = start_time + max_duration + 1;
+
+    let res = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "too long stream"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::StreamDurationTooLong)));
+}
+
+#[test]
+fn test_create_stream_valid_boundaries_succeed() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 50_000);
+
+    let start_time = fix.env.ledger().timestamp();
+
+    // 1. Exactly 60 seconds (minimum bound)
+    let min_stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start_time,
+        &(start_time + 60),
+        &String::from_str(&fix.env, "min bound stream"),
+    );
+    assert_eq!(min_stream_id, 1);
+
+    // 2. Exactly 5 years (maximum bound)
+    let max_duration = 5 * 365 * 86_400;
+    let max_stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &2_000i128,
+        &fix.token_id,
+        &start_time,
+        &(start_time + max_duration),
+        &String::from_str(&fix.env, "max bound stream"),
+    );
+    assert_eq!(max_stream_id, 2);
+}
+
+

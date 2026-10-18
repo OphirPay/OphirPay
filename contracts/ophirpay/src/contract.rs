@@ -2618,6 +2618,13 @@ impl OphirPayContract {
         if end_time <= start_time {
             return Err(PaymentError::InvalidAmount);
         }
+        let duration = end_time - start_time;
+        if duration < MIN_STREAM_DURATION {
+            return Err(PaymentError::StreamDurationTooShort);
+        }
+        if duration > MAX_STREAM_DURATION {
+            return Err(PaymentError::StreamDurationTooLong);
+        }
 
         // Transfer total amount from creator to contract (reentrancy-guarded, MEDIUM-4)
         let token_client = token::Client::new(&env, &asset);

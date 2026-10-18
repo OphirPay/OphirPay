@@ -79,6 +79,12 @@ pub struct Stream {
     pub metadata: String,
 }
 
+/// Minimum duration for a payment stream: 60 seconds (#1350)
+pub const MIN_STREAM_DURATION: u64 = 60;
+
+/// Maximum duration for a payment stream: 5 years in seconds (5 * 365 * 86,400) (#1350)
+pub const MAX_STREAM_DURATION: u64 = 5 * 365 * 86_400; // 157_680_000
+
 /// A batch of payments executed atomically.
 #[contracttype]
 #[derive(Clone)]

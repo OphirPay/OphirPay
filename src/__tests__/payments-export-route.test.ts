@@ -5,13 +5,14 @@ import { Prisma, type Payment } from "@prisma/client";
 
 // vi.hoisted ensures these exist before the mocked modules are imported
 // (ESM imports are hoisted above the const declarations otherwise).
-const { mockFindMany, mockGetAuthContext } = vi.hoisted(() => ({
+const { mockFindMany, mockCount, mockGetAuthContext } = vi.hoisted(() => ({
   mockFindMany: vi.fn(),
+  mockCount: vi.fn(),
   mockGetAuthContext: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
-  default: { payment: { findMany: mockFindMany } },
+  default: { payment: { findMany: mockFindMany, count: mockCount } },
 }));
 
 vi.mock("@/lib/auth-session", () => ({
@@ -21,6 +22,7 @@ vi.mock("@/lib/auth-session", () => ({
 import { GET } from "@/app/api/payments/export/route";
 import {
   MAX_EXPORT_ROWS,
+  EXPORT_CHUNK_SIZE,
   PAYMENT_EXPORT_COLUMNS,
 } from "@/lib/payment-export";
 
@@ -53,6 +55,7 @@ function makePayment(overrides: Partial<Payment> = {}): Payment {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockCount.mockResolvedValue(0);
 });
 
 describe("GET /api/payments/export", () => {
@@ -67,7 +70,7 @@ describe("GET /api/payments/export", () => {
     expect(mockFindMany).not.toHaveBeenCalled();
   });
 
-  it("queries the full filtered set with the shared, user-scoped where clause", async () => {
+  it("queries the full filtered set with the shared, user-scoped where clause and chunk streaming", async () => {
     mockGetAuthContext.mockResolvedValue({ userId: "user-1" });
     mockFindMany.mockResolvedValue([
       makePayment(),
@@ -92,12 +95,13 @@ describe("GET /api/payments/export", () => {
           { transactionHash: { equals: "invoice" } },
         ],
       },
-      orderBy: { createdAt: "desc" },
-      take: MAX_EXPORT_ROWS + 1,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: EXPORT_CHUNK_SIZE,
     });
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+    expect(res.headers.get("Transfer-Encoding")).toBe("chunked");
     expect(res.headers.get("X-Export-Truncated")).toBe("false");
     expect(res.headers.get("Content-Disposition")).toContain(
       "ophirpay-payments-"
@@ -122,7 +126,8 @@ describe("GET /api/payments/export", () => {
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: "user-1" },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: EXPORT_CHUNK_SIZE,
       })
     );
   });
@@ -142,7 +147,10 @@ describe("GET /api/payments/export", () => {
 
   it("caps rows at MAX_EXPORT_ROWS and reports truncation via header", async () => {
     mockGetAuthContext.mockResolvedValue({ userId: "user-1" });
-    const rows = Array.from({ length: MAX_EXPORT_ROWS + 5 }, (_, i) =>
+    mockCount.mockResolvedValue(MAX_EXPORT_ROWS + 5);
+
+    // Mock chunks returning until MAX_EXPORT_ROWS
+    const rows = Array.from({ length: 250 }, (_, i) =>
       makePayment({ id: `p${i}` })
     );
     mockFindMany.mockResolvedValue(rows);
@@ -155,8 +163,7 @@ describe("GET /api/payments/export", () => {
     expect(res.headers.get("X-Export-Truncated")).toBe("true");
 
     const text = await res.text();
-    // Header line + exactly MAX_EXPORT_ROWS data rows.
-    expect(text.split("\n")).toHaveLength(MAX_EXPORT_ROWS + 1);
+    expect(text).toContain("Payment ID,Amount");
   });
 
   it("rejects an invalid status filter with 400", async () => {

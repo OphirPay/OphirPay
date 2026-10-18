@@ -157,3 +157,35 @@ Invalid amount at row 3.
 - **Balance check:** the batch total is checked against the connected
   wallet's balance before signing, so a file that imports cleanly can still
   be rejected at submission time if the total is too large.
+
+---
+
+## Streaming Chunked Export Architecture
+
+OphirPay provides streaming CSV export endpoints for high-volume financial data:
+- `GET /api/payments/export` — exports filtered transaction history
+- `GET /api/audit-log/export` — exports contract-backed audit trail
+
+### Protocol & Headers
+
+Export endpoints use standard HTTP chunked transfer streaming to eliminate server memory buffering and timeouts:
+- `Content-Type: text/csv; charset=utf-8`
+- `Content-Disposition: attachment; filename="ophirpay-payments-YYYY-MM-DD.csv"`
+- `Transfer-Encoding: chunked`
+- `Cache-Control: no-store`
+- `X-Export-Truncated: true | false` — indicates whether the export was capped by `MAX_EXPORT_ROWS` (10,000 records).
+
+### Chunking & Memory Efficiency
+
+Instead of loading thousands of records into Node.js heap memory simultaneously:
+1. The CSV header is flushed immediately to the client in the first chunk.
+2. Records are fetched in batches of 250 rows (`EXPORT_CHUNK_SIZE = 250`) using Prisma keyset/cursor pagination (`cursor: { id }`).
+3. Each 250-row batch is formatted and flushed to the HTTP `ReadableStream` as a discrete chunk.
+4. Memory usage remains constant ($O(1)$) regardless of whether exporting 10 or 10,000 transactions.
+
+### Client Disconnect & Stream Cancellation
+
+All export streams listen to `request.signal` abort events:
+- When a client cancels download or closes the browser tab, the stream terminates database iteration immediately.
+- Prevents abandoned background queries from saturating database connection pools.
+

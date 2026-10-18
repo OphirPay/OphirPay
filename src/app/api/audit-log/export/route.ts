@@ -129,6 +129,7 @@ async function _GET(request: Request) {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="${buildAuditExportFilename()}"`,
+        "Transfer-Encoding": "chunked",
         "Cache-Control": "no-store",
       },
     });

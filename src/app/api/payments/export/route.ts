@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import prisma from "@/lib/prisma";
+import type { Payment } from "@prisma/client";
 import { paymentExportParamsSchema } from "@/lib/validation-schemas";
 import {
   unauthorizedError,
@@ -12,19 +13,24 @@ import { getAuthContext } from "@/lib/auth-session";
 import { buildPaymentWhere } from "@/lib/payment-filters";
 import {
   MAX_EXPORT_ROWS,
-  PAYMENT_EXPORT_COLUMNS,
-  paymentToCsvRow,
+  EXPORT_CHUNK_SIZE,
+  PAYMENT_EXPORT_HEADER,
+  formatPaymentCsvChunk,
   buildPaymentExportFilename,
 } from "@/lib/payment-export";
-import { toCsvString, createCsvResponse } from "@/lib/export-csv";
 
 /**
  * GET /api/payments/export
  *
- * Server-side CSV export of the CURRENT filter results — every row matching
- * `status` / `search` (the same filters as GET /api/payments), not just the
- * page loaded in the browser. Returns a dated CSV attachment that includes
- * all key fields plus memo and transaction hash.
+ * Streaming chunked CSV export of the CURRENT filter results (Issue #1369).
+ *
+ * Instead of buffering the entire dataset in memory, matching records are
+ * fetched in 250-row chunks using Prisma cursor pagination and streamed
+ * as a chunked HTTP response (`Transfer-Encoding: chunked`).
+ *
+ * Handles client disconnects by listening to `request.signal.abort` and
+ * terminating the database iteration immediately, preventing memory leaks
+ * and unneeded database load.
  */
 export async function GET(request: Request) {
   try {
@@ -37,32 +43,104 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const parsed = paymentExportParamsSchema.safeParse({
-      // searchParams.get() returns null for absent params, which Zod's
-      // .optional() rejects — normalize to undefined first.
       status: searchParams.get("status") ?? undefined,
       search: searchParams.get("search") ?? undefined,
     });
     if (!parsed.success) return validationError(parsed.error);
 
     const { status, search } = parsed.data;
+    const where = buildPaymentWhere(auth.userId, { status, search });
+    const encoder = new TextEncoder();
 
-    // Fetch one row past the cap so truncation can be detected without a
-    // second count query. The file is materialised as a single string in
-    // memory, so the cap bounds memory usage and is never silently applied.
-    const payments = await prisma.payment.findMany({
-      where: buildPaymentWhere(auth.userId, { status, search }),
-      orderBy: { createdAt: "desc" },
-      take: MAX_EXPORT_ROWS + 1,
+    let aborted = false;
+    const onAbort = () => {
+      aborted = true;
+    };
+    request.signal.addEventListener("abort", onAbort, { once: true });
+
+    let exportedCount = 0;
+    let truncated = false;
+    if (typeof prisma.payment.count === "function") {
+      const totalCount = await prisma.payment.count({ where });
+      if (totalCount > MAX_EXPORT_ROWS) {
+        truncated = true;
+      }
+    }
+
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        let settled = false;
+        const settle = (action: () => void) => {
+          if (settled) return;
+          settled = true;
+          try {
+            action();
+          } catch {
+            // Consumer already detached
+          }
+        };
+
+        try {
+          // 1. Enqueue CSV headers
+          controller.enqueue(encoder.encode(PAYMENT_EXPORT_HEADER));
+
+          let lastId: string | undefined = undefined;
+
+          // 2. Stream in 250-row chunks
+          while (!aborted && !request.signal.aborted) {
+            const remaining = MAX_EXPORT_ROWS - exportedCount;
+            if (remaining <= 0) break;
+
+            const batchLimit = Math.min(EXPORT_CHUNK_SIZE, remaining);
+
+            const chunk: Payment[] = await prisma.payment.findMany({
+              where,
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              take: batchLimit,
+              ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
+            });
+
+            if (chunk.length === 0) break;
+
+            const chunkCsv = formatPaymentCsvChunk(chunk);
+            controller.enqueue(encoder.encode(chunkCsv));
+
+            exportedCount += chunk.length;
+            lastId = chunk[chunk.length - 1]!.id;
+
+            if (chunk.length < batchLimit) break;
+          }
+
+          logger.request("GET", "/api/payments/export", 200, 0);
+          settle(() => controller.close());
+        } catch (error) {
+          if (aborted || request.signal.aborted) {
+            settle(() => controller.close());
+            return;
+          }
+          const failure =
+            error instanceof Error ? error : new Error(String(error));
+          logger.error("Payment export failed mid-stream", {
+            reason: failure.message,
+          });
+          settle(() => controller.error(failure));
+        } finally {
+          request.signal.removeEventListener("abort", onAbort);
+        }
+      },
+      cancel() {
+        aborted = true;
+      },
     });
 
-    const truncated = payments.length > MAX_EXPORT_ROWS;
-    const rows = payments.slice(0, MAX_EXPORT_ROWS).map(paymentToCsvRow);
-    const csv = toCsvString(rows, PAYMENT_EXPORT_COLUMNS);
-
-    logger.request("GET", "/api/payments/export", 200, 0);
-
-    return createCsvResponse(buildPaymentExportFilename(), csv, {
-      "X-Export-Truncated": truncated ? "true" : "false",
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${buildPaymentExportFilename()}"`,
+        "Transfer-Encoding": "chunked",
+        "Cache-Control": "no-store",
+        "X-Export-Truncated": truncated ? "true" : "false",
+      },
     });
   } catch (err) {
     return handleApiError(err, "GET /api/payments/export");

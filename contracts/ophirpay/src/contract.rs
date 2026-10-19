@@ -2234,6 +2234,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(ESCROW_KEY, count), &escrow);
+        touch_record_ttl(&env, &(ESCROW_KEY, count));
         env.storage()
             .persistent()
             .extend_ttl(&(ESCROW_KEY, count), BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -2292,6 +2293,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(ESCROW_KEY, escrow_id), &escrow);
+        touch_record_ttl(&env, &(ESCROW_KEY, escrow_id));
         env.storage()
             .persistent()
             .extend_ttl(&(ESCROW_KEY, escrow_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -2354,6 +2356,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(ESCROW_KEY, escrow_id), &escrow);
+        touch_record_ttl(&env, &(ESCROW_KEY, escrow_id));
         env.storage()
             .persistent()
             .extend_ttl(&(ESCROW_KEY, escrow_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -2408,6 +2411,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(ESCROW_KEY, escrow_id), &escrow);
+        touch_record_ttl(&env, &(ESCROW_KEY, escrow_id));
         env.storage()
             .persistent()
             .extend_ttl(&(ESCROW_KEY, escrow_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -2425,12 +2429,15 @@ impl OphirPayContract {
         Ok(())
     }
 
-    /// Get escrow by ID
+    /// Get escrow by ID and automatically extend its persistent storage TTL.
     pub fn get_escrow(env: Env, escrow_id: u64) -> Result<Escrow, PaymentError> {
-        env.storage()
+        let escrow: Escrow = env
+            .storage()
             .persistent()
             .get(&(ESCROW_KEY, escrow_id))
-            .ok_or(PaymentError::EscrowNotFound)
+            .ok_or(PaymentError::EscrowNotFound)?;
+        touch_record_ttl(&env, &(ESCROW_KEY, escrow_id));
+        Ok(escrow)
     }
 
     /// Get escrow count
@@ -2490,6 +2497,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(STREAM_KEY, count), &stream);
+        touch_record_ttl(&env, &(STREAM_KEY, count));
         env.storage()
             .persistent()
             .extend_ttl(&(STREAM_KEY, count), BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -2570,6 +2578,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(STREAM_KEY, stream_id), &stream);
+        touch_record_ttl(&env, &(STREAM_KEY, stream_id));
         env.storage()
             .persistent()
             .extend_ttl(&(STREAM_KEY, stream_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -2619,6 +2628,7 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .set(&(STREAM_KEY, stream_id), &stream);
+        touch_record_ttl(&env, &(STREAM_KEY, stream_id));
         env.storage()
             .persistent()
             .extend_ttl(&(STREAM_KEY, stream_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
@@ -2647,12 +2657,15 @@ impl OphirPayContract {
         Ok(unvested)
     }
 
-    /// Get a stream by ID
+    /// Get a stream by ID and automatically extend its persistent storage TTL.
     pub fn get_stream(env: Env, stream_id: u64) -> Result<Stream, PaymentError> {
-        env.storage()
+        let stream: Stream = env
+            .storage()
             .persistent()
             .get(&(STREAM_KEY, stream_id))
-            .ok_or(PaymentError::StreamNotFound)
+            .ok_or(PaymentError::StreamNotFound)?;
+        touch_record_ttl(&env, &(STREAM_KEY, stream_id));
+        Ok(stream)
     }
 
     /// Get stream count

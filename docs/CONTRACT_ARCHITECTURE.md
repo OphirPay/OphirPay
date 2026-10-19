@@ -246,7 +246,32 @@ voucher contract, …). Follow this recipe:
 - [ ] Audit entry recorded
 - [ ] Contract test covering the happy path and the failure path
 
-## 6. Related reading
+## 6. Storage Retention & Automatic TTL Extension Policy
+
+Soroban's state rent model expires persistent ledger entries unless their
+Time-To-Live (TTL) is periodically extended. Long-lived financial positions
+such as active escrows (`(ESCROW_KEY, id)`) and payment streams
+(`(STREAM_KEY, id)`) must never expire while funds remain locked.
+
+To prevent accidental archival of active positions between off-chain
+`bump_storage` maintenance runs, `contracts/ophirpay/src/storage.rs` defines
+an automatic TTL extension policy:
+
+- **`TTL_THRESHOLD = 10_000`** ledgers (~14 hours at 5 seconds/ledger)
+- **`TTL_EXTEND_TO = 50_000`** ledgers (~2.9 days at 5 seconds/ledger)
+- **`touch_record_ttl(env, key)`** — automatically checks persistent storage
+  presence and extends both the record's persistent TTL and the contract's
+  instance storage TTL to `TTL_EXTEND_TO` whenever the remaining TTL falls
+  below `TTL_THRESHOLD`.
+
+### Automatic TTL Touch Points
+
+| Subsystem | Entrypoints Invoking `touch_record_ttl` | Storage Key |
+|---|---|---|
+| **Escrows** | `create_escrow`, `get_escrow`, `release_escrow`, `release_by_arbiter`, `claim_escrow` | `(ESCROW_KEY, escrow_id)` |
+| **Streams** | `create_stream`, `get_stream`, `claim_stream`, `cancel_stream` | `(STREAM_KEY, stream_id)` |
+
+## 7. Related reading
 
 - [`docs/architecture.md`](architecture.md) — the system-level architecture
 - [`contracts/ophirpay/src/lib.rs`](../contracts/ophirpay/src/lib.rs) — the calling contract

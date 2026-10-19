@@ -78,3 +78,24 @@ pub const STAT_AMT_BATCHED: Symbol = symbol_short!("S_AB");
 pub const LOCKED_BALANCE: Symbol = symbol_short!("LOCKED");
 pub const REENTRANCY_LOCK: Symbol = symbol_short!("RE_LOCK");
 
+/// Automatic TTL extension threshold (`10_000` ledgers, ~14 hours at 5s/ledger)
+/// for active escrow and stream persistent records (#1352).
+pub const TTL_THRESHOLD: u32 = 10_000;
+
+/// Target TTL extension ceiling (`50_000` ledgers, ~2.9 days at 5s/ledger) applied when an
+/// active escrow or stream record is created, read, claimed, or updated (#1352).
+pub const TTL_EXTEND_TO: u32 = 50_000;
+
+/// Automatically extend the persistent storage TTL of an active escrow or
+/// stream record using `TTL_THRESHOLD` (`10_000`) and `TTL_EXTEND_TO` (`50_000`),
+/// and bump instance storage TTL so contract metadata stays live alongside the record.
+pub fn touch_record_ttl<K: soroban_sdk::IntoVal<Env, soroban_sdk::Val>>(env: &Env, key: &K) {
+    if env.storage().persistent().has(key) {
+        env.storage()
+            .persistent()
+            .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+    }
+}

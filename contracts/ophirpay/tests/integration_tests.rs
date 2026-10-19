@@ -935,3 +935,122 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. STREAM CANCELLATION PRO-RATA REFUND & ZERO-DURATION (Issue #1357)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_stream_cancellation_prorata_refund_at_quarter_intervals() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+
+    let total = 10_000i128;
+    let duration = 1_000u64;
+    let start_time = 10_000u64;
+    let end_time = start_time + duration;
+
+    // Test intervals: 0%, 25%, 50%, 75%, 100%
+    let test_cases = [
+        (0u64, 0i128, 10_000i128),       // 0% elapsed: 0 vested, 10_000 refunded
+        (250u64, 2_500i128, 7_500i128),  // 25% elapsed: 2_500 vested, 7_500 refunded
+        (500u64, 5_000i128, 5_000i128),  // 50% elapsed: 5_000 vested, 5_000 refunded
+        (750u64, 7_500i128, 2_500i128),  // 75% elapsed: 7_500 vested, 2_500 refunded
+        (1000u64, 10_000i128, 0i128),    // 100% elapsed: 10_000 vested, 0 refunded
+    ];
+
+    for (elapsed, expected_vested, expected_refunded) in test_cases {
+        let env = &fix.env;
+        env.ledger().set_timestamp(start_time);
+        fix.mint(&creator, total);
+
+        let stream_id = fix.client.create_stream(
+            &creator,
+            &recipient,
+            &total,
+            &fix.token_id,
+            &start_time,
+            &end_time,
+            &String::from_str(env, "prorata cancel test"),
+        );
+
+        let creator_balance_before = fix.token_client.balance(&creator);
+        let recipient_balance_before = fix.token_client.balance(&recipient);
+
+        // Advance ledger to target interval
+        env.ledger().set_timestamp(start_time + elapsed);
+
+        // Cancel stream
+        let refunded = fix.client.cancel_stream(&creator, &stream_id);
+
+        assert_eq!(refunded, expected_refunded, "refunded amount mismatch at elapsed {}", elapsed);
+        assert_eq!(
+            fix.token_client.balance(&creator),
+            creator_balance_before + expected_refunded,
+            "creator balance mismatch at elapsed {}",
+            elapsed
+        );
+        assert_eq!(
+            fix.token_client.balance(&recipient),
+            recipient_balance_before + expected_vested,
+            "recipient balance mismatch at elapsed {}",
+            elapsed
+        );
+
+        // Acceptance Criteria: Sum of claimed, vested, and refunded amounts exactly equals original stream principal
+        let stream = fix.client.get_stream(&stream_id);
+        assert_eq!(stream.cancelled, true);
+        assert_eq!(
+            expected_vested + expected_refunded,
+            total,
+            "solvency conservation violated: vested + refunded != total"
+        );
+    }
+}
+
+#[test]
+fn test_stream_cancellation_with_prior_claims_exact_conservation() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+
+    let total = 20_000i128;
+    let start_time = 10_000u64;
+    let end_time = 20_000u64; // 10,000s duration
+    fix.env.ledger().set_timestamp(start_time);
+    fix.mint(&creator, total);
+
+    let stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "prior claims test"),
+    );
+
+    // At 40% (timestamp 14,000), recipient claims 8,000
+    fix.env.ledger().set_timestamp(14_000);
+    let claimed = fix.client.claim_stream(&recipient, &stream_id);
+    assert_eq!(claimed, 8_000);
+    assert_eq!(fix.token_client.balance(&recipient), 8_000);
+
+    // At 75% (timestamp 17,500), creator cancels stream
+    // Total vested = 15,000. Earned unclaimed = 15,000 - 8,000 = 7,000.
+    // Refunded to creator = 20,000 - 15,000 = 5,000.
+    fix.env.ledger().set_timestamp(17_500);
+    let refunded = fix.client.cancel_stream(&creator, &stream_id);
+
+    assert_eq!(refunded, 5_000);
+    assert_eq!(fix.token_client.balance(&recipient), 15_000); // 8,000 claimed + 7,000 earned on cancel
+    assert_eq!(fix.token_client.balance(&creator), 5_000);
+
+    // Verify conservation: 8,000 (prior claimed) + 7,000 (earned unclaimed) + 5,000 (refunded) = 20,000
+    let stream = fix.client.get_stream(&stream_id);
+    assert_eq!(stream.cancelled, true);
+    assert_eq!(stream.claimed_amount, 15_000);
+    assert_eq!(claimed + (stream.claimed_amount - claimed) + refunded, total);
+}

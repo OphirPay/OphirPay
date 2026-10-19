@@ -12,6 +12,36 @@ import {
   type AuditLogEntry,
 } from "@/lib/audit-log";
 
+// ── Cursor pagination (issue #1361) ────────────────────────────
+
+/**
+ * Encode a cursor from the last row of a page. The cursor is base64url of
+ * `<createdAt_ms>|<id>` — a keyset position in the (createdAt desc, id desc)
+ * ordering.
+ */
+function encodeAuditCursor(row: { id: string; timestamp: number }): string {
+  return Buffer.from(`${row.timestamp}|${row.id}`).toString("base64url");
+}
+
+/**
+ * Decode a cursor into a Prisma where clause that selects rows strictly
+ * after the cursor position in (createdAt desc, id desc) order.
+ */
+function decodeAuditCursor(cursor: string): { OR: Array<Record<string, unknown>> } {
+  const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+  const [tsStr, id] = decoded.split("|");
+  const ts = Number(tsStr);
+  if (!Number.isFinite(ts) || !id) {
+    throw new Error("Invalid cursor");
+  }
+  return {
+    OR: [
+      { createdAt: { lt: new Date(ts) } },
+      { createdAt: new Date(ts), id: { lt: id } },
+    ],
+  };
+}
+
 /**
  * GET /api/audit-log
  *
@@ -144,14 +174,22 @@ async function _GET(request: Request) {
 
     // Persisted (DB) audit entries — refund lifecycle history with record
     // ids (issue #365).
+    const cursor = parsed.data.cursor;
+    const useCursor = cursor != null && source === "db";
+
     const dbRows =
       source === "db" || source === "all"
         ? (
             await prisma.auditLog.findMany({
-              where: dbWhere,
-              orderBy: { createdAt: "desc" },
-              skip: (page - 1) * limit,
-              take: limit,
+              where: {
+                ...dbWhere,
+                // Cursor pagination: fetch rows strictly after the cursor's
+                // createdAt + id position (keyset, not offset) — issue #1361.
+                ...(useCursor ? decodeAuditCursor(cursor) : {}),
+              },
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              take: useCursor ? limit + 1 : limit,
+              ...(useCursor ? {} : { skip: (page - 1) * limit }),
             })
           ).map(mapDbRow)
         : [];
@@ -159,6 +197,17 @@ async function _GET(request: Request) {
       source === "db" || source === "all"
         ? await prisma.auditLog.count({ where: dbWhere })
         : 0;
+
+    if (source === "db" && useCursor) {
+      // Keyset mode: fetch limit + 1 to detect whether more rows exist.
+      const hasMore = dbRows.length > limit;
+      const visible = hasMore ? dbRows.slice(0, limit) : dbRows;
+      const nextCursor =
+        hasMore && visible.length > 0
+          ? encodeAuditCursor(visible[visible.length - 1])
+          : null;
+      return successResponse(visible, { limit, nextCursor, hasMore });
+    }
 
     if (source === "db") {
       return successResponse(dbRows, { page, limit, total: dbTotal });

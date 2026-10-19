@@ -78,12 +78,13 @@ COPY --chown=node:node --from=builder /app/.next/static ./.next/static
 # standalone's own node_modules/.prisma/client/ expects to find the engine.
 COPY --chown=node:node --from=builder /app/node_modules/.prisma/client/*.node ./node_modules/.prisma/client/
 COPY --chown=node:node --from=builder /app/node_modules/@prisma/engines-version ./node_modules/@prisma/engines-version
+COPY --chown=node:node scripts/healthcheck.js ./scripts/healthcheck.js
 
 EXPOSE 3000
 
 ENV PORT=3000
 
-# ── Container health (issue #738) ────────────────────────────────
+# ── Container health (issues #738, #1424) ───────────────────────
 # Probes the *liveness* endpoint: it only proves the Node process is up and
 # answering HTTP, so a transient database / Soroban RPC / Redis outage never
 # marks a healthy container unhealthy (and never restart-loops it). The
@@ -92,11 +93,11 @@ ENV PORT=3000
 # "Liveness vs readiness".
 #
 # Exec form on purpose: the runner stage (plus any distroless variant) has no
-# shell, and neither curl nor wget is installed — the bundled `node` and its
-# global `fetch` are the only probe client guaranteed to exist in the image.
-# `--start-period` covers the standalone server boot + Prisma client init;
+# shell, and neither curl nor wget is installed — the bundled `node` running
+# `scripts/healthcheck.js` provides a zero-dependency, lightweight health probe.
+# `--start-period=15s` covers the standalone server boot + Prisma client init;
 # 3 failures of a 5s-timeout probe are required before the container is
 # reported `unhealthy`.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health/live').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["node", "scripts/healthcheck.js", "/api/health/live"]
 
 CMD ["server.js"]

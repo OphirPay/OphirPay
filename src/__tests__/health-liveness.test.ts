@@ -131,7 +131,14 @@ describe("Container health wiring (issue #738)", () => {
     expect(test.join(" ")).toContain("/api/health/live");
     // Compose restates the Dockerfile timings so they are visible/tunable.
     expect(compose.services.app.healthcheck.interval).toBe("30s");
-    expect(compose.services.app.healthcheck.start_period).toBe("20s");
+    expect(compose.services.app.healthcheck.start_period).toBe("15s");
+  });
+
+  it("ships scripts/healthcheck.js with zero external dependencies", () => {
+    const script = read("scripts/healthcheck.js");
+    expect(script).toContain("HEALTHCHECK");
+    expect(script).toContain("fetch");
+    expect(script).not.toContain("require(");
   });
 
   it("the rate limiter exempts the whole /api/health subtree", () => {

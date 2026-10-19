@@ -105,11 +105,14 @@ ESLint check runs in CI.
 ### Dependency Updates
 
 [Dependabot](.github/dependabot.yml) checks the `npm` (root `package-lock.json`),
-`cargo` (`contracts/ophirpay` and `contracts/emitter`) and `github-actions`
-ecosystems once a week.
+`cargo` (`contracts/ophirpay` and `contracts/emitter`) ecosystems weekly, and
+`github-actions` monthly.
 
-- Minor and patch bumps in an ecosystem are grouped into a **single** PR; major
-  bumps arrive individually so they can be reviewed on their own.
+- Minor and patch bumps are grouped into targeted PRs to reduce noise:
+  - `npm`: `react-ecosystem`, `dev-tools`, and `utilities`
+  - `cargo`: `soroban-sdk` and `rust-tooling`
+  - `github-actions`: bundled into a single monthly PR
+- Major bumps and security updates arrive individually so they receive isolated review.
 - Update PRs are labelled `dependencies` and use a `chore(deps)` commit prefix.
 - Review one like any other PR: wait for CI (the `contract-wasm` job matters for
   Cargo bumps) and run it locally for security-sensitive packages. If a bump has

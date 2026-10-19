@@ -935,3 +935,370 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ══════════════════════════════════════════════════════════════════
+// Dispute Resolution Cooling-Off Period Tests (Issue #1353)
+// ══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_resolve_dispute_premature_fails_with_cooling_off_active() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+
+    fix.mint(&depositor, 10_000);
+
+    let deadline = fix.env.ledger().timestamp() + 100_000;
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &1_000i128,
+        &fix.token_id,
+        &deadline,
+        &String::from_str(&fix.env, "test escrow"),
+    );
+
+    // Initiate dispute
+    fix.client.initiate_dispute(&depositor, &escrow_id);
+
+    let escrow = fix.client.get_escrow(&escrow_id);
+    assert!(escrow.dispute_initiated_at > 0);
+
+    // Arbiter attempts to resolve dispute prematurely without mutual signoff
+    let res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert_eq!(res, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+
+    // Arbiter attempts via release_by_arbiter prematurely
+    let res_arbiter = fix.client.try_release_by_arbiter(&arbiter, &escrow_id, &true);
+    assert_eq!(res_arbiter, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+}
+
+#[test]
+fn test_resolve_dispute_post_timeout_succeeds() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+
+    fix.mint(&depositor, 10_000);
+
+    let deadline = fix.env.ledger().timestamp() + 200_000;
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &1_000i128,
+        &fix.token_id,
+        &deadline,
+        &String::from_str(&fix.env, "test escrow"),
+    );
+
+    fix.client.initiate_dispute(&beneficiary, &escrow_id);
+
+    // Advance ledger timestamp beyond MIN_DISPUTE_PERIOD (86,400s)
+    let current_ts = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(current_ts + 86_401);
+
+    // Arbiter resolves in favor of beneficiary
+    let res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert!(res.is_ok());
+
+    assert_eq!(fix.token_client.balance(&beneficiary), 1_000);
+    let updated = fix.client.get_escrow(&escrow_id);
+    assert!(updated.released);
+    assert!(updated.claimed);
+}
+
+#[test]
+fn test_resolve_dispute_mutual_signoff_bypasses_cooling_off() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+
+    fix.mint(&depositor, 10_000);
+
+    let deadline = fix.env.ledger().timestamp() + 200_000;
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &1_000i128,
+        &fix.token_id,
+        &deadline,
+        &String::from_str(&fix.env, "test escrow"),
+    );
+
+    fix.client.initiate_dispute(&depositor, &escrow_id);
+
+    // Resolving immediately with mutual signoff succeeds without advancing timestamp
+    let res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &false, &true);
+    assert!(res.is_ok());
+
+    // Refunded back to depositor
+    assert_eq!(fix.token_client.balance(&depositor), 10_000);
+}
+
+#[test]
+fn test_configurable_min_dispute_period_enforced() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+
+    fix.mint(&depositor, 10_000);
+
+    // Default is 86,400s
+    assert_eq!(fix.client.get_min_dispute_period(), 86_400);
+
+    // Owner customizes dispute period to 3,600s
+    fix.client.set_min_dispute_period(&fix.owner, &3_600);
+    assert_eq!(fix.client.get_min_dispute_period(), 3_600);
+
+    let deadline = fix.env.ledger().timestamp() + 200_000;
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &1_000i128,
+        &fix.token_id,
+        &deadline,
+        &String::from_str(&fix.env, "test escrow"),
+    );
+
+    fix.client.initiate_dispute(&depositor, &escrow_id);
+
+    // At 1,800s, still cooling off
+    let current_ts = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(current_ts + 1_800);
+    let early_res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert_eq!(early_res, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+
+    // At 3,601s, succeeds
+    fix.env.ledger().set_timestamp(current_ts + 3_601);
+    let ok_res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert!(ok_res.is_ok());
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Payment Stream Duration Bounds Tests (Issue #1350)
+// ══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_create_stream_duration_too_short_fails() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 10_000);
+
+    let start_time = fix.env.ledger().timestamp();
+    // 59 seconds: shorter than MIN_STREAM_DURATION (60s)
+    let end_time = start_time + 59;
+
+    let res = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "too short stream"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::StreamDurationTooShort)));
+}
+
+#[test]
+fn test_create_stream_duration_too_long_fails() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 10_000);
+
+    let start_time = fix.env.ledger().timestamp();
+    // 5 years + 1 second: exceeds MAX_STREAM_DURATION (157_680_000s)
+    let max_duration = 5 * 365 * 86_400;
+    let end_time = start_time + max_duration + 1;
+
+    let res = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "too long stream"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::StreamDurationTooLong)));
+}
+
+#[test]
+fn test_create_stream_valid_boundaries_succeed() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 50_000);
+
+    let start_time = fix.env.ledger().timestamp();
+
+    // 1. Exactly 60 seconds (minimum bound)
+    let min_stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &start_time,
+        &(start_time + 60),
+        &String::from_str(&fix.env, "min bound stream"),
+    );
+    assert_eq!(min_stream_id, 1);
+
+    // 2. Exactly 5 years (maximum bound)
+    let max_duration = 5 * 365 * 86_400;
+    let max_stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &2_000i128,
+        &fix.token_id,
+        &start_time,
+        &(start_time + max_duration),
+        &String::from_str(&fix.env, "max bound stream"),
+    );
+    assert_eq!(max_stream_id, 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Token Decimal Precision Validation in record_payment (#1347)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_record_payment_default_7_decimals_succeeds() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    // Verify default decimals is 7 for unconfigured assets
+    assert_eq!(fix.client.get_token_decimals(&fix.token_id), 7);
+
+    // Valid payments with 1 stroop, 100 stroops, and 10_000_000 stroops (1 unit)
+    let p1 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &1i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx-dec-1"),
+        &String::from_str(&fix.env, "meta-1"),
+    );
+    assert_eq!(p1, 1);
+
+    let p2 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &100i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx-dec-2"),
+        &String::from_str(&fix.env, "meta-2"),
+    );
+    assert_eq!(p2, 2);
+
+    let p3 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &10_000_000i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx-dec-3"),
+        &String::from_str(&fix.env, "meta-3"),
+    );
+    assert_eq!(p3, 3);
+}
+
+#[test]
+fn test_record_payment_custom_2_decimals_enforcement() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let token_2dec = Address::generate(&fix.env);
+
+    // Set token decimals = 2 (cents; quantum step = 10^(7 - 2) = 100,000 stroops)
+    fix.client.set_token_decimals(&fix.owner, &token_2dec, &2);
+    assert_eq!(fix.client.get_token_decimals(&token_2dec), 2);
+
+    // Step multiple (e.g. 500_000 stroops = 0.05 units) succeeds
+    let pid = fix.client.record_payment(
+        &payer,
+        &payee,
+        &500_000i128,
+        &token_2dec,
+        &String::from_str(&fix.env, "tx-2dec-valid"),
+        &String::from_str(&fix.env, "meta"),
+    );
+    assert_eq!(pid, 1);
+
+    // Sub-quantum dust amount (500_050 % 100_000 != 0) fails with InvalidDecimalPrecision
+    let res = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &500_050i128,
+        &token_2dec,
+        &String::from_str(&fix.env, "tx-2dec-invalid"),
+        &String::from_str(&fix.env, "meta"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+}
+
+#[test]
+fn test_record_payment_custom_0_decimals_enforcement() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let token_0dec = Address::generate(&fix.env);
+
+    // Set token decimals = 0 (indivisible asset; step = 10^7 = 10_000_000 stroops)
+    fix.client.set_token_decimals(&fix.owner, &token_0dec, &0);
+    assert_eq!(fix.client.get_token_decimals(&token_0dec), 0);
+
+    // Exact whole units succeed (20_000_000 = 2 units)
+    let pid = fix.client.record_payment(
+        &payer,
+        &payee,
+        &20_000_000i128,
+        &token_0dec,
+        &String::from_str(&fix.env, "tx-0dec-valid"),
+        &String::from_str(&fix.env, "meta"),
+    );
+    assert_eq!(pid, 1);
+
+    // Fractional unit (15_500_000 % 10_000_000 != 0) fails
+    let res = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &15_500_000i128,
+        &token_0dec,
+        &String::from_str(&fix.env, "tx-0dec-invalid"),
+        &String::from_str(&fix.env, "meta"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+}
+
+#[test]
+fn test_set_token_decimals_bounds_and_auth() {
+    let fix = TestFixture::new();
+    let non_owner = Address::generate(&fix.env);
+    let token = Address::generate(&fix.env);
+
+    // Non-owner cannot set decimals
+    let res_auth = fix.client.try_set_token_decimals(&non_owner, &token, &6);
+    assert_eq!(res_auth, Err(Ok(PaymentError::Unauthorized)));
+
+    // Decimals exceeding MAX_TOKEN_DECIMALS (18) is rejected
+    let res_bound = fix.client.try_set_token_decimals(&fix.owner, &token, &19);
+    assert_eq!(res_bound, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+    // Decimals up to 18 succeeds
+    let res_valid = fix.client.try_set_token_decimals(&fix.owner, &token, &18);
+    assert_eq!(res_valid, Ok(Ok(())));
+    assert_eq!(fix.client.get_token_decimals(&token), 18);
+}
+
+

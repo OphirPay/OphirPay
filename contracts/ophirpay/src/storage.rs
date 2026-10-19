@@ -53,6 +53,7 @@ pub const FEE_VER_CNT: Symbol = symbol_short!("FE_VER");
 pub const MSIG_VER_CNT: Symbol = symbol_short!("MS_VER");
 pub const PENDING_OWNER: Symbol = symbol_short!("PND_OWN");
 pub const OWNER_PROPOSED_AT: Symbol = symbol_short!("OWN_PAT");
+pub const TOKEN_DEC_KEY: Symbol = symbol_short!("TOK_DEC");
 
 // ── Per-counter storage keys (replaces ContractStats monolith) ─
 // Gas-optimized: each counter is a single u64/i128 instance key.

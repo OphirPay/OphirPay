@@ -53,7 +53,15 @@ pub struct Escrow {
     pub released: bool,
     pub claimed: bool,
     pub metadata: String,
+    pub dispute_initiated_at: u64, // 0 if no dispute has been raised
 }
+
+/// Type alias for Escrow conforming to EscrowRecord specification (#1353)
+pub type EscrowRecord = Escrow;
+
+/// Minimum dispute cooling-off period: 24 hours in seconds (#1353)
+pub const MIN_DISPUTE_PERIOD: u64 = 86_400;
+pub const MIN_DISPUTE_PERIOD_KEY: Symbol = symbol_short!("MIN_DISP");
 
 /// A payment stream that vests tokens over time.
 #[contracttype]
@@ -70,6 +78,12 @@ pub struct Stream {
     pub cancelled: bool,
     pub metadata: String,
 }
+
+/// Minimum duration for a payment stream: 60 seconds (#1350)
+pub const MIN_STREAM_DURATION: u64 = 60;
+
+/// Maximum duration for a payment stream: 5 years in seconds (5 * 365 * 86,400) (#1350)
+pub const MAX_STREAM_DURATION: u64 = 5 * 365 * 86_400; // 157_680_000
 
 /// A batch of payments executed atomically.
 #[contracttype]
@@ -378,4 +392,8 @@ pub struct HookList {
     pub total: u32,
     pub truncated: bool,
 }
+
+pub const DEFAULT_STELLAR_DECIMALS: u32 = 7;
+pub const MAX_TOKEN_DECIMALS: u32 = 18;
+
 

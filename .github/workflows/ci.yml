@@ -108,11 +108,11 @@ jobs:
           test -d .next && echo "✅ .next directory exists"
           test -f .next/BUILD_ID && echo "✅ BUILD_ID exists"
 
-      - name: JavaScript bundle-size budget
+      - name: JavaScript bundle-size budget & analysis
         # Reads the App Router client-reference manifests emitted by the build
-        # above and fails when a route exceeds its committed budget (#739).
-        # The per-route table is also appended to the job summary.
-        run: node scripts/check-bundle-budget.mjs
+        # above and fails when a route exceeds its committed budget (#739, #1309).
+        # Emits a route breakdown to GITHUB_STEP_SUMMARY and saves a bundle report artifact.
+        run: node scripts/check-bundle-budget.mjs --json .next/bundle-report.json
 
   # ══════════════════════════════════════════════════════════════
   # 5. CONTRACT WASM BUILD — Build both Soroban contracts

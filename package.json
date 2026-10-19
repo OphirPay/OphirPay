@@ -53,6 +53,7 @@
     "coverage": "vitest run --coverage",
     "analyze": "node scripts/analyze-build.mjs",
     "bundle:check": "node scripts/check-bundle-budget.mjs",
+    "bundle:report": "node scripts/check-bundle-budget.mjs --json .next/bundle-report.json",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:push": "prisma db push",
     "db:validate": "prisma validate && prisma generate",

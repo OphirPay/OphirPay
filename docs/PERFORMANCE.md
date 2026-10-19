@@ -347,3 +347,82 @@ user sees *why* a fee is higher than usual.
   fee, so the pre-sign preview matches what is signed.
 - `estimateTransactionFee()` / `estimateBatchFee()` (`src/lib/fee-estimator.ts`)
   — the UI-facing wrappers.
+
+## JavaScript bundle monitoring & size budgets (#739, #1309)
+
+As client-side dependencies and dashboard features grow, bundle size can quietly creep up, impacting initial page load times and Core Web Vitals on low-bandwidth or mobile connections. OphirPay uses a multi-layered bundle monitoring and budget enforcement workflow:
+
+1. **Interactive Local Bundle Analysis (`npm run analyze`)** via `@next/bundle-analyzer` to visually inspect chunk composition.
+2. **Automated Bundle Budget Checks (`npm run bundle:check`)** via `scripts/check-bundle-budget.mjs` comparing App Router manifests against committed limits in [`bundle-budget.json`](../bundle-budget.json).
+3. **Continuous CI Verification & Summary Diffs** in `.github/workflows/ci.yml` on pull requests targeting `integration/staging`.
+
+### 1. Interactive local analysis (`npm run analyze`)
+
+The interactive treemap is powered by `@next/bundle-analyzer` and runs as an opt-in production webpack build:
+
+```bash
+npm run analyze
+```
+
+When completed, static HTML reports are generated under `.next/analyze/`:
+- `.next/analyze/client.html`: Client-side JavaScript chunks downloaded by browsers.
+- `.next/analyze/server.html`: Server component and SSR module sizes.
+- `.next/analyze/edge.html`: Edge runtime route bundles.
+
+#### How to interpret local bundle reports
+
+Open `.next/analyze/client.html` in your web browser:
+- **Visual hierarchy**: Each box represents a chunk or module, sized proportionally to its byte contribution (stat, parsed, and gzipped).
+- **Vendor identification**: Check `node_modules` blocks to identify heavy third-party packages (e.g. big cryptography suites, chart libraries, or un-treeshaken utilities).
+- **Duplicate dependencies**: Search for libraries that appear in multiple independent chunks instead of being hoisted into shared vendor chunks.
+- **Dynamic import candidates**: Any heavy component that is not needed immediately on first render (such as modal dialogues, export dialogs, or chart renderers) should be lazy-loaded using `next/dynamic`.
+
+### 2. Automated bundle budget checks (`npm run bundle:check`)
+
+CI and local verification measure the actual client JavaScript downloaded on initial page load for every App Router route:
+
+```bash
+npm run build         # Build production output in .next
+npm run bundle:check  # Verify route sizes against bundle-budget.json
+```
+
+#### How measurement works
+
+`scripts/check-bundle-budget.mjs` inspects `.next/server/app/**/page_client-reference-manifest.js` emitted by Next.js. For each route, it unions the shared root runtime chunks (`rootMainFiles`, `polyfillFiles`) with route-specific entry chunks and client component modules. It then gzip-compresses the unioned chunks to accurately reflect real-world network payload sizes.
+
+#### CLI flags and options
+
+| Flag | Description |
+|---|---|
+| `[buildDir]` | Path to custom build output directory (defaults to `.next` or `NEXT_BUILD_DIR`) |
+| `--json [path]` | Exports measured route sizes to a JSON report (default: `.next/bundle-report.json`) |
+| `--compare <file>` | Compares current measurements against a baseline JSON report (e.g. base branch vs PR branch) |
+| `--warn-only` | Logs warnings and reports status without exiting with status code 1 on budget excess |
+
+Example comparing against a base branch report:
+
+```bash
+node scripts/check-bundle-budget.mjs --compare .next/base-bundle-report.json
+```
+
+### 3. CI integration & PR summaries
+
+In `.github/workflows/ci.yml`, the `build` job runs bundle analysis and checks immediately after building Next.js:
+
+1. Evaluates all App Router routes against committed budgets.
+2. Emits a clean Markdown breakdown table into `$GITHUB_STEP_SUMMARY` for PR reviewers.
+3. Fails the build if any route exceeds its assigned budget or default threshold.
+
+### 4. What to do if a route exceeds its budget
+
+If CI fails with `❌ Bundle budget exceeded`:
+
+1. **Audit dependencies**: Run `npm run analyze` to identify which dependency caused the size increase.
+2. **Code split**: Replace eager imports of heavy components with `next/dynamic`:
+   ```tsx
+   import dynamic from "next/dynamic";
+   const AnalyticsChart = dynamic(() => import("@/components/analytics-chart"), { ssr: false });
+   ```
+3. **Prefer modular imports**: Ensure submodules are imported directly rather than barrel files where tree-shaking might fail.
+4. **Deliberate budget revision**: If the route expansion is intentional and cannot be code-split, update `bundle-budget.json` in your PR. State in your PR description which route grew, by how many kilobytes, and why the addition is required. Never silently increase budgets just to pass CI.
+

@@ -660,5 +660,8 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    // ── Dispute Cooling-Off Window (310) ───────────────────
+    /// Dispute cooling-off period active: resolution window has not elapsed
+    DisputeCoolingOffActive = 310,
 }
 

@@ -325,6 +325,7 @@ fn all_variants() -> Vec<(&'static str, u32)> {
         ("StreamInvariantViolated", PaymentError::StreamInvariantViolated as u32),
         ("InvalidPauseScope", PaymentError::InvalidPauseScope as u32),
         ("PaymentIdempotencyConflict", PaymentError::PaymentIdempotencyConflict as u32),
+        ("DisputeCoolingOffActive", PaymentError::DisputeCoolingOffActive as u32),
     ]
 }
 
@@ -378,8 +379,8 @@ fn variant_count_matches_catalog() {
     // which is what the sibling `max_code == variants.len()` assertion catches.
     assert_eq!(
         variants.len(),
-        309,
-        "Expected 309 PaymentError variants (codes 1..=309)"
+        310,
+        "Expected 310 PaymentError variants (codes 1..=310)"
     );
 }
 

@@ -40,6 +40,11 @@ pub struct PaymentList {
 
 /// An escrow that locks funds until released by the owner, claimed after
 /// deadline, or released by an optional third-party arbiter for disputes.
+/// Default minimum cooling-off window (24 hours) before a dispute can be
+/// unilaterally resolved by an arbiter (#1353).
+pub const MIN_DISPUTE_PERIOD: u64 = 86_400;
+pub const MIN_DISPUTE_PERIOD_KEY: Symbol = symbol_short!("MIN_DISP");
+
 #[contracttype]
 #[derive(Clone)]
 pub struct Escrow {
@@ -53,7 +58,12 @@ pub struct Escrow {
     pub released: bool,
     pub claimed: bool,
     pub metadata: String,
+    /// Ledger timestamp when a dispute was initiated (0 = no active dispute).
+    pub dispute_initiated_at: u64,
 }
+
+/// Alias for `Escrow` matching the `EscrowRecord` nomenclature (#1353).
+pub type EscrowRecord = Escrow;
 
 /// A payment stream that vests tokens over time.
 #[contracttype]

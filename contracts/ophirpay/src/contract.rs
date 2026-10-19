@@ -2229,6 +2229,7 @@ impl OphirPayContract {
             released: false,
             claimed: false,
             metadata,
+            dispute_initiated_at: 0,
         };
 
         env.storage()
@@ -2309,8 +2310,176 @@ impl OphirPayContract {
         Ok(())
     }
 
+    /// Configure the minimum dispute cooling-off period in seconds (owner only, #1353).
+    /// Defaults to `MIN_DISPUTE_PERIOD` (86,400 seconds = 24 hours) when unset.
+    pub fn set_min_dispute_period(
+        env: Env,
+        caller: Address,
+        period: u64,
+    ) -> Result<(), PaymentError> {
+        caller.require_auth();
+        require_owner(&env, &caller)?;
+        env.storage()
+            .instance()
+            .set(&MIN_DISPUTE_PERIOD_KEY, &period);
+        env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+        Ok(())
+    }
+
+    /// Get the configured minimum dispute cooling-off period in seconds (#1353).
+    /// Defaults to `MIN_DISPUTE_PERIOD` (86,400 seconds = 24 hours).
+    pub fn get_min_dispute_period(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&MIN_DISPUTE_PERIOD_KEY)
+            .unwrap_or(MIN_DISPUTE_PERIOD)
+    }
+
+    /// Initiate a dispute on an active escrow (#1353).
+    /// Either the depositor or the beneficiary may file a dispute, recording
+    /// `dispute_initiated_at` and starting the `MIN_DISPUTE_PERIOD` cooling-off
+    /// window before an arbiter can unilaterally finalize resolution.
+    pub fn initiate_dispute(
+        env: Env,
+        caller: Address,
+        escrow_id: u64,
+    ) -> Result<(), PaymentError> {
+        caller.require_auth();
+        require_not_paused(&env, PauseScope::Escrows)?;
+
+        let mut escrow: Escrow = env
+            .storage()
+            .persistent()
+            .get(&(ESCROW_KEY, escrow_id))
+            .ok_or(PaymentError::EscrowNotFound)?;
+
+        if caller != escrow.depositor && caller != escrow.beneficiary {
+            return Err(PaymentError::Unauthorized);
+        }
+        if escrow.released || escrow.claimed {
+            return Err(PaymentError::EscrowAlreadyReleased);
+        }
+        if escrow.arbiter.is_none() {
+            return Err(PaymentError::DisputeArbiterNotSet);
+        }
+        if escrow.dispute_initiated_at > 0 {
+            return Err(PaymentError::DisputeAlreadyFiled);
+        }
+
+        let now = env.ledger().timestamp();
+        escrow.dispute_initiated_at = if now == 0 { 1 } else { now };
+
+        env.storage()
+            .persistent()
+            .set(&(ESCROW_KEY, escrow_id), &escrow);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(ESCROW_KEY, escrow_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        record_audit(
+            &env,
+            "escrow_dispute_initiated",
+            &caller,
+            escrow_id,
+            "Escrow dispute initiated",
+        );
+
+        Ok(())
+    }
+
+    /// Resolve an active escrow dispute (#1353).
+    ///
+    /// Enforces `MIN_DISPUTE_PERIOD` (default 24 hours) from `dispute_initiated_at`
+    /// so an arbiter cannot unilaterally finalize a dispute before the counterparty
+    /// has time to submit evidence or respond off-chain.
+    ///
+    /// If `both_parties_signed` is `true`, both `depositor` and `beneficiary`
+    /// must authorize the call (`require_auth`), allowing mutual settlement
+    /// immediately without waiting for the cooling-off period to elapse.
+    pub fn resolve_dispute(
+        env: Env,
+        arbiter: Address,
+        escrow_id: u64,
+        release_to_beneficiary: bool,
+        both_parties_signed: bool,
+    ) -> Result<(), PaymentError> {
+        let _guard = acquire_reentrancy_lock(&env)?;
+        arbiter.require_auth();
+        require_not_paused(&env, PauseScope::Escrows)?;
+
+        let mut escrow: Escrow = env
+            .storage()
+            .persistent()
+            .get(&(ESCROW_KEY, escrow_id))
+            .ok_or(PaymentError::EscrowNotFound)?;
+
+        match &escrow.arbiter {
+            Some(a) if *a == arbiter => {}
+            Some(_) => return Err(PaymentError::Unauthorized),
+            None => return Err(PaymentError::DisputeArbiterNotSet),
+        }
+
+        if escrow.released || escrow.claimed {
+            return Err(PaymentError::EscrowAlreadyReleased);
+        }
+
+        if escrow.dispute_initiated_at == 0 {
+            return Err(PaymentError::DisputeNotOpen);
+        }
+
+        if both_parties_signed {
+            escrow.depositor.require_auth();
+            escrow.beneficiary.require_auth();
+        } else {
+            let min_period: u64 = env
+                .storage()
+                .instance()
+                .get(&MIN_DISPUTE_PERIOD_KEY)
+                .unwrap_or(MIN_DISPUTE_PERIOD);
+            let now = env.ledger().timestamp();
+            if now < escrow.dispute_initiated_at.saturating_add(min_period) {
+                return Err(PaymentError::DisputeCoolingOffActive);
+            }
+        }
+
+        let recipient = if release_to_beneficiary {
+            escrow.beneficiary.clone()
+        } else {
+            escrow.depositor.clone()
+        };
+
+        let token_client = token::Client::new(&env, &escrow.asset);
+        let contract_addr = env.current_contract_address();
+        add_locked(&env, -escrow.amount);
+
+        token_client.transfer(&contract_addr, &recipient, &escrow.amount);
+
+        escrow.released = true;
+        escrow.claimed = true;
+        env.storage()
+            .persistent()
+            .set(&(ESCROW_KEY, escrow_id), &escrow);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(ESCROW_KEY, escrow_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        inc_counter(&env, &STAT_ESC_RELEASED);
+
+        record_audit(
+            &env,
+            "escrow_dispute_resolved",
+            &arbiter,
+            escrow_id,
+            "Escrow dispute resolved",
+        );
+
+        Ok(())
+    }
+
     /// Arbiter releases escrow to either party (dispute resolution).
     /// Only the escrow's designated arbiter can call this.
+    /// If a dispute has been initiated on the escrow, enforces the
+    /// `MIN_DISPUTE_PERIOD` cooling-off window (#1353).
     pub fn release_by_arbiter(
         env: Env,
         arbiter: Address,
@@ -2335,6 +2504,17 @@ impl OphirPayContract {
 
         if escrow.released || escrow.claimed {
             return Err(PaymentError::EscrowAlreadyReleased);
+        }
+
+        if escrow.dispute_initiated_at > 0 {
+            let min_period: u64 = env
+                .storage()
+                .instance()
+                .get(&MIN_DISPUTE_PERIOD_KEY)
+                .unwrap_or(MIN_DISPUTE_PERIOD);
+            if env.ledger().timestamp() < escrow.dispute_initiated_at.saturating_add(min_period) {
+                return Err(PaymentError::DisputeCoolingOffActive);
+            }
         }
 
         let recipient = if release_to_beneficiary {

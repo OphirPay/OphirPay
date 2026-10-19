@@ -277,6 +277,55 @@ return successResponse(payments, { page, limit, total });   // 200 list
 return successResponse(payment, undefined, 201);            // 201 created
 ```
 
+### Keyset & Cursor-Based Pagination
+
+For high-volume datasets (such as `/api/audit-log` and `/api/payments`), traditional offset pagination (`skip`/`take`) causes deep page query degradation in PostgreSQL. Endpoints support **deterministic keyset cursor pagination** backed by compound indexes (`createdAt`, `id`):
+
+- **Query Parameters**:
+  - `limit`: Number of items per page (1–100, default 20).
+  - `cursor`: Opaque unique identifier (the record ID from `nextCursor`) indicating where the next page continues.
+  - `order`: Sort direction (`desc` newest first, or `asc` oldest first).
+- **Response Format**:
+  ```json
+  {
+    "success": true,
+    "data": [ ... ],
+    "nextCursor": "cm0audit00000000000000002",
+    "hasMore": true,
+    "meta": {
+      "timestamp": "2026-10-18T10:30:00.000Z",
+      "limit": 20,
+      "total": 10542,
+      "cursor": "cm0audit00000000000000001",
+      "nextCursor": "cm0audit00000000000000002",
+      "hasMore": true,
+      "order": "desc"
+    }
+  }
+  ```
+- **Example Usage**:
+  ```bash
+  # 1. Fetch initial page
+  curl -H "Authorization: Bearer $API_KEY" \
+    "https://api.ophirpay.com/api/audit-log?source=db&limit=20&order=desc"
+
+  # 2. Fetch subsequent page using nextCursor
+  curl -H "Authorization: Bearer $API_KEY" \
+    "https://api.ophirpay.com/api/audit-log?source=db&limit=20&cursor=cm0audit00000000000000002&order=desc"
+  ```
+- **Prisma Pattern**:
+  ```ts
+  const items = await prisma.auditLog.findMany({
+    where,
+    orderBy: [{ createdAt: order }, { id: order }],
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  });
+  const hasMore = items.length > limit;
+  const pageItems = hasMore ? items.slice(0, limit) : items;
+  const nextCursor = hasMore ? pageItems[pageItems.length - 1].id : null;
+  ```
+
 ### Error
 
 ```ts

@@ -935,3 +935,72 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. FEE CONFIG & COLLECTOR UPDATED EVENT EMISSION (#1349)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_fee_config_and_collector_update_emits_on_chain_event() {
+    use ophirpay_contract::FeeConfigUpdated;
+    use soroban_sdk::testutils::Events;
+    use soroban_sdk::xdr::{ContractEventBody, ScVal};
+    use soroban_sdk::TryFromVal;
+
+    let fix = TestFixture::new();
+    let collector_1 = Address::generate(&fix.env);
+    let collector_2 = Address::generate(&fix.env);
+
+    let extract_fee_event = |contract_events: &soroban_sdk::testutils::ContractEvents| -> FeeConfigUpdated {
+        for event in contract_events.events() {
+            let ContractEventBody::V0(ref v0) = event.body;
+            if v0.topics.len() == 2 {
+                if let (Some(ScVal::Symbol(t0)), Some(ScVal::Symbol(t1))) = (v0.topics.get(0), v0.topics.get(1)) {
+                    if t0.0.as_slice() == b"fee_config" && t1.0.as_slice() == b"updated" {
+                        let val = soroban_sdk::Val::try_from_val(&fix.env, &v0.data).expect("val conversion");
+                        return FeeConfigUpdated::try_from_val(&fix.env, &val).expect("fee config payload");
+                    }
+                }
+            }
+        }
+        panic!("FeeConfigUpdated event not found in invocation");
+    };
+
+    // 1. Set initial fee collector (None -> Some(collector_1))
+    fix.client.set_fee_collector(&fix.owner, &collector_1);
+    let evt1 = extract_fee_event(&fix.env.events().all());
+    assert_eq!(evt1.previous_collector, None);
+    assert_eq!(evt1.new_collector, Some(collector_1.clone()));
+    assert_eq!(evt1.caller, fix.owner);
+    assert_eq!(fix.client.get_fee_collector(), Some(collector_1.clone()));
+
+    // 2. Configure fees (0 -> 250 bps payment, 100 bps escrow, 150 bps stream)
+    fix.client.set_fee_config(
+        &fix.owner,
+        &250u32,
+        &100u32,
+        &150u32,
+        &1000i128,
+        &100i128,
+        &true,
+    );
+    let evt2 = extract_fee_event(&fix.env.events().all());
+    assert_eq!(evt2.previous_collector, Some(collector_1.clone()));
+    assert_eq!(evt2.new_collector, Some(collector_1.clone()));
+    assert_eq!(evt2.previous_payment_fee_bps, 0);
+    assert_eq!(evt2.new_payment_fee_bps, 250);
+    assert_eq!(evt2.new_escrow_fee_bps, 100);
+    assert_eq!(evt2.new_stream_fee_bps, 150);
+    assert_eq!(evt2.enabled, true);
+    assert_eq!(evt2.caller, fix.owner);
+
+    // 3. Rotate fee collector (Some(collector_1) -> Some(collector_2))
+    fix.client.set_fee_collector(&fix.owner, &collector_2);
+    let evt3 = extract_fee_event(&fix.env.events().all());
+    assert_eq!(evt3.previous_collector, Some(collector_1));
+    assert_eq!(evt3.new_collector, Some(collector_2.clone()));
+    assert_eq!(evt3.new_payment_fee_bps, 250);
+    assert_eq!(evt3.caller, fix.owner);
+    assert_eq!(fix.client.get_fee_collector(), Some(collector_2));
+}

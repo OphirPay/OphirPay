@@ -458,8 +458,26 @@ impl OphirPayContract {
             .extend_ttl(&(FEE_VER_CNT, ver_count), BUMP_MIN_TTL, BUMP_MAX_TTL);
         env.storage().instance().set(&FEE_VER_CNT, &ver_count);
 
+        let prev_config: Option<FeeConfig> = env.storage().instance().get(&FEE_KEY);
+        let current_collector: Option<Address> = env.storage().instance().get(&FEE_COLL);
+
         env.storage().instance().set(&FEE_KEY, &config);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        let event_payload = FeeConfigUpdated {
+            previous_collector: current_collector.clone(),
+            new_collector: current_collector,
+            previous_payment_fee_bps: prev_config.as_ref().map(|c| c.payment_fee_bps).unwrap_or(0),
+            new_payment_fee_bps: payment_fee_bps,
+            previous_escrow_fee_bps: prev_config.as_ref().map(|c| c.escrow_fee_bps).unwrap_or(0),
+            new_escrow_fee_bps: escrow_fee_bps,
+            previous_stream_fee_bps: prev_config.as_ref().map(|c| c.stream_fee_bps).unwrap_or(0),
+            new_stream_fee_bps: stream_fee_bps,
+            enabled,
+            caller: caller.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        emit_fee_config_updated(&env, &event_payload);
 
         record_audit(
             &env,
@@ -505,8 +523,35 @@ impl OphirPayContract {
     ) -> Result<(), PaymentError> {
         caller.require_auth();
         require_owner(&env, &caller)?;
+        let prev_collector: Option<Address> = env.storage().instance().get(&FEE_COLL);
+        let fee_cfg: Option<FeeConfig> = env.storage().instance().get(&FEE_KEY);
+
         env.storage().instance().set(&FEE_COLL, &collector);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
+
+        let event_payload = FeeConfigUpdated {
+            previous_collector: prev_collector,
+            new_collector: Some(collector.clone()),
+            previous_payment_fee_bps: fee_cfg.as_ref().map(|c| c.payment_fee_bps).unwrap_or(0),
+            new_payment_fee_bps: fee_cfg.as_ref().map(|c| c.payment_fee_bps).unwrap_or(0),
+            previous_escrow_fee_bps: fee_cfg.as_ref().map(|c| c.escrow_fee_bps).unwrap_or(0),
+            new_escrow_fee_bps: fee_cfg.as_ref().map(|c| c.escrow_fee_bps).unwrap_or(0),
+            previous_stream_fee_bps: fee_cfg.as_ref().map(|c| c.stream_fee_bps).unwrap_or(0),
+            new_stream_fee_bps: fee_cfg.as_ref().map(|c| c.stream_fee_bps).unwrap_or(0),
+            enabled: fee_cfg.as_ref().map(|c| c.enabled).unwrap_or(false),
+            caller: caller.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        emit_fee_config_updated(&env, &event_payload);
+
+        record_audit(
+            &env,
+            "fee_collector_set",
+            &caller,
+            0,
+            "Fee collector updated",
+        );
+
         Ok(())
     }
 

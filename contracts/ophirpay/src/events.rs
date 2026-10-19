@@ -44,6 +44,36 @@ pub fn emit_stream_event(env: &Env, creator: &Address, recipient: &Address, amou
 /// instead of deserializing/serializing an 11-field ContractStats struct.
 /// Note: does NOT extend TTL — callers should batch TTL extensions at the end
 /// of each function to avoid redundant metadata writes.
+
+/// Structured on-chain event payload emitted whenever fee configuration or
+/// the fee collector address is updated (#1349).
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeeConfigUpdated {
+    pub previous_collector: Option<Address>,
+    pub new_collector: Option<Address>,
+    pub previous_payment_fee_bps: u32,
+    pub new_payment_fee_bps: u32,
+    pub previous_escrow_fee_bps: u32,
+    pub new_escrow_fee_bps: u32,
+    pub previous_stream_fee_bps: u32,
+    pub new_stream_fee_bps: u32,
+    pub enabled: bool,
+    pub caller: Address,
+    pub timestamp: u64,
+}
+
+/// Publish a `("fee_config", "updated")` event with the `FeeConfigUpdated` payload.
+pub fn emit_fee_config_updated(env: &Env, payload: &FeeConfigUpdated) {
+    env.events().publish(
+        (
+            Symbol::new(env, "fee_config"),
+            Symbol::new(env, "updated"),
+        ),
+        payload.clone(),
+    );
+}
+
 pub fn inc_counter(env: &Env, key: &Symbol) {
     let val: u64 = env.storage().instance().get(key).unwrap_or(0);
     env.storage().instance().set(key, &val.saturating_add(1));

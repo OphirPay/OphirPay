@@ -321,6 +321,112 @@ workloads, implement exponential backoff starting from the `Retry-After` value.
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `HOOK_SECRET` | No | Webhook HMAC signing secret |
 
+## Typed TypeScript SDK & Client Library (`@ophirpay/client`)
+
+OphirPay provides a lightweight, dependency-free first-party TypeScript client SDK (`@ophirpay/client` located in `packages/ophirpay-client`). The client types and operation catalogue are automatically generated directly from `docs/openapi.yaml`, guaranteeing complete type safety across all 68+ API routes and 90+ operations without wire contract drift.
+
+### 1. Generating SDK Types
+
+To regenerate or verify the TypeScript SDK types against the current OpenAPI specification:
+
+```bash
+# Generate the operation catalogue and typed TypeScript interfaces
+npm run generate:sdk
+
+# Validate that the generated SDK is up to date (enforced in CI)
+npm run client:check
+```
+
+### 2. Basic Client Usage
+
+```typescript
+import { OphirPayClient, OphirPayError } from "@ophirpay/client";
+
+const client = new OphirPayClient({
+  baseUrl: process.env.OPHIRPAY_BASE_URL ?? "https://api.ophirpay.com",
+  apiKey: process.env.OPHIRPAY_API_KEY, // Bearer token
+  timeoutMs: 30000,
+});
+
+// High-level helper methods:
+const payment = await client.createPayment({
+  amount: 25.5,
+  assetCode: "XLM",
+  destAddress: "GABC...123",
+  description: "Invoice #1042",
+});
+
+console.log("Payment created:", payment.id, payment.status);
+```
+
+### 3. Dynamic Typed Operations via `execute`
+
+You can call any OpenAPI endpoint using its typed operation name from `ApiOperationName`:
+
+```typescript
+// Query payments with type-safe parameters
+const paymentsPage = await client.execute("getApiPayments", {
+  query: {
+    limit: 20,
+    status: "COMPLETED",
+    order: "desc",
+  },
+});
+
+// Execute batch submission
+const batch = await client.execute("postApiBatches", {
+  body: {
+    name: "Monthly Contributor Payouts",
+    recipients: [
+      { address: "GDEF...456", amount: 150 },
+      { address: "GHIJ...789", amount: 200 },
+    ],
+  },
+  idempotencyKey: "payout-2026-10",
+});
+```
+
+### 4. Handling RFC 7807 Problem Details
+
+When a payment route rejects a request, `OphirPayError` exposes machine-readable RFC 7807 problem details:
+
+```typescript
+try {
+  await client.createPayment({
+    amount: 10,
+    destAddress: "GINVALID",
+  });
+} catch (err) {
+  if (err instanceof OphirPayError) {
+    console.error(`API Error [${err.code}]:`, err.message);
+    if (err.problem) {
+      console.error("Problem details title:", err.problem.title);
+      console.error("Field errors:", err.problem.errors);
+    }
+  }
+}
+```
+
+### 5. Webhook Signature Verification
+
+External services receiving webhook notifications from OphirPay can verify signature integrity using the built-in constant-time helper:
+
+```typescript
+import { verifyWebhookSignature } from "@ophirpay/client";
+
+const isValid = verifyWebhookSignature({
+  rawBody: req.body, // Must be the raw request string before JSON parsing
+  signature: req.headers["x-ophirpay-signature"],
+  timestamp: req.headers["x-ophirpay-timestamp"],
+  secret: process.env.WEBHOOK_SECRET!,
+  toleranceSeconds: 300, // Reject timestamps older than 5 minutes
+});
+
+if (!isValid) {
+  res.status(401).send("Invalid webhook signature");
+}
+```
+
 ## Testing
 
 ```bash

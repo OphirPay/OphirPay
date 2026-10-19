@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // GENERATED FROM docs/openapi.yaml — DO NOT EDIT BY HAND.
-// Regenerate with: npm run client:generate
+// Regenerate with: npm run client:generate (or npm run generate:sdk)
 //
 // 97 operations extracted from the committed OpenAPI spec.
 

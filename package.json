@@ -71,6 +71,7 @@
     "test:a11y": "playwright test e2e/accessibility.spec.ts",
     "generate-errors": "npx tsx scripts/regenerate-errors.ts",
     "client:generate": "node scripts/generate-api-client.mjs",
+    "generate:sdk": "node scripts/generate-api-client.mjs",
     "client:check": "node scripts/generate-api-client.mjs --check",
     "cli": "node scripts/ophirpay-cli.mjs"
   },

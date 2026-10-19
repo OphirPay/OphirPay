@@ -157,6 +157,12 @@ export class OphirPayClient {
     return op;
   }
 
+  /** Execute an operation by name from the generated OpenAPI catalogue. */
+  async execute(name, options = {}) {
+    const op = this.operation(name);
+    return this.request(op.method, op.path, options);
+  }
+
   /** Raw request against the API, unwrapping the response envelope. */
   async request(method, path, options = {}) {
     const { pathParams, query, body, headers = {}, idempotencyKey } = options;

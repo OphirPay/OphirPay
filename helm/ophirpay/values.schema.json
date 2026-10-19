@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "OphirPay Helm Chart Values Schema",
+  "type": "object",
+  "required": [
+    "replicaCount",
+    "image",
+    "service",
+    "config",
+    "secrets"
+  ],
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "image": {
+      "type": "object",
+      "required": ["repository", "tag", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": "string" },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": ["type", "port", "targetPort"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+        },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "targetPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "annotations": { "type": "object" },
+        "hosts": { "type": "array" },
+        "tls": { "type": "array" }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu": { "type": "string" },
+            "memory": { "type": "string" }
+          }
+        }
+      }
+    },
+    "autoscaling": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minReplicas": { "type": "integer", "minimum": 1 },
+        "maxReplicas": { "type": "integer", "minimum": 1 },
+        "targetCPUUtilizationPercentage": { "type": "integer" },
+        "targetMemoryUtilizationPercentage": { "type": "integer" }
+      }
+    },
+    "pdb": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minAvailable": { "type": "integer" }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": [
+        "NEXT_PUBLIC_STELLAR_NETWORK",
+        "NEXT_PUBLIC_STELLAR_HORIZON_URL",
+        "NEXT_PUBLIC_STELLAR_RPC_URL",
+        "DATABASE_PROVIDER",
+        "NODE_ENV"
+      ],
+      "properties": {
+        "NEXT_PUBLIC_STELLAR_NETWORK": { "type": "string" },
+        "NEXT_PUBLIC_STELLAR_HORIZON_URL": { "type": "string" },
+        "NEXT_PUBLIC_STELLAR_RPC_URL": { "type": "string" },
+        "DATABASE_PROVIDER": { "type": "string" },
+        "NODE_ENV": { "type": "string" },
+        "STELLAR_NETWORK_PASSPHRASE": { "type": "string" },
+        "NEXT_PUBLIC_APP_URL": { "type": "string" },
+        "RATE_LIMIT_RPM": { "type": "string" },
+        "AUTH_RATE_LIMIT_IP_RPM": { "type": "string" },
+        "AUTH_RATE_LIMIT_WALLET_RPM": { "type": "string" },
+        "NEXT_PUBLIC_SENTRY_DSN": { "type": "string" }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "required": [
+        "DATABASE_URL",
+        "AUTH_SECRET"
+      ],
+      "properties": {
+        "DATABASE_URL": { "type": "string" },
+        "NEXT_PUBLIC_CONTRACT_ID": { "type": "string" },
+        "NEXT_PUBLIC_EMITTER_CONTRACT_ID": { "type": "string" },
+        "AUTH_SECRET": { "type": "string" }
+      }
+    }
+  }
+}

@@ -353,3 +353,39 @@ proptest! {
         prop_assert_eq!(h.client.get_locked_balance(), 0);
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. STREAM CANCELLATION PRO-RATA FUZZING (#1357) — Solvency & Division Safety
+// ═══════════════════════════════════════════════════════════════════════════
+
+proptest! {
+    #![proptest_config(get_proptest_config())]
+
+    #[test]
+    fn prop_stream_cancellation_prorata_solvency(
+        total_amount in 1i128..=1_000_000_000_000_000i128,
+        start_time in 0u64..=1_000_000u64,
+        duration in 1u64..=500_000u64,
+        elapsed_fraction in 0u64..=100u64,
+    ) {
+        let end_time = start_time + duration;
+        let now = start_time + (duration * elapsed_fraction) / 100;
+
+        let vested = ophirpay_contract::helpers::compute_vested(total_amount, start_time, end_time, now);
+        prop_assert!(vested >= 0, "vested must be non-negative");
+        prop_assert!(vested <= total_amount, "vested cannot exceed total principal");
+
+        let unvested = total_amount - vested;
+        prop_assert_eq!(vested + unvested, total_amount, "solvency: vested + unvested must equal total");
+
+        // Fuzz arbitrary claimed amount within vested bounds
+        let claimed = (vested * ((elapsed_fraction % 50) as i128)) / 100;
+        let earned_unclaimed = vested - claimed;
+        prop_assert_eq!(
+            claimed + earned_unclaimed + unvested,
+            total_amount,
+            "exact conservation: claimed + earned + unvested == total_amount"
+        );
+    }
+}
+

@@ -42,6 +42,7 @@ export function CsvBatchImport({
   const [fileErrors, setFileErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const errorCount = rows.filter(

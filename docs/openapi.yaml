@@ -27,7 +27,9 @@ info:
 
 servers:
   - url: http://localhost:3000
-    description: Local development
+    description: Local development (Stellar Testnet)
+  - url: https://testnet.api.ophirpay.com
+    description: Stellar Testnet API Environment
   - url: https://api.ophirpay.com
     description: Production
 
@@ -2587,6 +2589,32 @@ paths:
           description: Malformed or unrecognised report body
         "413":
           description: Body exceeds the 16 KiB size limit
+
+  /api/openapi.json:
+    get:
+      tags: [Health]
+      summary: OpenAPI 3.1 JSON specification
+      description: |
+        Serves the complete OpenAPI 3.1 specification parsed from
+        `docs/openapi.yaml` as JSON, enriched with Stellar Testnet server
+        metadata for the interactive API reference at `/docs/api`.
+      security: []
+      responses:
+        "200":
+          description: Parsed OpenAPI 3.1 JSON document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  openapi:
+                    type: string
+                  info:
+                    type: object
+                  paths:
+                    type: object
+        "500":
+          $ref: "#/components/responses/ServerError"
 
 # ── Components ────────────────────────────────────────────────
 components:

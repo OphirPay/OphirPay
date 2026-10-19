@@ -46,6 +46,7 @@ export type ApiOperationName =
   | "getApiMetrics"
   | "getApiMultisig"
   | "getApiMultisigRequests"
+  | "getApiOpenapiJson"
   | "getApiPauseState"
   | "getApiPayments"
   | "getApiPaymentsExport"

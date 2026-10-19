@@ -4,7 +4,7 @@ export { Button } from "./Button";
 export type { ButtonVariant, ButtonSize } from "./Button";
 export { Card } from "./Card";
 export { Modal } from "./Modal";
-export { ToastProvider, useToast } from "./Toast";
+export { ToastProvider, useToast, useOptionalToast } from "./Toast";
 export { Spinner } from "./Spinner";
 export { Badge, StatusBadge } from "./Badge";
 export { Input, Textarea, Select } from "./Form";

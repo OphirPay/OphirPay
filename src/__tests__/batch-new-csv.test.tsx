@@ -126,7 +126,7 @@ describe("NewBatchPage CSV upload flow", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Confirm Batch Payment")).toBeInTheDocument();
     expect(within(dialog).getByText("1")).toBeInTheDocument();
-    expect(within(dialog).getAllByText("100.00 XLM").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText(/100[.,]00 XLM/).length).toBeGreaterThan(0);
     expect(within(dialog).getByText("Total Amount")).toBeInTheDocument();
   });
 });

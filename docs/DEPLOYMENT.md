@@ -9,6 +9,7 @@
 - [Prerequisites](#prerequisites)
 - [Environment Variables](#environment-variables)
 - [Option 1: Vercel (Recommended)](#option-1-vercel-recommended)
+  - [Staging Deployment & Environments](#staging-deployment--environments)
 - [Option 2: Docker](#option-2-docker)
 - [Option 3: Standalone Node.js](#option-3-standalone-nodejs)
 - [Option 4: Kubernetes (Helm)](#option-4-kubernetes-helm)
@@ -119,8 +120,57 @@ Once connected, every push to `main` auto-deploys:
 Push to main → Vercel builds → Preview/Production URL
 ```
 
-- **Production**: Deploys from `main` branch
-- **Preview**: Deploys from feature branches (PR comments include the preview URL)
+- **Production**: Deploys automatically from `main` to `https://ophirpay.vercel.app`
+- **Staging**: Deploys automatically from `integration/staging` to `https://ophirpay-staging.vercel.app`
+- **Preview**: Deploys from feature branches (PR comments include the per-commit preview URL)
+
+### Staging Deployment & Environments
+
+To prevent unverified changes from affecting production scheduled payments and request expirations, OphirPay separates production and pre-release validation through isolated GitHub Environments and stable Vercel aliases:
+
+| Environment | Git Branch | Canonical URL | GitHub Environment | Database & Secrets |
+|---|---|---|---|---|
+| **Production** | `main` | `https://ophirpay.vercel.app` | `production` | Production PostgreSQL, Mainnet/Testnet Soroban contract, Production `CRON_SECRET` |
+| **Staging** | `integration/staging` | `https://ophirpay-staging.vercel.app` | `staging` | Isolated Staging PostgreSQL, Staging `CRON_SECRET`, Staging operator keys |
+| **Preview** | Feature branches / PRs | `https://*-ophirpay.vercel.app` | — | Per-PR ephemeral preview deployment |
+
+#### Configuring Stable Vercel Aliases
+
+1. **`vercel.json` Configuration**: Both production and staging canonical aliases are declared under `"alias"` in `vercel.json`:
+   ```json
+   "alias": [
+     "ophirpay.vercel.app",
+     "ophirpay-staging.vercel.app"
+   ]
+   ```
+2. **Git Branch Domain Mapping**: In the Vercel Dashboard under **Settings > Domains**, assign `ophirpay-staging.vercel.app` to track the `integration/staging` Git branch. Every merge to `integration/staging` immediately updates the stable staging URL.
+
+#### GitHub Environments & Secrets Scoping
+
+GitHub Actions scheduled workflows use GitHub Environments to securely scope configuration without hard-coding URLs:
+
+- **`production` Environment**:
+  - `vars.CRON_BASE_URL`: `https://ophirpay.vercel.app`
+  - `secrets.CRON_SECRET`: Secret token for production `/api/cron` authentication
+- **`staging` Environment**:
+  - `vars.CRON_BASE_URL`: `https://ophirpay-staging.vercel.app`
+  - `secrets.CRON_SECRET`: Secret token for staging `/api/cron` authentication
+
+#### Scheduled Payments Cron Sweep Matrix
+
+The `.github/workflows/scheduled-payments-cron.yml` workflow parameters execution across both environments:
+
+```yaml
+strategy:
+  fail-fast: false
+  matrix:
+    environment:
+      - production
+      - staging
+environment: ${{ matrix.environment }}
+```
+
+During each 5-minute sweep or manual `workflow_dispatch`, GitHub Actions injects the respective environment's secrets and `CRON_BASE_URL`. If secrets or URLs are unconfigured for an environment, the job gracefully issues an actionable warning and exits cleanly without disrupting the sibling environment.
 
 ### Vercel-Specific Notes
 
@@ -132,7 +182,7 @@ Push to main → Vercel builds → Preview/Production URL
 - `npx prisma generate` runs automatically during build (configured in `vercel.json` → `buildCommand`)
 - The `installCommand` is `npm ci` for deterministic installs
 - Region is set to `iad1` (US East) — change in `vercel.json` if you need a different region
-- A cron job runs `/api/cron` every 5 minutes to execute due scheduled payments (`.github/workflows/scheduled-payments-cron.yml` → GitHub Actions schedule; a Vercel Cron entry would fail deployment on Hobby, which only allows daily schedules). Set `CRON_SECRET` (as both a GitHub Actions secret and a Vercel environment variable) and `SCHEDULED_PAYMENTS_SOURCE_SECRET` or the endpoint returns `503` and does nothing — see [Scheduled Payment Cron](scheduled-payment-cron.md)
+- A cron job runs `/api/cron` and `/api/requests/expire` every 5 minutes across production and staging environments (`.github/workflows/scheduled-payments-cron.yml` → GitHub Actions schedule with multi-environment matrix). Set `CRON_SECRET` and `CRON_BASE_URL` in each GitHub Environment, along with `SCHEDULED_PAYMENTS_SOURCE_SECRET` on the deployment — see [Scheduled Payment Cron](scheduled-payment-cron.md)
 
 ### CLI Deploy (Alternative)
 

@@ -1,47 +1,74 @@
 name: Scheduled Payments — Cron Sweep
 
-# The scheduled-payment sweep previously ran on Vercel Cron via a `crons`
-# entry in vercel.json. Vercel's Hobby plan only permits daily cron jobs, so
-# every deploy failed validation and the sweep never ran. The sweep therefore
-# moved here: GitHub Actions runs public-repo scheduled workflows as often as
-# every 5 minutes, and calling the deployed endpoint keeps the sweep on the
-# production database and Stellar network — the same behavior the Vercel cron
-# would have had.
+# The scheduled-payment sweep runs via GitHub Actions on a 5-minute schedule
+# to invoke the deployed cron endpoints across environments (production & staging).
+# Calling the deployed endpoint executes scheduled payments and expires stale requests
+# against the isolated database and Stellar network configured for that environment.
 #
-# Requires a `CRON_SECRET` GitHub Actions secret holding the same value as the
-# `CRON_SECRET` environment variable on the Vercel project. Until it is set,
-# the run exits early with a warning instead of failing the sweep.
+# Environments:
+# - production: Target URL and secrets scoped to the production deployment.
+# - staging: Target URL and secrets scoped to integration/staging deployment.
+#
+# Secrets and Variables per Environment:
+# - vars.CRON_BASE_URL (or vars.APP_URL): Base URL of the deployment (e.g. configured in GitHub Environment Variables)
+# - secrets.CRON_SECRET: Shared secret matching the deployment's CRON_SECRET env variable.
+#
+# If CRON_SECRET or CRON_BASE_URL is not set for an environment, the run safely exits
+# early with an explanatory warning instead of failing unrelated sweeps.
 
 on:
   schedule:
     # Every 5 minutes — matches the original vercel.json cadence.
     - cron: "*/5 * * * *"
   workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Target environment to sweep ('all', 'production', or 'staging')"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - production
+          - staging
 
 permissions:
   contents: read
 
-
-# -- Global Concurrency � singleton group for scheduled runs --------
+# -- Global Concurrency — singleton group for scheduled runs --------
 concurrency:
   group: ${{ github.workflow }}
 
 jobs:
   run-sweep:
-    name: "Execute due scheduled payments"
+    name: "Execute sweep (${{ matrix.environment }})"
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    if: github.event_name != 'workflow_dispatch' || inputs.target_environment == 'all' || inputs.target_environment == matrix.environment
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - production
+          - staging
+    environment: ${{ matrix.environment }}
     steps:
-      - name: Trigger /api/cron on production
+      - name: Trigger /api/cron on ${{ matrix.environment }}
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          CRON_URL: https://ophirpay.vercel.app/api/cron
+          CRON_BASE_URL: ${{ vars.CRON_BASE_URL || vars.APP_URL }}
         run: |
           set -euo pipefail
           if [ -z "$CRON_SECRET" ]; then
-            echo "::warning::CRON_SECRET is not set as a GitHub Actions secret — sweep skipped"
+            echo "::warning::CRON_SECRET is not configured for environment '${{ matrix.environment }}' — sweep skipped"
             exit 0
           fi
+          if [ -z "$CRON_BASE_URL" ]; then
+            echo "::warning::CRON_BASE_URL (or APP_URL) is not configured for environment '${{ matrix.environment }}' — sweep skipped"
+            exit 0
+          fi
+          BASE_URL="${CRON_BASE_URL%/}"
+          CRON_URL="${BASE_URL}/api/cron"
           http_code=$(curl -sS -o /tmp/cron-response.json -w "%{http_code}" \
             -H "x-cron-secret: ${CRON_SECRET}" \
             "$CRON_URL")
@@ -51,17 +78,24 @@ jobs:
           # 2xx means the sweep ran; anything else (401 wrong secret,
           # 503 unconfigured) should surface as a failed run.
           [ "${http_code:0:1}" = "2" ]
-      - name: Expire due payment requests
+
+      - name: Trigger /api/requests/expire on ${{ matrix.environment }}
         if: always()
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          CRON_URL: https://ophirpay.vercel.app/api/requests/expire
+          CRON_BASE_URL: ${{ vars.CRON_BASE_URL || vars.APP_URL }}
         run: |
           set -euo pipefail
           if [ -z "$CRON_SECRET" ]; then
-            echo "::warning::CRON_SECRET is not set as a GitHub Actions secret — request expiry skipped"
+            echo "::warning::CRON_SECRET is not configured for environment '${{ matrix.environment }}' — request expiry skipped"
             exit 0
           fi
+          if [ -z "$CRON_BASE_URL" ]; then
+            echo "::warning::CRON_BASE_URL (or APP_URL) is not configured for environment '${{ matrix.environment }}' — request expiry skipped"
+            exit 0
+          fi
+          BASE_URL="${CRON_BASE_URL%/}"
+          CRON_URL="${BASE_URL}/api/requests/expire"
           http_code=$(curl -sS -o /tmp/request-expiry-response.json -w "%{http_code}" \
             -H "x-cron-secret: ${CRON_SECRET}" \
             "$CRON_URL")

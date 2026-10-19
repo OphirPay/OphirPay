@@ -8,7 +8,7 @@ on:
       - "src/__tests__/prisma-schema-ci.test.ts"
       - ".github/workflows/prisma-ci.yml"
   push:
-    branches: [main]
+    branches: [main, integration/staging]
     paths:
       - "prisma/**"
       - "scripts/validate-prisma-migrations.sh"
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 
-# -- Global Concurrency — cancel stale runs on same PR --------
+# -- Global Concurrency ï¿½ cancel stale runs on same PR --------
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

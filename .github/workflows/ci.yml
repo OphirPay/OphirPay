@@ -2,7 +2,7 @@ name: OphirPay CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, integration/staging]
   pull_request:
     # `integration/staging` is the batch-integration branch every PR must
     # target while it exists (.github/workflows/enforce-integration-branch.yml).

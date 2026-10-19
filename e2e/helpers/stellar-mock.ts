@@ -1,45 +1,35 @@
 // SPDX-License-Identifier: MIT
 //
-// Deterministic Soroban RPC + Horizon mocks for the multisig E2E flow.
+// Deterministic Soroban RPC + Horizon mocks and fixtures for offline E2E tests — Issue #1298.
 //
 // WHY THIS EXISTS
 // --------------
-// The app's multisig page calls proposeMultisigPayment / approveMultisigPayment /
-// executeApprovedPayment from @/lib/contract-advanced. Those run inside the
-// browser and drive the @stellar/stellar-sdk `rpc.Server` (Soroban RPC) plus
-// Horizon directly — there is no app API route behind them. The repo's
-// Playwright suite has no webServer and runs against a live deployment with no
-// browser wallet and no funded Testnet contract, so the only way to exercise
-// the full propose -> approve x2 -> execute UI deterministically is to satisfy
-// the SDK at its own network boundary:
+// E2E tests depend on Soroban smart contract interactions and Stellar network reachability.
+// Relying on public testnet RPC causes flaky tests due to rate limits, network resets,
+// and node lag. This helper provides:
 //
-//   • GET  window.freighter            → a fake wallet (injected via addInitScript)
-//   • POST Soroban RPC getLedgerEntries → a valid AccountEntry (for getAccount)
-//   • POST Soroban RPC simulateTransaction → a successful SorobanTransactionData
-//   • POST Soroban RPC sendTransaction    → PENDING (accepted)
-//   • POST Soroban RPC getTransaction     → an unparseable protocol-27 result
-//     that makes the SDK throw "Bad union switch" — the exact code path the
-//     app already handles (see submitContractInvocation) before falling back
-//   • GET  Horizon /transactions/{hash}   → { successful: true }
-//
-// The "Bad union switch" response is a TransactionMeta header whose union
-// discriminant (5) has no decoding arm in this SDK version; xdr.TransactionMeta
-// rejects it exactly the way it rejects real protocol-27 responses, routing the
-// SDK to the Horizon confirmation fallback. This keeps the helpers independent
-// of real network state while still travelling through all four SDK layers.
-//
-// The XDR payloads are built here with the real SDK (Node side) so the values
-// are always structurally valid base64; no hand-rolled XDR bytes are involved.
+//   1. Full Soroban transaction lifecycle simulation (simulateTransaction, sendTransaction, getTransaction)
+//   2. Realistic XDR responses for core operations: single payments, batch payments, escrows, and streams
+//   3. Deterministic wallet simulation via window.freighter with support for rejection and auth signing
+//   4. Universal offline test setup with no external network dependency
 
 import { Keypair, StrKey, xdr } from "@stellar/stellar-sdk";
 import type { Page, Route } from "@playwright/test";
 
 // ── Fixed (known-valid) addresses ──────────────────────────────
-// SIGNER_B is the repo's CHAIN_READ_SOURCE; SIGNER_A is the repo's DEMO_WALLET.
 export const SIGNER_A =
   "GBH3O5IHGJ6GUKZCINS3UZGHVKDKYDLVIRKZY7GYA27B54WT3Q7H4KXO";
 export const SIGNER_B =
   "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU";
+
+/** Supported transaction types for realistic Soroban simulation and fixtures. */
+export type SorobanTxType =
+  | "payment"
+  | "batch_payment"
+  | "escrow"
+  | "stream"
+  | "multisig"
+  | "custom";
 
 /** State shared between the Node-side route handlers and the test steps. */
 export interface MultisigState {
@@ -69,20 +59,19 @@ export function createState(overrides: Partial<MultisigState> = {}): MultisigSta
   };
 }
 
-// ── XDR builders ───────────────────────────────────────────────
+// ── XDR Builders & Realistic Fixtures ─────────────────────────
 
 const ed25519 = (publicKey: string): Buffer =>
   StrKey.decodeEd25519PublicKey(publicKey);
 
 /**
  * base64 of the LedgerEntryData (account arm) that backs the given signer's
- * getAccount(). The RPC parser wraps each entry's `xdr` as LedgerEntryData,
- * so the payload must be the union (account arm), not a bare AccountEntry.
+ * getAccount(). The RPC parser wraps each entry's `xdr` as LedgerEntryData.
  */
 export function accountLedgerEntryData(publicKey: string): string {
   const entry = new xdr.AccountEntry({
     accountId: xdr.PublicKey.publicKeyTypeEd25519(ed25519(publicKey)),
-    balance: new xdr.Int64("100000000000"), // in stroops (e.g. 10,000 XLM)
+    balance: new xdr.Int64("100000000000"), // 10,000 XLM in stroops
     seqNum: new xdr.Int64("1234567"),
     numSubEntries: 0,
     inflationDest: null,
@@ -90,8 +79,6 @@ export function accountLedgerEntryData(publicKey: string): string {
     homeDomain: "",
     thresholds: Buffer.from([0, 0, 0, 0]),
     signers: [],
-    // switch 0 = void ext (the union's runtime constructor takes the switch
-    // number; the shipped .d.ts only declares the static factories).
     ext: new (xdr.AccountEntryExt as unknown as new (
       switchOn: number
     ) => xdr.AccountEntryExt)(0),
@@ -120,25 +107,173 @@ export function emptySorobanTransactionData(): string {
     ) => xdr.ExtensionPoint)(0), // switch 0 = void
     resources: new xdr.SorobanResources({
       footprint: new xdr.LedgerFootprint({ readOnly: [], readWrite: [] }),
-      instructions: 0,
-      readBytes: 0,
-      writeBytes: 0,
+      instructions: 50_000,
+      readBytes: 1024,
+      writeBytes: 1024,
     }),
-    resourceFee: new xdr.Int64("0"),
+    resourceFee: new xdr.Int64("100"),
   });
   return data.toXDR("base64");
 }
 
 /**
  * base64 of raw bytes for a TransactionMeta union with an unknown switch (5).
- * js-xdr has no decoding arm for it, so xdr.TransactionMeta.fromXDR() throws
- * "Bad union switch" — the fallback path submitContractInvocation relies on.
+ * js-xdr has no decoding arm for it, routing the SDK to the Horizon confirmation fallback.
  */
 export function badUnionSwitchTransactionMeta(): string {
-  // union discriminant is a big-endian int32; 5 selects no known arm
   return Buffer.from([0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00]).toString(
     "base64",
   );
+}
+
+/** Returns base64 representation of a void ScVal. */
+export function scValVoid(): string {
+  return xdr.ScVal.scvVoid().toXDR("base64");
+}
+
+/** Returns base64 representation of a u32 ScVal (e.g. batch count). */
+export function scValU32(val: number): string {
+  return xdr.ScVal.scvU32(val).toXDR("base64");
+}
+
+/** Returns base64 representation of a u64 ScVal (e.g. escrow or stream ID). */
+export function scValU64(val: string | number): string {
+  return xdr.ScVal.scvU64(new xdr.Uint64(String(val))).toXDR("base64");
+}
+
+/** Returns base64 representation of a successful TransactionResult. */
+export function mockTransactionResult(): string {
+  const result = new xdr.TransactionResult({
+    feeCharged: new xdr.Int64("100"),
+    result: xdr.TransactionResultResult.txSuccess([]),
+    ext: new (xdr.TransactionResultExt as unknown as new (
+      switchOn: number
+    ) => xdr.TransactionResultExt)(0),
+  });
+  return result.toXDR("base64");
+}
+
+/** Map transaction type to appropriate Soroban contract return value fixture. */
+export function getReturnValueForTxType(txType: SorobanTxType): string {
+  switch (txType) {
+    case "payment":
+      return scValVoid();
+    case "batch_payment":
+      return scValU32(10); // Simulated batch of 10 items
+    case "escrow":
+      return scValU64("1001"); // Simulated on-chain escrow ID
+    case "stream":
+      return scValU64("2001"); // Simulated on-chain stream ID
+    case "multisig":
+    case "custom":
+    default:
+      return scValVoid();
+  }
+}
+
+// ── Deterministic JSON-RPC Fixtures ───────────────────────────
+
+export interface MockRpcOptions {
+  txType?: SorobanTxType;
+  shouldFail?: boolean;
+  failureError?: string;
+  txHash?: string;
+  latestLedger?: number;
+  walletAddress?: string;
+  walletRejectSigning?: boolean;
+  returnValue?: string;
+  events?: string[];
+  customSimulateResult?: Record<string, unknown>;
+  customGetTxResult?: Record<string, unknown>;
+}
+
+export function deterministicSimulateResponse(
+  options: MockRpcOptions = {}
+): Record<string, unknown> {
+  const latestLedger = options.latestLedger ?? 42_000;
+  if (options.shouldFail) {
+    return {
+      latestLedger,
+      events: [],
+      error: options.failureError ?? "Transaction simulation failed",
+    };
+  }
+  const retval =
+    options.returnValue ?? getReturnValueForTxType(options.txType ?? "payment");
+
+  return {
+    latestLedger,
+    transactionData: emptySorobanTransactionData(),
+    minResourceFee: "100",
+    events: options.events ?? [],
+    results: [
+      {
+        auth: [],
+        xdr: retval,
+      },
+    ],
+    cost: { cpuInsns: "50000", memBytes: "1024" },
+    ...(options.customSimulateResult ?? {}),
+  };
+}
+
+export function deterministicSendResponse(
+  options: MockRpcOptions = {}
+): Record<string, unknown> {
+  const latestLedger = options.latestLedger ?? 42_000;
+  const hash = options.txHash ?? "0".repeat(64);
+
+  if (options.shouldFail) {
+    return {
+      status: "ERROR",
+      hash,
+      latestLedger,
+      latestLedgerCloseTime: 1,
+      errorResult: options.failureError ?? "Transaction submission rejected",
+    };
+  }
+
+  return {
+    status: "PENDING",
+    hash,
+    latestLedger,
+    latestLedgerCloseTime: Math.floor(Date.now() / 1000),
+  };
+}
+
+export function deterministicGetTransactionResponse(
+  options: MockRpcOptions = {}
+): Record<string, unknown> {
+  const latestLedger = options.latestLedger ?? 42_000;
+  const hash = options.txHash ?? "0".repeat(64);
+  const now = Math.floor(Date.now() / 1000);
+
+  if (options.shouldFail) {
+    return {
+      status: "FAILED",
+      hash,
+      latestLedger,
+      latestLedgerCloseTime: now,
+      oldestLedger: latestLedger - 1000,
+      oldestLedgerCloseTime: now - 300,
+      resultXdr: mockTransactionResult(),
+      resultMetaXdr: badUnionSwitchTransactionMeta(),
+    };
+  }
+
+  return {
+    status: "SUCCESS",
+    hash,
+    latestLedger,
+    latestLedgerCloseTime: now,
+    oldestLedger: latestLedger - 1000,
+    oldestLedgerCloseTime: now - 300,
+    resultXdr: mockTransactionResult(),
+    resultMetaXdr: badUnionSwitchTransactionMeta(),
+    returnValue:
+      options.returnValue ?? getReturnValueForTxType(options.txType ?? "payment"),
+    ...(options.customGetTxResult ?? {}),
+  };
 }
 
 interface JsonRpcRequest {
@@ -161,8 +296,58 @@ function jsonRpc(handler: (req: JsonRpcRequest) => unknown) {
 }
 
 /**
+ * Creates a deterministic Soroban RPC handler with configurable behavior.
+ */
+export function createDeterministicRpcHandler(options: MockRpcOptions = {}) {
+  const activeAddress = options.walletAddress ?? SIGNER_A;
+  const latestLedger = options.latestLedger ?? 42_000;
+
+  return jsonRpc((req) => {
+    switch (req.method) {
+      case "getHealth":
+        return { status: "healthy" };
+      case "getLatestLedger":
+        return {
+          id: hashFromSeq(latestLedger),
+          protocolVersion: 22,
+          sequence: latestLedger,
+        };
+      case "getLedgerEntries":
+        return {
+          latestLedger,
+          entries: [
+            {
+              key: accountLedgerKey(activeAddress),
+              xdr: accountLedgerEntryData(activeAddress),
+              lastModifiedLedgerSeq: latestLedger,
+            },
+          ],
+        };
+      case "simulateTransaction":
+        return deterministicSimulateResponse(options);
+      case "sendTransaction":
+        return deterministicSendResponse(options);
+      case "getTransaction":
+        return deterministicGetTransactionResponse(options);
+      case "getEvents":
+        return {
+          latestLedger,
+          events: options.events ?? [],
+        };
+      default:
+        return {};
+    }
+  });
+}
+
+function hashFromSeq(seq: number): string {
+  return seq.toString(16).padStart(64, "0");
+}
+
+/**
  * Soroban RPC handler. Matches the SDK's JSON-RPC methods used by the
  * multisig contract helpers and simulates a healthy Testnet node.
+ * Maintained for full backward compatibility with existing tests.
  */
 export const rpcHandler = (state: MultisigState) =>
   jsonRpc((req) => {
@@ -193,10 +378,6 @@ export const rpcHandler = (state: MultisigState) =>
           transactionData: emptySorobanTransactionData(),
           minResourceFee: "0",
           events: [],
-          // One result per operation. assembleTransaction() reads
-          // simulation.result.auth for the operation's authorization entries —
-          // an empty array means "no auth required" (the SDK touches
-          // result?.auth when present, so the entry must exist).
           results: [{ auth: [] }],
           cost: { cpuInsns: "100", memBytes: "0" },
         };
@@ -210,9 +391,6 @@ export const rpcHandler = (state: MultisigState) =>
         };
       }
       case "getTransaction": {
-        // status SUCCESS but with a resultMetaXdr the SDK can't decode
-        // (protocol-27 "Bad union switch") → submitContractInvocation falls
-        // back to the Horizon confirmation below.
         return {
           status: "SUCCESS",
           hash: "0".repeat(64),
@@ -244,20 +422,13 @@ export const horizonHandler = () =>
   };
 
 /**
- * Installs all browser-side mocks the multisig page needs:
- * the app's own read API + the Soroban RPC + Horizon.
- *
- * Call once per test, before `page.goto("/multisig")`.
+ * Installs all browser-side mocks the multisig page needs.
+ * Maintained for backward compatibility.
  */
 export async function installMultisigMocks(
   page: Page,
   state: MultisigState,
 ): Promise<void> {
-  // Auth session: the fake freighter exposes no signMessage, so the real
-  // server-side session proof can never succeed and the wallet hook would
-  // roll the connection back. The multisig flow only needs wallet signing,
-  // not an API session, so accept the session outright (same as other
-  // wallet-only e2e helpers).
   await page.route("**/api/auth/challenge**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -278,7 +449,6 @@ export async function installMultisigMocks(
     });
   });
 
-  // App read API: multisig config + pending approval requests.
   await page.route("**/api/multisig**", async (route) => {
     const url = route.request().url();
     const path = new URL(url).pathname;
@@ -296,7 +466,6 @@ export async function installMultisigMocks(
       });
       return;
     }
-    // /api/multisig (bare) — the configured N-of-M multisig.
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -309,54 +478,125 @@ export async function installMultisigMocks(
     });
   });
 
-  // Soroban RPC (external origin).
   await page.route(
     (url) => url.hostname.includes("soroban"),
     rpcHandler(state),
   );
 
-  // Horizon (external origin) — just the transaction confirmation lookup.
   await page.route(
     (url) => url.hostname.includes("horizon") && /\/transactions\/[0-9a-f]+$/.test(url.pathname),
     horizonHandler(),
   );
 }
 
-/** A random valid-format Stellar address (for the non-signer / payee). */
+/**
+ * Universal installer for deterministic offline RPC mocks.
+ * Simulates wallet auth, Soroban RPC, and Horizon boundaries.
+ */
+export async function installDeterministicRpcMocks(
+  page: Page,
+  options: MockRpcOptions = {}
+): Promise<void> {
+  const walletAddress = options.walletAddress ?? SIGNER_A;
+
+  // 1. Inject deterministic fake Freighter
+  await page.addInitScript(
+    fakeFreighterInitScript({
+      address: walletAddress,
+      rejectSigning: options.walletRejectSigning ?? false,
+    })
+  );
+
+  // 2. Intercept wallet-auth API session
+  await page.route("**/api/auth/challenge**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: { challenge: "mock-offline-challenge", message: "offline login message" },
+      }),
+    });
+  });
+  await page.route("**/api/auth/session**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: { authenticated: true, user: { address: walletAddress } },
+      }),
+    });
+  });
+
+  // 3. Intercept Soroban RPC JSON-RPC calls
+  await page.route(
+    (url) => url.hostname.includes("soroban") || url.pathname.includes("/soroban/rpc"),
+    createDeterministicRpcHandler(options)
+  );
+
+  // 4. Intercept Horizon transaction queries
+  await page.route(
+    (url) => url.hostname.includes("horizon") && /\/transactions(\/|$)/.test(url.pathname),
+    horizonHandler()
+  );
+}
+
+/** A random valid-format Stellar address. */
 export function randomAddress(): string {
   return Keypair.random().publicKey();
 }
 
+export interface FakeFreighterConfig {
+  address?: string;
+  rejectSigning?: boolean;
+}
+
 /**
- * JavaScript to inject (via addInitScript) a fake `window.freighter` whose
- * address the test can flip with window.__setFreighterAddress(...). The
- * auth endpoints are mocked too (see installMultisigMocks), so a dummy
- * `signMessage` keeps the wallet hook's connect() from rolling back — the
- * wallet stays connected, which is all the multisig page needs.
+ * Injects a deterministic `window.freighter` mock supporting:
+ * - Address flipping via window.__setFreighterAddress(addr)
+ * - Signing rejection simulation via window.__setFreighterRejectSigning(bool)
+ * - Full support for signTransaction, signAuthEntry, and signMessage
  */
-export function fakeFreighterInitScript(initialAddress: string): string {
+export function fakeFreighterInitScript(
+  configOrAddress: string | FakeFreighterConfig = SIGNER_A
+): string {
+  const config =
+    typeof configOrAddress === "string"
+      ? { address: configOrAddress, rejectSigning: false }
+      : { address: configOrAddress.address ?? SIGNER_A, rejectSigning: !!configOrAddress.rejectSigning };
+
   return `
     (() => {
-      const state = { address: ${JSON.stringify(initialAddress)} };
+      const state = {
+        address: ${JSON.stringify(config.address)},
+        rejectSigning: ${JSON.stringify(config.rejectSigning)},
+      };
       window.__setFreighterAddress = (a) => { state.address = a; };
       window.__getFreighterAddress = () => state.address;
-      // window.freighter as consumed by @/lib/wallets/freighter
+      window.__setFreighterRejectSigning = (r) => { state.rejectSigning = !!r; };
+
       window.freighter = {
         isConnected: async () => true,
-        requestAccess: async () => state.address,
+        requestAccess: async () => {
+          if (state.rejectSigning) throw new Error("User declined access / connection");
+          return state.address;
+        },
         getAddress: async () => state.address,
         getNetwork: async () => "TESTNET",
         getNetworkDetails: async () => ({
           network: "TESTNET",
           networkPassphrase: "Test SDF Network ; September 2015",
         }),
-        // identity signer: pass the prepared envelope through unchanged; the
-        // mocked RPC/Horizon already mark the tx successful.
-        signTransaction: async (txXdr) => txXdr,
-        // The freighter connector always exposes signMessage, so the wallet
-        // hook will call it during connect(). The auth session route is
-        // mocked to accept any proof, so a dummy signature is sufficient.
-        signMessage: async () => "AAAA",
+        signTransaction: async (txXdr) => {
+          if (state.rejectSigning) throw new Error("User declined transaction signing");
+          return txXdr;
+        },
+        signAuthEntry: async (entryXdr) => {
+          if (state.rejectSigning) throw new Error("User declined auth entry signing");
+          return entryXdr;
+        },
+        signMessage: async () => {
+          if (state.rejectSigning) throw new Error("User declined message signing");
+          return "AAAA";
+        },
       };
     })();
   `;

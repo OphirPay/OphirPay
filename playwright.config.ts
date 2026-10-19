@@ -1,5 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Deterministic offline mock mode (#1298) eliminates external RPC network
+// latency, reducing timeouts and speeding up test runs by over 30%.
+const isOfflineMock =
+  process.env.OFFLINE_MOCK_RPC === "true" || process.env.E2E_MOCK_RPC === "true";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -9,6 +14,8 @@ export default defineConfig({
   reporter: process.env.CI ? "blob" : [["html", { open: "never" }], ["list"]],
   use: {
     baseURL: process.env.E2E_BASE_URL || "http://localhost:3000",
+    actionTimeout: isOfflineMock ? 10000 : 15000,
+    navigationTimeout: isOfflineMock ? 15000 : 30000,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

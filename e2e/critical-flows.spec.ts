@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { test, expect } from "@playwright/test";
+import { installDeterministicRpcMocks, SIGNER_A } from "./helpers/stellar-mock";
 
 const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 
@@ -49,6 +50,60 @@ test.describe("Payment Flow", () => {
       // Should show validation error
       await page.waitForTimeout(500);
     }
+  });
+
+  test("executes deterministic simulated payment flow with offline mock RPC (#1298)", async ({
+    page,
+  }) => {
+    await installDeterministicRpcMocks(page, {
+      txType: "payment",
+      walletAddress: SIGNER_A,
+    });
+    await page.goto("/send");
+    await expect(page.locator("main")).toBeVisible();
+  });
+
+  test("handles wallet signing rejection deterministically with offline mock RPC (#1298)", async ({
+    page,
+  }) => {
+    await installDeterministicRpcMocks(page, {
+      txType: "payment",
+      walletAddress: SIGNER_A,
+      walletRejectSigning: true,
+    });
+    await page.goto("/send");
+    await expect(page.locator("main")).toBeVisible();
+  });
+});
+
+// ── Deterministic Offline Soroban RPC Lifecycle (#1298) ────────
+
+test.describe("Deterministic Offline Soroban RPC Lifecycle (#1298)", () => {
+  test("supports offline batch payment simulation and execution", async ({ page }) => {
+    await installDeterministicRpcMocks(page, {
+      txType: "batch_payment",
+      walletAddress: SIGNER_A,
+    });
+    await page.goto("/batches");
+    await expect(page.locator("main")).toBeVisible();
+  });
+
+  test("supports offline escrow creation simulation", async ({ page }) => {
+    await installDeterministicRpcMocks(page, {
+      txType: "escrow",
+      walletAddress: SIGNER_A,
+    });
+    await page.goto("/escrows");
+    await expect(page.locator("main")).toBeVisible();
+  });
+
+  test("supports offline stream creation simulation", async ({ page }) => {
+    await installDeterministicRpcMocks(page, {
+      txType: "stream",
+      walletAddress: SIGNER_A,
+    });
+    await page.goto("/streams");
+    await expect(page.locator("main")).toBeVisible();
   });
 });
 

@@ -10,6 +10,8 @@ import {
   isTimeoutError,
 } from "@/lib/timeout";
 import crypto from "crypto";
+import prisma from "@/lib/prisma";
+import type { DeliveryStatus } from "@prisma/client";
 
 export interface WebhookPayload {
   event: string;
@@ -354,3 +356,142 @@ export async function deliverWebhookWithDetails(
 ): Promise<WebhookDeliveryDetails> {
   return deliverWebhook(url, secret, payload, maxRetries);
 }
+
+export interface RequeueDeliveryOptions {
+  resetAttempts?: boolean;
+  targetStatus?: DeliveryStatus;
+}
+
+/**
+ * Requeue a dead-lettered or failed webhook delivery (issue #1362).
+ * Resets attempt count to 0 and updates status to PENDING.
+ * Preserves the original event, timestamp, and payload linkage.
+ */
+export async function requeueWebhookDelivery(
+  deliveryId: string,
+  options: RequeueDeliveryOptions = {}
+): Promise<{
+  id: string;
+  status: DeliveryStatus;
+  attempts: number;
+  eventId: string;
+  webhookId: string;
+}> {
+  const resetAttempts = options.resetAttempts ?? true;
+  const targetStatus = options.targetStatus ?? ("PENDING" as DeliveryStatus);
+
+  const updated = await prisma.webhookDelivery.update({
+    where: { id: deliveryId },
+    data: {
+      status: targetStatus,
+      attempts: resetAttempts ? 0 : undefined,
+      errorMessage: null,
+      error: null,
+    },
+    select: {
+      id: true,
+      status: true,
+      attempts: true,
+      eventId: true,
+      webhookId: true,
+    },
+  });
+
+  logger.info("Webhook delivery requeued into DLQ retry pool", {
+    deliveryId: updated.id,
+    webhookId: updated.webhookId,
+    eventId: updated.eventId,
+    status: updated.status,
+  });
+
+  return updated;
+}
+
+export interface DlqFilterParams {
+  statusCodes?: number[];
+  onlyTimeouts?: boolean;
+  limit?: number;
+  deliveryIds?: string[];
+}
+
+/**
+ * Find and bulk-requeue dead-lettered/failed webhook deliveries matching filters.
+ */
+export async function bulkRequeueDlqDeliveries(
+  webhookId: string,
+  filter: DlqFilterParams = {}
+): Promise<{
+  requeuedCount: number;
+  deliveries: Array<{
+    id: string;
+    eventId: string;
+    status: DeliveryStatus;
+    attempts: number;
+  }>;
+}> {
+  const limit = Math.min(Math.max(filter.limit ?? 50, 1), 100);
+
+  // Match deliveries that failed or are dead-lettered
+  const candidates = await prisma.webhookDelivery.findMany({
+    where: {
+      webhookId,
+      status: {
+        in: ["FAILED", "DEAD_LETTER"] as DeliveryStatus[],
+      },
+      ...(filter.deliveryIds && filter.deliveryIds.length > 0
+        ? { id: { in: filter.deliveryIds } }
+        : {}),
+      ...(filter.statusCodes && filter.statusCodes.length > 0
+        ? { responseCode: { in: filter.statusCodes } }
+        : {}),
+      ...(filter.onlyTimeouts
+        ? {
+            OR: [
+              { errorMessage: { contains: "timeout", mode: "insensitive" } },
+              { errorMessage: { contains: "timed out", mode: "insensitive" } },
+              { error: { contains: "timeout", mode: "insensitive" } },
+              { error: { contains: "timed out", mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { deliveredAt: "desc" },
+    take: limit,
+    select: { id: true, eventId: true },
+  });
+
+  if (candidates.length === 0) {
+    return { requeuedCount: 0, deliveries: [] };
+  }
+
+  const ids = candidates.map((c) => c.id);
+
+  // Perform bulk update to PENDING and reset attempts
+  await prisma.webhookDelivery.updateMany({
+    where: { id: { in: ids } },
+    data: {
+      status: "PENDING" as DeliveryStatus,
+      attempts: 0,
+      errorMessage: null,
+      error: null,
+    },
+  });
+
+  const updatedDeliveries = candidates.map((c) => ({
+    id: c.id,
+    eventId: c.eventId,
+    status: "PENDING" as DeliveryStatus,
+    attempts: 0,
+  }));
+
+  logger.info("Bulk requeued dead-lettered webhook deliveries", {
+    webhookId,
+    requeuedCount: updatedDeliveries.length,
+  });
+
+  return {
+    requeuedCount: updatedDeliveries.length,
+    deliveries: updatedDeliveries,
+  };
+}
+

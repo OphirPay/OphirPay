@@ -19,10 +19,11 @@ endpoints are consistent, secure, and maintainable.
 4. [Error-handling pattern](#4-error-handling-pattern)
 5. [Auth middleware usage](#5-auth-middleware-usage)
 6. [Response envelope](#6-response-envelope)
-7. [Rate-limit integration](#7-rate-limit-integration)
-8. [Worked example](#8-worked-example)
-9. [Testing your endpoint](#9-testing-your-endpoint)
-10. [Checklist](#checklist)
+7. [Cursor-based pagination](#7-cursor-based-pagination)
+8. [Rate-limit integration](#8-rate-limit-integration)
+9. [Worked example](#9-worked-example)
+10. [Testing your endpoint](#10-testing-your-endpoint)
+11. [Checklist](#checklist)
 
 ---
 
@@ -288,7 +289,68 @@ Clients check `success` first; `code` is stable for programmatic handling.
 
 ---
 
-## 7. Rate-limit integration
+## 7. Cursor-based pagination
+
+Lists are paginated with **keyset (cursor) pagination**, never deep offsets.
+`page` / `limit` stay available for legacy consumers, but every list route
+should return `meta.nextCursor` + `meta.hasMore` so clients can page without a
+`total`.
+
+Why: `skip: (page - 1) * limit` makes Postgres scan and discard every skipped
+row, so page 500 costs far more than page 1. A cursor remembers the **last row
+of the previous page** and asks for rows strictly after it, so every page costs
+the same at any depth — as long as the key it compares is indexed.
+
+The shared helpers live in
+[`src/lib/pagination-utils.ts`](../src/lib/pagination-utils.ts):
+
+| Helper | Role |
+| --- | --- |
+| `decodeCursor(raw)` | Opaque base64url token → `{ createdAt, id }`, or `null` (→ 400). |
+| `buildCursorWhere(baseWhere, cursor, direction)` | Wraps the base filter in the keyset condition (`createdAt` then the unique `id` tiebreak). |
+| `keysetOrderBy(direction)` | The matching `orderBy` — cursor key and sort must agree. |
+| `computeNextCursor(rows, limit)` | From `limit + 1` fetched rows → `{ nextCursor, hasMore }`. |
+| `cursorFromRow(row)` | Offsets→keyset handoff anchor for a single row. |
+
+The contract, using `GET /api/audit-log?source=db`:
+
+```ts
+// Fetch one extra row: it tells you whether another page exists.
+const rows = await prisma.auditLog.findMany({
+  where: buildCursorWhere(dbWhere, cursor, direction),   // AND'ed, applies both ways
+  orderBy: keysetOrderBy(direction),                    // [{ createdAt }, { id }]
+  take: limit + 1,
+});
+const { nextCursor, hasMore } = computeNextCursor(rows, limit);
+const visible = rows.slice(0, limit);                   // drop the probe row
+
+return successResponse(visible, { limit, nextCursor, hasMore });
+```
+
+Rules that make pages correct:
+
+- **Composite key, unique tiebreak.** `createdAt` alone repeats constantly;
+  ordering by `(createdAt, id)` and comparing the same pair keeps pages
+  deterministic — no row skipped, none returned twice.
+- **Fetch `limit + 1`**, then drop the probe row. It is never returned.
+- **Don't `COUNT` on a cursor page** — counting is the expensive half of
+  pagination. Expose `meta.total` only when asked (`includeTotal=true`) or when
+  serving the legacy offset window.
+- **Index the key.** Cursor pagination is only fast if the comparison is indexed:
+  `@@index([createdAt, id])` on the model, shipped as its own migration.
+- **Reject invalid cursors** with a 400 and a stable error code rather than
+  silently starting over, and reject `page` + `cursor` together so a request can
+  only mean one paging mode.
+- **Sort direction is a parameter** (`?order=asc`): `buildCursorWhere` compares
+  with `lt`/`gt` and `keysetOrderBy` flips with it. The two must never disagree.
+
+Reference implementations: `src/app/api/payments/route.ts` and
+`src/app/api/events/history/route.ts`. A cursor page's envelope is
+`{ data, nextCursor, hasMore }` — see §6 for where those fields live in `meta`.
+
+---
+
+## 8. Rate-limit integration
 
 Rate limiting is enforced **globally at the proxy layer** in
 [`src/proxy.ts`](../src/proxy.ts) for every `/api/*` path — you do **not** need
@@ -341,7 +403,7 @@ mention it in the PR.
 
 ---
 
-## 8. Worked example
+## 9. Worked example
 
 Below is a complete, copy-pasteable endpoint: `GET/POST /api/counterparties` —
 a per-user list of saved payment counterparties. It demonstrates every
@@ -407,7 +469,7 @@ export const POST = apiRoute({
   bodySchema: createCounterpartySchema,
 }, async (request, { auth, body }) => {
   try {
-    // Stricter per-user limit than the global per-IP one (example of §7)
+    // Stricter per-user limit than the global per-IP one (example of §8)
     const rate = await getRateLimitStore().increment(
       `user:${auth.userId}:counterparties`,
       60_000,
@@ -442,13 +504,13 @@ the existing `Payments` entries, then reference the response schemas. See
 
 ### Step 4 — Test it
 
-See [§9](#9-testing-your-endpoint). At minimum, cover: unauthenticated → 401,
+See [§10](#10-testing-your-endpoint). At minimum, cover: unauthenticated → 401,
 invalid body → 400 with `VALIDATION_ERROR`, valid create → 201 with the
 envelope, and list → 200 scoped to the user.
 
 ---
 
-## 9. Testing your endpoint
+## 10. Testing your endpoint
 
 Every new endpoint ships with unit tests (Definition of Done for every issue):
 

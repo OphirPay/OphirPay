@@ -6,6 +6,8 @@ import {
   decodeCursor,
   buildCursorWhere,
   computeNextCursor,
+  cursorFromRow,
+  keysetOrderBy,
 } from "@/lib/pagination-utils";
 
 describe("encodeCursor / decodeCursor", () => {
@@ -102,6 +104,57 @@ describe("computeNextCursor", () => {
     const { nextCursor } = computeNextCursor(withStrings, 50);
     expect(decodeCursor(nextCursor as string)?.createdAt).toBe(
       "2026-01-01T00:00:49.000Z"
+    );
+  });
+});
+
+describe("directional keyset pagination", () => {
+  const cursor = { createdAt: "2026-08-01T00:00:00.000Z", id: "clx123" };
+
+  it("compares with lt/desc by default", () => {
+    const where = buildCursorWhere({ action: "refund:create" }, cursor) as {
+      AND: Array<Record<string, unknown>>;
+    };
+    expect(where.AND[1]).toEqual({
+      OR: [
+        { createdAt: { lt: cursor.createdAt } },
+        { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+      ],
+    });
+  });
+
+  it("compares with gt for asc direction", () => {
+    const where = buildCursorWhere({ action: "refund:create" }, cursor, "asc") as {
+      AND: Array<Record<string, unknown>>;
+    };
+    expect(where.AND[1]).toEqual({
+      OR: [
+        { createdAt: { gt: cursor.createdAt } },
+        { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+      ],
+    });
+  });
+
+  it("orders by createdAt then id in the requested direction", () => {
+    expect(keysetOrderBy()).toEqual([
+      { createdAt: "desc" },
+      { id: "desc" },
+    ]);
+    expect(keysetOrderBy("asc")).toEqual([
+      { createdAt: "asc" },
+      { id: "asc" },
+    ]);
+  });
+
+  it("encodes a cursor from the last row of a page", () => {
+    const encoded = cursorFromRow({
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      id: "clx123",
+    });
+    expect(decodeCursor(encoded)).toEqual(cursor);
+    // A string createdAt is passed through, not re-serialised.
+    expect(cursorFromRow({ createdAt: cursor.createdAt, id: cursor.id })).toBe(
+      encoded
     );
   });
 });

@@ -2228,26 +2228,55 @@ paths:
   /api/audit-log:
     get:
       tags: [Audit Log]
-      summary: Query contract audit log
+      summary: Query audit log
       description: |
-        Offset-paginated audit log with combined, server-side applied filters
-        (`actor`, `action`, `resource`, `since`/`until` date range) and stable
-        ordering (newest first by default). `total` reflects the filtered set.
+        Audit log with combined, server-side applied filters (`actor`, `action`,
+        `resource`, `since`/`until` date range) and directional ordering by
+        timestamp (`asc` | `desc`, newest first by default).
+
+        `source=db` (the persisted Postgres audit trail) is **cursor-paginated**
+        by default: pass the opaque `cursor` returned as `meta.nextCursor` to
+        resume after the last row of the previous page, or omit it for the first
+        page. Each page costs the same regardless of depth (no deep offset),
+        and the response envelope is `{ data, nextCursor, hasMore }`. An
+        explicit `page` opts back into the legacy offset window, which also
+        returns `meta.total`; in cursor mode the total is opt-in via
+        `includeTotal=true`. `cursor` can only be used with `source=db` and is
+        mutually exclusive with `page`.
+
+        For the on-chain sources (`contract`, `all`), filtering is applied
+        across the full ledger and `meta.total` reflects the filtered set.
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       parameters:
         - name: page
           in: query
           schema: { type: integer, minimum: 1, default: 1 }
+          description: >
+            Legacy offset page. Mutually exclusive with `cursor`, and opting it
+            in disables keyset pagination for `source=db`.
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+          description: >
+            Opaque keyset cursor from `meta.nextCursor`. Resumes pagination
+            after the last row of the previous page. `source=db` only, and
+            cannot be combined with `page`. A malformed value is a 400.
+        - name: includeTotal
+          in: query
+          schema: { type: boolean, default: false }
+          description: >
+            Run the COUNT and include `meta.total` in a keyset (cursor) page.
+            Counting is the expensive half of pagination, so it is opt-in.
         - name: actor
           in: query
           schema: { type: string }
           description: >
             Filter by Stellar address (substring match, case-insensitive).
             Combine with `action`, `since`, and `until`; all filters compose
-            with `page`/`limit` pagination.
+            with pagination.
         - name: action
           in: query
           schema: { type: string }
@@ -2267,7 +2296,7 @@ paths:
         - name: order
           in: query
           schema: { type: string, enum: [asc, desc], default: desc }
-          description: Result ordering by entry id (newest first by default)
+          description: Directional sort by timestamp (newest first by default)
         - name: source
           in: query
           schema: { type: string, enum: [contract, db, all], default: contract }
@@ -2275,8 +2304,10 @@ paths:
       responses:
         "200":
           description: >
-            Paginated audit log entries. Response `meta.total` reflects the
-            filtered result set, so pagination composes with filters.
+            A page of audit entries. Cursor pages report `meta.nextCursor`
+            (null on the last page) and `meta.hasMore`; offset pages also
+            report `meta.total`, which reflects the filtered result set so
+            pagination composes with filters.
         "401":
           $ref: "#/components/responses/Unauthorized"
 

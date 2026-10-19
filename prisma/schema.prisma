@@ -656,6 +656,10 @@ model AuditLog {
 
   /// Speeds up history queries by action/target.
   @@index([action, target])
+  /// Keyset (cursor) pagination for GET /api/audit-log?source=db (#1361): the
+  /// composite ordering the cursor compares against, so a page costs the same
+  /// at any depth instead of scan-and-discard deep offsets.
+  @@index([createdAt, id])
 }
 
 /// Lifecycle of a Refund row, mirroring the on-chain refund state machine.

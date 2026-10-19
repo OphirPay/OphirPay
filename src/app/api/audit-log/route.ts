@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 import { withApiAuth } from "@/lib/api-auth";
-import { successResponse, handleApiError, validationError } from "@/lib/api-response";
+import {
+  successResponse,
+  handleApiError,
+  validationError,
+  badRequestError,
+} from "@/lib/api-response";
 import prisma from "@/lib/prisma";
 import { withRequestLogging } from "@/lib/request-logging";
 import {
@@ -11,19 +16,39 @@ import {
   readAuditEntryById,
   type AuditLogEntry,
 } from "@/lib/audit-log";
+import {
+  buildCursorWhere,
+  computeNextCursor,
+  cursorFromRow,
+  decodeCursor,
+  keysetOrderBy,
+} from "@/lib/pagination-utils";
 
 /**
  * GET /api/audit-log
  *
  * Returns audit log entries. Requires API-key authentication with the
- * `admin` scope. Supports offset pagination (`page` / `limit`) and combined
- * filters: `actor` (substring, case-insensitive), `action` (exact), a
- * `since` / `until` timestamp range (Unix seconds or ISO 8601), and `order`
- * (asc | desc).
+ * `admin` scope.
+ *
+ * Pagination (issue #1361):
+ *   - `source=db` (the Postgres-backed audit trail) is cursor-paginatable.
+ *     Pass an opaque `cursor` — returned as `meta.nextCursor` — to resume
+ *     after the last row of the previous page. Keyset paging never deep-skips,
+ *     so a page costs the same at any depth, which is what makes the endpoint
+ *     viable for enterprise accounts with tens of thousands of rows. In cursor
+ *     mode the response is `{ data, nextCursor, hasMore }` (no expensive
+ *     COUNT is run). Offset paging via `page` / `limit` remains supported for
+ *     legacy consumers and still returns `meta.total`.
+ *   - `cursor` cannot be combined with `page`, and is rejected (400) for the
+ *     on-chain sources, which have no indexed keyset to page on.
+ *   - `order` (`asc` | `desc`) sorts by timestamp in both pagination modes.
+ *
+ * Combined filters: `actor` (substring, case-insensitive), `action` (exact),
+ * a `since` / `until` timestamp range (Unix seconds or ISO 8601).
  *
  * `source` selects the backing store:
- *   - `db`       → persisted audit entries (refund lifecycle history, issue
- *                  #365), queryable by action/target;
+ *   - `db`       → persisted audit entries (refund lifecycle history, issue #365),
+ *                  queryable by action/target;
  *   - `contract` → the on-chain immutable audit ledger (default), filtered
  *                  server-side with offset pagination;
  *   - `all`      → DB entries plus matching on-chain entries.
@@ -100,6 +125,7 @@ async function _GET(request: Request) {
     const parsed = auditLogQuerySchema.safeParse({
       page: param("page"),
       limit: param("limit"),
+      cursor: param("cursor"),
       actor: param("actor"),
       action: param("action"),
       resource: param("resource"),
@@ -111,6 +137,7 @@ async function _GET(request: Request) {
     if (!parsed.success) return validationError(parsed.error);
 
     const { page, limit, source } = parsed.data;
+    const direction = parsed.data.order === "asc" ? "asc" : "desc";
     const hasFilters = Boolean(
       parsed.data.actor ||
         parsed.data.action ||
@@ -118,6 +145,33 @@ async function _GET(request: Request) {
         parsed.data.since != null ||
         parsed.data.until != null
     );
+
+    // ── Cursor (keyset) pagination — issue #1361 ─────────────────
+    // Deep offset pages force Postgres to scan and discard every skipped row,
+    // which is what degrades plans and latency on large audit tables. Cursor
+    // pagination resumes *after* the last row of the previous page instead.
+    //
+    // Keyset is the default for the Postgres-backed source (an explicit `page`
+    // opts back into the legacy offset window, and the on-chain sources, which
+    // have no indexed key to page on, always use it).
+    const explicitPage = searchParams.get("page");
+    const rawCursor = searchParams.get("cursor");
+    if (rawCursor && source !== "db") {
+      return badRequestError(
+        "cursor pagination is only supported with source=db"
+      );
+    }
+    if (rawCursor && explicitPage) {
+      return badRequestError("page and cursor cannot both be used");
+    }
+    const cursor = rawCursor ? decodeCursor(rawCursor) : null;
+    if (rawCursor && !cursor) {
+      return badRequestError("Invalid cursor");
+    }
+    const keysetMode = source === "db" && (cursor !== null || explicitPage === null);
+    // Counting is the expensive half of pagination, so it stays opt-in in
+    // keyset mode — same contract as GET /api/payments.
+    const includeTotal = searchParams.get("includeTotal") === "true";
 
     // Filters shared by the contract path (numeric seconds) and the DB path
     // (exact action / target-id match on the persisted trail).
@@ -143,25 +197,67 @@ async function _GET(request: Request) {
     };
 
     // Persisted (DB) audit entries — refund lifecycle history with record
-    // ids (issue #365).
-    const dbRows =
-      source === "db" || source === "all"
-        ? (
-            await prisma.auditLog.findMany({
-              where: dbWhere,
-              orderBy: { createdAt: "desc" },
-              skip: (page - 1) * limit,
-              take: limit,
-            })
-          ).map(mapDbRow)
-        : [];
-    const dbTotal =
-      source === "db" || source === "all"
-        ? await prisma.auditLog.count({ where: dbWhere })
-        : 0;
+    // ids (issue #365), served with keyset pagination (issue #1361).
+    let dbRows: DbAuditRow[] = [];
+    let dbTotal = 0;
+    let dbNextCursor: string | null = null;
+    let dbHasMore = false;
+    if (source === "db" || source === "all") {
+      if (keysetMode) {
+        // Keyset page: `limit + 1` rows reveal whether another page exists, so
+        // the COUNT that makes deep offset pages expensive is opt-in only.
+        const rows = await prisma.auditLog.findMany({
+          where: buildCursorWhere(dbWhere, cursor, direction),
+          orderBy: keysetOrderBy(direction),
+          take: limit + 1,
+        });
+        const { nextCursor, hasMore } = computeNextCursor(rows, limit);
+        dbRows = rows.slice(0, limit).map(mapDbRow);
+        dbNextCursor = nextCursor;
+        dbHasMore = hasMore;
+        if (includeTotal) dbTotal = await prisma.auditLog.count({ where: dbWhere });
+      } else {
+        // Offset page (legacy). The COUNT still drives page navigation for
+        // callers that use it, and `order` applies in both directions now.
+        const [rows, total] = await Promise.all([
+          prisma.auditLog.findMany({
+            where: dbWhere,
+            orderBy: keysetOrderBy(direction),
+            skip: (page - 1) * limit,
+            take: limit,
+          }),
+          prisma.auditLog.count({ where: dbWhere }),
+        ]);
+        dbRows = rows.map(mapDbRow);
+        dbTotal = total;
+        dbHasMore = page * limit < total;
+        // Hand out the keyset anchor so offset callers can migrate to cursor
+        // paging on the next request.
+        dbNextCursor =
+          dbHasMore && rows.length > 0
+            ? cursorFromRow(rows[rows.length - 1])
+            : null;
+      }
+    }
 
     if (source === "db") {
-      return successResponse(dbRows, { page, limit, total: dbTotal });
+      return successResponse(
+        dbRows,
+        keysetMode
+          ? {
+              ...(includeTotal ? { page, total: dbTotal } : {}),
+              limit,
+              nextCursor: dbNextCursor,
+              hasMore: dbHasMore,
+            }
+          : {
+              page,
+              limit,
+              total: dbTotal,
+              nextCursor: dbNextCursor,
+              hasMore: dbHasMore,
+            }
+      );
     }
 
     // ── On-chain ledger (source=contract | all) ────────────────

@@ -23,6 +23,9 @@ export interface CursorPayload {
   id: string;
 }
 
+/** Keyset sort direction. The `orderBy` and the cursor comparison must agree. */
+export type SortDirection = "asc" | "desc";
+
 const cursorPayloadSchema = z.object({
   createdAt: z.iso.datetime({ offset: true }),
   id: z.string().min(1).max(64),
@@ -106,26 +109,60 @@ export function prismaPagination(page: number, limit: number) {
 // costs the same regardless of depth.
 
 /**
- * Combine the base filter with the keyset condition for `createdAt desc,
- * id desc` ordering. Uses `AND` so a cursor never collides with the base
+ * Combine the base filter with the keyset condition for `createdAt <dir>,
+ * id <dir>` ordering. Uses `AND` so a cursor never collides with the base
  * filter's own `OR` (e.g. search terms).
+ *
+ * The cursor is a strict inequality on the composite sort key
+ * (`createdAt`, `id`), so the next page resumes exactly after the anchor row:
+ * no row is skipped and none is returned twice, even when many rows share the
+ * same `createdAt` (the numeric/tiebreak `id` disambiguates them).
+ *
+ * Defaults to `desc`, matching the newest-first ordering most list endpoints use.
  */
 export function buildCursorWhere(
   baseWhere: Record<string, unknown>,
-  cursor: CursorPayload | null
+  cursor: CursorPayload | null,
+  direction: SortDirection = "desc"
 ): Record<string, unknown> {
   if (!cursor) return baseWhere;
+  const cmp = direction === "asc" ? "gt" : "lt";
   return {
     AND: [
       baseWhere,
       {
         OR: [
-          { createdAt: { lt: cursor.createdAt } },
-          { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+          { createdAt: { [cmp]: cursor.createdAt } },
+          { createdAt: cursor.createdAt, id: { [cmp]: cursor.id } },
         ],
       },
     ],
   };
+}
+
+/**
+ * `orderBy` for a keyset query. The cursor key (`createdAt`, then the unique
+ * `id` tiebreaker) must sort the same way as {@link buildCursorWhere} compares,
+ * otherwise pages overlap or skip.
+ */
+export function keysetOrderBy(
+  direction: SortDirection = "desc"
+): { createdAt?: SortDirection; id?: SortDirection }[] {
+  return [{ createdAt: direction }, { id: direction }];
+}
+
+/** Encode a cursor anchored at `row` (conventionally the page's last row). */
+export function cursorFromRow(row: {
+  createdAt: Date | string;
+  id: string;
+}): string {
+  return encodeCursor({
+    createdAt:
+      row.createdAt instanceof Date
+        ? row.createdAt.toISOString()
+        : row.createdAt,
+    id: row.id,
+  });
 }
 
 /**
@@ -139,15 +176,5 @@ export function computeNextCursor<T extends { createdAt: Date | string; id: stri
   if (rows.length <= limit) {
     return { nextCursor: null, hasMore: false };
   }
-  const last = rows[limit - 1];
-  return {
-    nextCursor: encodeCursor({
-      createdAt:
-        last.createdAt instanceof Date
-          ? last.createdAt.toISOString()
-          : last.createdAt,
-      id: last.id,
-    }),
-    hasMore: true,
-  };
+  return { nextCursor: cursorFromRow(rows[limit - 1]), hasMore: true };
 }

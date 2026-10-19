@@ -709,6 +709,58 @@ curl -X GET "https://api.ophirpay.com/api/audit-log?page=1&limit=10&action=ESCRO
 }
 ```
 
+### Page the Persisted Audit Trail with a Cursor
+
+The Postgres-backed trail (`source=db`) is keyset-paginated: no deep offsets, so
+every page costs the same however large the table grows. Omit `cursor` for the
+first page, then feed `meta.nextCursor` back in.
+
+```bash
+# First page
+curl -X GET "https://api.ophirpay.com/api/audit-log?source=db&limit=5" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+
+# Next page — replay the cursor from meta.nextCursor of the response above
+curl -X GET "https://api.ophirpay.com/api/audit-log?source=db&limit=5&cursor=eyJjcmVhdGVkQXQiOiIyMDI2LTEwLTE5VDA3OjA0OjIxLjAwMFoiLCJpZCI6ImF1ZGl0XzAxODkifQ" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+
+# Oldest first
+curl -X GET "https://api.ophirpay.com/api/audit-log?source=db&limit=5&order=asc" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "audit_01899",
+      "timestamp": 1787770000,
+      "action": "refund:approve",
+      "actor": "user_7f3a",
+      "target_id": "refund_019a",
+      "details": { "paymentId": "1001", "reasonCode": 3 }
+    }
+  ],
+  "meta": {
+    "limit": 5,
+    "nextCursor": "eyJjcmVhdGVkQXQiOiIyMDI2LTEwLTE5VDA2OjU0OjE3LjAwMFoiLCJpZCI6ImF1ZGl0XzAxODk1In0",
+    "hasMore": true,
+    "timestamp": "2026-10-19T07:04:21.123Z"
+  }
+}
+```
+
+- `meta.nextCursor` is `null` and `meta.hasMore` is `false` on the last page.
+- A cursor page deliberately omits `meta.total` (counting is the expensive half
+  of pagination); add `&includeTotal=true` when you need it.
+- `cursor` cannot be combined with `page`, and is rejected with a `400` for the
+  on-chain sources, which have no indexed key to page on.
+- See [Cursor-based pagination](./API_GUIDE.md#7-cursor-based-pagination) for
+  the rules every list endpoint follows.
+
+
 ### Listen to Real-Time Payment Events (Server-Sent Events)
 ```bash
 curl -N -X GET "https://api.ophirpay.com/api/events" \

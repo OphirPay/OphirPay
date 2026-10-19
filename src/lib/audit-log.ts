@@ -84,6 +84,9 @@ export const auditLogQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
+    // Opaque keyset cursor for `cursor`-based pagination (issue #1361). Encoded
+    // by `encodeCursor()`; rejected with a 400 when malformed.
+    cursor: z.string().trim().min(1).max(512).optional(),
     actor: z.string().trim().min(1).optional(),
     action: z.string().trim().min(1).optional(),
     resource: z.coerce.number().int().nonnegative().optional(),

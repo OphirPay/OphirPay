@@ -781,14 +781,14 @@ fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
         &total,
         &fix.token_id,
         &now,
-        &(now + 4),
+        &(now + 60),
         &String::from_str(&fix.env, "overflow e2e"),
     );
     assert_eq!(stream_id, 1);
 
     // Half-way through the schedule: `total * 2` overflows i128. Before the
     // fix this vested 0, so the recipient could claim nothing at all.
-    fix.env.ledger().set_timestamp(now + 2);
+    fix.env.ledger().set_timestamp(now + 30);
     let claimed = fix.client.claim_stream(&recipient, &stream_id);
     assert!(claimed > 0, "overflow must not collapse vesting to zero");
     assert_eq!(claimed, total / 2);
@@ -811,6 +811,98 @@ fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
     let refunded = fix.client.cancel_stream(&creator, &stream_id);
     assert_eq!(refunded, 0);
     assert_eq!(fix.token_client.balance(&recipient), total);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 14. STREAM DURATION BOUNDS (issue #1350)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A stream shorter than `MIN_STREAM_DURATION` must be rejected rather than
+/// create a pathologically short vesting schedule.
+#[test]
+fn test_create_stream_rejects_duration_below_minimum() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 1_000i128);
+
+    let now = fix.env.ledger().timestamp();
+    let result = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 59),
+        &String::from_str(&fix.env, "too short"),
+    );
+    assert_eq!(result, Err(Ok(PaymentError::StreamDurationTooShort)));
+}
+
+/// A stream exactly at `MIN_STREAM_DURATION` must be accepted.
+#[test]
+fn test_create_stream_accepts_minimum_duration() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 1_000i128);
+
+    let now = fix.env.ledger().timestamp();
+    let stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 60),
+        &String::from_str(&fix.env, "minimum ok"),
+    );
+    assert_eq!(stream_id, 1);
+}
+
+/// A stream longer than `MAX_STREAM_DURATION` must be rejected rather than
+/// outlive any realistic ledger TTL guarantee.
+#[test]
+fn test_create_stream_rejects_duration_above_maximum() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 1_000i128);
+
+    let now = fix.env.ledger().timestamp();
+    let max_duration: u64 = 5 * 365 * 24 * 60 * 60;
+    let result = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &now,
+        &(now + max_duration + 1),
+        &String::from_str(&fix.env, "too long"),
+    );
+    assert_eq!(result, Err(Ok(PaymentError::StreamDurationTooLong)));
+}
+
+/// A stream exactly at `MAX_STREAM_DURATION` must be accepted.
+#[test]
+fn test_create_stream_accepts_maximum_duration() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 1_000i128);
+
+    let now = fix.env.ledger().timestamp();
+    let max_duration: u64 = 5 * 365 * 24 * 60 * 60;
+    let stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &1_000i128,
+        &fix.token_id,
+        &now,
+        &(now + max_duration),
+        &String::from_str(&fix.env, "maximum ok"),
+    );
+    assert_eq!(stream_id, 1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

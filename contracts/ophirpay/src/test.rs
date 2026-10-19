@@ -539,19 +539,19 @@ mod tests {
             &i128::MAX,
             &sac,
             &now,
-            &(now + 4),
+            &(now + 60),
             &String::from_str(&env, "overflow"),
         );
         assert_eq!(stream_id, 1);
 
         // 50% through: the multiply (`MAX * 2`) overflows i128.
-        env.ledger().set_timestamp(now + 2);
+        env.ledger().set_timestamp(now + 30);
         let first = client.claim_stream(&recipient, &1);
         assert_eq!(first, i128::MAX / 2, "half of the stream must be claimable");
         assert!(first > 0, "claim must not silently pay nothing");
 
         // Fully vested: the remainder is exactly what has not been claimed.
-        env.ledger().set_timestamp(now + 10);
+        env.ledger().set_timestamp(now + 100);
         let second = client.claim_stream(&recipient, &1);
         assert_eq!(second, i128::MAX - (i128::MAX / 2));
 

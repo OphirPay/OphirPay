@@ -68,6 +68,7 @@ export async function recordWebhookDelivery(
     errorMessage?: string;
     isReplay?: boolean;
     replayBatchId?: string;
+    nextAttemptAt?: Date | null;
   },
 ): Promise<string> {
   const row = await prisma.webhookDelivery.create({
@@ -81,6 +82,7 @@ export async function recordWebhookDelivery(
       errorMessage: options?.errorMessage,
       isReplay: options?.isReplay ?? false,
       replayBatchId: options?.replayBatchId,
+      nextAttemptAt: options?.nextAttemptAt,
     },
   });
   return row.id;

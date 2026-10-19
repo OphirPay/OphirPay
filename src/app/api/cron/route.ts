@@ -22,6 +22,7 @@ import {
   selectDuePayments,
 } from "@/lib/scheduler";
 import { publicKeyFromSecret, submitPaymentFromSecret } from "@/lib/stellar";
+import { processWebhookRetryQueue } from "@/lib/webhook-delivery-service";
 
 /**
  * Scheduled payment execution (issue #175).
@@ -89,6 +90,18 @@ async function runScheduledPayments(request: Request) {
         );
       }
       return unauthorizedError("Invalid or missing cron secret.");
+    }
+
+    const url = new URL(request.url);
+    const job =
+      url.searchParams.get("job") ??
+      url.searchParams.get("target") ??
+      url.searchParams.get("type") ??
+      request.headers.get("x-cron-job");
+
+    if (job === "webhooks" || job === "webhook-retry" || job === "webhook-retries") {
+      const summary = await processWebhookRetryQueue();
+      return successResponse(summary);
     }
 
     // Checked before any row is touched: without a signing account the run
@@ -250,6 +263,13 @@ async function runScheduledPayments(request: Request) {
       failed: summary.failed,
       skipped: summary.skipped,
     });
+
+
+    if (job === "all") {
+      (summary as unknown as Record<string, unknown>).webhooks =
+        await processWebhookRetryQueue();
+    }
+
 
     return successResponse(summary);
   } catch (err) {

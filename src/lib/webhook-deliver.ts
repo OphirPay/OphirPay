@@ -354,3 +354,47 @@ export async function deliverWebhookWithDetails(
 ): Promise<WebhookDeliveryDetails> {
   return deliverWebhook(url, secret, payload, maxRetries);
 }
+
+/**
+ * Exponential backoff schedule for retry queue (issue #1288):
+ * - Attempt 1: 1 minute (60,000 ms)
+ * - Attempt 2: 5 minutes (300,000 ms)
+ * - Attempt 3: 15 minutes (900,000 ms)
+ * - Attempt 4: 1 hour (3,600,000 ms)
+ * - Attempt 5: 4 hours (14,400,000 ms)
+ * - > 5 attempts: DEAD_LETTER
+ */
+export const WEBHOOK_RETRY_SCHEDULE_MS = [
+  60_000, // 1m
+  300_000, // 5m
+  900_000, // 15m
+  3_600_000, // 1h
+  14_400_000, // 4h
+] as const;
+
+export const MAX_WEBHOOK_RETRIES = 5;
+
+/**
+ * Returns delay in milliseconds for the specified retry attempt (1-based index).
+ * Returns null if attempts have reached or exceeded MAX_WEBHOOK_RETRIES.
+ */
+export function computeNextRetryDelayMs(attempts: number): number | null {
+  if (attempts < 1 || attempts > MAX_WEBHOOK_RETRIES) {
+    return null;
+  }
+  return WEBHOOK_RETRY_SCHEDULE_MS[attempts - 1] ?? null;
+}
+
+/**
+ * Calculates the next attempt Date based on current attempts and fromDate.
+ * Returns null if retries are exhausted.
+ */
+export function computeNextAttemptAt(
+  attempts: number,
+  fromDate: Date = new Date()
+): Date | null {
+  const delayMs = computeNextRetryDelayMs(attempts);
+  if (delayMs === null) return null;
+  return new Date(fromDate.getTime() + delayMs);
+}
+

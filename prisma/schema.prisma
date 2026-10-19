@@ -563,6 +563,7 @@ model WebhookDelivery {
   durationMs    Int?
   error         String?
   deliveredAt   DateTime       @default(now())
+  nextAttemptAt DateTime?
   createdAt     DateTime       @default(now())
 
   webhook Webhook     @relation(fields: [webhookId], references: [id])
@@ -570,11 +571,13 @@ model WebhookDelivery {
 
   @@index([webhookId, deliveredAt])
   @@index([replayBatchId])
+  @@index([status, nextAttemptAt])
 }
 
 enum DeliveryStatus {
   SUCCESS
   FAILED
+  RETRYING
   DEAD_LETTER
 }
 

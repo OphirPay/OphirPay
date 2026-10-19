@@ -68,7 +68,7 @@ describe("persistDeliveryResult", () => {
     mockDeliveryCreate.mockResolvedValue({ id: "del_new" });
   });
 
-  it("records latency, attempts, and error message", async () => {
+  it("records latency, attempts, error message, and schedules RETRYING status", async () => {
     const id = await persistDeliveryResult("wh_1", "evt_1", {
       success: false,
       statusCode: 500,
@@ -82,7 +82,7 @@ describe("persistDeliveryResult", () => {
       data: expect.objectContaining({
         webhookId: "wh_1",
         eventId: "evt_1",
-        status: "DEAD_LETTER",
+        status: "RETRYING",
         responseCode: 500,
         latencyMs: 1200,
         attempts: 3,
@@ -90,7 +90,32 @@ describe("persistDeliveryResult", () => {
       }),
     });
   });
+
+  it("records DEAD_LETTER when maximum retries are exhausted", async () => {
+    const id = await persistDeliveryResult("wh_1", "evt_1", {
+      success: false,
+      statusCode: 500,
+      latencyMs: 1200,
+      attempts: 5,
+      errorMessage: "HTTP 500",
+    });
+
+    expect(id).toBe("del_new");
+    expect(mockDeliveryCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        webhookId: "wh_1",
+        eventId: "evt_1",
+        status: "DEAD_LETTER",
+        responseCode: 500,
+        latencyMs: 1200,
+        attempts: 5,
+        errorMessage: "HTTP 500",
+        nextAttemptAt: null,
+      }),
+    });
+  });
 });
+
 
 describe("delivery list shape", () => {
   it("maps stored delivery fields for dashboard consumption", () => {

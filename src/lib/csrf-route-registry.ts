@@ -144,6 +144,12 @@ export const CSRF_EXEMPT_ROUTES: CsrfExemptRoute[] = [
   },
   {
     method: "POST",
+    path: "/api/cron/webhooks",
+    routeFile: "cron/webhooks/route.ts",
+    reason: "Webhook retry queue sweep; authenticated by CRON_SECRET, never a browser session.",
+  },
+  {
+    method: "POST",
     path: "/api/scheduled/run",
     routeFile: "scheduled/run/route.ts",
     reason: "Scheduled-payment runner; authenticated by CRON_SECRET, not a browser session.",

@@ -83,15 +83,17 @@ They still call `verifyCsrf()` as defence in depth.
 |-------|--------|------|--------|
 | `/api/jobs/process-due-recurring` | POST | ⏱ | Recurring scheduler sweep; authenticated by `CRON_SECRET`. |
 | `/api/cron` | POST | ⏱ | Scheduled-payment execution sweep (cron). |
+| `/api/cron/webhooks` | POST | ⏱ | Webhook retry queue sweep (cron); authenticated by `CRON_SECRET`. |
 | `/api/scheduled/run` | POST | ⏱ | Trigger scheduled payment run (cron). |
 
-**Subtotal:** 3 handlers, all machine-invoked.
+**Subtotal:** 4 handlers, all machine-invoked.
 
 > OphirPay delivers webhooks **outbound only**, so there is no inbound webhook
 > receiver route to list. If one is ever added it must be allowlisted here with
 > a reason (signature verification) rather than left to drift.
 
-**Total:** **40** mutating handlers — 37 protected + 3 allowlisted.
+**Total:** **41** mutating handlers — 37 protected + 4 allowlisted.
+
 
 ## Enforcement
 

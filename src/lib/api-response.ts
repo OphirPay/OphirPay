@@ -20,6 +20,10 @@ interface ApiSuccess<T> {
     timestamp?: string;
     /** Opaque cursor for the next page (keyset pagination). */
     nextCursor?: string | null;
+    /** Sort field used for cursor pagination (audit-log, #1361). */
+    sort?: string;
+    /** Sort direction for cursor pagination. */
+    order?: string;
     /** Whether more rows exist after this page. */
     hasMore?: boolean;
     /**

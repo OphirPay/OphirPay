@@ -935,3 +935,150 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ══════════════════════════════════════════════════════════════════
+// Dispute Resolution Cooling-Off Period Tests (Issue #1353)
+// ══════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_resolve_dispute_premature_fails_with_cooling_off_active() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+
+    fix.mint(&depositor, 10_000);
+
+    let deadline = fix.env.ledger().timestamp() + 100_000;
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &1_000i128,
+        &fix.token_id,
+        &deadline,
+        &String::from_str(&fix.env, "test escrow"),
+    );
+
+    // Initiate dispute
+    fix.client.initiate_dispute(&depositor, &escrow_id);
+
+    let escrow = fix.client.get_escrow(&escrow_id);
+    assert!(escrow.dispute_initiated_at > 0);
+
+    // Arbiter attempts to resolve dispute prematurely without mutual signoff
+    let res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert_eq!(res, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+
+    // Arbiter attempts via release_by_arbiter prematurely
+    let res_arbiter = fix.client.try_release_by_arbiter(&arbiter, &escrow_id, &true);
+    assert_eq!(res_arbiter, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+}
+
+#[test]
+fn test_resolve_dispute_post_timeout_succeeds() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+
+    fix.mint(&depositor, 10_000);
+
+    let deadline = fix.env.ledger().timestamp() + 200_000;
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &1_000i128,
+        &fix.token_id,
+        &deadline,
+        &String::from_str(&fix.env, "test escrow"),
+    );
+
+    fix.client.initiate_dispute(&beneficiary, &escrow_id);
+
+    // Advance ledger timestamp beyond MIN_DISPUTE_PERIOD (86,400s)
+    let current_ts = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(current_ts + 86_401);
+
+    // Arbiter resolves in favor of beneficiary
+    let res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert!(res.is_ok());
+
+    assert_eq!(fix.token_client.balance(&beneficiary), 1_000);
+    let updated = fix.client.get_escrow(&escrow_id);
+    assert!(updated.released);
+    assert!(updated.claimed);
+}
+
+#[test]
+fn test_resolve_dispute_mutual_signoff_bypasses_cooling_off() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+
+    fix.mint(&depositor, 10_000);
+
+    let deadline = fix.env.ledger().timestamp() + 200_000;
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &1_000i128,
+        &fix.token_id,
+        &deadline,
+        &String::from_str(&fix.env, "test escrow"),
+    );
+
+    fix.client.initiate_dispute(&depositor, &escrow_id);
+
+    // Resolving immediately with mutual signoff succeeds without advancing timestamp
+    let res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &false, &true);
+    assert!(res.is_ok());
+
+    // Refunded back to depositor
+    assert_eq!(fix.token_client.balance(&depositor), 10_000);
+}
+
+#[test]
+fn test_configurable_min_dispute_period_enforced() {
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    let arbiter = Address::generate(&fix.env);
+
+    fix.mint(&depositor, 10_000);
+
+    // Default is 86,400s
+    assert_eq!(fix.client.get_min_dispute_period(), 86_400);
+
+    // Owner customizes dispute period to 3,600s
+    fix.client.set_min_dispute_period(&fix.owner, &3_600);
+    assert_eq!(fix.client.get_min_dispute_period(), 3_600);
+
+    let deadline = fix.env.ledger().timestamp() + 200_000;
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &1_000i128,
+        &fix.token_id,
+        &deadline,
+        &String::from_str(&fix.env, "test escrow"),
+    );
+
+    fix.client.initiate_dispute(&depositor, &escrow_id);
+
+    // At 1,800s, still cooling off
+    let current_ts = fix.env.ledger().timestamp();
+    fix.env.ledger().set_timestamp(current_ts + 1_800);
+    let early_res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert_eq!(early_res, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+
+    // At 3,601s, succeeds
+    fix.env.ledger().set_timestamp(current_ts + 3_601);
+    let ok_res = fix.client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+    assert!(ok_res.is_ok());
+}
+

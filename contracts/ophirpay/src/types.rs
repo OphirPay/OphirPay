@@ -53,7 +53,15 @@ pub struct Escrow {
     pub released: bool,
     pub claimed: bool,
     pub metadata: String,
+    pub dispute_initiated_at: u64, // 0 if no dispute has been raised
 }
+
+/// Type alias for Escrow conforming to EscrowRecord specification (#1353)
+pub type EscrowRecord = Escrow;
+
+/// Minimum dispute cooling-off period: 24 hours in seconds (#1353)
+pub const MIN_DISPUTE_PERIOD: u64 = 86_400;
+pub const MIN_DISPUTE_PERIOD_KEY: Symbol = symbol_short!("MIN_DISP");
 
 /// A payment stream that vests tokens over time.
 #[contracttype]

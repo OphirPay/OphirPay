@@ -53,6 +53,7 @@ export interface EscrowData {
   released: boolean;
   claimed: boolean;
   metadata: string;
+  dispute_initiated_at: number;
 }
 
 // ── Payment Stream ──────────────────────────────────────────

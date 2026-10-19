@@ -51,6 +51,52 @@ pub const BUMP_MAINTENANCE_TTL: u32 = 100_000;
 // `get_reason_code_analytics`.
 pub const MAX_READER_ENTRIES: u32 = 100;
 
+/// Standard Stellar / SAC token decimal precision (7 decimals = 10^7 stroops per unit) (#1347).
+pub const DEFAULT_STELLAR_DECIMALS: u32 = 7;
+
+/// Maximum supported token decimal precision (18 decimals, ERC-20 / bridged asset ceiling) (#1347).
+pub const MAX_TOKEN_DECIMALS: u32 = 18;
+
+/// Compute the minimum divisible stroop quantum step for a token with `decimals` precision
+/// when amounts are expressed in 7-decimal Stellar stroop units (`10^(7 - decimals)` for
+/// `decimals < 7`, or `1` when `decimals >= 7`).
+pub fn token_quantum_step(decimals: u32) -> Result<i128, PaymentError> {
+    if decimals > MAX_TOKEN_DECIMALS {
+        return Err(PaymentError::InvalidDecimalPrecision);
+    }
+    if decimals < DEFAULT_STELLAR_DECIMALS {
+        let exp = DEFAULT_STELLAR_DECIMALS - decimals;
+        Ok(10_i128.pow(exp))
+    } else {
+        Ok(1)
+    }
+}
+
+/// Resolve the configured or SEP-41 reported decimal precision for `asset` and verify
+/// that `amount` is aligned to the token's minimum divisible quantum step (#1347).
+pub fn validate_token_decimal_precision(
+    env: &Env,
+    asset: &Address,
+    amount: i128,
+) -> Result<u32, PaymentError> {
+    let key = (TOKEN_DECIMALS_KEY, asset.clone());
+    let decimals: u32 = if let Some(configured) = env.storage().persistent().get::<_, u32>(&key) {
+        configured
+    } else {
+        let client = token::Client::new(env, asset);
+        match client.try_decimals() {
+            Ok(Ok(d)) => d,
+            _ => DEFAULT_STELLAR_DECIMALS,
+        }
+    };
+
+    let quantum = token_quantum_step(decimals)?;
+    if quantum > 1 && amount % quantum != 0 {
+        return Err(PaymentError::InvalidDecimalPrecision);
+    }
+    Ok(decimals)
+}
+
 // ── Contract ───────────────────────────────────────────────────
 
 #[contract]
@@ -1110,6 +1156,7 @@ impl OphirPayContract {
         if tx_hash.len() == 0 {
             return Err(PaymentError::InvalidAmount);
         }
+        validate_token_decimal_precision(&env, &asset, amount)?;
 
         let idempotency_key = (PAYMENT_IDEMPOTENCY_KEY, payer.clone(), tx_hash.clone());
         if let Some(existing_id) = env
@@ -2026,6 +2073,39 @@ impl OphirPayContract {
     //  PAYMENT RECORDS (for Horizon-based XLM payments)
     // ═══════════════════════════════════════════════════════════
 
+    /// Configure the expected decimal precision for a token contract (owner only, #1347).
+    /// Rejects `decimals > MAX_TOKEN_DECIMALS` (18) with `PaymentError::InvalidDecimalPrecision`.
+    pub fn set_token_decimals(
+        env: Env,
+        caller: Address,
+        asset: Address,
+        decimals: u32,
+    ) -> Result<(), PaymentError> {
+        caller.require_auth();
+        require_owner(&env, &caller)?;
+        if decimals > MAX_TOKEN_DECIMALS {
+            return Err(PaymentError::InvalidDecimalPrecision);
+        }
+        let key = (TOKEN_DECIMALS_KEY, asset);
+        env.storage().persistent().set(&key, &decimals);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, BUMP_MIN_TTL, BUMP_MAX_TTL);
+        record_audit(
+            &env,
+            "token_decimals_set",
+            &caller,
+            decimals as u64,
+            "Token decimal precision configured",
+        );
+        Ok(())
+    }
+
+    /// Query the effective decimal precision for a token asset (#1347).
+    pub fn get_token_decimals(env: Env, asset: Address) -> Result<u32, PaymentError> {
+        validate_token_decimal_precision(&env, &asset, 0)
+    }
+
     /// Record an off-chain payment on the Soroban ledger.
     /// Anyone can call — this just stores a record, no tokens move.
     pub fn record_payment(
@@ -2042,6 +2122,7 @@ impl OphirPayContract {
         if amount <= 0 {
             return Err(PaymentError::InvalidAmount);
         }
+        validate_token_decimal_precision(&env, &asset, amount)?;
 
         // Idempotency (#804): (payer, tx_hash) identifies a payment. Replaying
         // the same call returns the original id; replaying it with a different

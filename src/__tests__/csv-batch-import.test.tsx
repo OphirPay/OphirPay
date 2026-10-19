@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CsvBatchImport, type CsvRecipientRow } from "@/components/CsvBatchImport";
+import { ToastProvider } from "@/components/ui/Toast";
 
 const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const OTHER_ADDRESS = "G" + "B".repeat(55);
@@ -21,11 +22,13 @@ function setup(props: { selfAddress?: string | null } = {}) {
   const onRowsChange = vi.fn<(rows: CsvRecipientRow[]) => void>();
   const onValidityChange = vi.fn<(valid: boolean) => void>();
   render(
-    <CsvBatchImport
-      selfAddress={props.selfAddress ?? null}
-      onRowsChange={onRowsChange}
-      onValidityChange={onValidityChange}
-    />
+    <ToastProvider>
+      <CsvBatchImport
+        selfAddress={props.selfAddress ?? null}
+        onRowsChange={onRowsChange}
+        onValidityChange={onValidityChange}
+      />
+    </ToastProvider>
   );
   return { onRowsChange, onValidityChange };
 }
@@ -163,5 +166,51 @@ describe("CsvBatchImport", () => {
     expect(
       await screen.findByText(/must have a header row and at least one data row/i)
     ).toBeInTheDocument();
+  });
+
+  it("highlights the dropzone while a file is dragged over it", () => {
+    setup();
+    const dropzone = screen.getByTestId("csv-dropzone");
+    expect(
+      screen.getByText(/drag & drop your csv file here/i)
+    ).toBeInTheDocument();
+    fireEvent.dragOver(dropzone);
+    expect(screen.getByText(/drop your csv here/i)).toBeInTheDocument();
+    fireEvent.dragLeave(dropzone);
+    expect(
+      screen.getByText(/drag & drop your csv file here/i)
+    ).toBeInTheDocument();
+  });
+
+  it("rejects a non-CSV file with an error toast and parses nothing", async () => {
+    const { onRowsChange } = setup();
+    fireEvent.change(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      {
+        target: {
+          files: [new File(["not csv"], "notes.txt", { type: "text/plain" })],
+        },
+      }
+    );
+
+    expect(await screen.findByText("Unsupported file type")).toBeInTheDocument();
+    expect(screen.queryByTestId("csv-preview-table")).toBeNull();
+    // No parsed rows are ever handed to the parent for a rejected file.
+    expect(onRowsChange).not.toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ address: expect.any(String) }),
+      ])
+    );
+  });
+
+  it("displays the file size immediately after a valid CSV is accepted", async () => {
+    setup();
+    await uploadFile(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,\n`)
+    );
+    const size = await screen.findByTestId("csv-file-size");
+    expect(size).toHaveTextContent(/(B|KB|MB)/);
+    expect(size.textContent).not.toMatch(/^0 B$/);
   });
 });

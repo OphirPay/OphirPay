@@ -182,30 +182,51 @@ npm run dev
 
 ## 4. What the seed script does
 
-`npm run db:seed` runs `prisma/seed.ts` via `tsx`. It creates:
+`prisma/seed.ts` supports structured seed profiles to accommodate different environments and workflows:
 
-| Data | Details |
-|---|---|
-| **1 demo user** | `seed-user-1` — "OphirPay Demo", Stellar address `GACZ7ZEL…QM2U` (upserted — safe to re-run) |
-| **5 payments** | 3 `COMPLETED`, 1 `PENDING`, 1 `FAILED` — with amounts, descriptions, and a placeholder `transactionHash` |
-| **1 batch** | "Demo Batch — Monthly Payroll" (`COMPLETED`) |
-| **4 refunds** | Linked to the seeded payments, with realistic `reason`/`reasonCode`/`status` values |
-| **3 notification hooks** | `payment_recorded`, `refund_processed`, `escrow_created` → `https://example.com/webhooks/...` |
+| Profile | Command | Intended Use | Entity Coverage |
+|---|---|---|---|
+| **Minimal** (Default) | `npm run db:seed:minimal` or `npm run db:seed` | Quick local smoke test | 1 user, 5 payments, 1 batch, 4 refunds, 3 notification hooks |
+| **Staging** | `npm run db:seed:staging` or `bash scripts/staging-seed.sh` | End-to-end testing, QA, multi-role demos | Comprehensive: 4 users, multiple accounts, batches, recurrences, scheduled payments, payment requests, webhooks, refunds, audit logs, API keys, sync runs |
+| **Load** | `npm run db:seed:load` | Pagination and query performance testing | Staging dataset + 100 bulk payments across a 30-day realistic distribution |
 
-**Idempotency caveat:** the demo user is upserted, but payments/batches/refunds/
-hooks are plain `create` calls — **re-running the seed adds duplicate rows**. To
-start clean:
+### 4.1 Staging Profile & Realistic Multi-User Scenarios
+
+The staging seed profile (`--profile=staging`) provisions realistic multi-user workflows:
+- **Diverse Roles & Personas:** Ops Admin, Stellar Commerce Merchant, Integration Developer, and Consumer Buyer.
+- **Realistic Timestamps:** Transactions and events span the past 30 days.
+- **Active Escrows:** Payments with Soroban contract escrow metadata (`esc_stg_101`), arbiter addresses, and conditional release checkpoints.
+- **Partially Vested Streams:** Continuous streaming payment contracts (`str_stg_202`) with vested vs. unvested balances, cliff milestones, and elapsed rate telemetry.
+- **Multi-Signature Approval Queues:** Multi-signature grant proposals (`prop_stg_303`) with threshold counts, pending signers, and signature collection state.
+
+### 4.2 Automated Sanitization & Production Guardrails
+
+To prevent accidental data leakage or unwanted notifications, the seed infrastructure enforces:
+1. **Safety Guardrails:** Fails immediately if `DATABASE_URL` matches production domain patterns, or if `NODE_ENV=production` / `STELLAR_NETWORK=PUBLIC`.
+2. **Email Sanitization:** Real email addresses are converted to deterministic `@staging.ophirpay.internal` addresses. Pass `--sanitize` to clean existing database records.
+3. **Safe API Keys:** API keys use dummy prefixes (`oph_stg_...`) with secure SHA-256 hashes.
+4. **Isolated Webhooks:** Outgoing webhooks target staging mock receivers (`https://staging-receiver.ophirpay.internal/...`).
+
+```bash
+# Execute staging seed with automated safety checks
+bash scripts/staging-seed.sh
+
+# Or run with sanitization pass over existing tables
+bash scripts/staging-seed.sh --sanitize
+```
+
+**Idempotency caveat:** Users and accounts are upserted, while child transaction ledgers append realistic history. To reset cleanly:
 
 ```bash
 # SQLite: delete the dev database file and re-push
 rm -f prisma/dev.db
-npx prisma db push && npm run db:seed
+npx prisma db push && npm run db:seed:staging
 
 # Neon / PostgreSQL: truncate the tables (or use a fresh branch)
 npx prisma db execute --stdin <<'SQL'
-TRUNCATE "Payment", "Batch", "Refund", "NotificationHook", "User" CASCADE;
+TRUNCATE "Payment", "Batch", "Refund", "NotificationHook", "User", "Account", "Recurrence", "ScheduledPayment", "PaymentRequest", "Webhook", "WebhookEvent", "WebhookDelivery", "AuditLog", "ApiKey", "ApiKeyRequestLog", "PaymentSyncRun" CASCADE;
 SQL
-npm run db:seed
+npm run db:seed:staging
 ```
 
 ---

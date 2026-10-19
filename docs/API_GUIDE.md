@@ -277,6 +277,35 @@ return successResponse(payments, { page, limit, total });   // 200 list
 return successResponse(payment, undefined, 201);            // 201 created
 ```
 
+### Cursor-based pagination & sorting (`/api/audit-log`, #1361)
+
+High-volume append-only endpoints such as `GET /api/audit-log` support keyset / cursor-based pagination (`cursor: { id }`) backed by the composite `@@index([createdAt, id])` index on `AuditLog` to prevent `OFFSET` degradation and pagination drift when new audit entries are inserted concurrently:
+
+- **Query parameters**:
+  - `cursor` *(optional)* — ID of the last record from the previous page.
+  - `limit` *(optional, 1–100, default `20`)* — Maximum entries per page.
+  - `order` / `sort` *(optional, `asc` | `desc`, default `desc`)* — Directional sorting by timestamp (`createdAt` / `timestamp`) with deterministic tie-breaking by `id`.
+  - `source` *(optional, `contract` | `db` | `all`, default `contract`)* — Backing store (`db` uses Prisma `cursor: { id }, skip: 1, take: limit + 1`).
+- **Standardized response payload**:
+  ```json
+  {
+    "success": true,
+    "data": [ ... ],
+    "nextCursor": "clx9audit0020",
+    "hasMore": true,
+    "meta": {
+      "page": 1,
+      "limit": 20,
+      "total": 150,
+      "nextCursor": "clx9audit0020",
+      "hasMore": true,
+      "order": "desc",
+      "timestamp": "2026-08-26T12:00:00.000Z"
+    }
+  }
+  ```
+  When `hasMore` is `false`, `nextCursor` is `null`.
+
 ### Error
 
 ```ts

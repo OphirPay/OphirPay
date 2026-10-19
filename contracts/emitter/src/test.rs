@@ -168,8 +168,20 @@ mod tests {
 
         let _ = client.init(&owner);
 
+        // Calling accept_ownership before proposal fails with OwnershipTransferNotProposed
+        assert_eq!(
+            client.try_accept_ownership(&new_owner),
+            Err(Ok(EmitterError::OwnershipTransferNotProposed))
+        );
+
         client.transfer_ownership(&owner, &new_owner);
         assert_eq!(client.get_owner(), owner);
+
+        // Calling before 24h timelock fails with OwnershipTimelockActive
+        assert_eq!(
+            client.try_accept_ownership(&new_owner),
+            Err(Ok(EmitterError::OwnershipTimelockActive))
+        );
 
         env.ledger().set_timestamp(env.ledger().timestamp() + 86401);
         client.accept_ownership(&new_owner);

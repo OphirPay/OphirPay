@@ -86,6 +86,8 @@ pub enum EmitterError {
     CrossContractCallFailed = 14,
     InvalidPageBounds = 15,
     PageLimitExceeded = 16,
+    OwnershipTransferNotProposed = 17,
+    OwnershipTimelockActive = 18,
     // Future Expansion Reserved (20-99) ─────────────────
 }
 
@@ -368,7 +370,7 @@ impl PaymentEventEmitter {
             .storage()
             .instance()
             .get(&PENDING_OWNER)
-            .ok_or(EmitterError::UpgradeNotProposed)?;
+            .ok_or(EmitterError::OwnershipTransferNotProposed)?;
         if caller != pending {
             return Err(EmitterError::Unauthorized);
         }
@@ -379,7 +381,7 @@ impl PaymentEventEmitter {
             .unwrap_or(0);
         let now = env.ledger().timestamp();
         if now.saturating_sub(proposed_at) < TMLOCK_DELAY {
-            return Err(EmitterError::UpgradeTimelockActive);
+            return Err(EmitterError::OwnershipTimelockActive);
         }
         env.storage().instance().remove(&PENDING_OWNER);
         env.storage().instance().remove(&OWNER_PROPOSED_AT);

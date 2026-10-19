@@ -51,6 +51,8 @@ export const ERROR_CODES = {
   INVALID_TIMESTAMP: "INVALID_TIMESTAMP",
   INVALID_CHALLENGE: "INVALID_CHALLENGE",
   CHALLENGE_EXPIRED: "CHALLENGE_EXPIRED",
+  OWNERSHIP_TRANSFER_NOT_PROPOSED: "OWNERSHIP_TRANSFER_NOT_PROPOSED",
+  NO_PENDING_OWNER: "NO_PENDING_OWNER",
 
   // ═══════════════════════════════════════════════════════════════
   // 401 — Authentication (credentials, tokens, sessions)
@@ -113,6 +115,7 @@ export const ERROR_CODES = {
   EXPORT_NOT_FOUND: "EXPORT_NOT_FOUND",
   NOTIFICATION_NOT_FOUND: "NOTIFICATION_NOT_FOUND",
   ROUTE_NOT_FOUND: "ROUTE_NOT_FOUND",
+  HOOK_NOT_FOUND: "HOOK_NOT_FOUND",
 
   // ═══════════════════════════════════════════════════════════════
   // 405 — Method Not Allowed
@@ -381,6 +384,8 @@ export const ERROR_STATUS: Record<string, number> = {
   VOTING_NOT_STARTED: 400,
   QUORUM_NOT_MET: 400,
   INSUFFICIENT_VOTING_POWER: 400,
+  OWNERSHIP_TRANSFER_NOT_PROPOSED: 400,
+  NO_PENDING_OWNER: 400,
 
   // 401
   UNAUTHORIZED: 401,
@@ -439,6 +444,7 @@ export const ERROR_STATUS: Record<string, number> = {
   NOTIFICATION_NOT_FOUND: 404,
   ROUTE_NOT_FOUND: 404,
   PROPOSAL_NOT_FOUND: 404,
+  HOOK_NOT_FOUND: 404,
 
   // 405
   METHOD_NOT_ALLOWED: 405,

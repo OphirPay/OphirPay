@@ -1955,7 +1955,7 @@ impl OphirPayContract {
             .storage()
             .instance()
             .get(&PENDING_OWNER)
-            .ok_or(PaymentError::NoPendingOwner)?; // no pending transfer
+            .ok_or(PaymentError::OwnershipTransferNotProposed)?; // no pending transfer
 
         if caller != pending {
             return Err(PaymentError::Unauthorized);

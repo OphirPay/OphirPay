@@ -935,3 +935,36 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+/// Issue #1286: unregister_hook on nonexistent hook ID returns HookNotFound.
+#[test]
+fn test_unregister_hook_nonexistent_returns_hook_not_found() {
+    let fix = TestFixture::new();
+    let stranger = Address::generate(&fix.env);
+
+    let res = fix.client.try_unregister_hook(&stranger, &999_999u64);
+    assert_eq!(res, Err(Ok(PaymentError::HookNotFound)));
+}
+
+/// Issue #1286: accept_ownership when no ownership transfer was proposed
+/// returns OwnershipTransferNotProposed (and NoPendingOwner alias).
+#[test]
+fn test_accept_ownership_without_proposal_returns_ownership_transfer_not_proposed() {
+    let fix = TestFixture::new();
+    let stranger = Address::generate(&fix.env);
+
+    let res = fix.client.try_accept_ownership(&stranger);
+    assert_eq!(res, Err(Ok(PaymentError::OwnershipTransferNotProposed)));
+    assert_eq!(res, Err(Ok(PaymentError::NoPendingOwner)));
+}
+
+/// Issue #1286: emitter accept_ownership without proposal returns OwnershipTransferNotProposed.
+#[test]
+fn test_emitter_accept_ownership_without_proposal_returns_ownership_transfer_not_proposed() {
+    let fix = TestFixture::new();
+    let (_emitter_id, emitter_client) = fix.setup_emitter();
+    let stranger = Address::generate(&fix.env);
+
+    let res = emitter_client.try_accept_ownership(&stranger);
+    assert_eq!(res, Err(Ok(EmitterError::OwnershipTransferNotProposed)));
+}

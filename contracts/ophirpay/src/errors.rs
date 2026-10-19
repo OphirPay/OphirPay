@@ -649,7 +649,7 @@ pub enum PaymentError {
     /// Cannot revoke self
     CannotRevokeSelf = 304,
     /// No pending ownership transfer
-    NoPendingOwner = 305,
+    OwnershipTransferNotProposed = 305,
     /// Math overflow
     MathOverflow = 306,
     // ── Stream Accounting Guards (307) ─────────────────────
@@ -662,3 +662,9 @@ pub enum PaymentError {
     PaymentIdempotencyConflict = 309,
 }
 
+
+impl PaymentError {
+    /// Backwards-compatibility alias for OwnershipTransferNotProposed.
+    #[allow(non_upper_case_globals)]
+    pub const NoPendingOwner: PaymentError = PaymentError::OwnershipTransferNotProposed;
+}

@@ -935,3 +935,104 @@ fn test_unknown_pause_scope_is_rejected() {
     // Nothing was written for the unknown id.
     assert_eq!(fix.client.get_paused_scopes().len(), 0);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STREAM CANCELLATION PRO-RATA REFUND VERIFICATION (issue #1357)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Verifies pro-rata refund and vested payouts when cancelling a stream at
+/// 0%, 25%, 50%, 75%, and 100% elapsed time, confirming that
+/// `claimed + unclaimed_vested + refunded == total_amount` holds strictly.
+#[test]
+fn test_cancel_stream_pro_rata_refund_at_0_25_50_75_100_percent() {
+    let checkpoints: &[(u64, i128, i128)] = &[
+        // (elapsed_pct, expected_vested, expected_refunded) for total = 1_000_000, duration = 1_000
+        (0, 0, 1_000_000),
+        (25, 250_000, 750_000),
+        (50, 500_000, 500_000),
+        (75, 750_000, 250_000),
+        (100, 1_000_000, 0),
+    ];
+
+    for &(pct, expected_vested, expected_refunded) in checkpoints {
+        let fix = TestFixture::new();
+        let creator = Address::generate(&fix.env);
+        let recipient = Address::generate(&fix.env);
+        let total_amount: i128 = 1_000_000;
+        let start_time: u64 = 10_000;
+        let duration: u64 = 1_000;
+        let end_time: u64 = start_time + duration;
+
+        fix.mint(&creator, total_amount);
+        fix.env.ledger().set_timestamp(start_time);
+
+        let stream_id = fix.client.create_stream(
+            &creator,
+            &recipient,
+            &total_amount,
+            &fix.token_id,
+            &start_time,
+            &end_time,
+            &String::from_str(&fix.env, "pro-rata checkpoint"),
+        );
+
+        let cancel_ts = start_time + (duration * pct) / 100;
+        fix.env.ledger().set_timestamp(cancel_ts);
+
+        let refunded = fix.client.cancel_stream(&creator, &stream_id);
+        let recipient_balance = fix.token_client.balance(&recipient);
+        let creator_balance = fix.token_client.balance(&creator);
+
+        assert_eq!(refunded, expected_refunded, "mismatch at {}% elapsed", pct);
+        assert_eq!(recipient_balance, expected_vested, "vested mismatch at {}% elapsed", pct);
+        assert_eq!(creator_balance, expected_refunded, "creator balance mismatch at {}% elapsed", pct);
+        assert_eq!(recipient_balance + creator_balance, total_amount);
+        assert_eq!(fix.client.get_locked_balance(), 0);
+    }
+}
+
+/// Verifies partial claim followed by mid-stream cancellation on a non-divisor
+/// duration preserves exact principal conservation (`claimed + unclaimed_vested + refunded == total`).
+#[test]
+fn test_cancel_stream_after_partial_claim_conserves_principal_on_odd_duration() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    let total_amount: i128 = 1_000_003; // prime-like odd principal
+    let start_time: u64 = 5_000;
+    let duration: u64 = 333; // non-divisor duration
+    let end_time: u64 = start_time + duration;
+
+    fix.mint(&creator, total_amount);
+    fix.env.ledger().set_timestamp(start_time);
+
+    let stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &total_amount,
+        &fix.token_id,
+        &start_time,
+        &end_time,
+        &String::from_str(&fix.env, "odd duration stream"),
+    );
+
+    // Claim at ~25% elapsed
+    fix.env.ledger().set_timestamp(start_time + 83);
+    let claimed = fix.client.claim_stream(&recipient, &stream_id);
+    assert_eq!(claimed, (total_amount * 83) / 333);
+
+    // Cancel at ~75% elapsed
+    fix.env.ledger().set_timestamp(start_time + 250);
+    let refunded = fix.client.cancel_stream(&creator, &stream_id);
+
+    let expected_total_vested = (total_amount * 250) / 333;
+    let expected_unclaimed_vested = expected_total_vested - claimed;
+    let expected_refunded = total_amount - expected_total_vested;
+
+    assert_eq!(refunded, expected_refunded);
+    assert_eq!(claimed + expected_unclaimed_vested + refunded, total_amount);
+    assert_eq!(fix.token_client.balance(&recipient), expected_total_vested);
+    assert_eq!(fix.token_client.balance(&creator), expected_refunded);
+    assert_eq!(fix.client.get_locked_balance(), 0);
+}
+

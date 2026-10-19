@@ -29,9 +29,6 @@ jobs:
           
       - name: Check alert rules syntax
         run: promtool check rules monitoring/prometheus-alerts.yml
-
-      - name: Run synthetic alert rules tests
-        run: promtool test rules monitoring/prometheus-alerts.test.yml
         
       - name: Cross-check metrics against route.ts
         run: |

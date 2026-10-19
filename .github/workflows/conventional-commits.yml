@@ -48,7 +48,6 @@ jobs:
             Example: "feat: add two-step ownership transfer"
 
       - name: Validate all commit messages in PR
-        if: github.event.pull_request.head.ref != 'integration/staging'
         uses: wagoid/commitlint-github-action@v6
         with:
           configFile: .commitlintrc.json

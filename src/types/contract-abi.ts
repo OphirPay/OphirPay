@@ -53,6 +53,10 @@ export interface EscrowData {
   released: boolean;
   claimed: boolean;
   metadata: string;
+  /** True once a dispute has been raised and is awaiting arbitration. */
+  disputed: boolean;
+  /** Outcome chosen by the arbiter once a dispute is resolved. */
+  disputeResolution: "BUYER" | "SELLER" | null;
 }
 
 // ── Payment Stream ──────────────────────────────────────────

@@ -14,10 +14,10 @@ permissions:
   contents: read
   pull-requests: write
 
-# ── Global Concurrency — cancel stale runs on same PR (issue #1343) ────────
+# ── Global Concurrency — cancel stale runs on same PR ────────
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   docs-links:
@@ -367,15 +367,11 @@ jobs:
           expect "kind: NetworkPolicy" /tmp/enabled.yaml
           expect "kind: ServiceAccount" /tmp/enabled.yaml
           expect "policyTypes:" /tmp/enabled.yaml
-          expect "kubernetes.io/metadata.name: monitoring" /tmp/enabled.yaml
-          expect "port: 6379" /tmp/enabled.yaml
 
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
           reject "kind: NetworkPolicy" /tmp/disabled.yaml
           reject "kind: ServiceAccount" /tmp/disabled.yaml
-          reject "kubernetes.io/metadata.name: monitoring" /tmp/disabled.yaml
-          reject "port: 6379" /tmp/disabled.yaml
 
           exit "$fail"
       

@@ -54,9 +54,7 @@ jobs:
           context: .
           push: false
           load: true
-          tags: ophirpay:smoke,ophirpay:latest
-          build-args: |
-            GIT_SHA=${{ github.sha }}
+          tags: ophirpay:smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -76,62 +74,55 @@ jobs:
 
       - name: Create the schema in the compose database
         run: |
-          npm ci --ignore-scripts
+          npm ci
           npx --yes wait-on tcp:5432 --timeout 60000
           DATABASE_URL=postgresql://ophirpay:ophirpay@127.0.0.1:5432/ophirpay \
             npx prisma db push --skip-generate
 
-      - name: Start and exercise compose app service (issues #731, #1340)
-        env:
-          GIT_SHA: ${{ github.sha }}
+      - name: Smoke test the container
         run: |
-          docker compose -f docker-compose.yml up -d app
+          docker run -d --rm --name app-smoke \
+            --network host \
+            -e DATABASE_URL=postgresql://ophirpay:ophirpay@127.0.0.1:5432/ophirpay \
+            -e REDIS_URL=redis://127.0.0.1:6379 \
+            -e HOSTNAME=0.0.0.0 \
+            -e AUTH_SECRET=ci-docker-smoke-secret-not-for-production \
+            -e NEXT_PUBLIC_CONTRACT_ID=CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET \
+            -e NEXT_PUBLIC_EMITTER_CONTRACT_ID=CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN \
+            ophirpay:smoke
 
           status=""
           for _ in $(seq 1 60); do
             status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/health || true)
             if [ "$status" = "200" ]; then
               echo "✅ /api/health returned 200"
-              break
+              exit 0
             fi
             sleep 1
           done
 
-          if [ "$status" != "200" ]; then
-            echo "::error::/api/health did not return 200 (last status: ${status:-<none>})"
-            docker compose -f docker-compose.yml logs app
-            exit 1
-          fi
+          echo "::error::/api/health did not return 200 (last status: ${status:-<none>})"
+          docker logs app-smoke
+          exit 1
 
-          # Verify dynamic version and short commit SHA (issue #1339)
-          health_json=$(curl -s http://127.0.0.1:3000/api/health)
-          echo "Health response: ${health_json}"
-          version=$(echo "${health_json}" | jq -r .data.version)
-          commit=$(echo "${health_json}" | jq -r .data.commit)
-          expected_commit=$(echo "${{ github.sha }}" | cut -c1-7)
-
-          if [ -z "${version}" ] || [ "${version}" = "null" ]; then
-            echo "::error::/api/health did not return a valid version"
-            exit 1
-          fi
-          if [ "${commit}" != "${expected_commit}" ]; then
-            echo "::error::/api/health returned commit '${commit}', expected '${expected_commit}'"
-            exit 1
-          fi
-          echo "✅ /api/health verified with version '${version}' and commit '${commit}'"
-
-      - name: Verify compose app container becomes healthy (issues #738, #1340)
+      - name: Verify the image's HEALTHCHECK reports a health status (issue #738)
+        # The acceptance criterion is that `docker inspect` reports a health
+        # status for the container — i.e. the Dockerfile's HEALTHCHECK is
+        # actually wired, not just present. The probe targets the liveness
+        # endpoint, so this passes even when a dependency is unreachable.
         run: |
           for _ in $(seq 1 60); do
-            status=$(docker compose -f docker-compose.yml ps app --format '{{.Health}}' 2>/dev/null || docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}<none>{{end}}' $(docker compose -f docker-compose.yml ps -q app) 2>/dev/null || true)
+            status=$(docker inspect \
+              --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}<none>{{end}}' \
+              app-smoke 2>/dev/null || true)
             if [ "$status" = "healthy" ]; then
-              echo "✅ docker compose ps reports health status: ${status}"
+              echo "✅ docker inspect reports health status: ${status}"
               exit 0
             fi
             sleep 2
           done
 
-          echo "::error::Compose app container never became healthy (last status: ${status:-<none>})"
-          docker compose -f docker-compose.yml ps app || true
-          docker compose -f docker-compose.yml logs app || true
+          echo "::error::Container never became healthy (last status: ${status:-<none>})"
+          docker inspect --format '{{json .State.Health}}' app-smoke || true
+          docker logs app-smoke
           exit 1

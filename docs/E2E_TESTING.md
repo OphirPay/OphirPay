@@ -95,6 +95,7 @@ navigation. The shared helpers currently cover these boundaries:
 | `installMultisigMocks` in `e2e/helpers/stellar-mock.ts` | Wallet-session endpoints, `GET /api/multisig` and `/api/multisig/requests`, Soroban RPC, and Horizon transaction confirmation |
 | `installAdminMocks` in `e2e/helpers/admin-mocks.ts` | The multisig mocks plus CSRF, pause state, timelock, hooks, fee config, RBAC, and API-key routes |
 | `installRefundsMocks` in `e2e/helpers/refunds-mock.ts` | Wallet-session and CSRF endpoints, a stateful in-memory `/api/refunds` ledger, Soroban RPC, and Horizon transaction confirmation |
+| `installEscrowMocks` in `e2e/helpers/escrow-helper.ts` | Wallet-session and CSRF endpoints, a stateful in-memory `/api/escrows` ledger (count + record reads), the `POST /api/escrows/[id]/dispute` and `POST /api/escrows/[id]/resolve` mutations, Soroban RPC, and Horizon transaction confirmation |
 | `installSseMock` in `e2e/helpers/sse-mock.ts` | `GET /api/events`, proxied to a local streaming HTTP server so the test can emit and reconnect to SSE events |
 
 The UI tests that use these helpers exercise the browser UI and client

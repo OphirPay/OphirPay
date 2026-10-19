@@ -22,7 +22,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 # A nightly run and a manual dispatch must not overlap; the newer run wins.
 concurrency:
@@ -187,81 +186,3 @@ jobs:
           name: merged-html-report
           path: playwright-report
           retention-days: 14
-
-  track-nightly-status:
-    name: "📣 Track nightly status"
-    if: always()
-    needs: [playwright-tests, merge-reports]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Update or close tracking issue based on run outcome
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          TEST_RESULT: ${{ needs.playwright-tests.result }}
-          REF_NAME: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-
-          TITLE="Nightly E2E failing on ${REF_NAME}"
-          LABEL="ci"
-
-          # Search for an existing open tracking issue with this title and label
-          EXISTING_ISSUE=$(gh issue list \
-            --repo "${REPO}" \
-            --state open \
-            --label "${LABEL}" \
-            --search "${TITLE} in:title" \
-            --json number \
-            --jq '.[0].number // empty' || true)
-
-          if [ "${TEST_RESULT}" = "failure" ]; then
-            echo "E2E tests failed on ${REF_NAME}. Managing tracking issue..."
-
-            BODY=$(cat <<EOF
-          ## ❌ Nightly E2E Test Failure on \`${REF_NAME}\`
-
-          Nightly Playwright E2E run [Run #${RUN_NUMBER}](${RUN_URL}) failed on commit \`${COMMIT_SHA}\`.
-
-          - **Workflow Run**: [View run #${RUN_NUMBER}](${RUN_URL})
-          - **Merged HTML Report Artifact**: [Download Artifacts](${REPORT_URL}) (artifact name: \`merged-html-report\`)
-          - **Trigger**: \`${{ github.event_name }}\`
-          - **Branch / Ref**: \`${REF_NAME}\`
-          - **Commit**: \`${COMMIT_SHA}\`
-
-          This tracking issue was automatically opened by \`e2e-nightly.yml\`. It will be automatically closed when the suite turns green on a subsequent run.
-          EOF
-          )
-
-            if [ -n "${EXISTING_ISSUE}" ]; then
-              echo "Found existing open tracking issue #${EXISTING_ISSUE}. Adding update comment."
-              gh issue comment "${EXISTING_ISSUE}" --repo "${REPO}" --body "E2E tests are still failing on commit \`${COMMIT_SHA}\`. See [Run #${RUN_NUMBER}](${RUN_URL}) and the [merged report artifact](${REPORT_URL})."
-            else
-              echo "Opening new tracking issue: '${TITLE}'"
-              gh issue create \
-                --repo "${REPO}" \
-                --title "${TITLE}" \
-                --label "${LABEL}" \
-                --body "${BODY}"
-            fi
-          elif [ "${TEST_RESULT}" = "success" ]; then
-            echo "E2E tests passed on ${REF_NAME}."
-            if [ -n "${EXISTING_ISSUE}" ]; then
-              echo "Closing existing tracking issue #${EXISTING_ISSUE} following green run #${RUN_NUMBER}."
-              gh issue comment "${EXISTING_ISSUE}" --repo "${REPO}" --body "✅ Nightly E2E suite passed on commit \`${COMMIT_SHA}\` in [Run #${RUN_NUMBER}](${RUN_URL}). Automatically closing this issue."
-              gh issue close "${EXISTING_ISSUE}" --repo "${REPO}" --reason "completed"
-            else
-              echo "No open tracking issue found to close. Suite is green."
-            fi
-          else
-            echo "Test result was '${TEST_RESULT}' (cancelled or skipped). No tracking issue update needed."
-          fi
-

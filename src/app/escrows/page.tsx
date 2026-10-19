@@ -11,7 +11,7 @@ import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
-import { createEscrow, claimEscrow, getContractOwner, releaseEscrow, releaseEscrowByArbiter } from "@/lib/contract-advanced";
+import { createEscrow, claimEscrow, getContractOwner, releaseEscrow, releaseEscrowByArbiter, raiseEscrowDispute, resolveEscrowDispute } from "@/lib/contract-advanced";
 import { fetchRecentContractRecords } from "@/lib/on-chain-records";
 import { formatXlmStroops, parseXlmAmount } from "@/lib/stellar-amount";
 import type { EscrowData } from "@/types/contract-abi";
@@ -30,6 +30,8 @@ export default function EscrowsPage() {
   const [amount, setAmount] = useState("");
   const [deadline, setDeadline] = useState("");
   const [metadata, setMetadata] = useState("");
+  const [disputeTarget, setDisputeTarget] = useState<number | null>(null);
+  const [disputeReason, setDisputeReason] = useState("");
   const { data: contractOwner } = useApiQuery<string>(
     ["contract-owner"],
     undefined,
@@ -117,6 +119,24 @@ export default function EscrowsPage() {
     return submit(() => releaseEscrow(wallet.publicKey!, id), `Escrow ${id} released`);
   };
 
+  const handleRaiseDispute = async (id: number, reason: string) => {
+    if (!wallet.publicKey) return;
+    await submit(
+      () => raiseEscrowDispute(wallet.publicKey!, id, reason),
+      `Escrow ${id} dispute opened`,
+    );
+    setDisputeTarget(null);
+    setDisputeReason("");
+  };
+
+  const handleResolveDispute = async (id: number, resolution: "BUYER" | "SELLER") => {
+    if (!wallet.publicKey) return;
+    await submit(
+      () => resolveEscrowDispute(wallet.publicKey!, id, resolution === "BUYER"),
+      `Dispute resolved in favor of ${resolution === "BUYER" ? "buyer" : "seller"}`,
+    );
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -157,7 +177,9 @@ export default function EscrowsPage() {
             const isSettled = escrow.released || escrow.claimed;
             const deadlineReached = Math.floor(Date.now() / 1000) >= Number(escrow.deadline);
             const isBeneficiary = wallet.publicKey === escrow.beneficiary;
+            const isDepositor = wallet.publicKey === escrow.depositor;
             const isArbiter = Boolean(escrow.arbiter && wallet.publicKey === escrow.arbiter);
+            const isBuyer = isBeneficiary || isDepositor;
             return (
               <Card key={id} className="space-y-3 p-4">
                 <div className="flex flex-wrap items-center gap-2">
@@ -174,7 +196,12 @@ export default function EscrowsPage() {
                   <div><dt className="inline font-medium">Claimable after: </dt><dd className="inline">{new Date(Number(escrow.deadline) * 1000).toLocaleString()}</dd></div>
                 </dl>
                 {escrow.metadata && <p className="text-sm text-gray-500">{escrow.metadata}</p>}
-                {!isSettled && wallet.connected && (
+                {escrow.disputed && (
+                  <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                    ⚠️ Dispute open — funds held pending arbitration.
+                  </div>
+                )}
+                {!isSettled && wallet.connected && !escrow.disputed && (
                   <div className="flex flex-wrap gap-2">
                     {isBeneficiary && deadlineReached && (
                       <Button size="sm" onClick={() => void handleClaim(id)} loading={submitting}>Claim escrow</Button>
@@ -188,8 +215,24 @@ export default function EscrowsPage() {
                     {wallet.publicKey === contractOwner && (
                       <Button size="sm" onClick={() => void handleOwnerRelease(id)} loading={submitting}>Owner release</Button>
                     )}
+                    {isBuyer && (
+                      <Button size="sm" variant="secondary" onClick={() => setDisputeTarget(id)}>Raise dispute</Button>
+                    )}
                     {isBeneficiary && !deadlineReached && (
                       <span className="self-center text-xs text-gray-500">Claim becomes available after the deadline.</span>
+                    )}
+                  </div>
+                )}
+                {!isSettled && wallet.connected && escrow.disputed && (
+                  <div className="flex flex-wrap gap-2">
+                    {isArbiter ? (
+                      <>
+                        <span className="self-center text-xs font-medium text-amber-700 dark:text-amber-300">Arbitration pending</span>
+                        <Button size="sm" onClick={() => void handleResolveDispute(id, "BUYER")} loading={submitting}>Resolve to buyer</Button>
+                        <Button size="sm" variant="secondary" onClick={() => void handleResolveDispute(id, "SELLER")} loading={submitting}>Resolve to seller</Button>
+                      </>
+                    ) : (
+                      <span className="self-center text-xs text-gray-500">Awaiting arbiter decision.</span>
                     )}
                   </div>
                 )}
@@ -217,6 +260,15 @@ export default function EscrowsPage() {
             <input value={metadata} onChange={(e) => setMetadata(e.target.value)} maxLength={256} className="mt-1 w-full rounded-lg border px-3 py-2 dark:border-gray-700 dark:bg-gray-800" />
           </label>
           <Button className="w-full" loading={submitting} onClick={() => void handleCreate()}>Sign and create escrow</Button>
+        </div>
+      </Modal>
+
+      <Modal open={disputeTarget !== null} onClose={() => { setDisputeTarget(null); setDisputeReason(""); }} title="Raise escrow dispute" description={`Open a dispute on escrow #${disputeTarget ?? ""}. Funds remain locked until the arbiter resolves it.`}>
+        <div className="space-y-4">
+          <label className="block text-sm">Reason for dispute
+            <textarea value={disputeReason} onChange={(e) => setDisputeReason(e.target.value)} rows={4} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" placeholder="Describe why this escrow should be reviewed by the arbiter…" />
+          </label>
+          <Button className="w-full" disabled={!disputeReason.trim()} loading={submitting} onClick={() => disputeTarget !== null && void handleRaiseDispute(disputeTarget, disputeReason.trim())}>Submit dispute</Button>
         </div>
       </Modal>
     </div>

@@ -660,5 +660,10 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    // ── Stream Duration Bounds (310-311) ────────────────────
+    /// Stream duration too short: below minimum duration
+    StreamDurationTooShort = 310,
+    /// Stream duration too long: exceeds maximum duration
+    StreamDurationTooLong = 311,
 }
 

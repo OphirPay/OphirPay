@@ -53,6 +53,11 @@ pub const MAX_READER_ENTRIES: u32 = 100;
 
 // ── Contract ───────────────────────────────────────────────────
 
+/// Minimum allowed payment stream duration in seconds (60 seconds).
+pub const MIN_STREAM_DURATION: u64 = 60;
+/// Maximum allowed payment stream duration in seconds (5 years: 5 * 365 * 86_400).
+pub const MAX_STREAM_DURATION: u64 = 157_680_000;
+
 #[contract]
 pub struct OphirPayContract;
 
@@ -2461,6 +2466,13 @@ impl OphirPayContract {
         }
         if end_time <= start_time {
             return Err(PaymentError::InvalidAmount);
+        }
+        let duration = end_time - start_time;
+        if duration < MIN_STREAM_DURATION {
+            return Err(PaymentError::StreamDurationTooShort);
+        }
+        if duration > MAX_STREAM_DURATION {
+            return Err(PaymentError::StreamDurationTooLong);
         }
 
         // Transfer total amount from creator to contract (reentrancy-guarded, MEDIUM-4)

@@ -341,6 +341,10 @@ jobs:
             --set serviceAccount.create=false \
             > /tmp/disabled.yaml
 
+          helm template ophirpay helm/ophirpay \
+            --set image.digest="sha256:45b23dee08af5e43a7ff6c4e1aaec6fa60c6b72d54c4c822d84343a3e65f93aa" \
+            > /tmp/digest.yaml
+
           fail=0
           expect() {
             if grep -q -- "$1" "$2"; then
@@ -358,6 +362,12 @@ jobs:
               echo "✅ $2 has no '$1'"
             fi
           }
+
+          # Image tag and digest assertions (issue #1333)
+          expect "ghcr.io/ophirpay/ophirpay:1.0.0" /tmp/default.yaml
+          reject "ghcr.io/ophirpay/ophirpay:latest" /tmp/default.yaml
+          expect "imagePullPolicy: IfNotPresent" /tmp/default.yaml
+          expect "ghcr.io/ophirpay/ophirpay@sha256:45b23dee08af5e43a7ff6c4e1aaec6fa60c6b72d54c4c822d84343a3e65f93aa" /tmp/digest.yaml
 
           expect "apiVersion: autoscaling/v2" /tmp/enabled.yaml
           expect "kind: HorizontalPodAutoscaler" /tmp/enabled.yaml
@@ -384,6 +394,7 @@ jobs:
           kubeconform -strict -summary /tmp/default.yaml
           kubeconform -strict -summary /tmp/enabled.yaml
           kubeconform -strict -summary /tmp/disabled.yaml
+          kubeconform -strict -summary /tmp/digest.yaml
 
       - name: Assert rendered config keys against .env.example
         # AC of #730: a broken template or an unknown config key must fail the

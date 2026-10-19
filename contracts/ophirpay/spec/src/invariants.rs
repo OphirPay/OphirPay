@@ -496,7 +496,7 @@ fn timelock_delay_invariant() {
 
     // Property 7c: unlocks_at is always > proposed_at (unless overflow)
     if proposed_at.checked_add(TIMELOCK_DELAY_SECS).is_some() {
-        let unlocks_at = proposed_at + TIMELOCK_DELAY_SECS;
+        let unlocks_at = proposed_at.saturating_add(TIMELOCK_DELAY_SECS);
         assert!(unlocks_at > proposed_at);
     }
 

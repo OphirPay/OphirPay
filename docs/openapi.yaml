@@ -86,6 +86,8 @@ tags:
     description: Asset metadata resolved from the issuer's SEP-1 TOML
   - name: Session
     description: Wallet session issuance and revocation
+  - name: Documentation
+    description: OpenAPI specification and interactive API documentation endpoints
 
 paths:
   # ── Payments ──────────────────────────────────────────────
@@ -2587,6 +2589,34 @@ paths:
           description: Malformed or unrecognised report body
         "413":
           description: Body exceeds the 16 KiB size limit
+
+  # ── Documentation ─────────────────────────────────────────
+  /api/openapi.json:
+    get:
+      tags: [Documentation]
+      summary: Retrieve compiled OpenAPI 3.1 specification
+      description: |
+        Returns the parsed and compiled OpenAPI 3.1 specification for OphirPay,
+        enriched with runtime Stellar Testnet server gateways and environment metadata.
+        Cached with Cache-Control: public, max-age=300 (#1416).
+      security: []
+      responses:
+        "200":
+          description: OpenAPI 3.1 schema JSON document
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: Cache directive for clients and edge CDN
+            X-Content-Type-Options:
+              schema: { type: string }
+              description: MIME-sniffing prevention header
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Complete OpenAPI 3.1 specification object
+        "500":
+          $ref: "#/components/responses/ServerError"
 
 # ── Components ────────────────────────────────────────────────
 components:

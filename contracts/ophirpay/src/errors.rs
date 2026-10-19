@@ -660,5 +660,13 @@ pub enum PaymentError {
     InvalidPauseScope = 308,
     /// Idempotency key was reused for a different payment payload
     PaymentIdempotencyConflict = 309,
+    // ── Dispute Resolution Timeout (310) ───────────────────
+    /// Dispute cooling-off period is active: resolution attempted prematurely
+    DisputeCoolingOffActive = 310,
+    // ── Stream Duration Bounds (311-312) ───────────────────
+    /// Stream duration is too short: minimum duration is 60 seconds
+    StreamDurationTooShort = 311,
+    /// Stream duration is too long: maximum duration is 5 years
+    StreamDurationTooLong = 312,
 }
 

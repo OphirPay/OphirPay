@@ -325,6 +325,9 @@ fn all_variants() -> Vec<(&'static str, u32)> {
         ("StreamInvariantViolated", PaymentError::StreamInvariantViolated as u32),
         ("InvalidPauseScope", PaymentError::InvalidPauseScope as u32),
         ("PaymentIdempotencyConflict", PaymentError::PaymentIdempotencyConflict as u32),
+        ("DisputeCoolingOffActive", PaymentError::DisputeCoolingOffActive as u32),
+        ("StreamDurationTooShort", PaymentError::StreamDurationTooShort as u32),
+        ("StreamDurationTooLong", PaymentError::StreamDurationTooLong as u32),
     ]
 }
 

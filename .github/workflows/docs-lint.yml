@@ -1,0 +1,63 @@
+name: "Documentation Link Integrity"
+
+on:
+  pull_request:
+    paths:
+      - "**.md"
+      - "**.mdx"
+      - "scripts/check-markdown-links.mjs"
+      - ".github/workflows/docs-lint.yml"
+  push:
+    branches:
+      - main
+      - integration/staging
+    paths:
+      - "**.md"
+      - "**.mdx"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  docs-lint:
+    name: "Markdown Link Check"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Resolve changed markdown files
+        id: changed
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch origin ${{ github.base_ref }} --depth=1
+          # Get list of modified/added markdown files between base and HEAD
+          CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- '*.md' '*.mdx' || true)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED_FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Check markdown link integrity
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${{ steps.changed.outputs.files }}" ]; then
+            echo "Checking only changed Markdown files in PR:"
+            echo "${{ steps.changed.outputs.files }}"
+            echo "${{ steps.changed.outputs.files }}" | xargs node scripts/check-markdown-links.mjs
+          else
+            echo "Checking all repository Markdown documentation..."
+            npm run check:docs-links
+          fi

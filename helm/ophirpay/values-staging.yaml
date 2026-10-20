@@ -1,0 +1,44 @@
+# Staging environment values for OphirPay Helm chart
+# Extends base values.yaml with staging-specific hosts, testnet config, and resource sizing.
+
+replicaCount: 1
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  hosts:
+    - host: staging.ophirpay.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ophirpay-staging-tls
+      hosts:
+        - staging.ophirpay.com
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+
+pdb:
+  enabled: false
+
+config:
+  NEXT_PUBLIC_STELLAR_NETWORK: "TESTNET"
+  NEXT_PUBLIC_STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+  NEXT_PUBLIC_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org"
+  DATABASE_PROVIDER: "postgresql"
+  NODE_ENV: "production"
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  NEXT_PUBLIC_APP_URL: "https://staging.ophirpay.com"

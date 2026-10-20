@@ -37,13 +37,22 @@ new image with the desired network, RPC, Horizon, contract, and app URL values,
 then deploy that immutable tag. Non-public values such as `DATABASE_URL`,
 `AUTH_SECRET`, and `STELLAR_NETWORK_PASSPHRASE` are read at runtime.
 
+## Environment values files
+
+The base `values.yaml` is environment-neutral (ingress disabled by default, neutral configurations). Environment-specific values files are provided:
+
+- `helm/ophirpay/values-staging.yaml`: Configured for Staging/Testnet deployments (`staging.ophirpay.com`, `letsencrypt-staging` cluster-issuer, single replica, non-autoscaling, conservative resource requests).
+- `helm/ophirpay/values-production.yaml`: Configured for Production deployments (`ophirpay.com`, `letsencrypt-prod` cluster-issuer, 2 replicas, HPA autoscaling up to 10 pods, PodDisruptionBudget, production resource limits).
+
 ## Install and migrate
 
-Render before applying anything:
+Render before applying anything (testing staging and production):
 
 ```bash
-helm lint helm/ophirpay
-helm template ophirpay helm/ophirpay \
+helm lint helm/ophirpay -f helm/ophirpay/values-staging.yaml
+helm lint helm/ophirpay -f helm/ophirpay/values-production.yaml
+
+helm template ophirpay helm/ophirpay -f helm/ophirpay/values-staging.yaml \
   --namespace ophirpay \
   --set secrets.DATABASE_URL='postgresql://...' \
   --set secrets.AUTH_SECRET="$(openssl rand -hex 32)" \
@@ -53,14 +62,23 @@ helm template ophirpay helm/ophirpay \
 kubectl apply --dry-run=server -f /tmp/ophirpay-rendered.yaml
 ```
 
-Create the namespace and deploy the chart only after the render is reviewed:
+Create the namespace and deploy the chart using the desired environment file:
 
 ```bash
-kubectl create namespace ophirpay --dry-run=client -o yaml | kubectl apply -f -
+# Deploy to staging
+helm upgrade --install ophirpay helm/ophirpay \
+  --namespace ophirpay-staging --create-namespace \
+  -f helm/ophirpay/values-staging.yaml \
+  --set image.tag='staging-latest' \
+  --set-file secrets.DATABASE_URL=/path/to/database-url \
+  --set secrets.AUTH_SECRET="$(openssl rand -hex 32)" \
+  --wait
+
+# Deploy to production
 helm upgrade --install ophirpay helm/ophirpay \
   --namespace ophirpay --create-namespace \
-  --set image.repository=ghcr.io/example/ophirpay \
-  --set image.tag='2026-09-24' \
+  -f helm/ophirpay/values-production.yaml \
+  --set image.tag='1.0.0' \
   --set-file secrets.DATABASE_URL=/path/to/database-url \
   --set secrets.AUTH_SECRET="$(openssl rand -hex 32)" \
   --wait

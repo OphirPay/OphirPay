@@ -805,3 +805,39 @@ model PaymentSyncRun {
   /// Speeds up "most recent runs" (admin view).
   @@index([createdAt])
 }
+
+// ── Scheduled Payments Cron Execution Logs (issue #1420) ──────
+
+/// Execution log recording scheduled payment cron processing cycles.
+/// Automatically pruned after a 90-day retention window to prevent table bloat.
+model CronRunLog {
+  /// Primary key — CUID generated at insert time.
+  id           String    @id @default(cuid())
+  /// Unique identifier of the run.
+  runId        String    @unique
+  /// When the cron run started.
+  startedAt    DateTime  @default(now())
+  /// Total payments picked for processing.
+  picked       Int       @default(0)
+  /// Number of successfully executed payments.
+  executed     Int       @default(0)
+  /// Number of failed payments.
+  failed       Int       @default(0)
+  /// Number of skipped payments (claimed by concurrent run).
+  skipped      Int       @default(0)
+  /// Number of expired logs pruned during this cycle.
+  prunedLogs   Int       @default(0)
+  /// Overall duration in milliseconds.
+  durationMs   Int?
+  /// Status of the cron cycle: "SUCCESS" | "PARTIAL" | "FAILED"
+  status       String    @default("SUCCESS")
+  /// Error message if the run encountered a top-level error.
+  errorMessage String?
+  /// When the record was created.
+  createdAt    DateTime  @default(now())
+
+  /// Speeds up 90-day retention pruning and timeline audit lookups.
+  @@index([createdAt])
+  @@index([status])
+}
+

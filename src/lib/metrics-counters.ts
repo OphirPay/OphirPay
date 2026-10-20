@@ -30,6 +30,8 @@ const counters = {
   rpc_failover_total: 0,
   /** Counter: cumulative RPC recoveries to the primary endpoint (issue #820). */
   rpc_failover_recoveries_total: 0,
+  /** Counter: cumulative cron execution logs pruned (issue #1420). */
+  cron_logs_pruned_total: 0,
   /**
    * Counter: CSP violation reports received at POST /api/csp-report (issue #698).
    * Incremented once per accepted, parsed, and logged report.  Oversized or
@@ -161,6 +163,16 @@ export function recordRpcFailoverState(state: NonNullable<typeof lastRpcFailover
 /** Read the last recorded RPC failover state (null before the first record). */
 export function getRpcFailoverSnapshot(): typeof lastRpcFailover {
   return lastRpcFailover;
+}
+
+/** Increment the counter for pruned cron execution logs (issue #1420). */
+export function incCronLogsPruned(delta = 1): void {
+  counters.cron_logs_pruned_total += delta;
+}
+
+/** Get total pruned cron execution logs count. */
+export function getCronLogsPrunedTotal(): number {
+  return counters.cron_logs_pruned_total;
 }
 
 export type MetricName = keyof typeof counters;

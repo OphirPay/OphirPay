@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import prisma from "@/lib/prisma";
+import type { PrismaClient } from "@prisma/client";
 import {
   successResponse,
   errorResponse,
@@ -11,6 +12,7 @@ import { ERROR_CODES } from "@/lib/error-codes";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";
 import { verifyCsrf } from "@/lib/csrf";
+import { incCronLogsPruned } from "@/lib/metrics-counters";
 import {
   MAX_EXECUTION_ATTEMPTS,
   MAX_PAYMENTS_PER_RUN,
@@ -24,7 +26,7 @@ import {
 import { publicKeyFromSecret, submitPaymentFromSecret } from "@/lib/stellar";
 
 /**
- * Scheduled payment execution (issue #175).
+ * Scheduled payment execution (issue #175 & issue #1420).
  *
  * GitHub Actions Cron calls this endpoint every 5 minutes (see
  * `.github/workflows/scheduled-payments-cron.yml`), sending the project's
@@ -37,18 +39,118 @@ import { publicKeyFromSecret, submitPaymentFromSecret } from "@/lib/stellar";
  *      win, which is what makes double-execution impossible;
  *   3. signs and submits the payment from the operator account, sequentially
  *      so Stellar sequence numbers stay in step;
- *   4. records the transaction hash and the terminal status on the row.
- *
- * A failed submission returns the row to SCHEDULED for a later run until
- * `MAX_EXECUTION_ATTEMPTS` is reached, so a transient Horizon outage delays a
- * payment rather than cancelling it. A run that dies mid-flight leaves its
- * rows PROCESSING; the lease on those expires after `PROCESSING_LEASE_MS` and
- * a later run reclaims them.
+ *   4. records the transaction hash and the terminal status on the row;
+ *   5. records the execution cycle in CronRunLog and prunes ephemeral logs older
+ *      than the 90-day retention window in batches of 1,000 (issue #1420).
  */
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+/** Default retention window in days before cron execution logs are pruned (issue #1420). */
+export const CRON_LOG_RETENTION_DAYS = 90;
+
+/** Batch size for retention pruning to avoid PostgreSQL table locking. */
+export const PRUNE_BATCH_SIZE = 1000;
+
+export interface PruneCronLogsOptions {
+  /** Custom retention window in days (default: 90). */
+  retentionDays?: number;
+  /** Custom batch size (default: 1,000). */
+  batchSize?: number;
+  /** Whether to dry-run without deleting records. */
+  dryRun?: boolean;
+}
+
+export interface PruneCronLogsResult {
+  prunedCount: number;
+  batchesExecuted: number;
+  cutoffDate: Date;
+}
+
+interface CronRunLogDelegate {
+  findMany(args: {
+    where: { createdAt: { lt: Date } };
+    select: { id: true };
+    take: number;
+  }): Promise<Array<{ id: string }>>;
+  deleteMany(args: { where: { id: { in: string[] } } }): Promise<{ count: number }>;
+  create(args: { data: Record<string, unknown> }): Promise<unknown>;
+}
+
+interface CronPrismaClient {
+  cronRunLog?: CronRunLogDelegate;
+  $transaction<T>(fn: (tx: CronPrismaClient) => Promise<T>): Promise<T>;
+}
+
+/**
+ * Prunes ephemeral cron execution logs older than the retention window (default: 90 days)
+ * in batches of 1,000 to prevent database table bloat and lock contention (issue #1420).
+ *
+ * Safety: Only ephemeral CronRunLog records are deleted. Active or failed ScheduledPayment
+ * and Recurrence rows are strictly never touched.
+ */
+export async function pruneExpiredCronLogs(
+  client: PrismaClient | typeof prisma | unknown = prisma,
+  options: PruneCronLogsOptions = {}
+): Promise<PruneCronLogsResult> {
+  const retentionDays = options.retentionDays ?? CRON_LOG_RETENTION_DAYS;
+  const batchSize = options.batchSize ?? PRUNE_BATCH_SIZE;
+  const dryRun = options.dryRun ?? false;
+
+  const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+  let prunedCount = 0;
+  let batchesExecuted = 0;
+
+  const db = client as unknown as CronPrismaClient;
+  if (!db.cronRunLog) {
+    return { prunedCount: 0, batchesExecuted: 0, cutoffDate };
+  }
+
+  // Process in bounded batches of 1,000 to avoid table locking on PostgreSQL
+  while (true) {
+    const expiredBatch = await db.cronRunLog.findMany({
+      where: { createdAt: { lt: cutoffDate } },
+      select: { id: true },
+      take: batchSize,
+    });
+
+    if (expiredBatch.length === 0) {
+      break;
+    }
+
+    if (!dryRun) {
+      const ids = expiredBatch.map((item) => item.id);
+      await db.$transaction(async (tx) => {
+        if (tx.cronRunLog) {
+          await tx.cronRunLog.deleteMany({
+            where: { id: { in: ids } },
+          });
+        }
+      });
+      incCronLogsPruned(ids.length);
+    }
+
+    prunedCount += expiredBatch.length;
+    batchesExecuted += 1;
+
+    if (expiredBatch.length < batchSize) {
+      break;
+    }
+  }
+
+  if (prunedCount > 0) {
+    logger.info("Pruned expired cron execution logs", {
+      prunedCount,
+      batchesExecuted,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+    });
+  }
+
+  return { prunedCount, batchesExecuted, cutoffDate };
+}
 
 /** Per-payment outcome reported in the run summary. */
 interface ExecutionResult {
@@ -67,6 +169,8 @@ interface RunSummary {
   failed: number;
   /** Due rows another overlapping run had already claimed. */
   skipped: number;
+  /** Expired logs pruned during this execution cycle. */
+  prunedLogs: number;
   sourcePublicKey: string;
   results: ExecutionResult[];
 }
@@ -148,6 +252,7 @@ async function runScheduledPayments(request: Request) {
       executed: 0,
       failed: 0,
       skipped: 0,
+      prunedLogs: 0,
       sourcePublicKey,
       results: [],
     };
@@ -243,12 +348,51 @@ async function runScheduledPayments(request: Request) {
       }
     }
 
+    // Automated 90-day retention pruning of ephemeral logs (issue #1420)
+    try {
+      const pruneResult = await pruneExpiredCronLogs(prisma);
+      summary.prunedLogs = pruneResult.prunedCount;
+    } catch (pruneErr) {
+      logger.warn("Automated cron log pruning encountered an error, continuing", {
+        error: pruneErr,
+      });
+    }
+
+    // Persist cron run log row
+    const durationMs = Date.now() - now.getTime();
+    const db = prisma as unknown as CronPrismaClient;
+    if (db.cronRunLog) {
+      try {
+        await db.cronRunLog.create({
+          data: {
+            runId,
+            startedAt: now,
+            picked: summary.picked,
+            executed: summary.executed,
+            failed: summary.failed,
+            skipped: summary.skipped,
+            prunedLogs: summary.prunedLogs,
+            durationMs,
+            status:
+              summary.failed > 0
+                ? summary.executed > 0
+                  ? "PARTIAL"
+                  : "FAILED"
+                : "SUCCESS",
+          },
+        });
+      } catch (logErr) {
+        logger.warn("Failed to persist CronRunLog record", { error: logErr });
+      }
+    }
+
     logger.info("Scheduled payment run complete", {
       runId,
       picked: summary.picked,
       executed: summary.executed,
       failed: summary.failed,
       skipped: summary.skipped,
+      prunedLogs: summary.prunedLogs,
     });
 
     return successResponse(summary);

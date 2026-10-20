@@ -124,3 +124,32 @@ describe("helm/ophirpay config keys (#683)", () => {
     expect(rawValues).toMatch(/build\*?\*? time/i);
   });
 });
+
+describe("helm/ophirpay values.ci.yaml (#1307)", () => {
+  const ciValuesPath = join(chartDir, "values.ci.yaml");
+
+  it("exists and is valid YAML", () => {
+    const raw = readFileSync(ciValuesPath, "utf8");
+    const ciValues = load(raw) as ChartValues;
+    expect(ciValues).toBeDefined();
+    expect(typeof ciValues).toBe("object");
+  });
+
+  it("ensures all config and secret keys in values.ci.yaml match documented .env.example variables", () => {
+    const ciValues = load(readFileSync(ciValuesPath, "utf8")) as ChartValues;
+    for (const key of Object.keys(ciValues.config ?? {})) {
+      expect(documentedEnvVars.has(key), `config key ${key} in values.ci.yaml must be documented`).toBe(true);
+    }
+    for (const key of Object.keys(ciValues.secrets ?? {})) {
+      expect(documentedEnvVars.has(key), `secret key ${key} in values.ci.yaml must be documented`).toBe(true);
+    }
+  });
+
+  it("defines populated test values for CI secrets to prevent deployment errors", () => {
+    const ciValues = load(readFileSync(ciValuesPath, "utf8")) as ChartValues;
+    expect(ciValues.secrets.DATABASE_URL).toContain("postgresql://");
+    expect(ciValues.secrets.AUTH_SECRET).toBeTruthy();
+    expect(ciValues.secrets.NEXT_PUBLIC_CONTRACT_ID).toBeTruthy();
+  });
+});
+

@@ -144,11 +144,18 @@ config:
 
 # ── Secrets (rendered into a Kubernetes Secret) ────────────────
 # Names must also exist in `.env.example` (same test as `config` above).
+# Optional keys default to "" and are omitted from the Secret until set (#1336).
 secrets:
   DATABASE_URL: ""
   NEXT_PUBLIC_CONTRACT_ID: ""
   NEXT_PUBLIC_EMITTER_CONTRACT_ID: ""
   AUTH_SECRET: ""
+  REDIS_URL: ""
+  REDIS_TOKEN: ""
+  METRICS_TOKEN: ""
+  CRON_SECRET: ""
+  SCHEDULED_PAYMENTS_SOURCE_SECRET: ""
+
 
 # ── Probes (issue #738) ────────────────────────────────────────
 # Liveness and readiness answer different questions, so they hit different

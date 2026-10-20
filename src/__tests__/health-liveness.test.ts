@@ -84,7 +84,7 @@ describe("Kubernetes manifests — liveness vs readiness (issue #738)", () => {
   it("k8s/deployment.yaml probes liveness and readiness separately", () => {
     const container = containerOf("k8s/deployment.yaml");
     expect(container.livenessProbe.httpGet.path).toBe("/api/health/live");
-    expect(container.readinessProbe.httpGet.path).toBe("/api/health");
+    expect(container.readinessProbe.httpGet.path).toBe("/api/health/ready");
   });
 
   it("helm/ophirpay/values.yaml probes liveness and readiness separately", () => {
@@ -93,7 +93,7 @@ describe("Kubernetes manifests — liveness vs readiness (issue #738)", () => {
       readinessProbe: { httpGet: { path: string } };
     };
     expect(values.livenessProbe.httpGet.path).toBe("/api/health/live");
-    expect(values.readinessProbe.httpGet.path).toBe("/api/health");
+    expect(values.readinessProbe.httpGet.path).toBe("/api/health/ready");
   });
 
   it("the Helm template still renders both probes from values", () => {
@@ -160,5 +160,16 @@ describe("Documentation — liveness vs readiness (issue #738)", () => {
     expect(live, "/api/health/live missing from docs/openapi.yaml").toBeTruthy();
     expect(live!.get).toBeTruthy();
     expect(Object.keys(live!.get!.responses)).toContain("200");
+  });
+
+  it("documents the readiness endpoint in the OpenAPI spec (#1337)", () => {
+    const spec = load(read("docs/openapi.yaml")) as {
+      paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
+    };
+    const ready = spec.paths["/api/health/ready"];
+    expect(ready, "/api/health/ready missing from docs/openapi.yaml").toBeTruthy();
+    expect(ready!.get).toBeTruthy();
+    expect(Object.keys(ready!.get!.responses)).toContain("200");
+    expect(Object.keys(ready!.get!.responses)).toContain("503");
   });
 });

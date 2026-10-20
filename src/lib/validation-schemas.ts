@@ -261,6 +261,65 @@ export const createApiKeySchema = z.object({
   userId: z.string().min(1),
 });
 
+// ── Stream Schemas ────────────────────────────────────────────
+
+/**
+ * Duration bounds (in seconds) enforced on payment streams at creation time
+ * (issue #1350). A stream must run long enough to vest meaningfully but not
+ * outlive a sane operating horizon.
+ */
+export const STREAM_MIN_DURATION_SECONDS = 60; // 1 minute
+export const STREAM_MAX_DURATION_SECONDS = 90 * 24 * 60 * 60; // 90 days
+
+export const STREAM_DURATION_ERROR_MESSAGES = {
+  min: `Stream duration must be at least ${STREAM_MIN_DURATION_SECONDS} seconds`,
+  max: `Stream duration must be at most ${STREAM_MAX_DURATION_SECONDS} seconds (90 days)`,
+  endBeforeStart: "endTime must be after startTime",
+} as const;
+
+/** Unix timestamp in seconds — accepts a number or a numeric string. */
+const streamTimestamp = z.coerce
+  .number()
+  .int("startTime/endTime must be integer Unix timestamps (seconds)")
+  .positive("startTime/endTime must be positive Unix timestamps (seconds)");
+
+export const createStreamSchema = z
+  .object({
+    creator: z.string().min(1, "creator is required"),
+    recipient: z.string().min(1, "recipient is required"),
+    totalAmount: z.number({ message: "totalAmount must be a number" }).positive("totalAmount must be greater than zero"),
+    asset: z.string().default("native"),
+    startTime: streamTimestamp.optional(),
+    endTime: streamTimestamp.optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine((v) => v.startTime === undefined || v.endTime === undefined || v.endTime > v.startTime, {
+    message: STREAM_DURATION_ERROR_MESSAGES.endBeforeStart,
+    path: ["endTime"],
+  })
+  .refine(
+    (v) =>
+      v.startTime === undefined ||
+      v.endTime === undefined ||
+      v.endTime - v.startTime >= STREAM_MIN_DURATION_SECONDS,
+    {
+      message: STREAM_DURATION_ERROR_MESSAGES.min,
+      path: ["endTime"],
+    },
+  )
+  .refine(
+    (v) =>
+      v.startTime === undefined ||
+      v.endTime === undefined ||
+      v.endTime - v.startTime <= STREAM_MAX_DURATION_SECONDS,
+    {
+      message: STREAM_DURATION_ERROR_MESSAGES.max,
+      path: ["endTime"],
+    },
+  );
+
+export type CreateStreamInput = z.infer<typeof createStreamSchema>;
+
 // ── Payment Request Schemas (moved from validations.ts) ───────
 
 export const createPaymentRequestSchema = z

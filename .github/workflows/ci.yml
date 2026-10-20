@@ -309,11 +309,48 @@ jobs:
           KUBECONFORM_VER=0.6.7
           curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VER}/kubeconform-linux-amd64.tar.gz" | tar xz
           sudo mv kubeconform /usr/local/bin/kubeconform
-      - name: Lint the chart with default values
-        run: helm lint helm/ophirpay --strict
+      - name: Assert fail-fast validation when secrets are missing (issue #1334)
+        run: |
+          set +e
+          output=$(helm template ophirpay helm/ophirpay 2>&1)
+          status=$?
+          set -e
+          if [ $status -eq 0 ]; then
+            echo "::error::helm template without secrets or existingSecret should have failed"
+            exit 1
+          fi
+          echo "$output" | grep -q "DATABASE_URL is required" || {
+            echo "::error::Missing descriptive error message for DATABASE_URL"
+            exit 1
+          }
+          echo "✅ Fails fast with descriptive error as expected"
+
+      - name: Assert existingSecret support (issue #1334)
+        run: |
+          rendered=$(helm template ophirpay helm/ophirpay --set secrets.existingSecret=my-custom-secret)
+          # 1. No Secret is rendered
+          if echo "$rendered" | grep -q "kind: Secret"; then
+            echo "::error::Secret was rendered despite secrets.existingSecret being set"
+            exit 1
+          fi
+          # 2. Deployment references my-custom-secret
+          echo "$rendered" | grep -q "name: my-custom-secret" || {
+            echo "::error::Deployment does not reference my-custom-secret"
+            exit 1
+          }
+          echo "✅ Existing secret renders no Secret and references custom secret"
+
+      - name: Lint the chart with existingSecret
+        run: helm lint helm/ophirpay --strict --set secrets.existingSecret=ophirpay-secrets
+      - name: Lint the chart with inline secrets
+        run: |
+          helm lint helm/ophirpay --strict \
+            --set secrets.DATABASE_URL=postgresql://localhost:5432/ophirpay \
+            --set secrets.AUTH_SECRET=0123456789abcdef0123456789abcdef
       - name: Lint the chart with every feature flag enabled
         run: |
           helm lint helm/ophirpay --strict \
+            --set secrets.existingSecret=ophirpay-secrets \
             --set autoscaling.enabled=true \
             --set pdb.enabled=true \
             --set networkPolicy.enabled=true \
@@ -322,10 +359,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Default values — the chart must render cleanly with nothing set.
-          helm template ophirpay helm/ophirpay > /tmp/default.yaml
+          # Chart manifests rendered cleanly using existingSecret.
+          helm template ophirpay helm/ophirpay \
+            --set secrets.existingSecret=ophirpay-secrets \
+            > /tmp/default.yaml
 
           helm template ophirpay helm/ophirpay \
+            --set secrets.existingSecret=ophirpay-secrets \
             --set autoscaling.enabled=true \
             --set autoscaling.minReplicas=3 \
             --set autoscaling.maxReplicas=9 \
@@ -335,6 +375,7 @@ jobs:
             > /tmp/enabled.yaml
 
           helm template ophirpay helm/ophirpay \
+            --set secrets.existingSecret=ophirpay-secrets \
             --set autoscaling.enabled=false \
             --set pdb.enabled=false \
             --set networkPolicy.enabled=false \
@@ -398,6 +439,8 @@ jobs:
 
           # Keys rendered by the chart (ConfigMap `data` + Secret `stringData`).
           helm template ophirpay helm/ophirpay --show-only templates/config.yaml \
+            --set secrets.DATABASE_URL=postgresql://localhost:5432/ophirpay \
+            --set secrets.AUTH_SECRET=0123456789abcdef0123456789abcdef \
             | grep -E '^  [A-Z][A-Z0-9_]*:' \
             | awk -F':' '{print $1}' \
             | sed 's/^[[:space:]]*//' \

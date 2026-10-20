@@ -46,3 +46,14 @@ Service account name
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Secret name
+*/}}
+{{- define "ophirpay.secretName" -}}
+{{- if .Values.secrets.existingSecret -}}
+{{- .Values.secrets.existingSecret -}}
+{{- else -}}
+{{- printf "%s-secrets" (include "ophirpay.fullname" .) -}}
+{{- end -}}
+{{- end }}

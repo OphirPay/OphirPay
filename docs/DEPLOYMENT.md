@@ -426,11 +426,12 @@ kubectl create secret generic ophirpay-secrets \
   --from-literal=NEXT_PUBLIC_CONTRACT_ID="<contract-id>" \
   --from-literal=NEXT_PUBLIC_EMITTER_CONTRACT_ID="<emitter-id>"
 
-# Install with Helm
+# Install with Helm (referencing pre-created secret)
 helm upgrade --install ophirpay ./helm/ophirpay \
   --namespace ophirpay \
   --set image.tag=latest \
   --set ingress.hosts[0].host=ophirpay.com \
+  --set secrets.existingSecret=ophirpay-secrets \
   --set config.NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
   --set config.NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \
   --set config.NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban.stellar.org:443 \
@@ -438,6 +439,68 @@ helm upgrade --install ophirpay ./helm/ophirpay \
   --set config.NODE_ENV=production \
   --wait
 ```
+
+### Secret Management (Existing Secrets, External Secrets, and Sealed Secrets)
+
+To adhere to security best practices, avoid committing plain-text secrets into version-controlled `values.yaml` files. OphirPay supports referencing externally managed Kubernetes Secrets via `secrets.existingSecret`:
+
+#### 1. Pre-created Secret (`kubectl create secret`)
+Create the Secret before running Helm, and instruct the chart to reference it:
+```bash
+kubectl create secret generic ophirpay-secrets \
+  --namespace ophirpay \
+  --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/ophirpay" \
+  --from-literal=AUTH_SECRET="$(openssl rand -hex 32)" \
+  --from-literal=NEXT_PUBLIC_CONTRACT_ID="<contract-id>" \
+  --from-literal=NEXT_PUBLIC_EMITTER_CONTRACT_ID="<emitter-id>"
+
+helm upgrade --install ophirpay ./helm/ophirpay \
+  --namespace ophirpay \
+  --set secrets.existingSecret=ophirpay-secrets
+```
+
+#### 2. External Secrets Operator (AWS Secrets Manager, GCP Secret Manager, Vault)
+If your cluster uses [External Secrets Operator](https://external-secrets.io/), synchronize sensitive credentials into a Kubernetes Secret and reference it:
+```yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: ophirpay-external-secrets
+  namespace: ophirpay
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: cluster-vault-store
+    kind: ClusterSecretStore
+  target:
+    name: ophirpay-vault-secret
+  data:
+    - secretKey: DATABASE_URL
+      remoteRef:
+        key: production/ophirpay
+        property: DATABASE_URL
+    - secretKey: AUTH_SECRET
+      remoteRef:
+        key: production/ophirpay
+        property: AUTH_SECRET
+```
+Then deploy the chart referencing the target secret:
+```bash
+helm upgrade --install ophirpay ./helm/ophirpay \
+  --namespace ophirpay \
+  --set secrets.existingSecret=ophirpay-vault-secret
+```
+
+#### 3. Sealed Secrets (GitOps)
+When using [Bitnami Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) to encrypt secrets into Git repositories:
+```bash
+# Encrypt raw secret manifest into a SealedSecret
+kubeseal --format yaml < secret.yaml > sealed-secret.yaml
+kubectl apply -f sealed-secret.yaml
+```
+Once unsealed by the controller, pass `--set secrets.existingSecret=<unsealed-secret-name>`.
+
+> 💡 **Fail-Fast Validation**: When `secrets.existingSecret` is not set, the chart enforces that `secrets.DATABASE_URL` and `secrets.AUTH_SECRET` are non-empty. Running `helm template` or `helm install` without secrets or `existingSecret` will immediately fail fast with a descriptive error.
 
 > ⚠️ **`NEXT_PUBLIC_*` values are baked in at build time.** Next.js inlines them
 > into the JavaScript bundles during `next build`, so `config.NEXT_PUBLIC_*`

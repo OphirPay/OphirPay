@@ -63,6 +63,10 @@ describe(".env.example parsing", () => {
   });
 });
 
+const secretEnvKeys = Object.keys(values.secrets).filter(
+  (key) => key !== "existingSecret",
+);
+
 describe("helm/ophirpay config keys (#683)", () => {
   it.each(Object.keys(values.config))(
     "config key %s is a documented .env.example variable",
@@ -71,14 +75,14 @@ describe("helm/ophirpay config keys (#683)", () => {
     },
   );
 
-  it.each(Object.keys(values.secrets))(
+  it.each(secretEnvKeys)(
     "secret key %s is a documented .env.example variable",
     (key) => {
       expect(documentedEnvVars.has(key)).toBe(true);
     },
   );
 
-  it.each([...Object.keys(values.config), ...Object.keys(values.secrets)])(
+  it.each([...Object.keys(values.config), ...secretEnvKeys])(
     "key %s is a valid environment variable name",
     (key) => {
       expect(key).toMatch(/^[A-Z][A-Z0-9_]*$/);
@@ -124,3 +128,37 @@ describe("helm/ophirpay config keys (#683)", () => {
     expect(rawValues).toMatch(/build\*?\*? time/i);
   });
 });
+
+describe("helm/ophirpay existingSecret and secret validation (#1334)", () => {
+  it("declares existingSecret defaulting to empty string in values.yaml", () => {
+    expect(values.secrets).toHaveProperty("existingSecret");
+    expect(values.secrets.existingSecret).toBe("");
+  });
+
+  it("references ophirpay.secretName in deployment manifest", () => {
+    const deployment = readFileSync(
+      join(templatesDir, "deployment.yaml"),
+      "utf8",
+    );
+    expect(deployment).toContain('name: {{ include "ophirpay.secretName" . }}');
+  });
+
+  it("defines ophirpay.secretName helper that falls back to fullname-secrets", () => {
+    const helpers = readFileSync(join(templatesDir, "_helpers.tpl"), "utf8");
+    expect(helpers).toContain('define "ophirpay.secretName"');
+    expect(helpers).toContain(".Values.secrets.existingSecret");
+    expect(helpers).toContain('printf "%s-secrets"');
+  });
+
+  it("guards Secret creation when existingSecret is set, and requires DATABASE_URL & AUTH_SECRET", () => {
+    const config = readFileSync(join(templatesDir, "config.yaml"), "utf8");
+    expect(config).toContain("{{- if not .Values.secrets.existingSecret }}");
+    expect(config).toContain(
+      'required "secrets.DATABASE_URL is required when secrets.existingSecret is not set"',
+    );
+    expect(config).toContain(
+      'required "secrets.AUTH_SECRET is required when secrets.existingSecret is not set"',
+    );
+  });
+});
+

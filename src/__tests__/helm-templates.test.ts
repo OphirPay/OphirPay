@@ -116,3 +116,44 @@ describe("chart inventory (#684)", () => {
     }
   });
 });
+
+describe("Helm existingSecret and required secrets validation (#1334)", () => {
+  const configTemplate = template("config.yaml");
+  const deploymentTemplate = template("deployment.yaml");
+  const values = load(readFileSync(join(chartDir, "values.yaml"), "utf8")) as Record<string, any>;
+  const ciContent = readFileSync(join(process.cwd(), ".github", "workflows", "ci.yml"), "utf8");
+
+  it("exposes secrets.existingSecret in values.yaml", () => {
+    expect(values.secrets).toHaveProperty("existingSecret");
+    expect(values.secrets.existingSecret).toBe("");
+  });
+
+  it("gates Secret resource creation on !.Values.secrets.existingSecret in config.yaml", () => {
+    expect(configTemplate).toMatch(/\{\{-\s*if\s+not\s+\.Values\.secrets\.existingSecret\s*\}\}\s*\r?\napiVersion:\s*v1\s*\r?\nkind:\s*Secret/);
+  });
+
+  it("enforces required validation on DATABASE_URL and AUTH_SECRET in config.yaml", () => {
+    expect(configTemplate).toMatch(
+      /DATABASE_URL:\s*\{\{\s*required\s+"[^"]*DATABASE_URL[^"]*"\s+\.Values\.secrets\.DATABASE_URL\s*\|\s*quote\s*\}\}/
+    );
+    expect(configTemplate).toMatch(
+      /AUTH_SECRET:\s*\{\{\s*required\s+"[^"]*AUTH_SECRET[^"]*"\s+\.Values\.secrets\.AUTH_SECRET\s*\|\s*quote\s*\}\}/
+    );
+  });
+
+  it("excludes existingSecret from rendered Secret stringData in config.yaml", () => {
+    expect(configTemplate).toContain('ne $key "existingSecret"');
+  });
+
+  it("wires deployment secretRef to existingSecret with default fallback", () => {
+    expect(deploymentTemplate).toMatch(
+      /name:\s*\{\{\s*\.Values\.secrets\.existingSecret\s*\|\s*default\s+\(printf\s+"%s-secrets"\s+\(include\s+"ophirpay\.fullname"\s+\.\)\)\s*\}\}/
+    );
+  });
+
+  it("verifies CI asserts missing secrets failure and existingSecret rendering", () => {
+    expect(ciContent).toContain("Assert failure when secrets are missing (issue #1334)");
+    expect(ciContent).toContain('reject "kind: Secret" /tmp/existing-secret.yaml');
+    expect(ciContent).toContain('expect "name: foo" /tmp/existing-secret.yaml');
+  });
+});

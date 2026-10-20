@@ -426,10 +426,10 @@ kubectl create secret generic ophirpay-secrets \
   --from-literal=NEXT_PUBLIC_CONTRACT_ID="<contract-id>" \
   --from-literal=NEXT_PUBLIC_EMITTER_CONTRACT_ID="<emitter-id>"
 
-# Install with Helm
+# Install with Helm (pointing at the pre-created or external secret)
 helm upgrade --install ophirpay ./helm/ophirpay \
   --namespace ophirpay \
-  --set image.tag=latest \
+  --set secrets.existingSecret=ophirpay-secrets \
   --set ingress.hosts[0].host=ophirpay.com \
   --set config.NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC \
   --set config.NEXT_PUBLIC_STELLAR_HORIZON_URL=https://horizon.stellar.org \
@@ -438,6 +438,19 @@ helm upgrade --install ophirpay ./helm/ophirpay \
   --set config.NODE_ENV=production \
   --wait
 ```
+
+### Secret Management & Existing Secrets
+
+The Helm chart supports two secret provisioning strategies:
+
+1. **External Secrets / Sealed Secrets (`secrets.existingSecret`)**:
+   In production and GitOps workflows (e.g. ArgoCD, Flux), manage secrets externally using [External Secrets Operator](https://external-secrets.io) (synced from AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, or HashiCorp Vault) or [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets). Set `--set secrets.existingSecret=<secret-name>`:
+   - Helm skips rendering the plain-text Secret object entirely.
+   - The Deployment mounts environment variables directly from `secretRef: name: <existingSecret>`.
+   - Plain-text secret values do not need to be provided in Helm values.
+
+2. **Chart-managed Secret (Fail-fast validation)**:
+   When `secrets.existingSecret` is not set, Helm creates the Secret from `secrets.*` values. `DATABASE_URL` and `AUTH_SECRET` are strictly validated using `required`. If either is omitted or empty, `helm install` / `helm upgrade` fails fast with a descriptive error instead of booting pods into a crash-loop.
 
 > ⚠️ **`NEXT_PUBLIC_*` values are baked in at build time.** Next.js inlines them
 > into the JavaScript bundles during `next build`, so `config.NEXT_PUBLIC_*`

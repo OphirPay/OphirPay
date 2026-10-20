@@ -10,6 +10,7 @@ data:
   {{ $key }}: {{ $val | quote }}
   {{- end }}
 ---
+{{- if not .Values.secrets.existingSecret }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -19,6 +20,11 @@ metadata:
     {{- include "ophirpay.labels" . | nindent 4 }}
 type: Opaque
 stringData:
+  DATABASE_URL: {{ required ".Values.secrets.DATABASE_URL is required when secrets.existingSecret is not set" .Values.secrets.DATABASE_URL | quote }}
+  AUTH_SECRET: {{ required ".Values.secrets.AUTH_SECRET is required when secrets.existingSecret is not set" .Values.secrets.AUTH_SECRET | quote }}
   {{- range $key, $val := .Values.secrets }}
+  {{- if and (ne $key "existingSecret") (ne $key "DATABASE_URL") (ne $key "AUTH_SECRET") }}
   {{ $key }}: {{ $val | quote }}
   {{- end }}
+  {{- end }}
+{{- end }}

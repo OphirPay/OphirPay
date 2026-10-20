@@ -42,10 +42,13 @@ export const SSE_MAX_BUFFERED_BYTES = 256 * 1024;
 export const SSE_IDLE_TIMEOUT_MS = 60_000;
 /** Heartbeat cadence — also keeps proxies from closing an idle stream. */
 export const SSE_HEARTBEAT_MS = 15_000;
+/** Keepalive ping comment interval to prevent reverse proxy idle drops (issue #1289). */
+export const SSE_PING_INTERVAL_MS = 20_000;
 
 export const GET = withMetrics("GET /api/events", async function GET(request: Request) {
   let closed = false;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let pingInterval: ReturnType<typeof setInterval> | null = null;
   let source: ReturnType<typeof createLiveEventSource> | null = null;
   const startTime = Date.now();
 
@@ -55,6 +58,7 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
     if (closed) return;
     closed = true;
     if (heartbeat) clearInterval(heartbeat);
+    if (pingInterval) clearInterval(pingInterval);
     if (source) source.stop();
     // Release the connection from the `ophirpay_sse_open_connections` gauge
     // and route-specific gauge, and record session duration into histogram.
@@ -94,6 +98,11 @@ export const GET = withMetrics("GET /api/events", async function GET(request: Re
       heartbeat = setInterval(() => {
         buffer.push("heartbeat", { timestamp: Date.now() });
       }, SSE_HEARTBEAT_MS);
+
+      // Keepalive ping comment every 20s to prevent reverse proxy idle drops (issue #1289).
+      pingInterval = setInterval(() => {
+        buffer.pushPing();
+      }, SSE_PING_INTERVAL_MS);
 
       // Poll the emitter contract and forward normalized events.
       source = createLiveEventSource();

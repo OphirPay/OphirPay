@@ -26,6 +26,8 @@ export const AUDIT_SSE_MAX_BUFFERED_EVENTS = 100;
 export const AUDIT_SSE_MAX_BUFFERED_BYTES = 256 * 1024;
 /** Close a backlogged connection that hasn't drained within this budget. */
 export const AUDIT_SSE_IDLE_TIMEOUT_MS = 60_000;
+/** Keepalive ping comment interval to prevent reverse proxy idle drops (issue #1289). */
+export const AUDIT_SSE_PING_INTERVAL_MS = 20_000;
 
 type AuditController = ReadableStreamDefaultController<Uint8Array>;
 

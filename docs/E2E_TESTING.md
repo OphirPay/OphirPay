@@ -16,12 +16,15 @@ must be ready before the test command runs.
 
 2. Configure a reachable database and app environment using
    [`LOCAL_DEV.md`](./LOCAL_DEV.md). `npm run dev` must be able to connect to
-   the database. For API tests that expect seeded records, initialize the
-   schema and seed it:
+   the database. For API tests that expect seeded records, apply the migration
+   history (or push schema for an ephemeral throwaway database) and seed it:
 
    ```bash
    npx prisma generate
-   npx prisma db push
+   # Apply migrations to match staging/production behavior
+   npx prisma migrate deploy
+   # Alternatively for ephemeral/throwaway local SQLite instances:
+   # npx prisma db push
    npm run db:seed
    ```
 
@@ -116,3 +119,12 @@ Pull-request CI does not run Playwright. The separate
 and on manual dispatch; it builds and starts a local app against its
 PostgreSQL service before invoking Playwright. Local contributors must start
 their own server because the config deliberately does not do so.
+
+### Database Migration & Schema Readiness
+
+Both [`e2e-nightly.yml`](../.github/workflows/e2e-nightly.yml) and [`docker-smoke.yml`](../.github/workflows/docker-smoke.yml) prepare the PostgreSQL database via `npx prisma migrate deploy` instead of `prisma db push`.
+
+This guarantees that:
+- Every migration recorded in `prisma/migrations/` is executed sequentially against the target database just as it is in staging and production.
+- Broken, invalid, or out-of-order migration scripts trigger an immediate fail-fast termination in CI rather than being silently bypassed by `db push`.
+- Throwaway schemas (`prisma db push`) are reserved exclusively for isolated unit/integration tests that explicitly require an ephemeral schema without migration history.

@@ -98,8 +98,8 @@ jobs:
       - name: Generate the Prisma client
         run: npx prisma generate
 
-      - name: Create the schema in the CI database
-        run: npx prisma db push --skip-generate
+      - name: Apply Prisma migrations to the CI database
+        run: npx prisma migrate deploy
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox

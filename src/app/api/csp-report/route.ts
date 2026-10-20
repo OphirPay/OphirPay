@@ -227,6 +227,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         status: 429,
         headers: {
           "Retry-After": String(retryAfter),
+          "X-RateLimit-Limit": String(CSP_REPORT_RATE_LIMIT_MAX),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(Math.ceil(ipResult.resetAt / 1000)),
         },
       }
     );

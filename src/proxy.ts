@@ -26,8 +26,6 @@ import {
   API_KEY_LOOKUP_PATTERN,
 } from "@/lib/api-key-format";
 
-const RATE_LIMIT_MAX = getRateLimitMax();
-
 // Global rate-limit store, resolved once per instance.
 //
 // This file runs on the Edge runtime, where `ioredis` cannot run. The store
@@ -84,7 +82,8 @@ export async function proxy(request: NextRequest) {
       pathname.startsWith("/api/health/") ||
       pathname === "/api/metrics";
 
-    let remaining = RATE_LIMIT_MAX;
+    const rateLimitMax = getRateLimitMax();
+    let remaining = rateLimitMax;
     let resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;
 
     if (!skipRateLimit) {
@@ -92,14 +91,14 @@ export async function proxy(request: NextRequest) {
       const result = await rateLimitStore.increment(
         ip,
         RATE_LIMIT_WINDOW_MS,
-        RATE_LIMIT_MAX
+        rateLimitMax
       );
       remaining = result.remaining;
       resetAt = result.resetAt;
 
       // Rate limit exceeded
       if (!result.allowed) {
-        const retryAfter = Math.ceil((resetAt - Date.now()) / 1000);
+        const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
         // Rejected before any route handler runs, so log here (with the same
         // request id returned in the response header below).
         logger.request(request.method, pathname, 429, performance.now() - startedAt, requestId);
@@ -115,7 +114,11 @@ export async function proxy(request: NextRequest) {
             status: 429,
             headers: {
               "Retry-After": String(retryAfter),
+              "X-RateLimit-Limit": String(rateLimitMax),
+              "X-RateLimit-Remaining": "0",
+              "X-RateLimit-Reset": String(Math.ceil(resetAt / 1000)),
               "X-Request-Id": requestId,
+              "X-Content-Type-Options": "nosniff",
             },
           }
         );
@@ -138,7 +141,7 @@ export async function proxy(request: NextRequest) {
     response.headers.set("X-Content-Type-Options", "nosniff");
     response.headers.set("X-Frame-Options", "DENY");
     response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    response.headers.set("X-RateLimit-Limit", String(RATE_LIMIT_MAX));
+    response.headers.set("X-RateLimit-Limit", String(rateLimitMax));
     response.headers.set("X-RateLimit-Remaining", String(remaining));
     response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetAt / 1000)));
 

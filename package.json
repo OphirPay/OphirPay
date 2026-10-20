@@ -100,7 +100,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "optionalDependencies": {
     "@opentelemetry/api": "^1.9.1",

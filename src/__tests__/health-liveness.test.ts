@@ -84,7 +84,7 @@ describe("Kubernetes manifests — liveness vs readiness (issue #738)", () => {
   it("k8s/deployment.yaml probes liveness and readiness separately", () => {
     const container = containerOf("k8s/deployment.yaml");
     expect(container.livenessProbe.httpGet.path).toBe("/api/health/live");
-    expect(container.readinessProbe.httpGet.path).toBe("/api/health");
+    expect(container.readinessProbe.httpGet.path).toBe("/api/health/ready");
   });
 
   it("helm/ophirpay/values.yaml probes liveness and readiness separately", () => {
@@ -93,7 +93,7 @@ describe("Kubernetes manifests — liveness vs readiness (issue #738)", () => {
       readinessProbe: { httpGet: { path: string } };
     };
     expect(values.livenessProbe.httpGet.path).toBe("/api/health/live");
-    expect(values.readinessProbe.httpGet.path).toBe("/api/health");
+    expect(values.readinessProbe.httpGet.path).toBe("/api/health/ready");
   });
 
   it("the Helm template still renders both probes from values", () => {

@@ -17,6 +17,27 @@ import { getAppVersionInfo } from "@/lib/app-version";
 
 type CheckStatus = "ok" | "error" | "unchecked" | "disabled" | "not_configured";
 
+export interface ExternalChecksResult {
+  rpcStatus: CheckStatus;
+  rpcLatency: number | null;
+  horizonStatus: "ok" | "error" | "unchecked";
+  horizonLatency: number | null;
+  redisStatus: "ok" | "error" | "disabled";
+  redisLatency: number | null;
+}
+
+interface CachedChecks {
+  timestamp: number;
+  result: ExternalChecksResult;
+}
+
+let checksCache: CachedChecks | null = null;
+export const EXTERNAL_CHECKS_TTL_MS = 15_000;
+
+export function resetHealthChecksCache(): void {
+  checksCache = null;
+}
+
 /** GET a URL and report reachability + latency; null when it errors/times out. */
 async function pingUrl(
   url: string,
@@ -59,6 +80,78 @@ async function pingJsonRpc(
   }
 }
 
+/**
+ * Runs optional external checks in parallel with a bounded timeout and
+ * caches the result for EXTERNAL_CHECKS_TTL_MS (issue #1337).
+ */
+export async function getExternalChecks(forceRefresh = false): Promise<ExternalChecksResult> {
+  const now = Date.now();
+  if (!forceRefresh && checksCache && now - checksCache.timestamp < EXTERNAL_CHECKS_TTL_MS) {
+    return checksCache.result;
+  }
+
+  const TIMEOUT_MS = 2500;
+
+  const [rpcRes, horizonRes, redisRes] = await Promise.allSettled([
+    pingJsonRpc(
+      SOROBAN_RPC_URL,
+      { jsonrpc: "2.0", id: 1, method: "getHealth" },
+      TIMEOUT_MS
+    ),
+    pingUrl(HORIZON_URL, TIMEOUT_MS),
+    (async () => {
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) {
+        return { disabled: true as const };
+      }
+      const pingUrlStr =
+        redisUrl.replace(/\/\/.*@/, "//health:@").replace(/\/\d+$/, "") +
+        "/ping";
+      const res = await pingUrl(pingUrlStr, TIMEOUT_MS);
+      return res
+        ? { disabled: false as const, ok: res.ok, latencyMs: res.latencyMs }
+        : { disabled: false as const, ok: false, latencyMs: null };
+    })(),
+  ]);
+
+  let rpcStatus: CheckStatus = "error";
+  let rpcLatency: number | null = null;
+  if (rpcRes.status === "fulfilled" && rpcRes.value) {
+    rpcStatus = rpcRes.value.ok ? "ok" : "error";
+    rpcLatency = rpcRes.value.latencyMs;
+  }
+
+  let horizonStatus: "ok" | "error" | "unchecked" = "error";
+  let horizonLatency: number | null = null;
+  if (horizonRes.status === "fulfilled" && horizonRes.value) {
+    horizonStatus = horizonRes.value.ok ? "ok" : "error";
+    horizonLatency = horizonRes.value.latencyMs;
+  }
+
+  let redisStatus: "ok" | "error" | "disabled" = "disabled";
+  let redisLatency: number | null = null;
+  if (redisRes.status === "fulfilled") {
+    if (redisRes.value.disabled) {
+      redisStatus = "disabled";
+    } else {
+      redisStatus = redisRes.value.ok ? "ok" : "error";
+      redisLatency = redisRes.value.latencyMs;
+    }
+  }
+
+  const result: ExternalChecksResult = {
+    rpcStatus,
+    rpcLatency,
+    horizonStatus,
+    horizonLatency,
+    redisStatus,
+    redisLatency,
+  };
+
+  checksCache = { timestamp: now, result };
+  return result;
+}
+
 export const GET = withMetrics("GET /api/health", withRequestLogging(async function GET() {
   try {
     // Critical check: database connectivity
@@ -73,52 +166,15 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
       dbStatus = "error";
     }
 
-    // Optional check: Soroban RPC reachability
-    let rpcStatus: CheckStatus = "unchecked";
-    let rpcLatency: number | null = null;
-    const rpc = await pingJsonRpc(
-      SOROBAN_RPC_URL,
-      { jsonrpc: "2.0", id: 1, method: "getHealth" },
-      5000
-    );
-    if (rpc) {
-      rpcStatus = rpc.ok ? "ok" : "error";
-      rpcLatency = rpc.latencyMs;
-    } else {
-      rpcStatus = "error";
-    }
-
-    // Check Horizon reachability
-    let horizonStatus: "ok" | "error" | "unchecked" = "unchecked";
-    let horizonLatency: number | null = null;
-    try {
-      const start = Date.now();
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(HORIZON_URL, { signal: controller.signal });
-      clearTimeout(timeout);
-      horizonLatency = Date.now() - start;
-      horizonStatus = res.ok ? "ok" : "error";
-    } catch {
-      horizonStatus = "error";
-    }
-
-    // Check Redis connectivity (if configured)
-    let redisStatus: "ok" | "error" | "disabled" = "disabled";
-    let redisLatency: number | null = null;
-    const redisUrl = process.env.REDIS_URL;
-    if (redisUrl) {
-      const pingUrlStr =
-        redisUrl.replace(/\/\/.*@/, "//health:@").replace(/\/\d+$/, "") +
-        "/ping";
-      const redis = await pingUrl(pingUrlStr, 3000);
-      if (redis) {
-        redisStatus = redis.ok ? "ok" : "error";
-        redisLatency = redis.latencyMs;
-      } else {
-        redisStatus = "error";
-      }
-    }
+    // Optional external checks run concurrently and are cached (issue #1337)
+    const {
+      rpcStatus,
+      rpcLatency,
+      horizonStatus,
+      horizonLatency,
+      redisStatus,
+      redisLatency,
+    } = await getExternalChecks();
 
     // Check Contract-ID presence
     const contractStatus: "ok" | "error" =

@@ -72,12 +72,13 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
-          # Readiness is dependency-aware: /api/health returns 503 when the
+          # Readiness is dependency-aware: /api/health/ready returns 503 when the
           # database is unreachable, which drains traffic from the pod without
-          # killing it. Timings differ from liveness for the same reason.
+          # killing it. It performs only the critical database check to stay
+          # well under the timeout (issue #1337).
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /api/health/ready
               port: 3000
             initialDelaySeconds: 15
             periodSeconds: 10

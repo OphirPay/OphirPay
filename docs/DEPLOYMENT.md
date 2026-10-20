@@ -264,7 +264,8 @@ container.
 | Probe | Endpoint | Checks | Failure meaning |
 |---|---|---|---|
 | **Liveness** | `GET /api/health/live` | Process is up and serving HTTP. No database, RPC, Horizon or Redis I/O | The process is wedged — restarting it is the right response |
-| **Readiness** | `GET /api/health` | Database (`SELECT 1`, critical, 503 when down), Soroban RPC + Horizon reachability, Redis ping when `REDIS_URL` is set, and the configured contract ID | A dependency is unavailable — stop routing traffic, do **not** restart |
+| **Readiness** | `GET /api/health/ready` | Database (`SELECT 1`, critical, 503 when down). Lightweight to ensure sub-second probe evaluation | A critical dependency is unavailable — stop routing traffic, do **not** restart |
+| **Full Health** | `GET /api/health` | Comprehensive diagnostics (DB, Soroban RPC, Horizon, Redis, contract). Cached external checks with bounded timeouts | Deep diagnostic / operator dashboard |
 
 Both paths are exempt from the global rate limiter (`src/proxy.ts`) so
 orchestrators can poll them even while the app is under load.
@@ -298,7 +299,7 @@ livenessProbe:                     # process only — never restarts on a DB bli
   failureThreshold: 3
 readinessProbe:                    # dependency-aware — drains traffic on 503
   httpGet:
-    path: /api/health
+    path: /api/health/ready
     port: 3000
   initialDelaySeconds: 10
   periodSeconds: 10

@@ -2497,6 +2497,49 @@ paths:
                     properties:
                       timestamp: { type: string, format: date-time }
 
+  /api/health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe (database dependency)
+      description: >-
+        Lightweight readiness signal (issue #1337): verifies whether the pod is
+        ready to receive traffic by performing the critical database check.
+        Returns 200 when reachable, or 503 when the database is down so
+        orchestrators drain traffic without restarting the container. Skips
+        slow external calls to ensure bounded sub-second probe evaluation.
+      responses:
+        "200":
+          description: Service is ready to receive traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: object
+                    required: [status, probe, services]
+                    properties:
+                      status: { type: string, enum: [ok] }
+                      probe: { type: string, enum: [readiness] }
+                      services:
+                        type: object
+                        properties:
+                          database:
+                            type: object
+                            properties:
+                              status: { type: string, enum: [ok] }
+                              latencyMs: { type: number, nullable: true }
+                      uptime: { type: number }
+                  meta:
+                    type: object
+                    properties:
+                      timestamp: { type: string, format: date-time }
+        "503":
+          description: Database is unreachable — not ready to receive traffic
+
+
   # ── Metrics ───────────────────────────────────────────────
   /api/metrics:
     get:

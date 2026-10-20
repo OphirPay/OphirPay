@@ -190,7 +190,7 @@ jobs:
           components: rustfmt, clippy
       - name: Install Soroban SDK deps & WASM optimization tools
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen
+          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen wabt
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -220,18 +220,66 @@ jobs:
           REGRESSION_REPORT_PATH: contract-regression-report.md
       - name: Optimize WASM (OphirPay + Emitter)
         run: |
-          set -e
-          OPHIR_WASM=contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm
-          EMIT_WASM=contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm
+          set -euo pipefail
+
+          # Fail fast if required optimizers are missing
+          command -v wasm-strip >/dev/null 2>&1 || { echo "::error::wasm-strip (from wabt) is required but not installed"; exit 1; }
+          command -v wasm-opt >/dev/null 2>&1 || { echo "::error::wasm-opt (from binaryen) is required but not installed"; exit 1; }
+
+          OPHIR_WASM="contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm"
+          EMIT_WASM="contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm"
+
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### 🗜️ Contract WASM Optimization Summary"
+              echo ""
+              echo "| Contract | Before (bytes) | After (bytes) | Delta (bytes) | Reduction |"
+              echo "| :--- | :--- | :--- | :--- | :--- |"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           for f in "$OPHIR_WASM" "$EMIT_WASM"; do
-            if [ -f "$f" ]; then
-              echo "Before: $(basename $f) $(stat -c%s "$f") bytes"
-              cp "$f" "${f}.orig"
-              wasm-strip "$f" || true
-              wasm-opt -Oz -o "$f" "${f}" || true
-              echo "After:  $(basename $f) $(stat -c%s "$f") bytes"
+            if [ ! -f "$f" ]; then
+              echo "::error::WASM binary not found at $f"
+              exit 1
             fi
+
+            before_size=$(stat -c%s "$f")
+            echo "Before optimization: $(basename "$f") - $before_size bytes"
+            cp "$f" "${f}.orig"
+
+            # Execute wasm-strip and wasm-opt strictly (no failures swallowed)
+            wasm-strip "$f"
+            wasm-opt -Oz -o "$f" "$f"
+
+            after_size=$(stat -c%s "$f")
+            echo "After optimization:  $(basename "$f") - $after_size bytes"
+
+            if [ "$after_size" -le 0 ]; then
+              echo "::error::Optimized binary for $(basename "$f") is empty ($after_size bytes)"
+              exit 1
+            fi
+
+            if [ "$after_size" -gt "$before_size" ]; then
+              echo "::error::Optimized binary for $(basename "$f") grew in size ($after_size > $before_size)"
+              exit 1
+            fi
+
+            delta=$((before_size - after_size))
+            if [ "$before_size" -gt 0 ]; then
+              pct=$(awk -v d="$delta" -v b="$before_size" 'BEGIN { printf "%.2f", (d / b) * 100 }')
+            else
+              pct="0.00"
+            fi
+
+            echo "Reduction: -$delta bytes (-$pct%)"
+
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+              echo "| \`$(basename "$f")\` | $before_size | $after_size | -$delta | -${pct}% |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            # Remove unoptimized backup so uploaded artifacts contain ONLY the optimized binaries
+            rm -f "${f}.orig"
           done
       - name: Verify WASM artifacts
         run: |

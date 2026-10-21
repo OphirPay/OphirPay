@@ -65,6 +65,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:openapi": "vitest run src/__tests__/openapi-conformance.test.ts",
+    "openapi:drift-check": "node scripts/verify-openapi-drift.mjs",
     "check:docs-links": "node scripts/check-markdown-links.mjs",
     "setup:soroban": "bash scripts/setup-soroban-env.sh",
     "verify:wasm": "bash scripts/verify-wasm-reproducibility.sh",

@@ -572,9 +572,10 @@ describe("GET /api/counterparties", () => {
 Then run the full gate:
 
 ```bash
-npm run typecheck   # tsc --noEmit
-npm run lint        # eslint .
-npm test            # vitest run
+npm run typecheck            # tsc --noEmit
+npm run lint                 # eslint .
+npm run openapi:drift-check  # verify Zod-to-OpenAPI schema synchronization
+npm test                     # vitest run
 ```
 
 ---
@@ -618,4 +619,5 @@ changes an API endpoint:
 
 **Rate limiting & Testing**
 - [ ] `docs/openapi.yaml` updated with the new/changed path and schemas
+- [ ] `npm run openapi:drift-check` passes with zero schema drifts
 - [ ] Unit tests added in `src/__tests__/`

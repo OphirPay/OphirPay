@@ -1,4 +1,6 @@
 # Trivy vulnerabilities suppressions
+# Branch: fix/issues-1327-1330 - CVE suppressions and api-cache invalidation
+# Addresses issues #1327, #1328, #1329, #1330
 # Add CVE IDs here to ignore them during container image scanning
 #
 # ── npm CLI bundled in the base image (tracked since 2026-09-28) ─────────────

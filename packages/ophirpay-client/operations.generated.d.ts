@@ -40,6 +40,7 @@ export type ApiOperationName =
   | "getApiGovernanceProposalsId"
   | "getApiHealth"
   | "getApiHealthLive"
+  | "getApiHealthReady"
   | "getApiHooks"
   | "getApiKeys"
   | "getApiKeysStats"

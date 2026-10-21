@@ -21,7 +21,7 @@ import {
   SPONSOR_MIN_STARTING_BALANCE,
 } from "@/lib/stellar";
 import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
-import { validateMemo } from "@/lib/validation-helpers";
+import { validateMemo, validateStellarAddress } from "@/lib/validation-helpers";
 import { recordPaymentOnChain } from "@/lib/contracts";
 import { downloadReceiptPdf } from "@/lib/receipt-pdf";
 import { useFeeStats } from "@/hooks/useFeeStats";
@@ -327,8 +327,9 @@ function SendPageClient() {
       setValidationError("Please enter a destination address.");
       return false;
     }
-    if (!isValidStellarAddress(destination)) {
-      setValidationError("Invalid Stellar address. Must start with G and be 56 characters long.");
+    const addrVal = validateStellarAddress(destination);
+    if (!addrVal.isValid) {
+      setValidationError(addrVal.error || "Invalid Stellar address. Must start with G and be 56 characters long.");
       return false;
     }
     if (destination === wallet.publicKey) {
@@ -960,6 +961,8 @@ function SendPageClient() {
   // ── Form state ───────────────────────────────────────────
 
   const isSubmitting = step !== "idle" && step !== "done";
+  const addressValidation = validateStellarAddress(destination);
+  const isDestinationValid = addressValidation.isValid;
 
   return (
     <div className="max-w-lg mx-auto mt-8 animate-fade-in">
@@ -1056,12 +1059,40 @@ function SendPageClient() {
           </label>
           <AddressAutocomplete
             value={destination}
-            onChange={setDestination}
+            onChange={(val) => {
+              setDestination(val);
+              if (validationError) setValidationError(null);
+            }}
             disabled={isSubmitting}
             placeholder="G..."
             data-testid="destination-input"
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            showValidation={destination.trim().length > 0}
+            isValid={isDestinationValid}
+            validationError={destination.trim().length > 0 ? addressValidation.error : null}
+            className="w-full"
           />
+          {destination.trim().length > 0 && addressValidation.error && (
+            <p
+              data-testid="address-inline-error"
+              className="text-xs text-red-600 dark:text-red-400 mt-1.5 flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>Invalid Stellar address: {addressValidation.error}</span>
+            </p>
+          )}
+          {destination.trim().length > 0 && isDestinationValid && (
+            <p
+              data-testid="address-valid-text"
+              className="text-xs text-green-600 dark:text-green-400 mt-1.5 flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span>Valid Stellar public key</span>
+            </p>
+          )}
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
             Start typing to autocomplete from your{" "}
             <Link
@@ -1369,7 +1400,7 @@ function SendPageClient() {
         {/* Submit */}
         <button
           onClick={handleSend}
-          disabled={isSubmitting || (mode === "one-time" && isCrossAsset && (!pathEstimate || Boolean(pathError)))}
+          disabled={isSubmitting || !isDestinationValid || (mode === "one-time" && isCrossAsset && (!pathEstimate || Boolean(pathError)))}
           data-testid="send-btn"
           className="w-full py-3 rounded-lg bg-gradient-to-r from-ophir-600 to-stellar-dark text-white font-medium text-sm hover:from-ophir-700 hover:to-stellar disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg shadow-ophir-500/25 active:scale-[0.98] flex items-center justify-center gap-2"
         >

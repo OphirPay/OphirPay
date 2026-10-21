@@ -1,0 +1,22 @@
+.vesting-timeline {
+  width: 100%;
+  margin: 20px 0;
+}
+
+.timeline {
+  background-color: #e0e0e0;
+  border-radius: 5px;
+  height: 20px;
+  position: relative;
+}
+
+.progress {
+  background-color: #76c7c0;
+  height: 100%;
+  border-radius: 5px;
+}
+
+.info {
+  margin-top: 10px;
+  font-size: 14px;
+}

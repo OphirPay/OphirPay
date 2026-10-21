@@ -69,10 +69,10 @@ describe("Kubernetes probe tuning (issue #1426)", () => {
       expect(livenessProbe.failureThreshold).toBe(3);
     });
 
-    it("configures readiness probe to /api/health with tuned parameters", () => {
+    it("configures readiness probe to /api/health/ready with tuned parameters", () => {
       const { readinessProbe } = helmValues;
       expect(readinessProbe).toBeDefined();
-      expect(readinessProbe.httpGet.path).toBe("/api/health");
+      expect(readinessProbe.httpGet.path).toBe("/api/health/ready");
       expect(readinessProbe.httpGet.port).toBe(3000);
       expect(readinessProbe.initialDelaySeconds).toBe(15);
       expect(readinessProbe.periodSeconds).toBe(10);
@@ -97,7 +97,7 @@ describe("Kubernetes probe tuning (issue #1426)", () => {
       expect(container).toBeDefined();
       const readiness = container?.readinessProbe;
       expect(readiness).toBeDefined();
-      expect(readiness?.httpGet?.path).toBe("/api/health");
+      expect(readiness?.httpGet?.path).toBe("/api/health/ready");
       expect(readiness?.initialDelaySeconds).toBe(15);
       expect(readiness?.periodSeconds).toBe(10);
       expect(readiness?.timeoutSeconds).toBe(5);

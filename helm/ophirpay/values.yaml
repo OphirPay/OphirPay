@@ -171,6 +171,29 @@ secrets:
   NEXT_PUBLIC_CONTRACT_ID: ""
   NEXT_PUBLIC_EMITTER_CONTRACT_ID: ""
   AUTH_SECRET: ""
+  REDIS_URL: ""
+  REDIS_TOKEN: ""
+  METRICS_TOKEN: ""
+  CRON_SECRET: ""
+  SCHEDULED_PAYMENTS_SOURCE_SECRET: ""
+
+# Opt-in pre-install/pre-upgrade Prisma migration Job. The image tag follows
+# image.tag (or Chart.appVersion) with a `-migrator` suffix unless overridden.
+migrations:
+  enabled: false
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
 # ── Probes (issue #738) ────────────────────────────────────────
 # Liveness and readiness answer different questions, so they hit different
@@ -178,9 +201,8 @@ secrets:
 #   • liveness  → /api/health/live  — process-only, no DB/RPC/Redis I/O, so a
 #                                    transient dependency outage never restarts
 #                                    an otherwise healthy pod.
-#   • readiness → /api/health       — dependency-aware; 503 while the database
-#                                    is unreachable, which drains traffic from
-#                                    the pod without killing it.
+#   • readiness → /api/health/ready — database-only; external services cannot
+#                                    drain traffic when they are slow or down.
 # Both paths are exempt from the global rate limiter (src/proxy.ts).
 livenessProbe:
   httpGet:
@@ -193,7 +215,7 @@ livenessProbe:
 
 readinessProbe:
   httpGet:
-    path: /api/health
+    path: /api/health/ready
     port: 3000
   initialDelaySeconds: 15
   periodSeconds: 10

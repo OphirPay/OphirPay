@@ -111,7 +111,24 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=migrator-${{ matrix.arch }}
+
+      - name: Build and verify the ${{ matrix.arch }} migrator target
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: migrator
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: ophirpay-migrator:${{ matrix.arch }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+      - name: Assert the migrator includes the Prisma CLI
+        run: docker run --rm ophirpay-migrator:${{ matrix.arch }} --version
 
       - name: Assert the image targets ${{ matrix.arch }}
         run: |
@@ -221,6 +238,16 @@ jobs:
             type=sha,format=long
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
 
+      - name: Derive migration image tags
+        id: migrator-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch,suffix=-migrator
+            type=sha,format=long,suffix=-migrator
+            type=raw,value=latest-migrator,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+
       - name: Build and push the multi-arch manifest
         id: build
         uses: docker/build-push-action@v5
@@ -240,6 +267,22 @@ jobs:
             type=gha,scope=amd64
             type=gha,scope=arm64
           cache-to: type=gha,mode=max,scope=manifest
+
+      - name: Build and push the multi-arch migrator image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: migrator
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.migrator-meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          cache-from: |
+            type=gha,scope=amd64
+            type=gha,scope=arm64
+          cache-to: type=gha,mode=max,scope=migrator-manifest
 
       - name: Verify the pushed manifest lists both platforms
         run: |
@@ -261,6 +304,23 @@ jobs:
           done
           echo "✅ ${ref} is a multi-arch manifest (linux/amd64 + linux/arm64)"
 
+      - name: Verify the migrator manifest lists both platforms
+        run: |
+          set -euo pipefail
+          image=$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
+          ref="${REGISTRY}/${image}:${{ steps.migrator-meta.outputs.version }}"
+          platforms=$(docker buildx imagetools inspect "${ref}" --format '{{json .Manifest}}' \
+            | jq -r '.manifests[].platform | "\(.os)/\(.architecture)"' | sort -u)
+          echo "migrator manifest platforms:"
+          echo "${platforms}"
+          for expected in linux/amd64 linux/arm64; do
+            if ! grep -qx "${expected}" <<< "${platforms}"; then
+              echo "::error::published migrator manifest for ${ref} is missing ${expected}"
+              exit 1
+            fi
+          done
+          echo "✅ ${ref} is a multi-arch migration image"
+
       - name: Write the build summary
         if: always()
         run: |
@@ -273,4 +333,5 @@ jobs:
             echo "| linux/arm64 | build + boot-test passed (QEMU) |"
             echo
             echo "Tags: \`${{ steps.meta.outputs.tags }}\`"
+            echo "Migrator tags: \`${{ steps.migrator-meta.outputs.tags }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

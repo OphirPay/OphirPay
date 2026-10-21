@@ -40,17 +40,30 @@ services:
     # restated here so `docker compose up` shows the app becoming healthy, and
     # so the timings are visible/tunable next to the db + redis healthchecks.
     #
-    # Liveness only asks "is the process serving?". Dependency-aware readiness
-    # is GET /api/health (503 while the DB is unreachable) and is deliberately
-    # NOT used here: a Postgres blip must not flip this container to unhealthy
-    # and restart it. Kubernetes wires the two probes separately — see
-    # k8s/deployment.yaml and docs/DEPLOYMENT.md.
+    # Liveness only asks "is the process serving?". Kubernetes readiness uses
+    # GET /api/health/ready to check the database without contacting public
+    # services; Docker's healthcheck remains process-only.
     healthcheck:
       test: ["CMD", "node", "scripts/healthcheck.js", "/api/health/live"]
       interval: 30s
       timeout: 5s
       start_period: 20s
       retries: 3
+
+  migrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+    image: ophirpay-migrator:local
+    profiles: [migrations]
+    environment:
+      - DATABASE_URL=postgresql://ophirpay:ophirpay@db:5432/ophirpay
+    depends_on:
+      db:
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine

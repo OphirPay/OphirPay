@@ -462,6 +462,12 @@ jobs:
           helm template ophirpay helm/ophirpay -f helm/ophirpay/values.ci.yaml \
             > /tmp/ci-values.yaml
 
+          helm template ophirpay helm/ophirpay \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET" \
+            --set migrations.enabled=true \
+            > /tmp/migrations.yaml
+
           fail=0
           expect() {
             if grep -q -- "$1" "$2"; then
@@ -490,11 +496,15 @@ jobs:
           expect "policyTypes:" /tmp/enabled.yaml
           expect "kubernetes.io/metadata.name: monitoring" /tmp/enabled.yaml
           expect "port: 6379" /tmp/enabled.yaml
+          expect "kind: Job" /tmp/migrations.yaml
+          expect '"helm.sh/hook": pre-install,pre-upgrade' /tmp/migrations.yaml
+          expect "ophirpay:1.0.0-migrator" /tmp/migrations.yaml
 
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
           reject "kind: NetworkPolicy" /tmp/disabled.yaml
           reject "kind: ServiceAccount" /tmp/disabled.yaml
+          reject "kind: Job" /tmp/default.yaml
           reject "kubernetes.io/metadata.name: monitoring" /tmp/disabled.yaml
           reject "port: 6379" /tmp/disabled.yaml
 
@@ -757,7 +767,7 @@ jobs:
         # manifest using a newer API field fails here rather than on an old
         # cluster.
         run: |
-          for manifest in /tmp/default.yaml /tmp/enabled.yaml /tmp/disabled.yaml /tmp/ci-values.yaml; do
+          for manifest in /tmp/default.yaml /tmp/enabled.yaml /tmp/disabled.yaml /tmp/ci-values.yaml /tmp/migrations.yaml; do
             echo "::group::kubeconform $manifest"
             kubeconform -strict -summary -kubernetes-version 1.28.0 "$manifest"
             echo "::endgroup::"
@@ -768,13 +778,17 @@ jobs:
       - name: Assert rendered config keys against .env.example
         # AC of #730: a broken template or an unknown config key must fail the
         # job. Every key the chart renders into the ConfigMap/Secret has to be
-        # a variable the app documents in .env.example, and no documented
-        # variable may be missing, so config drift cannot recur silently.
+        # a variable the app documents in .env.example, and every active
+        # variable is rendered, so config drift cannot recur silently.
         run: |
           set -euo pipefail
 
-          # Documented variables (commented-out optional ones are excluded).
-          grep -v '^#' .env.example | grep -v '^$' | cut -d= -f1 | sort -u > /tmp/env.keys
+          # All documented variables are allowed chart keys; only uncommented
+          # variables are required to be present in the rendered chart.
+          sed -nE 's/^[[:space:]]*#?[[:space:]]*([A-Z][A-Z0-9_]*)=.*/\1/p' .env.example \
+            | sort -u > /tmp/env.documented
+          sed -nE 's/^[[:space:]]*([A-Z][A-Z0-9_]*)=.*/\1/p' .env.example \
+            | sort -u > /tmp/env.required
 
           # Keys rendered by the chart (ConfigMap `data` + Secret `stringData`).
           # The two required secrets are supplied because the chart now refuses
@@ -787,22 +801,49 @@ jobs:
             | sed 's/^[[:space:]]*//' \
             | sort -u > /tmp/chart.keys
 
+          # Optional credentials are accepted when configured, but empty
+          # defaults must not create blank Secret entries.
+          helm template ophirpay helm/ophirpay --show-only templates/config.yaml \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET" \
+            --set-string secrets.METRICS_TOKEN=ci-metrics-token \
+            --set-string secrets.CRON_SECRET=ci-cron-secret \
+            --set-string secrets.REDIS_TOKEN=ci-redis-token \
+            --set-string secrets.REDIS_URL=redis://redis:6379 \
+            --set-string secrets.SCHEDULED_PAYMENTS_SOURCE_SECRET=ci-stellar-secret \
+            | grep -E '^  (METRICS_TOKEN|CRON_SECRET|REDIS_TOKEN|REDIS_URL|SCHEDULED_PAYMENTS_SOURCE_SECRET):' \
+            | sort -u > /tmp/optional-chart.keys
+
+          for key in METRICS_TOKEN CRON_SECRET REDIS_TOKEN REDIS_URL SCHEDULED_PAYMENTS_SOURCE_SECRET; do
+            grep -Eq "^  ${key}:" /tmp/optional-chart.keys || {
+              echo "::error::configured optional secret '$key' was not rendered"
+              exit 1
+            }
+          done
+
+          for key in METRICS_TOKEN CRON_SECRET REDIS_TOKEN REDIS_URL SCHEDULED_PAYMENTS_SOURCE_SECRET; do
+            if grep -Fxq "$key" /tmp/chart.keys; then
+              echo "::error::empty optional secret '$key' was rendered"
+              exit 1
+            fi
+          done
+
           fail=0
           while read -r key; do
             grep -Fxq "$key" /tmp/chart.keys || {
-              echo "::error::.env.example variable '$key' is not rendered by the chart"
+              echo "::error::required .env.example variable '$key' is not rendered by the chart"
               fail=1
             }
-          done < /tmp/env.keys
+          done < /tmp/env.required
 
           while read -r key; do
-            grep -Fxq "$key" /tmp/env.keys || {
+            grep -Fxq "$key" /tmp/env.documented || {
               echo "::error::chart renders '$key', which is not documented in .env.example"
               fail=1
             }
           done < /tmp/chart.keys
 
           if [ "$fail" -eq 0 ]; then
-            echo "✅ Rendered config keys match .env.example ($(wc -l < /tmp/chart.keys | tr -d ' ') keys)"
+            echo "✅ Required chart keys are present and all chart keys are documented ($(wc -l < /tmp/chart.keys | tr -d ' ') rendered keys)"
           fi
           exit "$fail"

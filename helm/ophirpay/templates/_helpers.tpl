@@ -83,3 +83,11 @@ Setting `image.digest` pins the image by content instead of by name.
 {{- printf "%s:%s" $repository (.Values.image.tag | default .Chart.AppVersion) -}}
 {{- end -}}
 {{- end }}
+
+{{/* Migration companion image uses the same release tag plus `-migrator`. */}}
+{{- define "ophirpay.migratorImage" -}}
+{{- $repository := default .Values.image.repository .Values.migrations.image.repository -}}
+{{- $baseTag := default .Chart.AppVersion .Values.image.tag -}}
+{{- $tag := default (printf "%s-migrator" $baseTag) .Values.migrations.image.tag -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end }}

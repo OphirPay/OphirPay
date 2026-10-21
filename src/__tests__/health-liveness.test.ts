@@ -3,11 +3,11 @@
  * @vitest-environment node
  *
  * Issue #738 — the image shipped no HEALTHCHECK, and `/api/health` (which pings
- * the database, Soroban RPC, Horizon and Redis) was used for *both* probes, so a
- * transient dependency outage could restart-loop a healthy container.
+ * external dependencies) was also used as a liveness probe, so a transient
+ * dependency outage could restart-loop a healthy container.
  *
  * Liveness must stay dependency-free (`GET /api/health/live`) while readiness
- * keeps the dependency-aware check (`GET /api/health`). These tests pin the
+ * checks only the database (`GET /api/health/ready`). These tests pin the
  * endpoint behaviour and every manifest/doc that wires the two together.
  */
 
@@ -17,6 +17,13 @@ import path from "node:path";
 import { load, loadAll } from "js-yaml";
 
 import { GET } from "@/app/api/health/live/route";
+
+vi.mock("@/lib/prisma", () => ({
+  default: { $queryRaw: vi.fn() },
+}));
+
+import prisma from "@/lib/prisma";
+import { GET as getReady } from "@/app/api/health/ready/route";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");
@@ -65,6 +72,34 @@ describe("GET /api/health/live — liveness", () => {
   });
 });
 
+describe("GET /api/health/ready — readiness", () => {
+  it("returns 200 when the database responds without checking external services", async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ 1: 1 }]);
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const response = await getReady();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.status).toBe("ok");
+    expect(body.data.probe).toBe("readiness");
+    expect(body.data.services.database.status).toBe("ok");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 when the database is unavailable", async () => {
+    vi.mocked(prisma.$queryRaw).mockRejectedValueOnce(new Error("DB down"));
+
+    const response = await getReady();
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body.data.status).toBe("error");
+    expect(body.data.services.database.status).toBe("error");
+  });
+});
+
 describe("Kubernetes manifests — liveness vs readiness (issue #738)", () => {
   const containerOf = (file: string) => {
     const docs = loadAll(read(file)) as Array<Record<string, unknown>>;
@@ -84,7 +119,7 @@ describe("Kubernetes manifests — liveness vs readiness (issue #738)", () => {
   it("k8s/deployment.yaml probes liveness and readiness separately", () => {
     const container = containerOf("k8s/deployment.yaml");
     expect(container.livenessProbe.httpGet.path).toBe("/api/health/live");
-    expect(container.readinessProbe.httpGet.path).toBe("/api/health");
+    expect(container.readinessProbe.httpGet.path).toBe("/api/health/ready");
   });
 
   it("helm/ophirpay/values.yaml probes liveness and readiness separately", () => {
@@ -93,7 +128,7 @@ describe("Kubernetes manifests — liveness vs readiness (issue #738)", () => {
       readinessProbe: { httpGet: { path: string } };
     };
     expect(values.livenessProbe.httpGet.path).toBe("/api/health/live");
-    expect(values.readinessProbe.httpGet.path).toBe("/api/health");
+    expect(values.readinessProbe.httpGet.path).toBe("/api/health/ready");
   });
 
   it("the Helm template still renders both probes from values", () => {
@@ -160,5 +195,8 @@ describe("Documentation — liveness vs readiness (issue #738)", () => {
     expect(live, "/api/health/live missing from docs/openapi.yaml").toBeTruthy();
     expect(live!.get).toBeTruthy();
     expect(Object.keys(live!.get!.responses)).toContain("200");
+    const ready = spec.paths["/api/health/ready"];
+    expect(ready, "/api/health/ready missing from docs/openapi.yaml").toBeTruthy();
+    expect(Object.keys(ready!.get!.responses)).toContain("503");
   });
 });

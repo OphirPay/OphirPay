@@ -16,8 +16,8 @@ import { getAppVersionInfo } from "@/lib/app-version";
  * configured contract ID. Orchestrators should therefore wire:
  *
  *   • `livenessProbe`  → `/api/health/live`  (never depends on a dependency)
- *   • `readinessProbe` → `/api/health`       (503 while a dependency is down,
- *                                             so traffic drains without a restart)
+ *   • `readinessProbe` → `/api/health/ready` (503 while the database is down,
+ *                                             without probing external services)
  *
  * The Docker `HEALTHCHECK` uses this route for the same reason (see
  * `Dockerfile` and `docs/DEPLOYMENT.md` → "Liveness vs readiness").

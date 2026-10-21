@@ -787,7 +787,7 @@ is `null` on the last page; an invalid cursor returns `400`.
 
 ## 12. System Health & Metrics
 
-### Check System Health (readiness)
+### Check System Health
 ```bash
 curl -X GET "https://api.ophirpay.com/api/health"
 ```
@@ -802,9 +802,16 @@ curl -X GET "https://api.ophirpay.com/api/health"
   "timestamp": "2026-08-26T19:10:00.000Z"
 }
 ```
-This is the **readiness** signal: it pings the database (critical), Soroban RPC,
-Horizon and Redis, and returns `503` while the database is unreachable. Wire it
-to a Kubernetes `readinessProbe` so traffic drains without a restart.
+This detailed status endpoint includes the database, Soroban RPC, Horizon and
+Redis. For Kubernetes readiness, use the database-only endpoint instead; slow
+public services should not drain otherwise healthy application pods.
+
+```bash
+curl -X GET "https://api.ophirpay.com/api/health/ready"
+```
+
+`/api/health/ready` returns `200` when PostgreSQL responds and `503` when it
+does not. Configure Kubernetes `readinessProbe` to use this path.
 
 ### Check Liveness (`/api/health/live`)
 

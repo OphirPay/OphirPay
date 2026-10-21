@@ -37,6 +37,8 @@ metadata:
 type: Opaque
 stringData:
   {{- range $key, $val := omit .Values.secrets "existingSecret" }}
+  {{- if ne ($val | toString) "" }}
   {{ $key }}: {{ $val | quote }}
+  {{- end }}
   {{- end }}
 {{- end }}

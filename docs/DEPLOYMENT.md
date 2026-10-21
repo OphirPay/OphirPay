@@ -162,11 +162,11 @@ OphirPay includes a multi-stage `Dockerfile` and a `docker-compose.yml` with Pos
 # Clone the repo
 git clone https://github.com/OphirPay/OphirPay.git && cd OphirPay
 
-# Start all services (app + PostgreSQL + Redis)
-docker compose up -d
-
-# Run database migrations
-docker compose exec app npx prisma migrate deploy
+# Start the database and Redis, apply migrations with the dedicated CLI image,
+# then start the application.
+docker compose up -d db redis
+docker compose --profile migrations run --rm migrator
+docker compose up -d app
 
 # Verify
 curl http://localhost:3000/api/health
@@ -177,6 +177,7 @@ curl http://localhost:3000/api/health
 | Service | Image | Port | Purpose |
 |---|---|---|---|
 | `app` | Built from `Dockerfile` | 3000 | OphirPay application |
+| `migrator` | `Dockerfile` `migrator` target | — | Prisma migrations; opt-in Compose profile |
 | `db` | `postgres:16-alpine` | 5432 | PostgreSQL database |
 | `redis` | `redis:7-alpine` | 6379 | Rate limiting cache |
 
@@ -216,6 +217,10 @@ This mounts your local repository files, sets `NODE_ENV=development`, and runs `
 # Build the image
 docker build -t ophirpay .
 
+# Build and run migrations separately; the runtime image does not include Prisma CLI.
+docker build --target migrator -t ophirpay-migrator .
+docker run --rm -e DATABASE_URL="postgresql://user:pass@host:5432/ophirpay" ophirpay-migrator
+
 # Run with environment variables
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://..." \
@@ -231,12 +236,13 @@ docker run -p 3000:3000 \
 
 ### Docker Image Details
 
-The `Dockerfile` uses a 3-stage build:
+The `Dockerfile` uses separate dependency, build, migration, and runtime stages:
 
 | Stage | Base Image | Purpose |
 |---|---|---|
 | `deps` | `node:24-slim` | Install npm dependencies (with OpenSSL for Prisma) |
 | `builder` | `node:24-slim` | Generate Prisma client, run `next build` |
+| `migrator` | `node:24-slim` | Prisma CLI + schema; runs `prisma migrate deploy` |
 | `runner` | `node:24-slim` | Minimal production image, runs as the non-root `node` user |
 
 **Key details:**
@@ -253,6 +259,8 @@ The `Dockerfile` uses a 3-stage build:
   defeating the purpose of standalone output.  The runner stage only copies the native
   Prisma query-engine binary, which the standalone tracer intentionally omits because it
   is platform-specific.
+- The `migrator` target is a separate image for one-shot migrations. It contains
+  the Prisma CLI and `prisma/` directory; the `runner` target remains CLI-free.
 
 ### Multi-architecture images (linux/amd64 + linux/arm64)
 
@@ -327,7 +335,12 @@ container.
 | Probe | Endpoint | Checks | Failure meaning |
 |---|---|---|---|
 | **Liveness** | `GET /api/health/live` | Process is up and serving HTTP. No database, RPC, Horizon or Redis I/O | The process is wedged — restarting it is the right response |
-| **Readiness** | `GET /api/health` | Database (`SELECT 1`, critical, 503 when down), Soroban RPC + Horizon reachability, Redis ping when `REDIS_URL` is set, and the configured contract ID | A dependency is unavailable — stop routing traffic, do **not** restart |
+| **Readiness** | `GET /api/health/ready` | Database only (`SELECT 1`, 503 when down); never contacts Stellar or Redis | The database is unavailable — stop routing traffic, do **not** restart |
+
+`GET /api/health` remains the detailed dashboard endpoint. Its optional checks
+include Soroban RPC, Horizon, and Redis; a failed optional check reports a
+degraded status without failing the readiness probe. The database-only probe
+keeps slow public endpoints from draining otherwise usable pods.
 
 Both paths are exempt from the global rate limiter (`src/proxy.ts`) so
 orchestrators can poll them even while the app is under load.
@@ -359,9 +372,9 @@ livenessProbe:                     # process only — never restarts on a DB bli
   periodSeconds: 15
   timeoutSeconds: 5
   failureThreshold: 3
-readinessProbe:                    # dependency-aware — drains traffic on 503
+readinessProbe:                    # database-only — external outages do not drain pods
   httpGet:
-    path: /api/health
+    path: /api/health/ready
     port: 3000
   initialDelaySeconds: 10
   periodSeconds: 10
@@ -585,6 +598,53 @@ first-class instead of unsupported:
 
 Do not commit populated `values.yaml`, and do not use `--set
 secrets.DATABASE_URL=...` in CI logs; prefer `--set-file` or `existingSecret`.
+
+#### Optional runtime secrets (issue #1336)
+
+The chart accepts the documented optional keys `REDIS_URL`, `REDIS_TOKEN`,
+`METRICS_TOKEN`, `CRON_SECRET`, and `SCHEDULED_PAYMENTS_SOURCE_SECRET` under
+`secrets`. Empty defaults are omitted from the rendered Secret; setting a value
+adds that key. With `secrets.existingSecret`, put the same keys in the external
+Secret instead. The chart parity check allows documented commented-out
+`.env.example` variables but still rejects unknown keys and requires every
+active `.env.example` variable.
+
+#### Automatic Prisma migrations (issue #1335)
+
+Migrations are opt-in to avoid changing existing release behavior. Enable the
+Helm pre-install/pre-upgrade Job when a release should apply pending Prisma
+migrations before application pods are upgraded:
+
+```bash
+helm upgrade --install ophirpay ./helm/ophirpay \
+  --namespace ophirpay \
+  --set image.tag=integration-staging \
+  --set migrations.enabled=true \
+  --set secrets.existingSecret=ophirpay-secrets \
+  --wait
+```
+
+The Job reads `DATABASE_URL` from the same Secret as the app. The image tag
+defaults to the application tag plus `-migrator` (for example,
+`integration-staging-migrator`); the Docker workflow builds and publishes both
+images together. Set `migrations.image.repository` or
+`migrations.image.tag` only when publishing the migration image separately.
+The Job has no retries and a bounded deadline: a migration failure aborts the
+Helm upgrade, leaves the failed Job available for inspection, and prevents the
+new application pods from rolling out. Successful hook Jobs are deleted.
+
+For Docker deployments, use the opt-in Compose service or build the target
+directly:
+
+```bash
+docker compose up -d db
+docker compose --profile migrations run --rm migrator
+```
+
+```bash
+docker build --target migrator -t ophirpay-migrator .
+docker run --rm -e DATABASE_URL="postgresql://user:pass@host:5432/ophirpay" ophirpay-migrator
+```
 
 #### Immutable image references (issue #1333)
 

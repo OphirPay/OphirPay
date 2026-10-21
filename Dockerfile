@@ -58,7 +58,22 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx prisma generate
 RUN npm run build
 
-# Stage 3: Runner
+# Dedicated migration image: includes the Prisma CLI and schema, but is never
+# used as the production application runtime image.
+FROM node:24-slim AS migrator
+RUN apt-get update -qq \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node package.json ./package.json
+COPY --chown=node:node prisma ./prisma
+USER node
+ENTRYPOINT ["./node_modules/.bin/prisma"]
+CMD ["migrate", "deploy"]
+
+# Stage 4: Runner
 FROM node:24-slim AS runner
 ARG GIT_SHA
 ENV GIT_SHA=$GIT_SHA

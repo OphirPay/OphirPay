@@ -173,6 +173,32 @@
       "description": "Secret values rendered into the chart's Secret, or `existingSecret` naming a Secret that already exists. DATABASE_URL and AUTH_SECRET are enforced by the template with required() when existingSecret is empty (issue #1334).",
       "additionalProperties": { "type": "string" }
     },
+    "migrations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        },
+        "backoffLimit": { "type": "integer", "minimum": 0 },
+        "activeDeadlineSeconds": { "type": "integer", "minimum": 1 },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requests": { "$ref": "#/definitions/resourceList" },
+            "limits": { "$ref": "#/definitions/resourceList" }
+          }
+        }
+      }
+    },
     "livenessProbe": { "type": "object" },
     "readinessProbe": { "type": "object" },
     "nodeSelector": { "type": "object" },

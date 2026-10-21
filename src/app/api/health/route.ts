@@ -13,28 +13,11 @@ import {
 } from "@/lib/rpc-failover";
 import { getCircuitBreakerState } from "@/lib/rpc-circuit-breaker";
 import { getAppVersionInfo } from "@/lib/app-version";
+import { getRedisRestConfig } from "@/lib/rate-limit";
 
 // ── Check helpers ──────────────────────────────────────────────
 
 type CheckStatus = "ok" | "error" | "unchecked" | "disabled" | "not_configured";
-
-/** GET a URL and report reachability + latency; null when it errors/times out. */
-async function pingUrl(
-  url: string,
-  timeoutMs: number
-): Promise<{ ok: boolean; latencyMs: number } | null> {
-  const start = Date.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    return { ok: res.ok, latencyMs: Date.now() - start };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 /** POST a JSON-RPC body and report reachability + latency; null on failure. */
 async function pingJsonRpc(
@@ -57,6 +40,71 @@ async function pingJsonRpc(
     return null;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/** Ping Redis over its configured REST or TCP transport. */
+async function pingRedis(
+  timeoutMs: number
+): Promise<{ ok: boolean; latencyMs: number } | null> {
+  const start = Date.now();
+  const restConfig = getRedisRestConfig();
+
+  if (restConfig) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(restConfig.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(restConfig.token
+            ? { Authorization: `Bearer ${restConfig.token}` }
+            : {}),
+        },
+        body: JSON.stringify(["PING"]),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        return { ok: false, latencyMs: Date.now() - start };
+      }
+      const payload = (await response.json()) as { result?: unknown; error?: unknown };
+      return {
+        ok: payload.result === "PONG" && !payload.error,
+        latencyMs: Date.now() - start,
+      };
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl || !/^rediss?:\/\//i.test(redisUrl)) {
+    return { ok: false, latencyMs: Date.now() - start };
+  }
+
+  let disconnect = () => {};
+  try {
+    const { Redis } = await import("ioredis");
+    const client = new Redis(redisUrl, {
+      lazyConnect: true,
+      connectTimeout: timeoutMs,
+      commandTimeout: timeoutMs,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      retryStrategy: () => null,
+    });
+    client.on("error", () => {});
+    disconnect = () => client.disconnect();
+    await client.connect();
+    const result = await client.ping();
+    return { ok: result === "PONG", latencyMs: Date.now() - start };
+  } catch {
+    return null;
+  } finally {
+    disconnect();
   }
 }
 
@@ -158,12 +206,8 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     // Check Redis connectivity (if configured)
     let redisStatus: "ok" | "error" | "disabled" = "disabled";
     let redisLatency: number | null = null;
-    const redisUrl = process.env.REDIS_URL;
-    if (redisUrl) {
-      const pingUrlStr =
-        redisUrl.replace(/\/\/.*@/, "//health:@").replace(/\/\d+$/, "") +
-        "/ping";
-      const redis = await pingUrl(pingUrlStr, 3000);
+    if (process.env.REDIS_URL || getRedisRestConfig()) {
+      const redis = await pingRedis(3000);
       if (redis) {
         redisStatus = redis.ok ? "ok" : "error";
         redisLatency = redis.latencyMs;

@@ -2566,9 +2566,9 @@ paths:
         and serving HTTP, with no database, Soroban RPC, Horizon or Redis I/O.
         Orchestrators should wire this to `livenessProbe` / container
         healthchecks so a transient dependency outage cannot restart-loop a
-        healthy container. The dependency-aware readiness check remains
-        `GET /api/health` (503 while the database is unreachable). Both paths
-        are exempt from the global rate limiter.
+        healthy container. Readiness uses `GET /api/health/ready` (database
+        only, 503 while unavailable). Both paths are exempt from the global
+        rate limiter.
       responses:
         "200":
           description: Process is alive and serving
@@ -2593,6 +2593,20 @@ paths:
                     type: object
                     properties:
                       timestamp: { type: string, format: date-time }
+
+  /api/health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe (database only)
+      description: >-
+        Checks PostgreSQL with `SELECT 1` and performs no external network
+        checks. Orchestrators should wire this endpoint to readiness probes so
+        slow Stellar RPC, Horizon, or Redis services do not drain healthy pods.
+      responses:
+        "200":
+          description: Database is reachable and the pod can receive traffic
+        "503":
+          description: Database is unavailable; the pod should receive no traffic
 
   # ── Metrics ───────────────────────────────────────────────
   /api/metrics:

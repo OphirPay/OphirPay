@@ -36,8 +36,11 @@ Either way the pods need at least:
 | `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | Deployed emitter contract |
 
 Add `REDIS_URL` when using a shared rate-limit store and any deployment-specific
-credentials required by the application. Keep secrets in an external secret
-manager or a sealed/encrypted Secret; do not commit populated `values.yaml`.
+credentials required by the application. Optional chart values also support
+`REDIS_TOKEN`, `METRICS_TOKEN`, `CRON_SECRET`, and
+`SCHEDULED_PAYMENTS_SOURCE_SECRET`; unset optional values are omitted from the
+Secret. Keep credentials in an external secret manager or a sealed/encrypted
+Secret; do not commit populated `values.yaml`.
 
 ### Image pinning
 
@@ -101,21 +104,20 @@ helm upgrade --install ophirpay helm/ophirpay \
   --set image.repository=ghcr.io/example/ophirpay \
   --set image.tag='2026-09-24' \
   --set secrets.existingSecret=ophirpay-secrets \
+  --set migrations.enabled=true \
   --wait
 ```
 
-Run migrations as an explicit release step, using the same image and database
-Secret as the application. A migration Job is preferred for production because
-it is observable and can be retried independently:
+The opt-in Helm hook runs `prisma migrate deploy` before install or upgrade,
+using a dedicated `-migrator` image and `DATABASE_URL` from the same Secret as
+the application. For example, `image.tag=2026-09-24` uses
+`2026-09-24-migrator` unless `migrations.image.tag` is explicitly set. The
+Docker workflow publishes both image variants for amd64 and arm64. A failed
+migration aborts the Helm upgrade and leaves the failed Job available for
+inspection; successful hook Jobs are deleted. Leave `migrations.enabled=false`
+to preserve manual migration control.
 
-```bash
-kubectl -n ophirpay create job --from=deployment/ophirpay ophirpay-migrate-$(date +%s)
-kubectl -n ophirpay wait --for=condition=complete job/ophirpay-migrate-* --timeout=10m
-```
-
-The generated Job must run `npx prisma migrate deploy` as its command; inspect
-the rendered command and logs before relying on it. Do not run `prisma migrate
-dev` in a production cluster.
+Do not run `prisma migrate dev` in a production cluster.
 
 ## Ingress, TLS, and probes
 
@@ -128,8 +130,8 @@ Probes are configured with tuned timings to accommodate Next.js route compilatio
 - **Liveness probe** (`/api/health/live` on port 3000):
   - Validates process responsiveness without external dependency coupling.
   - `initialDelaySeconds: 30`, `periodSeconds: 10`, `timeoutSeconds: 5`, `failureThreshold: 3`.
-- **Readiness probe** (`/api/health` on port 3000):
-  - Dependency-aware check (PostgreSQL database connectivity and Soroban RPC); temporarily removes unready pods from Service routing without triggering container restarts.
+- **Readiness probe** (`/api/health/ready` on port 3000):
+  - Checks PostgreSQL only; slow or unavailable public Stellar and Redis endpoints do not remove an otherwise usable pod from Service routing.
   - `initialDelaySeconds: 15`, `periodSeconds: 10`, `timeoutSeconds: 5`, `failureThreshold: 3`.
 
 ## Pre-flight checklist
@@ -144,7 +146,7 @@ Probes are configured with tuned timings to accommodate Next.js route compilatio
 - [ ] Run `kubectl apply --dry-run=server` against the target cluster.
 - [ ] Confirm ingress DNS/TLS and `/api/health` from inside and outside the
       cluster.
-- [ ] Run the Prisma migration Job, then verify rollout and logs.
+- [ ] Enable `migrations.enabled` and confirm the matching `-migrator` image is published, or run migrations through an approved external process.
 - [ ] Record the image tag, chart version, network, and contract IDs used.
 
 See [Deployment](DEPLOYMENT.md) for Docker, Vercel, and standalone Node.js

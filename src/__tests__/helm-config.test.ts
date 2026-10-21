@@ -56,6 +56,19 @@ const documentedEnvVars = new Set(
   ),
 );
 
+const requiredEnvVars = new Set(
+  Array.from(
+    readFileSync(join(repoRoot, ".env.example"), "utf8").matchAll(
+      /^\s*([A-Z][A-Z0-9_]*)=/gm,
+    ),
+    (match) => match[1],
+  ),
+);
+const chartEnvVars = new Set([
+  ...Object.keys(values.config),
+  ...secretEnvKeys,
+]);
+
 function chartFiles(dir: string): { path: string; contents: string }[] {
   return readdirSync(dir).flatMap((entry) => {
     const full = join(dir, entry);
@@ -71,6 +84,21 @@ describe(".env.example parsing", () => {
     expect(documentedEnvVars.has("NEXT_PUBLIC_STELLAR_RPC_URL")).toBe(true);
     // Only present as a commented-out optional variable.
     expect(documentedEnvVars.has("REDIS_URL")).toBe(true);
+    expect(requiredEnvVars.has("REDIS_URL")).toBe(false);
+    expect(requiredEnvVars.has("DATABASE_URL")).toBe(true);
+  });
+});
+
+describe("Helm environment coverage", () => {
+  it("includes every active .env.example variable in chart values", () => {
+    for (const key of requiredEnvVars) {
+      expect(chartEnvVars.has(key), `${key} is missing from Helm values`).toBe(true);
+    }
+  });
+
+  it("omits empty optional secrets when rendering the Secret", () => {
+    const template = readFileSync(join(templatesDir, "config.yaml"), "utf8");
+    expect(template).toContain('if ne ($val | toString) ""');
   });
 });
 

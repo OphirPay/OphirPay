@@ -342,6 +342,31 @@ def webhook():
 
 ---
 
+## Verifying server-side (TypeScript)
+
+The canonical server-side verifier lives in
+`src/lib/webhook-deliver.ts` as `verifyWebhookSignature(body, signature,
+secret, timestamp?)`. It recomputes the HMAC over
+`<timestamp>.<canonical body>` and compares it to the header value with
+`crypto.timingSafeEqual` — **never** with `===` / `!==` on the hex
+strings. A length check runs first, so a malformed or truncated
+signature returns `false` instead of throwing:
+
+```typescript
+import { timingSafeEqual } from "node:crypto";
+
+// Length check first: timingSafeEqual throws on unequal lengths.
+const providedBuf = Buffer.from(String(signature ?? ""));
+const expectedBuf = Buffer.from(expected);
+if (providedBuf.length !== expectedBuf.length) return false;
+return timingSafeEqual(providedBuf, expectedBuf);
+```
+
+> **Warning:** comparing signatures with `===` or `!==` on hex strings
+> is a timing side channel. Always compare raw byte buffers with
+> `crypto.timingSafeEqual` (Node) / `hmac.compare_digest` (Python) after
+> verifying the lengths match.
+
 ## Verification checklist
 
 - [ ] Compare against the `X-OphirPay-Signature` **header**, not the body field.

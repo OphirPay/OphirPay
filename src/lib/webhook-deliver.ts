@@ -309,6 +309,34 @@ export function signWebhookPayload(payload: WebhookPayload, secret: string): str
     .digest("hex");
 }
 
+export function verifyWebhookSignature(
+  body: string,
+  signature: string,
+  secret: string,
+  timestamp?: string
+): boolean {
+  let parsed: WebhookPayload;
+  try {
+    parsed = JSON.parse(body) as WebhookPayload;
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const canonical = canonicalizeWebhookBody(parsed);
+  const signedTimestamp = String(timestamp ?? parsed.timestamp ?? "");
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(webhookSignedInput(signedTimestamp, canonical))
+    .digest("hex");
+  // Timing-safe comparison (issue #1386): compare raw bytes with
+  // crypto.timingSafeEqual after an explicit length check, so a
+  // malformed/garbage signature returns false instead of throwing.
+  const providedBuf = Buffer.from(String(signature ?? ""));
+  const expectedBuf = Buffer.from(expected);
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(providedBuf, expectedBuf);
+}
+
 export function buildSignedPayload(
   payload: WebhookPayload,
   secret: string

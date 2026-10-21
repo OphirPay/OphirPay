@@ -480,6 +480,48 @@ mod tests {
         assert!(client.try_claim_stream(&recipient, &1).is_err());
     }
 
+    /// Issue #1357: Verify pro-rata stream cancellation across 0%, 25%, 50%, 75%, and 100% elapsed intervals.
+    #[test]
+    fn test_cancel_stream_pro_rata_refund_fractions() {
+        let test_fractions = [(0, 0, 1000), (250, 250, 750), (500, 500, 500), (750, 750, 250), (1000, 1000, 0)];
+
+        for (elapsed, expected_recipient, expected_refund) in test_fractions {
+            let env = Env::default();
+            env.mock_all_auths();
+            let contract_id = env.register(OphirPayContract, ());
+            let client = OphirPayContractClient::new(&env, &contract_id);
+
+            let owner = Address::generate(&env);
+            let creator = Address::generate(&env);
+            let recipient = Address::generate(&env);
+            let sac = create_token_contract(&env, &owner);
+            let sac_client = token::StellarAssetClient::new(&env, &sac);
+            sac_client.mint(&creator, &10_000i128);
+
+            let now = 1000u64;
+            env.ledger().set_timestamp(now);
+            let _ = client.init(&owner);
+            let _ = client.create_stream(
+                &creator,
+                &recipient,
+                &1000i128,
+                &sac,
+                &now,
+                &(now + 1000),
+                &String::from_str(&env, "fractional cancel"),
+            );
+
+            env.ledger().set_timestamp(now + elapsed);
+            let refunded = client.cancel_stream(&creator, &1);
+
+            assert_eq!(refunded, expected_refund, "Refund mismatch at elapsed fraction");
+            assert_eq!(token::Client::new(&env, &sac).balance(&recipient), expected_recipient, "Recipient balance mismatch");
+            assert_eq!(expected_refund + expected_recipient, 1000, "Conservation invariant failed: refund + vested != total");
+            assert_eq!(client.get_locked_balance(), 0, "Locked contract balance must be cleared");
+        }
+    }
+
+
     // ── Vesting Overflow (AUDIT LOW-1 / issue #691) ─────────
 
     /// `i128::MAX * 2` overflows. The old code returned `0` here, silently

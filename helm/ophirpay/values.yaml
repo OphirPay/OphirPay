@@ -125,6 +125,18 @@ networkPolicy:
     # Additional TCP ports to allow for custom egress destinations.
     extraPorts: []
 
+# ── Database migrations (issue #1335) ──────────────────────────
+# Runs `npx prisma migrate deploy` as a Helm pre-install/pre-upgrade hook Job
+# using the `migrator` Docker build target (`Dockerfile` stage `migrator`).
+migrations:
+  enabled: true
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+
 # ── Runtime configuration (rendered into a ConfigMap) ──────────
 # Every key here must be a real variable documented in `.env.example`;
 # `src/__tests__/helm-config.test.ts` fails the build when a key is not, so a

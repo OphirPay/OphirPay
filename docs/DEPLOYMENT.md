@@ -165,8 +165,9 @@ git clone https://github.com/OphirPay/OphirPay.git && cd OphirPay
 # Start all services (app + PostgreSQL + Redis)
 docker compose up -d
 
-# Run database migrations
-docker compose exec app npx prisma migrate deploy
+# Run database migrations using the dedicated migrator target (#1335)
+docker build --target migrator -t ophirpay-migrator .
+docker run --rm --network host -e DATABASE_URL="postgresql://ophirpay:ophirpay@localhost:5432/ophirpay" ophirpay-migrator
 
 # Verify
 curl http://localhost:3000/api/health
@@ -231,12 +232,13 @@ docker run -p 3000:3000 \
 
 ### Docker Image Details
 
-The `Dockerfile` uses a 3-stage build:
+The `Dockerfile` uses a 4-stage build:
 
 | Stage | Base Image | Purpose |
 |---|---|---|
 | `deps` | `node:24-slim` | Install npm dependencies (with OpenSSL for Prisma) |
 | `builder` | `node:24-slim` | Generate Prisma client, run `next build` |
+| `migrator` | `node:24-slim` | Dedicated one-shot Prisma migration image (`npx prisma migrate deploy`, used by Docker & Helm pre-upgrade hooks) |
 | `runner` | `node:24-slim` | Minimal production image, runs as the non-root `node` user |
 
 **Key details:**

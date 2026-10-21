@@ -2,7 +2,7 @@
 // GENERATED FROM docs/openapi.yaml — DO NOT EDIT BY HAND.
 // Regenerate with: npm run generate:sdk
 //
-// 99 operations and 17 component schemas from
+// 100 operations and 17 component schemas from
 // the committed OpenAPI document. Regenerate after editing the spec.
 
 // ── Component schemas ─────────────────────────────────────────
@@ -256,6 +256,7 @@ export interface ApiRequestBodies {
   getApiGovernanceProposalsId: undefined;
   getApiHealth: undefined;
   getApiHealthLive: undefined;
+  getApiHealthReady: undefined;
   getApiHooks: undefined;
   getApiKeys: undefined;
   getApiKeysStats: undefined;
@@ -618,6 +619,10 @@ export interface ApiResponseBodies {
         timestamp?: string;
       };
     };
+  };
+  getApiHealthReady: {
+    "200": unknown;
+    "503": unknown;
   };
   getApiHooks: {
     "200": unknown;
@@ -1026,6 +1031,7 @@ export interface ApiPathParams {
   };
   getApiHealth: Record<string, never>;
   getApiHealthLive: Record<string, never>;
+  getApiHealthReady: Record<string, never>;
   getApiHooks: Record<string, never>;
   getApiKeys: Record<string, never>;
   getApiKeysStats: Record<string, never>;
@@ -1211,6 +1217,7 @@ export interface ApiQueryParams {
   getApiGovernanceProposalsId: Record<string, never>;
   getApiHealth: Record<string, never>;
   getApiHealthLive: Record<string, never>;
+  getApiHealthReady: Record<string, never>;
   getApiHooks: {
     event_type?: string;
   };
@@ -1354,6 +1361,7 @@ export interface ApiHeaderParams {
   getApiGovernanceProposalsId: Record<string, never>;
   getApiHealth: Record<string, never>;
   getApiHealthLive: Record<string, never>;
+  getApiHealthReady: Record<string, never>;
   getApiHooks: Record<string, never>;
   getApiKeys: Record<string, never>;
   getApiKeysStats: Record<string, never>;

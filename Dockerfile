@@ -70,7 +70,7 @@ COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json ./package.json
 COPY --chown=node:node prisma ./prisma
 USER node
-ENTRYPOINT ["./node_modules/.bin/prisma"]
+ENTRYPOINT ["/app/node_modules/.bin/prisma"]
 CMD ["migrate", "deploy"]
 
 # Stage 4: Runner

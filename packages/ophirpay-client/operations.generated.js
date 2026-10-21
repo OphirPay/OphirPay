@@ -2,7 +2,7 @@
 // GENERATED FROM docs/openapi.yaml — DO NOT EDIT BY HAND.
 // Regenerate with: npm run generate:sdk
 //
-// 99 operations extracted from the committed OpenAPI spec.
+// 100 operations extracted from the committed OpenAPI spec.
 
 /** @typedef {{ name: string, method: string, path: string, summary: string, tags: string[], requestBody: boolean }} ApiOperation */
 
@@ -283,6 +283,16 @@ export const API_OPERATIONS = [
     "method": "GET",
     "path": "/api/health/live",
     "summary": "Liveness probe (process only)",
+    "tags": [
+      "Health"
+    ],
+    "requestBody": false
+  },
+  {
+    "name": "getApiHealthReady",
+    "method": "GET",
+    "path": "/api/health/ready",
+    "summary": "Readiness probe (database only)",
     "tags": [
       "Health"
     ],

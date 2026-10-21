@@ -816,6 +816,8 @@ jobs:
           helm template ophirpay helm/ophirpay --show-only templates/config.yaml \
             --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
             --set secrets.AUTH_SECRET="$CI_AUTH_SECRET" \
+            --set secrets.NEXT_PUBLIC_CONTRACT_ID="CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET" \
+            --set secrets.NEXT_PUBLIC_EMITTER_CONTRACT_ID="CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN" \
             | grep -E '^  [A-Z][A-Z0-9_]*:' \
             | awk -F':' '{print $1}' \
             | sed 's/^[[:space:]]*//' \

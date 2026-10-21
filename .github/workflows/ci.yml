@@ -190,7 +190,7 @@ jobs:
           components: rustfmt, clippy
       - name: Install Soroban SDK deps & WASM optimization tools
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen
+          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen wabt
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -220,18 +220,38 @@ jobs:
           REGRESSION_REPORT_PATH: contract-regression-report.md
       - name: Optimize WASM (OphirPay + Emitter)
         run: |
-          set -e
+          set -euo pipefail
           OPHIR_WASM=contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm
           EMIT_WASM=contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm
 
+          {
+            echo "### Optimized contract WASM sizes"
+            echo ""
+            echo "| Contract | Before | After |"
+            echo "|---|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           for f in "$OPHIR_WASM" "$EMIT_WASM"; do
-            if [ -f "$f" ]; then
-              echo "Before: $(basename $f) $(stat -c%s "$f") bytes"
-              cp "$f" "${f}.orig"
-              wasm-strip "$f" || true
-              wasm-opt -Oz -o "$f" "${f}" || true
-              echo "After:  $(basename $f) $(stat -c%s "$f") bytes"
+            if [ ! -f "$f" ]; then
+              echo "::error::Expected contract WASM was not built: $f"
+              exit 1
             fi
+
+            before=$(stat -c%s "$f")
+            wasm-strip "$f"
+            optimized="${f}.optimized"
+            wasm-opt -Oz -o "$optimized" "$f"
+            after=$(stat -c%s "$optimized")
+
+            echo "Before: $(basename "$f") ${before} bytes"
+            echo "After:  $(basename "$f") ${after} bytes"
+            echo "| \`$(basename "$f")\` | ${before} bytes | ${after} bytes |" >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$after" -gt "$before" ]; then
+              echo "::error::Optimized WASM is larger than the original: $f (${before} -> ${after} bytes)"
+              exit 1
+            fi
+            mv "$optimized" "$f"
           done
       - name: Verify WASM artifacts
         run: |

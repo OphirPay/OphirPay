@@ -19,17 +19,43 @@ permissions:
   contents: read
 
 
-# -- Global Concurrency � singleton group for scheduled runs --------
+# -- Global Concurrency � singleton group for scheduled runs --------
 concurrency:
   group: ${{ github.workflow }}
 
 jobs:
-  dependency-scan:
-    name: "Dependency Vulnerability Scan (fail on high/critical)"
+  prepare_refs:
+    name: "🔎 Find scheduled refs"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.refs.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+      - id: refs
+        name: Include refs that exist
+        run: |
+          matrix=$(git ls-remote --heads origin \
+            refs/heads/main refs/heads/integration/staging \
+            | awk '{sub("^refs/heads/", "", $2); print $2}' \
+            | jq -Rsc 'split("\n") | map(select(length > 0)) | map({ref: ., ref_slug: gsub("/"; "-")})')
+          if [ "$(jq 'length' <<< "$matrix")" -eq 0 ]; then
+            echo "::error::Neither main nor integration/staging exists"
+            exit 1
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  dependency-scan:
+    name: "Dependency Scan — ${{ matrix.ref }}"
+    needs: prepare_refs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.prepare_refs.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
       - uses: actions/setup-node@v4
         with: { node-version-file: '.nvmrc', cache: "npm" }
       - run: npm ci
@@ -39,6 +65,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dependency-audit-report
+          name: dependency-audit-report-${{ matrix.ref_slug }}
           path: dependency-audit-report/
           retention-days: 30

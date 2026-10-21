@@ -21,7 +21,7 @@ must be ready before the test command runs.
 
    ```bash
    npx prisma generate
-   npx prisma db push
+   npx prisma migrate deploy
    npm run db:seed
    ```
 
@@ -30,7 +30,9 @@ must be ready before the test command runs.
    [`DEMO_MODE.md`](./DEMO_MODE.md#seed-contents-and-repeat-behavior) before
    reseeding. Most UI specs use browser-side fixtures and do not require these
    sample rows; only seed when the spec under test depends on server-side
-   records.
+   records. CI applies the committed migration history with
+   `npx prisma migrate deploy` before running the E2E suite, matching staging
+   and production rather than synchronizing directly from the Prisma schema.
 
 3. Set `AUTH_SECRET` to a random value of at least 32 bytes (for example,
    `openssl rand -hex 32`). Set the Stellar network and contract IDs to match

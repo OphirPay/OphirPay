@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Node.js
-        # Needed on the host to run `prisma db push` against the compose
+        # Needed on the host to run `prisma migrate deploy` against the compose
         # database; `.nvmrc` also satisfies the repo's preinstall check.
         uses: actions/setup-node@v4
         with:
@@ -97,12 +97,12 @@ jobs:
       - name: Start backing services
         run: docker compose -f docker-compose.yml up -d db redis
 
-      - name: Create the schema in the compose database
+      - name: Apply committed migrations to the compose database
         run: |
           npm ci --ignore-scripts
           npx --yes wait-on tcp:5432 --timeout 60000
           DATABASE_URL=postgresql://ophirpay:ophirpay@127.0.0.1:5432/ophirpay \
-            npx prisma db push --skip-generate
+            npx prisma migrate deploy
 
       - name: Start and exercise compose app service (issues #731, #1340)
         env:

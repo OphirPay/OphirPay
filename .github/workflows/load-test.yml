@@ -98,10 +98,34 @@ env:
   DURATION_MS: "40000"
 
 jobs:
+  prepare_refs:
+    name: "🔎 Find scheduled refs"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.refs.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: refs
+        name: Include refs that exist
+        run: |
+          matrix=$(git ls-remote --heads origin \
+            refs/heads/main refs/heads/integration/staging \
+            | awk '{sub("^refs/heads/", "", $2); print $2}' \
+            | jq -Rsc 'split("\n") | map(select(length > 0)) | map({ref: ., ref_slug: gsub("/"; "-")})')
+          if [ "$(jq 'length' <<< "$matrix")" -eq 0 ]; then
+            echo "::error::Neither main nor integration/staging exists"
+            exit 1
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   load-test:
-    name: "⚡ Load test + baseline gate"
+    name: "⚡ Load test — ${{ matrix.ref }}"
+    needs: prepare_refs
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.prepare_refs.outputs.matrix) }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -127,6 +151,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -139,6 +165,9 @@ jobs:
         run: npx prisma generate
 
       - name: Create the schema in the CI database
+        # This job uses a disposable PostgreSQL service solely to seed the
+        # synthetic load-test dataset; migration history is exercised by E2E
+        # and Docker smoke workflows.
         run: npx prisma db push --skip-generate
 
       - name: Mint an API key and seed realistic rows
@@ -231,7 +260,8 @@ jobs:
             echo "| Latency margin | ×${LOAD_TEST_MARGIN} |"
             echo "| SSE clients | ${CONCURRENCY} |"
             echo "| Seeded payments | ${LOAD_TEST_SEED_PAYMENTS} |"
-            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Ref | \`${{ matrix.ref }}\` |"
+            echo "| Commit | \`$(git rev-parse HEAD)\` |"
             echo ""
             for section in "scripts/load-test.js:load-test" "scripts/sse-load-test.mjs:sse-load-test"; do
               title="${section%%:*}"
@@ -249,7 +279,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: load-test-results
+          name: load-test-results-${{ matrix.ref_slug }}
           path: tests/load/results/
           retention-days: 14
 
@@ -257,6 +287,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: load-test-server-log
+          name: load-test-server-log-${{ matrix.ref_slug }}
           path: tests/load/results/next-server.log
           retention-days: 7

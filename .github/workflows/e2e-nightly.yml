@@ -53,13 +53,35 @@ env:
   AUTH_SECRET: ci-e2e-auth-secret-not-for-production
 
 jobs:
+  prepare_refs:
+    name: "🔎 Find scheduled refs"
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.refs.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: refs
+        name: Include refs that exist
+        run: |
+          matrix=$(git ls-remote --heads origin \
+            refs/heads/main refs/heads/integration/staging \
+            | awk '{sub("^refs/heads/", "", $2); print $2}' \
+            | jq -Rsc 'split("\n") | map(select(length > 0)) | map({ref: ., ref_slug: gsub("/"; "-")})')
+          if [ "$(jq 'length' <<< "$matrix")" -eq 0 ]; then
+            echo "::error::Neither main nor integration/staging exists"
+            exit 1
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   playwright-tests:
-    name: "🧪 E2E — shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}"
+    name: "🧪 E2E — ${{ matrix.ref }} — shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}"
+    needs: prepare_refs
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        include: ${{ fromJSON(needs.prepare_refs.outputs.matrix) }}
         shardIndex: [1, 2, 3]
         shardTotal: [3]
     services:
@@ -87,6 +109,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -98,8 +122,8 @@ jobs:
       - name: Generate the Prisma client
         run: npx prisma generate
 
-      - name: Create the schema in the CI database
-        run: npx prisma db push --skip-generate
+      - name: Apply committed migrations to the CI database
+        run: npx prisma migrate deploy
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox
@@ -120,19 +144,34 @@ jobs:
           NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000 \
             node .next/standalone/server.js > /tmp/next-server.log 2>&1 &
 
-          # /api/health returns 200 (healthy) or 503 (degraded — a Stellar or
-          # Redis dependency is unreachable). Either one proves the server is up
-          # and past environment validation.
+          # Wait for the process independently of database and upstream health.
           for _ in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$E2E_BASE_URL/api/health" || true)
-            if [ "$code" = "200" ] || [ "$code" = "503" ]; then
-              echo "✅ Server ready (HTTP $code)"
-              exit 0
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$E2E_BASE_URL/api/health/live" || true)
+            if [ "$code" = "200" ]; then
+              echo "✅ Server live (HTTP $code)"
+              break
             fi
             sleep 1
           done
 
-          echo "::error::Server did not become ready within 60s"
+          if [ "$code" != "200" ]; then
+            echo "::error::Server did not become live within 60s"
+            cat /tmp/next-server.log
+            exit 1
+          fi
+
+          # /api/health returns 503 only when the critical database check fails;
+          # optional Stellar or Redis failures are reported as degraded with 200.
+          code=$(curl -sS -o /tmp/api-health.json -w "%{http_code}" "$E2E_BASE_URL/api/health" || true)
+          if [ "$code" = "200" ]; then
+            echo "✅ Readiness OK (HTTP $code)"
+            exit 0
+          fi
+
+          echo "::error::/api/health did not return 200 (HTTP ${code:-<none>})"
+          echo "Health response body:"
+          cat /tmp/api-health.json 2>/dev/null || true
+          echo "Server log:"
           cat /tmp/next-server.log
           exit 1
 
@@ -143,7 +182,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: blob-report-${{ matrix.shardIndex }}
+          name: blob-report-${{ matrix.ref_slug }}-${{ matrix.shardIndex }}
           path: blob-report
           retention-days: 1
 
@@ -151,18 +190,23 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: next-server-log-${{ matrix.shardIndex }}
+          name: next-server-log-${{ matrix.ref_slug }}-${{ matrix.shardIndex }}
           path: /tmp/next-server.log
           retention-days: 3
 
   merge-reports:
-    name: "📊 Merge reports"
+    name: "📊 Merge ${{ matrix.ref }} reports"
     if: always()
-    needs: playwright-tests
+    needs: [prepare_refs, playwright-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.prepare_refs.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -174,7 +218,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: all-blob-reports
-          pattern: blob-report-*
+          pattern: blob-report-${{ matrix.ref_slug }}-*
           merge-multiple: true
 
       - name: Merge reports
@@ -184,30 +228,40 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: merged-html-report
+          name: merged-html-report-${{ matrix.ref_slug }}
           path: playwright-report
           retention-days: 14
 
   track-nightly-status:
-    name: "📣 Track nightly status"
+    name: "📣 Track ${{ matrix.ref }} status"
     if: always()
-    needs: [playwright-tests, merge-reports]
+    needs: [prepare_refs, playwright-tests, merge-reports]
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.prepare_refs.outputs.matrix) }}
     permissions:
       contents: read
       issues: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+
+      - name: Resolve tested commit
+        run: echo "TESTED_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Update or close tracking issue based on run outcome
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           TEST_RESULT: ${{ needs.playwright-tests.result }}
-          REF_NAME: ${{ github.ref_name }}
+          REF_NAME: ${{ matrix.ref }}
           RUN_NUMBER: ${{ github.run_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ env.TESTED_COMMIT }}
         run: |
           set -euo pipefail
 
@@ -232,7 +286,7 @@ jobs:
           Nightly Playwright E2E run [Run #${RUN_NUMBER}](${RUN_URL}) failed on commit \`${COMMIT_SHA}\`.
 
           - **Workflow Run**: [View run #${RUN_NUMBER}](${RUN_URL})
-          - **Merged HTML Report Artifact**: [Download Artifacts](${REPORT_URL}) (artifact name: \`merged-html-report\`)
+          - **Merged HTML Report Artifact**: [Download Artifacts](${REPORT_URL}) (artifact name: \`merged-html-report-${{ matrix.ref_slug }}\`)
           - **Trigger**: \`${{ github.event_name }}\`
           - **Branch / Ref**: \`${REF_NAME}\`
           - **Commit**: \`${COMMIT_SHA}\`
@@ -264,4 +318,3 @@ jobs:
           else
             echo "Test result was '${TEST_RESULT}' (cancelled or skipped). No tracking issue update needed."
           fi
-

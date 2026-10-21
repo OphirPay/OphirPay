@@ -38,6 +38,8 @@ import ScheduledPaymentsList from "@/components/ScheduledPaymentsList";
 import { XLM_ASSET, getAssetInfo, type AssetInfo } from "@/lib/assets";
 import { nextRunAt, FREQUENCY_OPTIONS, FREQUENCY_LABELS, frequencyLabel, type Frequency } from "@/lib/recurrence";
 import Link from "next/link";
+import { StatusAnnouncer } from "@/components/ui/StatusAnnouncer";
+import { ARIA } from "@/lib/aria-labels";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -662,6 +664,7 @@ function SendPageClient() {
   if (result?.type === "success") {
     return (
       <div className="max-w-lg mx-auto mt-12 animate-fade-in">
+        <StatusAnnouncer message={ARIA.TRANSACTION_CONFIRMED} />
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-8 text-center">
           {/* Success icon */}
           <div className="h-16 w-16 mx-auto rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
@@ -915,6 +918,10 @@ function SendPageClient() {
   if (result?.type === "error") {
     return (
       <div className="max-w-lg mx-auto mt-12 animate-fade-in">
+        <StatusAnnouncer
+          message={`${ARIA.TRANSACTION_FAILED}: ${result.message}`}
+          politeness="assertive"
+        />
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-8 text-center">
           <div className="h-16 w-16 mx-auto rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
             <svg
@@ -1447,6 +1454,24 @@ function SendPageClient() {
                     : ""}
           </p>
         )}
+        <StatusAnnouncer
+          message={
+            step === "building"
+              ? ARIA.TRANSACTION_PREPARING
+              : step === "signing"
+                ? ARIA.TRANSACTION_SIGNING
+                : step === "submitting"
+                  ? ARIA.TRANSACTION_SUBMITTING
+                  : step === "recording"
+                    ? "Confirming on-chain payment record..."
+                    : step === "done"
+                      ? ARIA.TRANSACTION_CONFIRMED
+                      : validationError
+                        ? `${ARIA.ERROR}: ${validationError}`
+                        : null
+          }
+          politeness={validationError ? "assertive" : "polite"}
+        />
       </div>
 
       {/* Upcoming scheduled payments */}

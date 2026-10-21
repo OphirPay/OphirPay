@@ -28,4 +28,18 @@ export const ARIA = {
   SUCCESS: "Success",
   ERROR: "Error",
   WARNING: "Warning",
+
+  /** Live region announcements (Issue #1292) */
+  WALLET_CONNECTING: "Connecting to wallet...",
+  WALLET_CONNECTED: "Wallet connected successfully",
+  WALLET_DISCONNECTED: "Wallet disconnected",
+  WALLET_CONNECTION_FAILED: "Wallet connection failed",
+  TRANSACTION_PREPARING: "Preparing transaction...",
+  TRANSACTION_SIGNING: "Waiting for wallet signature...",
+  TRANSACTION_SUBMITTING: "Submitting transaction to Stellar network...",
+  TRANSACTION_CONFIRMED: "Transaction confirmed successfully",
+  TRANSACTION_FAILED: "Transaction failed",
 } as const;
+
+/** Type for ARIA constant keys */
+export type AriaKey = keyof typeof ARIA;

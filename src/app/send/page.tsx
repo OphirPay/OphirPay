@@ -530,6 +530,7 @@ function SendPageClient() {
         payer: wallet.publicKey,
         payee: destination.trim(),
         amountStroops: Math.round(parseFloat(amount) * XLM_STROOPS),
+        amount: amount,
         txHash: response.hash,
         signTransaction: (xdrToSign, opts) => connector.signTransaction(xdrToSign, opts),
         network: STELLAR_NETWORK,

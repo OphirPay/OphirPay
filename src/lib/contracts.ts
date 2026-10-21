@@ -341,6 +341,71 @@ export async function submitContractInvocation(signedXdr: string): Promise<{
   }
 }
 
+// ── Amount precision guard (#1347) ─────────────────────────────
+
+/** Decimal places of the native asset (1 XLM = 10,000,000 stroops). */
+export const XLM_DECIMALS = 7;
+
+/**
+ * Result of validating an amount's decimal precision against a token.
+ */
+export interface AmountPrecisionCheck {
+  valid: boolean;
+  /** Present when `valid` is false; a user-facing explanation. */
+  error?: string;
+}
+
+/**
+ * Reject amounts whose decimal precision exceeds the token's decimals.
+ *
+ * The on-chain contract stores amounts as integer minor units (e.g. stroops,
+ * 1 unit = 10^`decimals` minor units), so an amount like `0.00000001` XLM
+ * (8 decimals, token has 7) cannot be represented — multiplying and rounding
+ * would silently record a different amount than the user approved. This
+ * guard rejects such amounts up front with a clear error.
+ *
+ * `amount` is the human-readable amount string (e.g. "12.5000007");
+ * `tokenDecimals` the token's decimal places (7 for XLM and Stellar assets).
+ * Unknown metadata (`decimals === null/undefined`) is accepted — a missing
+ * display_decimals in stellar.toml is not evidence of a precision mismatch.
+ */
+export function checkAmountPrecision(
+  amount: string,
+  tokenDecimals: number | null | undefined
+): AmountPrecisionCheck {
+  if (
+    tokenDecimals === null ||
+    tokenDecimals === undefined ||
+    !Number.isInteger(tokenDecimals) ||
+    tokenDecimals < 0
+  ) {
+    return { valid: true };
+  }
+
+  const trimmed = amount.trim();
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    return {
+      valid: false,
+      error:
+        "Invalid amount format. Enter a plain decimal number, e.g. 12.5.",
+    };
+  }
+
+  const fractional = trimmed.split(".")[1] ?? "";
+  if (fractional.length > tokenDecimals) {
+    return {
+      valid: false,
+      error: `Amount precision exceeds the token's ${tokenDecimals} decimal place${
+        tokenDecimals === 1 ? "" : "s"
+      }: '${amount}' has ${fractional.length} decimals and cannot be recorded on-chain. Reduce the precision to at most ${tokenDecimals} decimal place${
+        tokenDecimals === 1 ? "" : "s"
+      }.`,
+    };
+  }
+
+  return { valid: true };
+}
+
 // ── On-Chain Payment Recording ─────────────────────────────────
 
 export interface RecordOnChainResult {
@@ -365,6 +430,14 @@ export async function recordPaymentOnChain(params: {
   amountStroops: number;
   txHash: string;
   metadata?: string;
+  /**
+   * Human-readable amount (e.g. "0.00000001"). When provided together with
+   * `tokenDecimals`, amounts whose precision exceeds the token's decimals
+   * are rejected instead of being silently rounded to stroops (#1347).
+   */
+  amount?: string;
+  /** Decimal places of the asset being recorded (default: XLM's 7). */
+  tokenDecimals?: number;
   signTransaction: (
     xdr: string,
     opts?: { network?: string; networkPassphrase?: string }
@@ -381,7 +454,16 @@ export async function recordPaymentOnChain(params: {
     signTransaction,
     network = "TESTNET",
     networkPassphrase,
+    amount,
+    tokenDecimals = XLM_DECIMALS,
   } = params;
+
+  if (amount !== undefined) {
+    const precision = checkAmountPrecision(amount, tokenDecimals);
+    if (!precision.valid) {
+      return { status: "FAILED", error: precision.error };
+    }
+  }
 
   try {
     // Matches the contract's `record_payment(payer, payee, amount, asset,

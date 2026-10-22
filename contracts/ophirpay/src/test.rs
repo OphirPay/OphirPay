@@ -2164,6 +2164,129 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_record_payment_updates_spending_limit_and_rejects_overlimit() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // Set spending limit: daily 5000, monthly 10000
+        client.set_spending_limit(&owner, &payer, &5000i128, &10000i128, &0, &true);
+
+        // Record payment 2000
+        let id1 = client.record_payment(
+            &payer,
+            &payee,
+            &2000i128,
+            &sac,
+            &String::from_str(&env, "tx_rec_a"),
+            &String::from_str(&env, "record 1"),
+        );
+        assert_eq!(id1, 1);
+
+        let limit = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit.current_daily_spend, 2000);
+        assert_eq!(limit.current_monthly_spend, 2000);
+
+        // Idempotent replay of the same tx does not double-count quota
+        let replay_id = client.record_payment(
+            &payer,
+            &payee,
+            &2000i128,
+            &sac,
+            &String::from_str(&env, "tx_rec_a"),
+            &String::from_str(&env, "record 1"),
+        );
+        assert_eq!(replay_id, 1);
+        let limit = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit.current_daily_spend, 2000);
+
+        // Record another 3000 = total 5000 (at daily limit)
+        let id2 = client.record_payment(
+            &payer,
+            &payee,
+            &3000i128,
+            &sac,
+            &String::from_str(&env, "tx_rec_b"),
+            &String::from_str(&env, "record 2"),
+        );
+        assert_eq!(id2, 2);
+
+        let limit = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit.current_daily_spend, 5000);
+
+        // Next payment exceeds daily limit — must fail atomically (#1865)
+        let result = client.try_record_payment(
+            &payer,
+            &payee,
+            &1i128,
+            &sac,
+            &String::from_str(&env, "tx_rec_c"),
+            &String::from_str(&env, "over limit"),
+        );
+        assert!(result.is_err());
+
+        // Verify limit state was untouched on over-limit failure
+        let limit = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit.current_daily_spend, 5000);
+        assert_eq!(client.get_payment_count(), 2);
+    }
+
+    #[test]
+    fn test_record_payment_expiry_rejects_payment() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let now = env.ledger().timestamp();
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // Set spending limit that expires in 100 seconds
+        client.set_spending_limit(&owner, &payer, &10000i128, &50000i128, &(now + 100), &true);
+
+        // Record payment within expiry — succeeds
+        let id = client.record_payment(
+            &payer,
+            &payee,
+            &500i128,
+            &sac,
+            &String::from_str(&env, "tx_exp_1"),
+            &String::from_str(&env, "valid"),
+        );
+        assert_eq!(id, 1);
+
+        // Advance ledger past expiry
+        env.ledger().set_timestamp(now + 200);
+
+        // Record payment after expiry — must fail (#1865)
+        let result = client.try_record_payment(
+            &payer,
+            &payee,
+            &500i128,
+            &sac,
+            &String::from_str(&env, "tx_exp_2"),
+            &String::from_str(&env, "expired"),
+        );
+        assert!(result.is_err());
+        assert_eq!(client.get_payment_count(), 1);
+    }
+
     // ── New Error Path Tests (governance + reentrancy) ──
 
     /// GOV-1: Double-voting is rejected with AlreadyVoted error

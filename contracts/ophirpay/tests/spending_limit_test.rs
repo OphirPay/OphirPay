@@ -270,3 +270,73 @@ fn check_spending_stays_read_only_and_window_aware() {
     let after = fix.client.get_spending_limit(&payer).unwrap();
     assert_eq!(after.current_daily_spend, 3_000_000);
 }
+
+#[test]
+fn record_payment_enforces_daily_spending_limit_and_reverts_atomically() {
+    let fix = Fixture::new(3_000_000);
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    fix.set_limit(&payer, 10_000_000, 100_000_000);
+
+    // Record payment 6M of 10M daily allowance
+    let id1 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &6_000_000i128,
+        &fix.asset,
+        &String::from_str(&fix.env, "rec-a"),
+        &String::from_str(&fix.env, "payment 1"),
+    );
+    assert_eq!(id1, 1);
+
+    let limit = fix.client.get_spending_limit(&payer).unwrap();
+    assert_eq!(limit.current_daily_spend, 6_000_000);
+
+    // Record payment 5M > 4M remaining capacity -> must revert with SpendingLimitExceeded (#1865)
+    let rejected = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &5_000_000i128,
+        &fix.asset,
+        &String::from_str(&fix.env, "rec-b"),
+        &String::from_str(&fix.env, "over limit"),
+    );
+    match rejected {
+        Err(Ok(err)) => assert_eq!(err, PaymentError::SpendingLimitExceeded),
+        _ => panic!("record_payment exceeding remaining capacity must revert"),
+    }
+
+    // Ensure state was not mutated on failure
+    assert_eq!(fix.client.get_payment_count(), 1);
+    let limit = fix.client.get_spending_limit(&payer).unwrap();
+    assert_eq!(limit.current_daily_spend, 6_000_000);
+
+    // Payment fitting remaining capacity succeeds
+    let id2 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &4_000_000i128,
+        &fix.asset,
+        &String::from_str(&fix.env, "rec-c"),
+        &String::from_str(&fix.env, "payment 2"),
+    );
+    assert_eq!(id2, 2);
+    let limit = fix.client.get_spending_limit(&payer).unwrap();
+    assert_eq!(limit.current_daily_spend, 10_000_000);
+
+    // Next ledger day: resets and fresh capacity is available
+    fix.env
+        .ledger()
+        .set_timestamp(fix.env.ledger().timestamp() + DAY);
+    let id3 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &2_000_000i128,
+        &fix.asset,
+        &String::from_str(&fix.env, "rec-d"),
+        &String::from_str(&fix.env, "next day payment"),
+    );
+    assert_eq!(id3, 3);
+    let limit = fix.client.get_spending_limit(&payer).unwrap();
+    assert_eq!(limit.current_daily_spend, 2_000_000);
+}

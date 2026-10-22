@@ -2495,6 +2495,48 @@ impl OphirPayContract {
             return Ok(existing_id);
         }
 
+        // Check spending limits with expiry enforcement (#1865).
+        // Enforce the caller's configured spending limit before settling or collecting fees,
+        // so the call reverts atomically rather than paying part of itself.
+        let now = env.ledger().timestamp();
+        let limit_key = (SPEND_LIMIT_KEY, payer.clone());
+        if let Some(mut limit) = env
+            .storage()
+            .persistent()
+            .get::<_, SpendingLimit>(&limit_key)
+        {
+            if !limit.is_active {
+                return Err(PaymentError::SpendingLimitExpired);
+            }
+            if is_spending_limit_expired(limit.expires_at, now) {
+                limit.is_active = false;
+                env.storage().persistent().set(&limit_key, &limit);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&limit_key, BUMP_MIN_TTL, BUMP_MAX_TTL);
+                return Err(PaymentError::SpendingLimitExpired);
+            }
+
+            if let Err(err) = check_and_update_spending_limit(&mut limit, amount, now) {
+                emit_spending_limit_exceeded(
+                    &env,
+                    &SpendingLimitExceeded {
+                        user: payer.clone(),
+                        requested: amount,
+                        available: remaining_daily_capacity(&limit, now),
+                        daily_limit: limit.daily_limit,
+                        timestamp: now,
+                    },
+                );
+                return Err(err);
+            }
+
+            env.storage().persistent().set(&limit_key, &limit);
+            env.storage()
+                .persistent()
+                .extend_ttl(&limit_key, BUMP_MIN_TTL, BUMP_MAX_TTL);
+        }
+
         // Collect protocol fee before recording.  If fee transfer fails
         // (insufficient balance, missing trustline), the entire payment
         // reverts - no partial state.

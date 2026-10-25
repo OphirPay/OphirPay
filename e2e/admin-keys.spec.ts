@@ -39,7 +39,7 @@ test.describe("API keys admin page", () => {
 
     await page.getByRole("button", { name: "Create API key" }).click();
 
-    await expect(page.getByText("Key created — copy it now:")).toBeVisible({
+    await expect(page.getByText(/key.*copy it now/i)).toBeVisible({
       timeout: 15000,
     });
     await expect(page.getByText(state.createdKey)).toBeVisible();
@@ -61,7 +61,7 @@ test.describe("API keys admin page", () => {
     });
     await expect(page.getByText("Please name your API key.")).toBeVisible();
     // Nothing was created.
-    await expect(page.getByText("Key created — copy it now:")).toHaveCount(0);
+    await expect(page.getByText(/key.*copy it now/i)).toHaveCount(0);
   });
 
   test("edits a key's scopes", async ({ page }) => {

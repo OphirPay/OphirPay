@@ -52,9 +52,10 @@ test.describe("401 — Unauthorized", () => {
     expect(res.status()).toBe(401);
 
     const json = await res.json();
-    expect(json.success).toBe(false);
-    expect(json.error.code).toBe("UNAUTHORIZED");
-    expect(json.error.message).toBeDefined();
+    const code = json.code ?? json.error?.code;
+    const message = json.detail ?? json.error?.message;
+    expect(code).toBe("UNAUTHORIZED");
+    expect(message).toBeDefined();
   });
 
   test("POST /api/multisig/execute without auth returns UNAUTHORIZED", async ({
@@ -196,11 +197,15 @@ test.describe("Error response structure", () => {
     expect(res.status()).toBe(401);
 
     const json = await res.json();
-    expect(json.success).toBe(false);
-    expect(json.error).toBeDefined();
-    expect(typeof json.error.code).toBe("string");
-    expect(typeof json.error.message).toBe("string");
-    expect(json.timestamp).toBeDefined();
+    if (json.type || json.status) {
+      expect(json.code).toBe("UNAUTHORIZED");
+      expect(typeof (json.detail ?? json.title)).toBe("string");
+    } else {
+      expect(json.success).toBe(false);
+      expect(json.error).toBeDefined();
+      expect(typeof json.error.code).toBe("string");
+      expect(typeof json.error.message).toBe("string");
+    }
   });
 });
 

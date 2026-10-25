@@ -25,7 +25,7 @@ test.describe("Timelocked actions", () => {
       page.getByRole("heading", { level: 1, name: "Timelocked Actions" })
     ).toBeVisible({ timeout: 15000 });
 
-    await expect(page.getByText("Locked")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Locked", { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("#7")).toBeVisible();
     // Unlock countdown renders (e.g. "5h 0m remaining").
     await expect(page.getByText(/\d+h \d+m remaining/)).toBeVisible();
@@ -42,7 +42,7 @@ test.describe("Timelocked actions", () => {
       page.getByRole("heading", { level: 1, name: "Timelocked Actions" })
     ).toBeVisible({ timeout: 15000 });
 
-    await expect(page.getByText("Ready")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Ready", { exact: true })).toBeVisible({ timeout: 15000 });
     const execute = page.getByRole("button", { name: "✓ Execute" });
     await expect(execute).toBeEnabled();
     await execute.click();
@@ -80,7 +80,7 @@ test.describe("Timelocked actions", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toContainText("Propose Timelocked Action");
 
-    await dialog.getByRole("button", { name: "pause contract" }).click();
+    await dialog.getByRole("button", { name: "pause contract", exact: true }).click();
     await dialog
       .getByPlaceholder("Contract address or parameter...")
       .fill("GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU");

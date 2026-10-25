@@ -23,6 +23,8 @@ export default defineConfig({
     // fetch(), so Playwright's page.route() (used by the SSE mock) never sees
     // the request. Block it for E2E so network interception is deterministic.
     serviceWorkers: "block",
+    // Prevent CSS translateY animations from displacing click targets on mobile touch
+    contextOptions: { reducedMotion: "reduce" },
   },
   projects: OFFLINE
     ? [

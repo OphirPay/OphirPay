@@ -11,18 +11,30 @@ test.describe("OphirPay Dashboard", () => {
 
   test("sidebar navigation is visible", async ({ page }) => {
     await page.goto("/");
-    // Desktop sidebar should be visible on wide viewports
-    await expect(page.locator("aside").first()).toBeVisible();
+    const isMobile = page.viewportSize() ? page.viewportSize()!.width < 1024 : false;
+    if (isMobile) {
+      await expect(page.getByRole("button", { name: "Toggle menu" })).toBeVisible();
+    } else {
+      await expect(page.locator("aside").first()).toBeVisible();
+    }
   });
 
   test("navigates to Payments via sidebar", async ({ page }) => {
     await page.goto("/");
+    const isMobile = page.viewportSize() ? page.viewportSize()!.width < 1024 : false;
+    if (isMobile) {
+      await page.getByRole("button", { name: "Toggle menu" }).click();
+    }
     await page.locator("a[href='/payments']").first().click();
     await expect(page).toHaveURL(/\/payments/);
   });
 
   test("navigates to Send page", async ({ page }) => {
     await page.goto("/");
+    const isMobile = page.viewportSize() ? page.viewportSize()!.width < 1024 : false;
+    if (isMobile) {
+      await page.getByRole("button", { name: "Toggle menu" }).click();
+    }
     await page.locator("a[href='/send']").first().click();
     await expect(page).toHaveURL(/\/send/);
   });

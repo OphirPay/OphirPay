@@ -115,7 +115,7 @@ function injectWalletMocks(
  * our mocked value instead of hitting the real network.
  */
 async function interceptBalance(page: Page, balance: string): Promise<void> {
-  await page.route("**/accounts/G*/**", async (route) => {
+  await page.route("**/accounts/G*", async (route) => {
     const url = route.request().url();
     if (
       url.includes("horizon-testnet.stellar.org") ||
@@ -135,10 +135,27 @@ async function interceptBalance(page: Page, balance: string): Promise<void> {
 }
 
 /** Wait for the wallet-connected UI (disconnect button visible). */
+/** Wait for the wallet-connected UI (disconnect button visible). */
 async function waitForConnected(page: Page, timeout = 15000): Promise<void> {
   await expect(
     page.locator('[aria-label="Disconnect wallet"]').first(),
   ).toBeVisible({ timeout });
+}
+
+/** Check balance visibility only on desktop viewports where balance is rendered (hidden sm:flex). */
+async function expectBalanceVisible(page: Page, text: string, timeout = 10000): Promise<void> {
+  const isDesktop = page.viewportSize() ? page.viewportSize()!.width >= 640 : true;
+  if (isDesktop) {
+    await expect(page.getByText(text)).toBeVisible({ timeout });
+  }
+}
+
+/** Check balance is not visible on desktop viewports. */
+async function expectBalanceNotVisible(page: Page, text: string): Promise<void> {
+  const isDesktop = page.viewportSize() ? page.viewportSize()!.width >= 640 : true;
+  if (isDesktop) {
+    await expect(page.getByText(text)).not.toBeVisible();
+  }
 }
 
 /** Wait for the wallet-disconnected UI (Connect Wallet button visible). */
@@ -167,9 +184,7 @@ test.describe("Wallet switch with state preservation", () => {
     await waitForConnected(page);
 
     // Balance badge shows Freighter's balance
-    await expect(page.getByText(`${FREIGHTER_BALANCE} XLM`)).toBeVisible({
-      timeout: 10000,
-    });
+    await expectBalanceVisible(page, `${FREIGHTER_BALANCE} XLM`, 10000);
 
     // Network badge shows TESTNET
     await expect(page.getByText("TESTNET")).toBeVisible();
@@ -202,9 +217,7 @@ test.describe("Wallet switch with state preservation", () => {
     await waitForConnected(page);
 
     // ── Phase 4: Verify Albedo state ────────────────────────
-    await expect(page.getByText(`${ALBEDO_BALANCE} XLM`)).toBeVisible({
-      timeout: 10000,
-    });
+    await expectBalanceVisible(page, `${ALBEDO_BALANCE} XLM`, 10000);
 
     await expect(page.getByText("TESTNET")).toBeVisible();
 
@@ -228,9 +241,7 @@ test.describe("Wallet switch with state preservation", () => {
     await page.reload();
     await waitForConnected(page);
 
-    await expect(page.getByText(`${FREIGHTER_BALANCE} XLM`)).toBeVisible({
-      timeout: 10000,
-    });
+    await expectBalanceVisible(page, `${FREIGHTER_BALANCE} XLM`, 10000);
     await expect(page.getByText("TESTNET")).toBeVisible();
   });
 
@@ -250,7 +261,7 @@ test.describe("Wallet switch with state preservation", () => {
     await page.reload();
     await waitForDisconnected(page);
 
-    await expect(page.getByText(`${FREIGHTER_BALANCE} XLM`)).not.toBeVisible();
+    await expectBalanceNotVisible(page, `${FREIGHTER_BALANCE} XLM`);
   });
 
   test("no stale balance from previous wallet after switching", async ({
@@ -267,7 +278,7 @@ test.describe("Wallet switch with state preservation", () => {
     await interceptBalance(page, "50.0");
     await page.goto("/");
     await waitForConnected(page);
-    await expect(page.getByText("50.0 XLM")).toBeVisible({ timeout: 10000 });
+    await expectBalanceVisible(page, "50.0 XLM", 10000);
 
     // Disconnect
     await page.getByLabel("Disconnect wallet").click();
@@ -285,10 +296,10 @@ test.describe("Wallet switch with state preservation", () => {
     await albedoOption.click();
     await waitForConnected(page);
 
-    await expect(page.getByText("999.9 XLM")).toBeVisible({ timeout: 10000 });
+    await expectBalanceVisible(page, "999.9 XLM", 10000);
 
     // Freighter balance must NOT be visible
-    await expect(page.getByText("50.0 XLM")).not.toBeVisible();
+    await expectBalanceNotVisible(page, "50.0 XLM");
   });
 
   test("wallet selector shows correct availability status", async ({
@@ -377,6 +388,8 @@ test.describe("Wallet switch with state preservation", () => {
   });
 
   test("balance refresh button works after connect", async ({ page }) => {
+    const isDesktop = page.viewportSize() ? page.viewportSize()!.width >= 640 : true;
+    test.skip(!isDesktop, "Balance badge and refresh button are desktop-only (hidden sm:flex)");
     injectWalletMocks(page, { freighter: true });
     await interceptBalance(page, "42.0");
 

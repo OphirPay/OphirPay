@@ -3564,7 +3564,7 @@ impl OphirPayContract {
             return Err(PaymentError::PaymentAlreadyCancelled);
         }
 
-        // ── Fund-safety validation (HIGH-1 audit fix) ──────────────────
+        // ── Fund-safety validation (HIGH-1 audit fix & Issue #1877) ──────────────────
         // The requester must be the payer or payee of the payment, the refund
         // amount must not exceed the recorded payment amount, and the asset
         // must match the payment's asset. Without these checks an owner could
@@ -3573,11 +3573,27 @@ impl OphirPayContract {
         if requester != payment.payer && requester != payment.payee {
             return Err(PaymentError::Unauthorized);
         }
-        if amount > payment.amount {
-            return Err(PaymentError::InvalidAmount);
-        }
         if asset != payment.asset {
             return Err(PaymentError::AssetNotSupported);
+        }
+
+        // Per-payment refund accounting: prevent duplicate and cumulative over-refunding
+        let current_refunded: i128 = env
+            .storage()
+            .persistent()
+            .get(&(PAYMENT_REFUND_KEY, payment_id))
+            .unwrap_or(0);
+
+        if current_refunded >= payment.amount {
+            return Err(PaymentError::PaymentAlreadyRefunded);
+        }
+
+        let new_total = current_refunded
+            .checked_add(amount)
+            .ok_or(PaymentError::ArithmeticOverflow)?;
+
+        if new_total > payment.amount {
+            return Err(PaymentError::InvalidAmount);
         }
 
         let mut count: u64 = env.storage().instance().get(&REFUND_CNT).unwrap_or(0);
@@ -3602,6 +3618,12 @@ impl OphirPayContract {
         env.storage()
             .persistent()
             .extend_ttl(&(REFUND_KEY, count), BUMP_MIN_TTL, BUMP_MAX_TTL);
+        env.storage()
+            .persistent()
+            .set(&(PAYMENT_REFUND_KEY, payment_id), &new_total);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(PAYMENT_REFUND_KEY, payment_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
         env.storage().instance().set(&REFUND_CNT, &count);
         env.storage().instance().extend_ttl(BUMP_MIN_TTL, BUMP_MAX_TTL);
 
@@ -3682,6 +3704,20 @@ impl OphirPayContract {
             .persistent()
             .extend_ttl(&(REFUND_KEY, refund_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
 
+        // Restore allocated refund allowance for this payment upon rejection
+        let current_refunded: i128 = env
+            .storage()
+            .persistent()
+            .get(&(PAYMENT_REFUND_KEY, refund.payment_id))
+            .unwrap_or(0);
+        let updated_refunded = current_refunded.saturating_sub(refund.amount);
+        env.storage()
+            .persistent()
+            .set(&(PAYMENT_REFUND_KEY, refund.payment_id), &updated_refunded);
+        env.storage()
+            .persistent()
+            .extend_ttl(&(PAYMENT_REFUND_KEY, refund.payment_id), BUMP_MIN_TTL, BUMP_MAX_TTL);
+
         record_audit(
             &env,
             "refund_rejected",
@@ -3751,6 +3787,29 @@ impl OphirPayContract {
     /// Get total refund count.
     pub fn get_refund_count(env: Env) -> u64 {
         env.storage().instance().get(&REFUND_CNT).unwrap_or(0)
+    }
+
+    /// Get cumulative refund amount requested/processed for a payment.
+    pub fn get_payment_refunded_amount(env: Env, payment_id: u64) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&(PAYMENT_REFUND_KEY, payment_id))
+            .unwrap_or(0)
+    }
+
+    /// Check whether a payment has been fully refunded or allocated for refund.
+    pub fn is_payment_fully_refunded(env: Env, payment_id: u64) -> Result<bool, PaymentError> {
+        let payment: Payment = env
+            .storage()
+            .persistent()
+            .get(&(PAYMENT_KEY, payment_id))
+            .ok_or(PaymentError::PaymentNotFound)?;
+        let refunded: i128 = env
+            .storage()
+            .persistent()
+            .get(&(PAYMENT_REFUND_KEY, payment_id))
+            .unwrap_or(0);
+        Ok(refunded >= payment.amount)
     }
 
     /// Analytics: count refunds grouped by reason code.

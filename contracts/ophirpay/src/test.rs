@@ -1962,6 +1962,150 @@ mod tests {
         assert_eq!(refund.status, RefundStatus::Rejected);
     }
 
+    #[test]
+    fn test_refund_per_payment_duplicate_and_cumulative_prevention() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        let pid = client.record_payment(
+            &payer,
+            &payee,
+            &1000i128,
+            &sac,
+            &String::from_str(&env, "tx_refund_acc"),
+            &String::from_str(&env, "accounting test"),
+        );
+
+        // 1. Initial refund state: 0 refunded, not fully refunded
+        assert_eq!(client.get_payment_refunded_amount(&pid), 0);
+        assert_eq!(client.is_payment_fully_refunded(&pid), false);
+
+        // 2. First partial refund of 400
+        let r1 = client.request_refund(
+            &payer,
+            &pid,
+            &400i128,
+            &sac,
+            &String::from_str(&env, "partial 1"),
+            &RefundReasonCode::CustomerRequest,
+        );
+        assert_eq!(r1, 1);
+        assert_eq!(client.get_payment_refunded_amount(&pid), 400);
+        assert_eq!(client.is_payment_fully_refunded(&pid), false);
+
+        // 3. Second partial refund of 600 (completes 1000)
+        let r2 = client.request_refund(
+            &payer,
+            &pid,
+            &600i128,
+            &sac,
+            &String::from_str(&env, "partial 2"),
+            &RefundReasonCode::ProductDefect,
+        );
+        assert_eq!(r2, 2);
+        assert_eq!(client.get_payment_refunded_amount(&pid), 1000);
+        assert_eq!(client.is_payment_fully_refunded(&pid), true);
+
+        // 4. Attempt 3rd refund: must fail with PaymentAlreadyRefunded
+        let r3_res = client.try_request_refund(
+            &payer,
+            &pid,
+            &100i128,
+            &sac,
+            &String::from_str(&env, "excessive request"),
+            &RefundReasonCode::Other,
+        );
+        assert_eq!(r3_res, Err(Ok(PaymentError::PaymentAlreadyRefunded)));
+
+        // Create a 2nd payment of 500
+        let pid2 = client.record_payment(
+            &payer,
+            &payee,
+            &500i128,
+            &sac,
+            &String::from_str(&env, "tx_refund_acc_2"),
+            &String::from_str(&env, "accounting test 2"),
+        );
+
+        // Exceeding remaining amount in a single partial refund request
+        let over_res = client.try_request_refund(
+            &payer,
+            &pid2,
+            &600i128,
+            &sac,
+            &String::from_str(&env, "too much"),
+            &RefundReasonCode::Other,
+        );
+        assert_eq!(over_res, Err(Ok(PaymentError::InvalidAmount)));
+    }
+
+    #[test]
+    fn test_refund_rejection_restores_allocation() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        let pid = client.record_payment(
+            &payer,
+            &payee,
+            &500i128,
+            &sac,
+            &String::from_str(&env, "tx_restore"),
+            &String::from_str(&env, "test"),
+        );
+
+        // Request full refund
+        let rid = client.request_refund(
+            &payer,
+            &pid,
+            &500i128,
+            &sac,
+            &String::from_str(&env, "mistake"),
+            &RefundReasonCode::CustomerRequest,
+        );
+        assert_eq!(client.get_payment_refunded_amount(&pid), 500);
+        assert_eq!(client.is_payment_fully_refunded(&pid), true);
+
+        // Rejection by owner
+        client.reject_refund(&owner, &rid);
+
+        // Allocation should be restored
+        assert_eq!(client.get_payment_refunded_amount(&pid), 0);
+        assert_eq!(client.is_payment_fully_refunded(&pid), false);
+
+        // Requester can now submit a new corrected refund request
+        let rid2 = client.request_refund(
+            &payer,
+            &pid,
+            &300i128,
+            &sac,
+            &String::from_str(&env, "corrected partial"),
+            &RefundReasonCode::CustomerRequest,
+        );
+        assert_eq!(rid2, 2);
+        assert_eq!(client.get_payment_refunded_amount(&pid), 300);
+        assert_eq!(client.is_payment_fully_refunded(&pid), false);
+    }
+
     // ── Multisig Tests ────────────────────────────────────────
 
     #[test]

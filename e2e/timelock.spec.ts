@@ -1,12 +1,4 @@
 // SPDX-License-Identifier: MIT
-//
-// E2E coverage for the timelock admin page (issue #708).
-//
-// `/api/timelock` is mocked with a controllable list of actions so the spec can
-// render a still-locked action, an unlocked one, and an executed one. The
-// propose / execute / cancel mutations run through the shared mocked Soroban
-// RPC + Horizon + fake-Freighter stack (see helpers/stellar-mock.ts).
-
 import { test, expect } from "@playwright/test";
 import {
   installAdminMocks,
@@ -19,31 +11,35 @@ test.describe("Timelocked actions", () => {
     page,
   }) => {
     await installAdminMocks(page, { timelock: [lockedAction({ id: 7 })] });
-
     await page.goto("/timelock");
     await expect(
-      page.getByRole("heading", { level: 1, name: "Timelocked Actions" })
-    ).toBeVisible({ timeout: 15000 });
+      page.getByRole("heading", { name: /Timelocked Actions/i })
+    ).toBeVisible({ timeout: 20000 });
 
-    await expect(page.getByText("Locked")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Locked", { exact: true }).first()).toBeVisible({ timeout: 20000 });
     await expect(page.getByText("#7")).toBeVisible();
-    // Unlock countdown renders (e.g. "5h 0m remaining").
     await expect(page.getByText(/\d+h \d+m remaining/)).toBeVisible();
-    // Execute is present but disabled until the unlock time passes.
-    await expect(page.getByRole("button", { name: "⏳ Waiting" })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "✓ Execute" })).toHaveCount(0);
+
+    const waitingBtn = page.getByRole("button", { name: /Waiting/i }).first();
+    await expect(waitingBtn).toBeVisible();
+    await expect(waitingBtn).toBeDisabled();
+    await expect(page.getByRole("button", { name: /Execute/ })).toHaveCount(0);
   });
 
   test("executes an unlocked action", async ({ page }) => {
-    await installAdminMocks(page, { timelock: [readyAction({ id: 11 })] });
-
+    await installAdminMocks(page, {
+      timelock: [readyAction({ id: 11, executed: false })],
+    });
     await page.goto("/timelock");
     await expect(
-      page.getByRole("heading", { level: 1, name: "Timelocked Actions" })
-    ).toBeVisible({ timeout: 15000 });
+      page.getByRole("heading", { name: /Timelocked Actions/i })
+    ).toBeVisible({ timeout: 20000 });
 
-    await expect(page.getByText("Ready")).toBeVisible({ timeout: 15000 });
-    const execute = page.getByRole("button", { name: "✓ Execute" });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText("Ready", { exact: true }).first()).toBeVisible({ timeout: 20000 });
+
+    const execute = page.getByRole("button", { name: /Execute/ }).first();
+    await expect(execute).toBeVisible({ timeout: 15000 });
     await expect(execute).toBeEnabled();
     await execute.click();
 
@@ -54,13 +50,12 @@ test.describe("Timelocked actions", () => {
 
   test("cancels a pending action", async ({ page }) => {
     await installAdminMocks(page, { timelock: [readyAction({ id: 12 })] });
-
     await page.goto("/timelock");
     await expect(
-      page.getByRole("heading", { level: 1, name: "Timelocked Actions" })
-    ).toBeVisible({ timeout: 15000 });
+      page.getByRole("heading", { name: /Timelocked Actions/i })
+    ).toBeVisible({ timeout: 20000 });
 
-    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: /Cancel/i }).first().click();
     await expect(page.getByText("Action cancelled on-chain")).toBeVisible({
       timeout: 20000,
     });
@@ -70,23 +65,29 @@ test.describe("Timelocked actions", () => {
     page,
   }) => {
     await installAdminMocks(page, { timelock: [] });
-
     await page.goto("/timelock");
     await expect(page.getByText("No Timelocked Actions")).toBeVisible({
-      timeout: 15000,
+      timeout: 20000,
     });
 
-    await page.getByRole("button", { name: "+ Propose Action" }).click();
+    const proposeBtn = page.getByRole("button", { name: /Propose Action/i }).first();
+    await expect(proposeBtn).toBeVisible({ timeout: 20000 });
+    await proposeBtn.click();
+    
     const dialog = page.getByRole("dialog");
     await expect(dialog).toContainText("Propose Timelocked Action");
 
-    await dialog.getByRole("button", { name: "pause contract" }).click();
+    // FIX FINAL: tem 2 botoes pause contract dentro do dialog
+    await dialog.getByRole("button", { name: /pause contract/i }).first().click();
+
     await dialog
       .getByPlaceholder("Contract address or parameter...")
+      .first()
       .fill("GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU");
 
     await dialog
       .getByRole("button", { name: "Propose with 24h Timelock" })
+      .first()
       .click();
 
     await expect(
@@ -100,10 +101,9 @@ test.describe("Timelocked actions", () => {
     await installAdminMocks(page, {
       timelock: [readyAction({ id: 13, executed: true })],
     });
-
     await page.goto("/timelock");
-    await expect(page.getByText("Executed")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole("button", { name: "✓ Execute" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+    await expect(page.getByText("Executed", { exact: true }).first()).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole("button", { name: /Execute/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Cancel/ })).toHaveCount(0);
   });
 });

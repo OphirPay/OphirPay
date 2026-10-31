@@ -142,7 +142,7 @@ export default function HooksPage() {
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center gap-3 animate-fade-in">
           <span className="text-amber-500 text-lg">⚠️</span>
           <div>
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Wallet not connected</p>
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-800 dark:text-amber-200 dark:text-amber-800 dark:text-amber-200">Wallet not connected</p>
             <p className="text-xs text-amber-600 dark:text-amber-400">
               Connect your wallet to register and manage on-chain notification hooks.
             </p>

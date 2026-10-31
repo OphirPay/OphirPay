@@ -128,7 +128,7 @@ export function AddressBookMultiSelect({
                 </span>
               </span>
               {alreadyAdded && (
-                <span className="text-xs font-medium text-gray-400 dark:text-gray-500 flex-shrink-0">
+                <span className="text-xs font-medium text-gray-400 dark:text-gray-400 flex-shrink-0">
                   In batch
                 </span>
               )}

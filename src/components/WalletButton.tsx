@@ -168,7 +168,7 @@ export function WalletButton() {
         size="sm"
       >
         <div className="space-y-4">
-          <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-800 dark:text-amber-200">
+          <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-900 dark:text-amber-800 dark:text-amber-200 dark:text-amber-800 dark:text-amber-200">
             {describePendingWork(pendingWork)}
           </div>
           <div className="flex gap-2">

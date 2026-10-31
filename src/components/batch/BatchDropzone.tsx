@@ -318,7 +318,7 @@ export function BatchDropzone({
               viewBox="0 0 24 24"
               strokeWidth={1.5}
               stroke="currentColor"
-              className="w-10 h-10 mx-auto mb-3 text-gray-400 dark:text-gray-500"
+              className="w-10 h-10 mx-auto mb-3 text-gray-400 dark:text-gray-400"
             >
               <path
                 strokeLinecap="round"

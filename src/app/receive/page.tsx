@@ -123,7 +123,7 @@ export default function ReceivePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                 </svg>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                  <p className="text-sm font-medium text-amber-900 dark:text-amber-800 dark:text-amber-200 dark:text-amber-300">
                     Wallet account changed
                   </p>
                   <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
@@ -165,12 +165,12 @@ export default function ReceivePage() {
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
               Your Stellar address
             </h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+            <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">
               Share this address directly, or copy the SEP-7 payment URI.
             </p>
 
             <div className="mt-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-400 mb-1">
                 Address
               </p>
               <p className="font-mono text-sm text-gray-900 dark:text-white break-all">
@@ -193,7 +193,7 @@ export default function ReceivePage() {
             </div>
 
             <div className="mt-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-400 mb-1">
                 SEP-7 payment URI
               </p>
               <p className="font-mono text-xs text-gray-900 dark:text-white break-all">
@@ -204,7 +204,7 @@ export default function ReceivePage() {
               </div>
             </div>
 
-            <p className="mt-6 text-xs text-gray-400 dark:text-gray-500">
+            <p className="mt-6 text-xs text-gray-400 dark:text-gray-400">
               Shortened:{" "}
               <span className="font-mono">{shortenAddress(address, 8)}</span>
             </p>

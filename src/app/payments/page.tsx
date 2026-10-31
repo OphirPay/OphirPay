@@ -380,7 +380,7 @@ function PaymentsClient() {
           <span className="font-medium text-gray-900 dark:text-white">
             {formatFiatAmount(usdAmount, { showApprox: true })}
           </span>
-          <span className="block text-[11px] text-gray-400 dark:text-gray-500">
+          <span className="block text-[11px] text-gray-400 dark:text-gray-400">
             {formatAmount(xlmAmount, "XLM")}
           </span>
         </div>
@@ -610,7 +610,7 @@ function PaymentsClient() {
           {total} on-chain {total === 1 ? "record" : "records"}
         </span>
         {!loading && filtered.length !== payments.length && (
-          <span className="text-xs text-gray-400 dark:text-gray-500">
+          <span className="text-xs text-gray-400 dark:text-gray-400">
             filtered: {filtered.length} of {payments.length}
           </span>
         )}

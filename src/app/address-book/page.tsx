@@ -279,7 +279,7 @@ export default function AddressBookPage() {
                     {entry.label}
                   </p>
                   {entry.lastUsed ? (
-                    <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500">
+                    <span className="shrink-0 text-xs text-gray-400 dark:text-gray-400">
                       used {timeAgo(new Date(entry.lastUsed).toISOString())}
                     </span>
                   ) : null}
@@ -382,7 +382,7 @@ export default function AddressBookPage() {
         cancelLabel="Cancel"
       />
 
-      <p className="text-xs text-gray-400 dark:text-gray-500">
+      <p className="text-xs text-gray-400 dark:text-gray-400">
         Contacts are stored locally via{" "}
         <code className="text-gray-500 dark:text-gray-400">localStorage</code> —
         they never leave your browser.{" "}

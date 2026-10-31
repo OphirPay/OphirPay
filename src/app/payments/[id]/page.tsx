@@ -70,7 +70,7 @@ function DetailRow({
 }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0">
-      <dt className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500 shrink-0 sm:w-40">
+      <dt className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-400 shrink-0 sm:w-40">
         {label}
       </dt>
       <dd

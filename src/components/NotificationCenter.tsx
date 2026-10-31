@@ -212,7 +212,7 @@ export function NotificationCenter() {
                 <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
                   No notifications yet
                 </p>
-                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                <p className="text-[11px] text-gray-400 dark:text-gray-400 mt-0.5">
                   Payment events and transfers will show up here in real time.
                 </p>
               </div>
@@ -244,7 +244,7 @@ export function NotificationCenter() {
                           />
                         )}
                       </div>
-                      <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0 whitespace-nowrap">
+                      <span className="text-[10px] text-gray-400 dark:text-gray-400 shrink-0 whitespace-nowrap">
                         {timeAgo(new Date(item.timestamp).toISOString())}
                       </span>
                     </div>

@@ -659,7 +659,7 @@ export default function WebhooksPage() {
         ) : (
           <div className="space-y-4">
             <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
-              <p className="text-sm text-amber-800 dark:text-amber-300 font-medium mb-1">
+              <p className="text-sm text-amber-900 dark:text-amber-800 dark:text-amber-200 dark:text-amber-300 font-medium mb-1">
                 ⚠️ Integrator impact
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-400">

@@ -171,7 +171,7 @@ export default function GovernancePage() {
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center gap-3">
           <span className="text-amber-500 text-lg">⚠️</span>
           <div>
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-200 dark:text-amber-200">
               Wallet not connected
             </p>
             <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -203,7 +203,7 @@ export default function GovernancePage() {
       ) : (
         <>
           {truncated && list.length > 0 && (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 text-sm text-amber-900 dark:text-amber-200 dark:text-amber-200">
               Showing the {list.length} most recent of {proposals?.total} proposals — older
               proposals are not listed to bound the on-chain enumeration cost.
             </div>

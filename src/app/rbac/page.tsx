@@ -170,7 +170,7 @@ export default function RBACPage() {
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center gap-3 animate-fade-in">
           <span className="text-amber-500 text-lg">⚠️</span>
           <div>
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Wallet not connected</p>
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-200 dark:text-amber-200">Wallet not connected</p>
             <p className="text-xs text-amber-600 dark:text-amber-400">
               Connect your wallet to manage role-based access on-chain.
             </p>
@@ -300,7 +300,7 @@ export default function RBACPage() {
             />
           </div>
           {revokeAddress && assignments.some((a) => a.address === revokeAddress) && (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded p-3 text-sm text-amber-800 dark:text-amber-200">
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded p-3 text-sm text-amber-900 dark:text-amber-200 dark:text-amber-200">
               This will remove the <strong>{ROLE_LABELS[assignments.find((a) => a.address === revokeAddress)!.role].label}</strong> role from this address.
             </div>
           )}

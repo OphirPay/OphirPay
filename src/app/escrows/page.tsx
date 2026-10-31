@@ -169,7 +169,7 @@ export default function EscrowsPage() {
       </div>
 
       {!wallet.connected && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:text-amber-200 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
           Connect a wallet to create, claim, or arbitrate escrows.
         </p>
       )}

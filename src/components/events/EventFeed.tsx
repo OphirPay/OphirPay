@@ -146,7 +146,7 @@ export function EventFeed() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Listening for payment events...
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">
                   Send a payment to see it appear here in real-time
                 </p>
               </div>

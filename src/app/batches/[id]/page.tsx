@@ -81,7 +81,7 @@ export default function BatchDetailPage() {
                   {batch.description}
                 </p>
               )}
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">
                 Created {timeAgo(batch.createdAt)}
               </p>
             </div>
@@ -166,7 +166,7 @@ export default function BatchDetailPage() {
                   {batch.progress.failed} failed
                 </span>
               </div>
-              <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+              <span className="text-xs text-gray-400 dark:text-gray-400 ml-auto">
                 {batch.progress.total} total
               </span>
             </div>

@@ -61,7 +61,7 @@ export function PaymentTimeline({ steps, explorerUrl }: PaymentTimelineProps) {
                     ? "border-green-500 bg-green-50 dark:bg-green-950/40 text-green-600 dark:text-green-400"
                     : step.current
                       ? "border-ophir-500 bg-ophir-50 dark:bg-ophir-950/40 text-ophir-600 dark:text-ophir-400"
-                      : "border-gray-300 dark:border-gray-600 text-gray-300 dark:text-gray-500"
+                      : "border-gray-300 dark:border-gray-600 text-gray-300 dark:text-gray-400"
               )}
               aria-hidden
             >
@@ -92,7 +92,7 @@ export function PaymentTimeline({ steps, explorerUrl }: PaymentTimelineProps) {
                         ? "text-gray-900 dark:text-white"
                         : step.current
                           ? "text-ophir-700 dark:text-ophir-300"
-                          : "text-gray-400 dark:text-gray-500"
+                          : "text-gray-400 dark:text-gray-400"
                   )}
                 >
                   {step.label}
@@ -104,7 +104,7 @@ export function PaymentTimeline({ steps, explorerUrl }: PaymentTimelineProps) {
                 </p>
                 {step.timestamp && (
                   <time
-                    className="text-xs text-gray-400 dark:text-gray-500"
+                    className="text-xs text-gray-400 dark:text-gray-400"
                     dateTime={new Date(step.timestamp * 1000).toISOString()}
                   >
                     {formatTimestamp(step.timestamp)}

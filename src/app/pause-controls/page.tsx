@@ -172,7 +172,7 @@ export default function PauseControlsPage() {
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 flex items-center gap-3 animate-fade-in">
           <span className="text-amber-500 text-lg">⚠️</span>
           <div>
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-200 dark:text-amber-200">Wallet not connected</p>
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-800 dark:text-amber-200 dark:text-amber-800 dark:text-amber-200">Wallet not connected</p>
             <p className="text-xs text-amber-600 dark:text-amber-400">
               Connect your wallet to pause or unpause the contract on-chain.
             </p>
@@ -263,7 +263,7 @@ export default function PauseControlsPage() {
             </Button>
           )}
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+        <p className="text-xs text-gray-400 dark:text-gray-400 mt-3">
           {wallet.connected
             ? `Connected: ${wallet.publicKey ? shortenAddress(wallet.publicKey, 12) : "Unknown"}`
             : "Connect your wallet to perform admin actions"}
@@ -294,7 +294,7 @@ export default function PauseControlsPage() {
               <div key={scope.id} className="flex items-center justify-between gap-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{scope.label}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{scope.description}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-400">{scope.description}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <Badge variant={scopePaused ? "danger" : "success"}>
@@ -333,7 +333,7 @@ export default function PauseControlsPage() {
             );
           })}
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+        <p className="text-xs text-gray-400 dark:text-gray-400 mt-3">
           A stray click can never pause a subsystem on its own: pick Pause or Resume, then Confirm.
         </p>
       </Card>

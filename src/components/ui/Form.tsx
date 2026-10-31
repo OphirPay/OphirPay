@@ -47,13 +47,13 @@ function FieldShell({
       )}
       <div className="relative">
         {leftIcon && (
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400">
             {leftIcon}
           </span>
         )}
         {children}
         {rightIcon && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400">
             {rightIcon}
           </span>
         )}

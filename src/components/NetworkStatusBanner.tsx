@@ -50,7 +50,7 @@ export function NetworkStatusBanner() {
       data-state="degraded"
       data-latency-ms={latencyMs ?? undefined}
       data-using-fallback={usingFallback ? "true" : "false"}
-      className="sticky top-0 z-40 w-full border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/60 dark:text-amber-200"
+      className="sticky top-0 z-40 w-full border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/60 dark:text-amber-800 dark:text-amber-200"
     >
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-1">
         <span
@@ -58,7 +58,7 @@ export function NetworkStatusBanner() {
           className="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-500"
         />
         <span className="font-medium">{headline}</span>
-        <span className="text-amber-900 dark:text-amber-200/80 dark:text-amber-300/80">
+        <span className="text-amber-900 dark:text-amber-800 dark:text-amber-200/80 dark:text-amber-300/80">
           via <span data-testid="network-status-endpoint">{provider}</span>
           {" · "}
           <span data-testid="network-status-latency">{latencyLabel}</span>

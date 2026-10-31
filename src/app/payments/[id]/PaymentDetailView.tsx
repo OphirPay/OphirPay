@@ -225,7 +225,7 @@ export default function PaymentDetailView({ id }: { id: string }) {
                 <CopyButton value={payment.transactionHash} label="Hash" />
               </div>
             ) : (
-              <span className="text-gray-400 dark:text-gray-500">—</span>
+              <span className="text-gray-400 dark:text-gray-400">—</span>
             )}
           </DetailRow>
           {payment.batchId && (

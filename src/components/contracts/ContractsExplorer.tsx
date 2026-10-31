@@ -232,7 +232,7 @@ export function ContractsExplorer() {
           </button>
         </div>
         {selectedFn.readOnly && (
-          <p className="text-xs text-gray-400 dark:text-gray-500">
+          <p className="text-xs text-gray-400 dark:text-gray-400">
             ℹ️ <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{functionName}()</code> is read-only — no transaction signature required.
           </p>
         )}

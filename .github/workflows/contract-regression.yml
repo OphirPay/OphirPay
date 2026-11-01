@@ -40,7 +40,7 @@ jobs:
       # workflow_dispatch has no diff to compute: fall back to running the job.
       contracts: ${{ steps.filter.outputs.contracts || 'true' }}
     steps:
-      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         if: github.event_name != 'workflow_dispatch'
         with:

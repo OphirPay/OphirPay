@@ -30,7 +30,7 @@ jobs:
         # ossf/scorecard-action does not publish a floating `v2` tag — only
         # concrete v2.4.x tags — so `@v2` fails to resolve (weekly job was
         # failing since 2026-08-17). Pin to the latest v2.4.x release.
-        uses: ossf/scorecard-action@v2.4.4
+        uses: ossf/scorecard-action@v2.5.0
         with:
           results_file: results.sarif
           results_format: sarif

@@ -70,6 +70,7 @@
 - [🧭 System Architecture](#-system-architecture)
 - [⚡ Quick Start](#-quick-start)
 - [🛠 Local Development Guide](docs/LOCAL_DEV.md)
+- [🐳 Local Stellar Standalone Quickstart](docs/LOCAL_DEV.md#6-local-stellar-standalone-container-offline-development--testing)
 - [🔐 Wallet Integration](#-wallet-integration)
 - [📡 Real-Time Events](#-real-time-events)
 - [🧪 Smart Contracts](#-smart-contracts)
@@ -258,7 +259,7 @@ bash scripts/demo-test.sh
 | [Node.js](https://nodejs.org) | 18+ | Runtime |
 | [Freighter Wallet](https://freighter.app) | Latest | Browser extension for Stellar |
 | [Git](https://git-scm.com) | Any | Clone the repo |
-| A funded Testnet account | — | Get free XLM from [Friendbot](https://laboratory.stellar.org/#account-creator?network=test) |
+| A funded Testnet account (or local standalone) | — | Free test XLM via [Friendbot](https://laboratory.stellar.org/#account-creator?network=test) or [Local Standalone Container](docs/LOCAL_DEV.md#6-local-stellar-standalone-container-offline-development--testing) |
 
 ### 5-Minute Setup
 

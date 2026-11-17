@@ -1,6 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
+import { useState, useCallback } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatAmount, shortenAddress } from "@/lib/utils";
@@ -43,9 +44,30 @@ export function BatchConfirmDialog({
   const remainingCount = recipients.length - MAX_VISIBLE;
   const feeXlm = formatAmount(parseFloat(estimatedFee) / 10000000, "XLM");
 
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+
+  const handleCopyAddress = useCallback(async (address: string) => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(address);
+        setCopiedAddress(address);
+        setTimeout(() => {
+          setCopiedAddress((prev) => (prev === address ? null : prev));
+        }, 2000);
+      }
+    } catch (err) {
+      console.warn("Failed to copy address to clipboard:", err);
+    }
+  }, []);
+
   return (
     <Modal open={open} onClose={onCancel} title="Confirm Batch Payment" size="md">
       <div className="space-y-4">
+        {/* Hidden screen-reader announcement for accessibility */}
+        <span className="sr-only" aria-live="polite">
+          {copiedAddress ? "Address copied to clipboard" : ""}
+        </span>
+
         {/* Summary */}
         <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3 sm:p-4 space-y-2">
           <div className="flex justify-between text-sm">
@@ -75,19 +97,38 @@ export function BatchConfirmDialog({
         <div>
           <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Recipients</h3>
           <div className="divide-y divide-gray-100 dark:divide-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            {visibleRecipients.map((r, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-900"
-              >
-                <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
-                  {shortenAddress(r.address, 8)}
-                </span>
-                <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white ml-3">
-                  {formatAmount(parseFloat(r.amount), "XLM")}
-                </span>
-              </div>
-            ))}
+            {visibleRecipients.map((r, i) => {
+              const isCopied = copiedAddress === r.address;
+              return (
+                <div
+                  key={i}
+                  className="flex items-center justify-between px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-900"
+                >
+                  <div className="relative flex items-center group">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyAddress(r.address)}
+                      title="Click to copy address"
+                      aria-label={`Copy address ${r.address}`}
+                      className="text-xs font-mono text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus:outline-none focus:underline truncate text-left"
+                    >
+                      {shortenAddress(r.address, 8)}
+                    </button>
+                    {isCopied && (
+                      <span
+                        role="status"
+                        className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-800 dark:bg-green-900/60 dark:text-green-300 animate-fade-in"
+                      >
+                        Copied!
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white ml-3">
+                    {formatAmount(parseFloat(r.amount), "XLM")}
+                  </span>
+                </div>
+              );
+            })}
           </div>
           {remainingCount > 0 && (
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">

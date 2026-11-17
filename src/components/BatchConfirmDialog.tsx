@@ -1,9 +1,10 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { formatAmount, shortenAddress } from "@/lib/utils";
+import { formatAmount, shortenAddress, cn } from "@/lib/utils";
 
 interface BatchRecipient {
   address: string;
@@ -43,9 +44,48 @@ export function BatchConfirmDialog({
   const remainingCount = recipients.length - MAX_VISIBLE;
   const feeXlm = formatAmount(parseFloat(estimatedFee) / 10000000, "XLM");
 
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleCopy = useCallback(async (address: string, index: number) => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(address);
+        setCopiedIndex(index);
+        if (copyTimeoutRef.current) {
+          clearTimeout(copyTimeoutRef.current);
+        }
+        copyTimeoutRef.current = setTimeout(() => {
+          setCopiedIndex(null);
+        }, 2000);
+      }
+    } catch {
+      // Gracefully handle clipboard permission denial
+      setCopiedIndex(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <Modal open={open} onClose={onCancel} title="Confirm Batch Payment" size="md">
       <div className="space-y-4">
+        {/* Live region for accessibility announcements */}
+        <div
+          className="sr-only"
+          aria-live="polite"
+          role="status"
+          data-testid="batch-address-copied-announcement"
+        >
+          {copiedIndex !== null ? "Address copied" : ""}
+        </div>
+
         {/* Summary */}
         <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3 sm:p-4 space-y-2">
           <div className="flex justify-between text-sm">
@@ -80,10 +120,47 @@ export function BatchConfirmDialog({
                 key={i}
                 className="flex items-center justify-between px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-900"
               >
-                <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
-                  {shortenAddress(r.address, 8)}
-                </span>
-                <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white ml-3">
+                <div className="relative flex items-center min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(r.address, i)}
+                    title={`Click to copy: ${r.address}`}
+                    aria-label={`Copy address ${r.address}`}
+                    data-testid={`batch-copy-address-${i}`}
+                    className="group inline-flex items-center gap-1.5 text-xs font-mono text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-primary-500 rounded px-1 py-0.5 -mx-1"
+                  >
+                    <span className="truncate">{shortenAddress(r.address, 8)}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-200 transition-colors flex-shrink-0"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75"
+                      />
+                    </svg>
+                  </button>
+                  {copiedIndex === i && (
+                    <div
+                      role="tooltip"
+                      data-testid="copy-tooltip"
+                      className={cn(
+                        "absolute -top-7 left-0 z-20 px-2 py-0.5 rounded text-[10px] font-medium pointer-events-none whitespace-nowrap shadow-md",
+                        "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900",
+                        "animate-fade-in"
+                      )}
+                    >
+                      Copied!
+                    </div>
+                  )}
+                </div>
+                <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white ml-3 flex-shrink-0">
                   {formatAmount(parseFloat(r.amount), "XLM")}
                 </span>
               </div>

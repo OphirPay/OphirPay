@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { BatchConfirmDialog } from "@/components/BatchConfirmDialog";
 
 const baseProps = {
@@ -110,5 +110,96 @@ describe("BatchConfirmDialog", () => {
     );
     expect(screen.getByText("Estimated Fee")).toBeDefined();
     expect(screen.getByText("0.00007 XLM")).toBeDefined();
+  });
+
+  describe("copy-to-clipboard address interaction", () => {
+    const fullAddress = "G" + "A".repeat(55);
+
+    it("copies address, displays 'Copied!' tooltip, and announces to screen readers on click", async () => {
+      const writeTextMock = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: writeTextMock,
+        },
+      });
+
+      render(
+        <BatchConfirmDialog
+          {...baseProps}
+          recipients={[{ address: fullAddress, amount: "10" }]}
+        />
+      );
+
+      const copyBtn = screen.getByTestId("batch-copy-address-0");
+      expect(copyBtn).toBeDefined();
+      expect(screen.queryByTestId("copy-tooltip")).toBeNull();
+
+      fireEvent.click(copyBtn);
+
+      expect(writeTextMock).toHaveBeenCalledWith(fullAddress);
+      expect(await screen.findByTestId("copy-tooltip")).toBeDefined();
+      expect(screen.getByText("Copied!")).toBeDefined();
+
+      const liveRegion = screen.getByTestId("batch-address-copied-announcement");
+      expect(liveRegion.textContent).toBe("Address copied");
+    });
+
+    it("dismisses tooltip after 2000ms delay", async () => {
+      vi.useFakeTimers();
+      const writeTextMock = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: writeTextMock,
+        },
+      });
+
+      render(
+        <BatchConfirmDialog
+          {...baseProps}
+          recipients={[{ address: fullAddress, amount: "10" }]}
+        />
+      );
+
+      const copyBtn = screen.getByTestId("batch-copy-address-0");
+      await act(async () => {
+        fireEvent.click(copyBtn);
+      });
+
+      expect(screen.getByTestId("copy-tooltip")).toBeDefined();
+
+      // Fast-forward 2000ms
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+
+      expect(screen.queryByTestId("copy-tooltip")).toBeNull();
+      vi.useRealTimers();
+    });
+
+    it("handles clipboard permission denial gracefully without error or tooltip", async () => {
+      const writeTextMock = vi.fn().mockRejectedValue(new Error("Permission denied"));
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: writeTextMock,
+        },
+      });
+
+      render(
+        <BatchConfirmDialog
+          {...baseProps}
+          recipients={[{ address: fullAddress, amount: "10" }]}
+        />
+      );
+
+      const copyBtn = screen.getByTestId("batch-copy-address-0");
+      fireEvent.click(copyBtn);
+
+      await Promise.resolve();
+
+      expect(writeTextMock).toHaveBeenCalledWith(fullAddress);
+      expect(screen.queryByTestId("copy-tooltip")).toBeNull();
+      const liveRegion = screen.getByTestId("batch-address-copied-announcement");
+      expect(liveRegion.textContent).toBe("");
+    });
   });
 });

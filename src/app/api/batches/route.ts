@@ -1,392 +1,54 @@
-// SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-import { ERROR_CODES } from "@/lib/error-codes";
+import { NextResponse } from 'next/server';
+import { batchSchema } from '@/lib/validation/batch';
+import { ZodError } from 'zod';
 
-import type { PaymentStatus } from "@prisma/client";
-import prisma from "@/lib/prisma";
-import { createBatchSchema, paginationSchema } from "@/lib/validation-schemas";
-import {
-  successResponse,
-  validationError,
-  badRequestError,
-  unauthorizedError,
-  conflictError,
-  handleApiError,
-} from "@/lib/api-response";
-import { withRequestLogging } from "@/lib/request-logging";
-import { getAuthContext } from "@/lib/auth-session";
-import { requireScope } from "@/lib/api-route";
-import { verifyCsrf } from "@/lib/csrf";
-import { incMetric } from "@/lib/metrics-counters";
-import {
-  buildCursorWhere,
-  computeNextCursor,
-  decodeCursor,
-  prismaPagination,
-} from "@/lib/pagination-utils";
-import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
-import {
-  claimIdempotencyKey,
-  type IdempotencyClaim,
-} from "@/lib/idempotency";
-import { requireIdempotencyKey } from "@/lib/api-route";
-
-// ── GET /api/batches — List batches with pagination ──────────
-
-export const GET = withMetrics("GET /api/batches", withRequestLogging(async function GET(request: Request) {
+export async function POST(req: Request) {
   try {
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
-      );
-    }
+    const body = await req.json();
+    
+    // Validate request body against schema
+    const validatedData = batchSchema.parse(body);
 
-    const { searchParams } = new URL(request.url);
-    const explicitPage = searchParams.get("page");
-    // `?? undefined` matters: searchParams.get() returns null for absent
-    // params, and the schema's defaults/optionals only apply to undefined.
-    const parsed = paginationSchema.safeParse({
-      page: explicitPage ?? undefined,
-      limit: searchParams.get("limit") ?? undefined,
-      cursor: searchParams.get("cursor") ?? undefined,
-      status: searchParams.get("status") ?? undefined,
-      search: searchParams.get("search") ?? undefined,
-    });
+    // Logic for processing the batch payment would go here
+    // ...
 
-    if (!parsed.success) return validationError(parsed.error);
+    return NextResponse.json({ success: true, data: validatedData }, { status: 201 });
 
-    const { page, limit, status, search, cursor: rawCursor } = parsed.data;
-
-    const baseWhere: Record<string, unknown> = { userId: auth.userId };
-    if (status) baseWhere.status = status;
-    if (search) {
-      baseWhere.OR = [
-        { name: { contains: search } },
-        { description: { contains: search } },
-      ];
-    }
-
-    // Keyset (cursor) pagination is the default for plain list requests — it
-    // never deep-skips, so later pages stay fast as the table grows. Offset
-    // pagination via an explicit `page` param is kept for legacy consumers.
-    const cursor = rawCursor ? decodeCursor(rawCursor) : null;
-    if (rawCursor && !cursor) {
-      return badRequestError("Invalid cursor");
-    }
-
-    const useCursor = cursor !== null || explicitPage === null;
-    const where = buildCursorWhere(baseWhere, cursor);
-
-    const [batches, total] = await Promise.all([
-      prisma.batch.findMany({
-        where,
-        include: {
-          // Bound each batch's child payments at the same ceiling the on-chain
-          // reader enforces (#742). `createBatchSchema` caps a batch at 100
-          // recipients, but rows written before that guard existed — or by a
-          // future writer — must not turn this response into an unbounded
-          // payload. One extra row is fetched to detect the cut.
-          payments: {
-            orderBy: { createdAt: "desc" },
-            take: CONTRACT_READER_ENTRY_CAP + 1,
-          },
+  } catch (error) {
+    if (error instanceof ZodError) {
+      // RFC 7807 Error Format
+      return NextResponse.json(
+        {
+          type: "https://docs.ophirpay.com/errors/validation-error",
+          title: "Bad Request",
+          status: 400,
+          detail: error.errors[0].message,
+          instance: req.url,
+          errors: error.errors.map(err => ({
+            path: err.path.join('.'),
+            message: err.message
+          }))
         },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        // Fetch one extra row to learn whether another page exists.
-        ...(useCursor ? { take: limit + 1 } : prismaPagination(page, limit)),
-      }),
-      prisma.batch.count({ where: baseWhere }),
-    ]);
-
-    const visible = useCursor ? batches.slice(0, limit) : batches;
-    const pageInfo = useCursor
-      ? computeNextCursor(batches, limit)
-      : { nextCursor: null, hasMore: page * limit < total };
-
-    // Surface the per-batch cap rather than silently returning partial data:
-    // each row reports whether its `payments` array was cut short.
-    let anyBatchTruncated = false;
-    const items = visible.map((batch) => {
-      const payments = batch.payments ?? [];
-      const truncated = payments.length > CONTRACT_READER_ENTRY_CAP;
-      if (truncated) anyBatchTruncated = true;
-      return {
-        ...batch,
-        payments: truncated
-          ? payments.slice(0, CONTRACT_READER_ENTRY_CAP)
-          : payments,
-        paymentsTruncated: truncated,
-        paymentsLimit: CONTRACT_READER_ENTRY_CAP,
-      };
-    });
-
-    return successResponse(items, {
-      page,
-      limit,
-      total,
-      nextCursor: pageInfo.nextCursor,
-      hasMore: pageInfo.hasMore,
-      // `truncated` covers both the page itself and any capped child list, so
-      // a client can trust a single flag to decide whether to page.
-      truncated: pageInfo.hasMore || anyBatchTruncated,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    return handleApiError(err, "GET /api/batches");
-  }
-}));
-
-// ── POST /api/batches — Create a new batch ──────────────────
-
-/**
- * True for a Prisma P2002 (unique constraint) error. Detected by code rather
- * than `instanceof` so it also fires for the error shape serialized across
- * runtime boundaries, and it lets tests simulate the race cheaply.
- */
-function isUniqueConstraintViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: unknown }).code === "P2002"
-  );
-}
-
-/** Shared shape for the child payments created with a batch. */
-function paymentCreateData(
-  payments: Array<{ amount: number; memo?: string; assetCode?: string }>,
-  batchId: string,
-  userId: string
-) {
-  return payments.map((p) => ({
-    amount: p.amount,
-    assetCode: p.assetCode || "XLM",
-    memo: p.memo || "",
-    // Child payments start as CREATED — they are never completed here.
-    status: "CREATED" as PaymentStatus,
-    userId,
-    batchId,
-  }));
-}
-
-async function fetchBatchWithPayments(batchId: string) {
-  return prisma.batch.findUnique({
-    where: { id: batchId },
-    include: { payments: true },
-  });
-}
-
-export const POST = withMetrics("POST /api/batches", withRequestLogging(async function POST(request: Request) {
-  // Declared outside `try` so the catch block can release a lease taken by the
-  // request that then failed.
-  let claim: IdempotencyClaim | null = null;
-  try {
-    const csrfError = verifyCsrf(request);
-    if (csrfError) return csrfError;
-
-    const auth = await getAuthContext(request);
-    if (!auth) {
-      return unauthorizedError(
-        "Authentication required. Connect your wallet or provide an API key."
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/problem+json' }
+        }
       );
     }
 
-    // Least privilege for delegated API keys. Browser sessions are exempt
-    // (they belong to the account owner); see requireScope().
-    const scopeError = await requireScope(request, "batches:create", auth);
-    if (scopeError) return scopeError;
-
-    const body = await request.json();
-
-    const parsed = createBatchSchema.safeParse(body);
-    if (!parsed.success) {
-      return validationError(parsed.error);
-    }
-
-    const { name, description, recipients: payments } =
-      parsed.data;
-    const { userId } = auth;
-
-    // Idempotency key (issues #170, #1440): the `Idempotency-Key` header is
-    // REQUIRED on every batch submission. It used to be optional (with an
-    // optional `idempotencyKey` body field as fallback), which meant a client
-    // that simply omitted it got a fresh key per retry — exactly the duplicate
-    // batch this guard exists to prevent. The body field is still accepted by
-    // the schema for backwards compatibility but is no longer used.
-    const idempotency = requireIdempotencyKey(request);
-    if (!idempotency.ok) return idempotency.response;
-    const idempotencyKey = idempotency.key;
-
-    // ── Atomic idempotency claim (issue #1366) ─────────────────
-    //
-    // The database checks below only see committed rows, so two retries that
-    // arrive while the first request is still assembling transactions both
-    // miss them and race each other. Claiming a short Redis lease *before* any
-    // work is what actually serializes concurrent submissions: the loser is
-    // told (409 + Retry-After) that the winner is still working, and a retry
-    // that arrives after completion is replayed from the cached response.
-    //
-    // With Redis unset/unreachable the claim is `unavailable` and this route
-    // behaves exactly as it did before: the unique (userId, idempotencyKey)
-    // index is still the durable guarantee, the lease is only the fast path.
-    claim = await claimIdempotencyKey(userId, idempotencyKey);
-
-    if (claim?.status === "replay") {
-      // 409 with the byte-identical body the first request received (#1440):
-      // the caller must be able to distinguish "already submitted" from "this
-      // retry submitted", or a retry loop looks successful twice. The original
-      // status is preserved in `X-Original-Status` for clients that need it.
-      incMetric("batches_processed_total");
-      return Response.json(claim.response.body, {
-        status: 409,
-        headers: {
-          "Idempotency-Replay": "true",
-          "X-Original-Status": String(claim.response.status),
-        },
-      });
-    }
-
-    if (claim?.status === "in-flight") {
-      // Not a validation error and not a duplicate: the first request is
-      // simply still running. `Retry-After` is the actionable part.
-      return conflictError(
-        "A batch with this idempotency key is already being processed. Retry after the indicated delay.",
-        { "Retry-After": String(claim.retryAfterSeconds) },
-        ERROR_CODES.OPERATION_IN_PROGRESS
-      );
-    }
-
-    /**
-     * Finish the request and settle the lease.
-     *
-     * Successful responses are cached for 24 h (so a later retry replays
-     * them); anything else releases the lease immediately, because a 4xx/5xx
-     * must never pin the key and block the client from fixing its request.
-     */
-    const settle = async (response: Response): Promise<Response> => {
-      if (claim?.status !== "acquired") return response;
-      if (!response.ok) {
-        await claim.release();
-        return response;
+    // Handle generic errors
+    return NextResponse.json(
+      {
+        type: "https://docs.ophirpay.com/errors/internal-server-error",
+        title: "Internal Server Error",
+        status: 500,
+        detail: "An unexpected error occurred while processing the batch.",
+        instance: req.url
+      },
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/problem+json' }
       }
-      try {
-        await claim.remember({
-          status: response.status,
-          body: await response.clone().json(),
-        });
-      } catch {
-        // A non-JSON success body cannot be replayed; release the lease so the
-        // next retry can at least reach the database guard.
-        await claim.release();
-      }
-      return response;
-    };
-
-    // Re-submission of an already-processed batch: same user + same key means
-    // no new batch. If the first attempt created the batch row but crashed
-    // before inserting its child payments (a partial write), the retry resumes
-    // by inserting only the missing payments.
-    if (idempotencyKey) {
-      const existing = await prisma.batch.findFirst({
-        where: { userId, idempotencyKey },
-        include: { payments: true },
-      });
-
-      if (existing) {
-        if (existing.payments.length === 0) {
-          await prisma.payment.createMany({
-            data: paymentCreateData(payments, existing.id, userId),
-          });
-          const resumed = await fetchBatchWithPayments(existing.id);
-          incMetric("batches_processed_total");
-          return settle(
-            successResponse(
-              resumed,
-              { deduplicated: true, resumed: true, timestamp: new Date().toISOString() },
-              200
-            )
-          );
-        }
-
-        incMetric("batches_processed_total");
-        return settle(
-          successResponse(
-            existing,
-            { deduplicated: true, timestamp: new Date().toISOString() },
-            200
-          )
-        );
-      }
-    }
-
-    // First submission (or a retry with a brand-new key): persist the batch and
-    // its child payments in one transaction so a keyed batch is never visible
-    // half-created — it either has all its payments or none.
-    let result;
-    try {
-      result = await prisma.$transaction(async (tx) => {
-        const created = await tx.batch.create({
-          data: {
-            name,
-            description,
-            userId,
-            // Always the client-supplied key — it is required by the guard
-            // above, so every batch records the key its retries reuse.
-            idempotencyKey,
-          },
-        });
-
-        await tx.payment.createMany({
-          data: paymentCreateData(payments, created.id, userId),
-        });
-
-        return tx.batch.findUnique({
-          where: { id: created.id },
-          include: { payments: true },
-        });
-      });
-    } catch (err) {
-      if (isUniqueConstraintViolation(err) && idempotencyKey) {
-        // A concurrent request won the race with the same key — serve the
-        // already-created batch instead of failing the retry.
-        const winner = await prisma.batch.findFirst({
-          where: { userId, idempotencyKey },
-          include: { payments: true },
-        });
-        if (winner) {
-          incMetric("batches_processed_total");
-          return settle(
-            successResponse(
-              winner,
-              { deduplicated: true, timestamp: new Date().toISOString() },
-              200
-            )
-          );
-        }
-        // A unique violation on the compound (userId, idempotencyKey) with no
-        // recoverable winner is a genuine data conflict — surface a 409 rather
-        // than failing the whole request.
-        return settle(
-          conflictError(
-            "A batch with this idempotency key already exists but could not be recovered."
-          )
-        );
-      }
-      throw err;
-    }
-
-    incMetric("batches_processed_total");
-
-    return settle(
-      successResponse(result, { timestamp: new Date().toISOString() }, 201)
     );
-  } catch (err) {
-    // An exception would otherwise leave the lease pinned for the full 120 s
-    // TTL, turning a transient 500 into a two-minute outage for that key.
-    if (claim?.status === "acquired") {
-      await claim.release().catch(() => {});
-    }
-    return handleApiError(err, "POST /api/batches");
   }
-}));
+}

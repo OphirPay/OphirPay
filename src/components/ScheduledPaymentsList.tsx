@@ -1,129 +1,127 @@
-"use client";
-// SPDX-License-Identifier: MIT
+import React, { useState, useMemo } from 'react';
+import { Search, X, Calendar, ArrowRight } from 'lucide-react';
+// Assuming these are standard UI components in the project
+// If specific UI library components are preferred, they can be swapped
+import { Input } from '@/components/ui/input'; 
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/EmptyState';
 
-import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
-import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
-import { useToast } from "@/components/ui/Toast";
-
-/** Shape returned by GET /api/scheduled (amount pre-serialized as string). */
-export interface ScheduledPaymentRow {
+interface Payment {
   id: string;
+  recipient: string;
   amount: string;
-  assetCode: string;
-  destAddress: string;
-  memo?: string | null;
-  scheduledAt: string;
-  status: "SCHEDULED" | "PROCESSING" | "EXECUTED" | "FAILED" | "CANCELLED";
-  transactionHash?: string | null;
-  errorMessage?: string | null;
+  currency: string;
+  memo?: string;
+  nextPaymentDate: string;
+  status: 'active' | 'paused' | 'completed';
 }
 
-const STATUS_STYLES: Record<ScheduledPaymentRow["status"], string> = {
-  SCHEDULED: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  PROCESSING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  EXECUTED: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  FAILED: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  CANCELLED: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
-};
+interface ScheduledPaymentsListProps {
+  payments: Payment[];
+  isLoading?: boolean;
+}
 
-/**
- * List of the user's upcoming (and recently processed) scheduled payments,
- * with a cancel action for those still waiting to be sent.
- */
-export default function ScheduledPaymentsList() {
-  const toast = useToast();
-  const { data, isLoading } = useApiQuery<ScheduledPaymentRow[]>(
-    ["scheduled"],
-    "/api/scheduled"
-  );
-  const cancelMutation = useApiMutation<{ id: string }, { id: string; status: string }>(
-    (body) => `/api/scheduled?id=${encodeURIComponent(body.id)}`,
-    { method: "DELETE", invalidateKeys: [["scheduled"]] }
-  );
+export const ScheduledPaymentsList: React.FC<ScheduledPaymentsListProps> = ({ 
+  payments = [], 
+  isLoading 
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const payments = Array.isArray(data) ? data : [];
+  const filteredPayments = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return payments;
 
-  const handleCancel = async (id: string) => {
-    try {
-      await cancelMutation.mutateAsync({ id });
-      toast.success("Scheduled payment cancelled");
-    } catch {
-      toast.error("Failed to cancel scheduled payment");
-    }
+    return payments.filter((payment) => {
+      const matchesRecipient = payment.recipient.toLowerCase().includes(query);
+      const matchesMemo = payment.memo?.toLowerCase().includes(query);
+      return matchesRecipient || matchesMemo;
+    });
+  }, [payments, searchQuery]);
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
   };
 
+  if (isLoading) {
+    return <div className="flex justify-center p-8">Loading payments...</div>;
+  }
+
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Scheduled Payments
-        </h2>
-        {payments.length > 0 && (
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {payments.length} upcoming
-          </span>
+    <div className="space-y-4">
+      {/* Search Section */}
+      <div className="relative w-full max-w-md">
+        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+          <Search className="w-4 h-4 text-gray-400" />
+        </div>
+        <Input
+          type="text"
+          placeholder="Search by address or memo..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10 pr-10"
+        />
+        {searchQuery && (
+          <button
+            onClick={handleClearSearch}
+            className="absolute inset-y-0 right-0 flex items-center pr-3 hover:text-gray-600"
+            aria-label="Clear search"
+          >
+            <X className="w-4 h-4 text-gray-400" />
+          </button>
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="h-14 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"
-            />
-          ))}
-        </div>
-      ) : payments.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          No scheduled payments yet. Use the schedule toggle above to send at
-          a future date.
-        </p>
-      ) : (
-        <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-          {payments.map((payment) => (
-            <li
-              key={payment.id}
-              className="flex items-center justify-between gap-3 py-3"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
-                  {formatAmount(parseFloat(payment.amount), payment.assetCode)}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  To {shortenAddress(payment.destAddress, 6)} ·{" "}
-                  {formatDate(payment.scheduledAt)}
-                  {payment.memo ? ` · ${payment.memo}` : ""}
-                </p>
-                {payment.status === "FAILED" && payment.errorMessage && (
-                  <p
-                    className="text-xs text-red-600 dark:text-red-400 truncate"
-                    title={payment.errorMessage}
-                  >
-                    {payment.errorMessage}
-                  </p>
-                )}
+      {/* Payments List */}
+      <div className="mt-4">
+        {filteredPayments.length > 0 ? (
+          <div className="grid gap-4">
+            {filteredPayments.map((payment) => (
+              <div 
+                key={payment.id} 
+                className="p-4 border rounded-lg bg-card text-card-foreground shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+              >
+                <div className="flex flex-col">
+                  <span className="text-sm font-mono text-gray-500 truncate max-w-[200px] md:max-w-xs">
+                    {payment.recipient}
+                  </span>
+                  {payment.memo && (
+                    <span className="text-sm font-medium text-gray-900">
+                      {payment.memo}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex items-center gap-6">
+                  <div className="text-right">
+                    <div className="font-bold">
+                      {payment.amount} {payment.currency}
+                    </div>
+                    <div className="text-xs text-gray-500 flex items-center gap-1 justify-end">
+                      <Calendar className="w-3 h-3" />
+                      Next: {payment.nextPaymentDate}
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm">
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[payment.status]}`}
-                >
-                  {payment.status.replace(/_/g, " ").toLowerCase()}
-                </span>
-                {payment.status === "SCHEDULED" && (
-                  <button
-                    onClick={() => handleCancel(payment.id)}
-                    disabled={cancelMutation.isPending}
-                    className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title={searchQuery ? "No matches found" : "No scheduled payments"}
+            description={
+              searchQuery 
+                ? `We couldn't find any payments matching "${searchQuery}"`
+                : "You don't have any scheduled payments yet."
+            }
+            action={searchQuery ? { label: "Clear search", onClick: handleClearSearch } : undefined}
+          />
+        )}
+      </div>
     </div>
   );
-}
+};
+
+export default ScheduledPaymentsList;

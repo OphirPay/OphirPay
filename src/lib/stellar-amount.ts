@@ -35,6 +35,12 @@ export function formatXlmAmount(value: number | string | bigint): string {
 }
 
 /**
+ * Alias for {@link formatXlmAmount} providing precise, lossless decimal formatting
+ * for Stellar token amounts across all boundaries (0, micro-stroops, MAX_INT64).
+ */
+export const formatStellarAmount = formatXlmAmount;
+
+/**
  * Format a stroop amount for display with thousands grouping and a unit
  * (`"1,234,567,890,123,456,789.00 XLM"`), keeping a minimum of two decimals.
  *

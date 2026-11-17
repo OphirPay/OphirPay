@@ -1,7 +1,9 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
+import { useState } from "react";
 import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
+import { EmptyState } from "@/components/EmptyState";
 import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 
@@ -42,6 +44,16 @@ export default function ScheduledPaymentsList() {
   );
 
   const payments = Array.isArray(data) ? data : [];
+  const [query, setQuery] = useState("");
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? payments.filter(
+        (p) =>
+          p.destAddress.toLowerCase().includes(q) ||
+          (p.memo ?? "").toLowerCase().includes(q)
+      )
+    : payments;
 
   const handleCancel = async (id: string) => {
     try {
@@ -65,6 +77,29 @@ export default function ScheduledPaymentsList() {
         )}
       </div>
 
+      {payments.length > 0 && (
+        <div className="relative mb-4">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by address or memo…"
+            aria-label="Search scheduled payments"
+            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 pr-9 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">
           {[1, 2].map((i) => (
@@ -79,9 +114,16 @@ export default function ScheduledPaymentsList() {
           No scheduled payments yet. Use the schedule toggle above to send at
           a future date.
         </p>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={<span aria-hidden>🔍</span>}
+          title="No matches"
+          description={`No scheduled payments match "${query}".`}
+          className="p-8"
+        />
       ) : (
         <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-          {payments.map((payment) => (
+          {filtered.map((payment) => (
             <li
               key={payment.id}
               className="flex items-center justify-between gap-3 py-3"

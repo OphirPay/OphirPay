@@ -62,7 +62,7 @@ export const memoField = z
 export const memoTypeField = stellarMemoTypeSchema.optional();
 
 /** A memo value whose type is applied by the schema's `superRefine`. */
-const memoValueField = z.string().trim().optional();
+export const memoValueField = z.string().trim().optional();
 
 /** Apply the type-aware memo rules to a partially parsed object. */
 function refineMemo(
@@ -177,10 +177,19 @@ export const batchRecipientSchema = z
     addMemoIssues(ctx, recipient.memo, recipient.memoType, ["memo"]);
   });
 
+export const MAX_BATCH_RECIPIENTS = 100;
+export const MIN_BATCH_RECIPIENTS = 1;
+
 export const createBatchSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  recipients: z.array(batchRecipientSchema).min(1).max(100),
+  recipients: z
+    .array(batchRecipientSchema)
+    .min(MIN_BATCH_RECIPIENTS, "At least one recipient is required")
+    .max(
+      MAX_BATCH_RECIPIENTS,
+      `Batch payment recipients cannot exceed ${MAX_BATCH_RECIPIENTS} per request`
+    ),
   sourceAccountId: z.string().min(1),
   idempotencyKey: idempotencyKeySchema.optional(),
 });

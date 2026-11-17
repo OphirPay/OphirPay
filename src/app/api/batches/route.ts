@@ -4,7 +4,9 @@ import { ERROR_CODES } from "@/lib/error-codes";
 
 import type { PaymentStatus } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { createBatchSchema, paginationSchema } from "@/lib/validation-schemas";
+import { paginationSchema } from "@/lib/validation-schemas";
+import { createBatchSchema } from "@/lib/validation/batch";
+import { problemFromZodError } from "@/lib/api-errors";
 import {
   successResponse,
   validationError,
@@ -201,7 +203,7 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
 
     const parsed = createBatchSchema.safeParse(body);
     if (!parsed.success) {
-      return validationError(parsed.error);
+      return problemFromZodError(parsed.error, { instance: "/api/batches" });
     }
 
     const { name, description, recipients: payments } =

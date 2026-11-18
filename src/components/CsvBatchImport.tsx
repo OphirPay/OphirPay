@@ -7,6 +7,7 @@ import {
   validateRecipientFields,
   applyDuplicateErrors,
   downloadCsvTemplate,
+  downloadExportedCsv,
   MAX_BATCH_RECIPIENTS,
   type CsvImportRow,
 } from "@/lib/csv-import";
@@ -191,6 +192,37 @@ export function CsvBatchImport({
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const exportData = rows.map((r) => ({
+                  address: r.values.address,
+                  amount: r.values.amount,
+                  memo: r.values.memo,
+                }));
+                downloadExportedCsv(exportData);
+              }}
+              disabled={rows.length === 0}
+              aria-label="Export CSV"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="w-3.5 h-3.5"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12L12 16.5m0 0L16.5 12M12 16.5V3"
+                />
+              </svg>
+              Export CSV
+            </button>
             <button
               type="button"
               onClick={() => inputRef.current?.click()}

@@ -540,3 +540,43 @@ export function downloadCsvTemplate(): void {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ── Export ────────────────────────────────────────────────────
+
+/**
+ * Serializes batch recipient rows into a CSV string formatted with standard header:
+ * address,amount,memo
+ */
+export function exportBatchRowsToCsv(
+  rows: { address: string; amount: string; memo?: string }[]
+): string {
+  const header = "address,amount,memo";
+  const lines = rows.map((r) => {
+    const addr = r.address.trim();
+    const amt = r.amount.trim();
+    let mem = (r.memo ?? "").trim();
+    if (mem.includes(",") || mem.includes('"') || mem.includes("\n")) {
+      mem = `"${mem.replace(/"/g, '""')}"`;
+    }
+    return `${addr},${amt},${mem}`;
+  });
+  return [header, ...lines].join("\n") + "\n";
+}
+
+/**
+ * Triggers a browser download of the exported CSV file with timestamped filename.
+ */
+export function downloadExportedCsv(
+  rows: { address: string; amount: string; memo?: string }[],
+  filenamePrefix = "batch-recipients"
+): void {
+  const csv = exportBatchRowsToCsv(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  a.href = url;
+  a.download = `${filenamePrefix}-${timestamp}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

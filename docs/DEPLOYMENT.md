@@ -16,6 +16,7 @@
 - [Soroban Contract Deployment](#soroban-contract-deployment)
 - [Database Setup](#database-setup)
 - [Post-Deployment Verification](#post-deployment-verification)
+- [Monitoring and Observability](#monitoring-and-observability)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -909,6 +910,20 @@ curl -s https://your-domain.com/api/health | jq .database
 3. Send a small test payment (0.01 XLM) — transaction succeeds
 4. Check the payment appears in the Payments page
 5. Verify the on-chain record: `stellar contract invoke --id <CONTRACT_ID> -- get_payment_count`
+
+---
+
+## Monitoring and Observability
+
+OphirPay exposes application and infrastructure metrics at `GET /api/metrics` in standard Prometheus text format.
+
+### Metrics Scraping & Prometheus Setup
+
+- The metrics endpoint is protected with a bearer token. Generate a token via `openssl rand -hex 32`, assign it to `METRICS_TOKEN` in your environment, and configure Prometheus to pass `Authorization: Bearer <METRICS_TOKEN>`.
+- Prometheus alert rules for payment error spikes, p95 latency thresholds, and Soroban RPC circuit breaker failovers are provided in [`monitoring/prometheus-alerts.yml`](../monitoring/prometheus-alerts.yml) and [`monitoring/alert-rules.yml`](../monitoring/alert-rules.yml).
+- A pre-built Grafana dashboard (schema version 39) is available in [`monitoring/grafana-dashboard.json`](../monitoring/grafana-dashboard.json).
+
+For complete setup guides, Helm values configurations (`kube-prometheus-stack`), and alert runbooks, see the [OphirPay Monitoring Guide](../monitoring/README.md) and [Metrics Endpoints Reference](metrics-endpoints.md).
 
 ---
 

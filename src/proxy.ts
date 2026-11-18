@@ -62,70 +62,11 @@ export async function proxy(request: NextRequest) {
       return preflight;
     }
 
-    // 1b. CSRF defense-in-depth for cookie-authenticated browser sessions.
-    //
-    // Route handlers already call verifyCsrf(), but a single central check
-    // closes the gap for any future mutating route that forgets to. It applies
-    // only when a session cookie is present: login has no session yet, and
-    // API-key/cron callers bypass the double-submit check in
-    // verifyCsrfForRequest(). Reads and preflights are untouched.
-    if (
-      hasSessionCookie(request.headers.get("cookie")) &&
-      !verifyCsrfForRequest(request)
-    ) {
-      logger.request(
-        request.method,
-        pathname,
-        403,
-        performance.now() - startedAt,
-        requestId
-      );
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "CSRF_INVALID",
-            message:
-              "Invalid or missing CSRF token. Refresh the page and try again.",
-          },
-        },
-        {
-          status: 403,
-          headers: {
-            "X-Request-Id": requestId,
-            "Cache-Control": "no-store",
-          },
-        }
-      );
-    }
-
-    // 2. Edge API key validation (#1397): reject malformed keys before DB lookup
-    const rawApiKey = extractApiKey(request);
-    if (rawApiKey && pathname !== "/api/metrics") {
-      const keyValidation = validateKeyFormat(rawApiKey);
-      const isLegacy = API_KEY_LOOKUP_PATTERN.test(rawApiKey);
-      if (!keyValidation.valid && !isLegacy) {
-        const unauthorized = NextResponse.json(
-          {
-            success: false,
-            error: {
-              code: "UNAUTHORIZED",
-              message: "Invalid API key format",
-            },
-          },
-          { status: 401 }
-        );
-        unauthorized.headers.set("X-Request-Id", requestId);
-        applySecurityHeaders(unauthorized.headers);
-        return unauthorized;
-      }
-    }
-
+    // 2. Rate limiting (#1958): execute rate limiting upfront so telemetry
+    // headers (X-RateLimit-*) can be stamped across ALL outgoing API responses,
+    // and malicious callers cannot bypass rate limit counters via malformed auth/CSRF.
     // Skip rate limiting for health checks and metrics (monitoring endpoints
     // are hit frequently by orchestrators and should never be throttled).
-    // The whole `/api/health` subtree is exempt: the readiness probe lives at
-    // `/api/health` and the liveness probe at `/api/health/live` (#738), and
-    // both must keep answering even when the app is under attack or overloaded.
     const skipRateLimit =
       pathname === "/api/health" ||
       pathname.startsWith("/api/health/") ||
@@ -182,6 +123,73 @@ export async function proxy(request: NextRequest) {
       }
     }
 
+    // 3. CSRF defense-in-depth for cookie-authenticated browser sessions.
+    //
+    // Route handlers already call verifyCsrf(), but a single central check
+    // closes the gap for any future mutating route that forgets to. It applies
+    // only when a session cookie is present: login has no session yet, and
+    // API-key/cron callers bypass the double-submit check in
+    // verifyCsrfForRequest(). Reads and preflights are untouched.
+    if (
+      hasSessionCookie(request.headers.get("cookie")) &&
+      !verifyCsrfForRequest(request)
+    ) {
+      logger.request(
+        request.method,
+        pathname,
+        403,
+        performance.now() - startedAt,
+        requestId
+      );
+      const csrfForbidden = NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "CSRF_INVALID",
+            message:
+              "Invalid or missing CSRF token. Refresh the page and try again.",
+          },
+        },
+        {
+          status: 403,
+          headers: {
+            ...rateLimitHeaders,
+            "X-Request-Id": requestId,
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+      applySecurityHeaders(csrfForbidden.headers);
+      return csrfForbidden;
+    }
+
+    // 4. Edge API key validation (#1397): reject malformed keys before DB lookup
+    const rawApiKey = extractApiKey(request);
+    if (rawApiKey && pathname !== "/api/metrics") {
+      const keyValidation = validateKeyFormat(rawApiKey);
+      const isLegacy = API_KEY_LOOKUP_PATTERN.test(rawApiKey);
+      if (!keyValidation.valid && !isLegacy) {
+        const unauthorized = NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "UNAUTHORIZED",
+              message: "Invalid API key format",
+            },
+          },
+          {
+            status: 401,
+            headers: {
+              ...rateLimitHeaders,
+              "X-Request-Id": requestId,
+            },
+          }
+        );
+        applySecurityHeaders(unauthorized.headers);
+        return unauthorized;
+      }
+    }
+
     // Thread the request id into the downstream request headers so route
     // handlers (and their error logs) correlate with the X-Request-Id value
     // returned on the response. NOTE: this must use the `request.headers`
@@ -192,12 +200,17 @@ export async function proxy(request: NextRequest) {
 
     const response = NextResponse.next({ request: { headers: requestHeaders } });
 
-    // Security, CORS, and observability headers
+    // Security, CORS, observability, and rate-limit telemetry headers
     response.headers.set("X-Request-Id", requestId);
     response.headers.set("X-Api-Version", "1.0.0");
     applySecurityHeaders(response.headers);
     for (const [name, value] of Object.entries(rateLimitHeaders)) {
       response.headers.set(name, value);
+    }
+
+    // Sensitive auth and API key endpoints: prevent intermediary caching (#1956)
+    if (pathname.startsWith("/api/auth/") || pathname.startsWith("/api/keys")) {
+      response.headers.set("Cache-Control", "no-store, private");
     }
 
     // Strict CORS resolution (#1393)
@@ -216,9 +229,14 @@ export async function proxy(request: NextRequest) {
               message: "Cross-origin request blocked: origin not allowed",
             },
           },
-          { status: 403 }
+          {
+            status: 403,
+            headers: {
+              ...rateLimitHeaders,
+              "X-Request-Id": requestId,
+            },
+          }
         );
-        forbidden.headers.set("X-Request-Id", requestId);
         applySecurityHeaders(forbidden.headers);
         return forbidden;
       }

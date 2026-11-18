@@ -2,7 +2,10 @@
 import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
-import { createWebhookSchema } from "@/lib/validation-schemas";
+import {
+  createWebhookSchema,
+  isAllowedWebhookProtocol,
+} from "@/lib/validation/webhook";
 import {
   successResponse,
   badRequestError,
@@ -50,10 +53,18 @@ export const POST = withMetrics("POST /api/webhooks", withRequestLogging(async f
 
     const body = await request.json();
     const parsed = createWebhookSchema.safeParse(body);
-    if (!parsed.success) return badRequestError("Invalid webhook data");
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return badRequestError(issue?.message || "Invalid webhook data");
+    }
 
     // SSRF guard — reject URLs targeting internal/private networks
-    if (!isSafeWebhookUrl(parsed.data.url)) {
+    // (Allow localhost only in development mode when explicitly permitted by schema)
+    const isDevLocalhost =
+      process.env.NODE_ENV === "development" &&
+      isAllowedWebhookProtocol(parsed.data.url, "development");
+
+    if (!isSafeWebhookUrl(parsed.data.url) && !isDevLocalhost) {
       return badRequestError(
         "Webhook URL must be a public http(s) endpoint — internal and private addresses are not allowed."
       );

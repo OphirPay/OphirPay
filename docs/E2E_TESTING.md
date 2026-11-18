@@ -1,5 +1,10 @@
 # Running the Playwright E2E suite
 
+> Browser installation, visual regression tests (`npm run test:visual`) and the
+> Docker setup are documented in [`e2e/README.md`](../e2e/README.md). This page
+> covers the running app, database and contract configuration the E2E suite
+> needs.
+
 `playwright.config.ts` intentionally has no `webServer` block. Playwright does
 not start the application, prepare a database, or seed test data. The default
 `baseURL` is `http://localhost:3000`; `E2E_BASE_URL` overrides it. The server

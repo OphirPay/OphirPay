@@ -688,6 +688,9 @@ pub enum PaymentError {
     // ── Escrow Dispute Protection (319) ─────────────────────────
     /// Escrow is in dispute: release is blocked until dispute is resolved
     EscrowInDispute = 319,
+    // ── Zero Amount Validation (320) ─────────────────────────────
+    /// Transfer or payment amount cannot be zero: must be strictly positive
+    ZeroAmountNotAllowed = 320,
 }
 
 impl PaymentError {

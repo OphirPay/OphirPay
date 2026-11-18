@@ -253,6 +253,11 @@ export const ERROR_CODES = {
   EMAIL_UNAVAILABLE: "EMAIL_UNAVAILABLE",
 
   // ═══════════════════════════════════════════════════════════════
+  // 504 — Gateway Timeout
+  // ═══════════════════════════════════════════════════════════════
+  GATEWAY_TIMEOUT: "GATEWAY_TIMEOUT",
+
+  // ═══════════════════════════════════════════════════════════════
   // Payment-specific (codes used across status ranges)
   // ═══════════════════════════════════════════════════════════════
   INSUFFICIENT_FUNDS: "INSUFFICIENT_FUNDS",
@@ -575,4 +580,7 @@ export const ERROR_STATUS: Record<string, number> = {
   DATABASE_UNAVAILABLE: 503,
   CACHE_UNAVAILABLE: 503,
   EMAIL_UNAVAILABLE: 503,
+
+  // 504
+  GATEWAY_TIMEOUT: 504,
 };

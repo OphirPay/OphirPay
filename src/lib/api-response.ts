@@ -87,6 +87,12 @@ export function jsonSafe<T>(value: T): unknown {
 
 // ── Response Helpers ───────────────────────────────────────────
 
+/**
+ * Canonical Cache-Control directive for sensitive authentication, credential,
+ * and API key endpoints: prevents browser, proxy, and intermediary caching.
+ */
+export const SENSITIVE_CACHE_CONTROL = "no-store, private";
+
 export function successResponse<T>(
   data: T,
   meta?: ApiSuccess<T>["meta"],
@@ -115,6 +121,25 @@ export function successResponse<T>(
     response.headers.set("X-Request-Id", requestId);
   }
   return response;
+}
+
+/**
+ * Standard response helper for sensitive authentication, credential, and API key endpoints.
+ * Explicitly sets `Cache-Control: no-store, private` and `Pragma: no-cache` to protect
+ * tokens, session states, and secret keys from being cached by intermediaries or browsers.
+ */
+export function sensitiveSuccessResponse<T>(
+  data: T,
+  meta?: ApiSuccess<T>["meta"],
+  status = 200,
+  extraHeaders?: Record<string, string>
+) {
+  const headers: Record<string, string> = {
+    "Cache-Control": SENSITIVE_CACHE_CONTROL,
+    Pragma: "no-cache",
+    ...(extraHeaders ?? {}),
+  };
+  return successResponse(data, meta, status, headers);
 }
 
 export function errorResponse(

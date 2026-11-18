@@ -3,7 +3,7 @@ import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
 import {
-  successResponse,
+  sensitiveSuccessResponse,
   badRequestError,
   unauthorizedError,
   handleApiError,
@@ -79,7 +79,7 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
         rotatedToId: true,
       },
     });
-    return successResponse(keys);
+    return sensitiveSuccessResponse(keys);
   } catch (err) {
     return handleApiError(err, "GET /api/keys");
   }
@@ -192,7 +192,7 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
       initiatedBy,
     });
 
-    return successResponse(
+    return sensitiveSuccessResponse(
       {
         id: apiKey.id,
         name: apiKey.name,
@@ -242,7 +242,7 @@ async function __ophir_PATCH(request: Request) {
     });
     if (result.count === 0) return badRequestError("Key not found");
 
-    return successResponse({ id: body.id, scopes: parsed.scopes });
+    return sensitiveSuccessResponse({ id: body.id, scopes: parsed.scopes });
   } catch (err) {
     return handleApiError(err, "PATCH /api/keys");
   }
@@ -270,7 +270,7 @@ export const DELETE = withMetrics("DELETE /api/keys", withRequestLogging(async f
     });
     if (result.count === 0) return badRequestError("Key not found");
 
-    return successResponse({ deleted: true });
+    return sensitiveSuccessResponse({ deleted: true });
   } catch (err) {
     return handleApiError(err, "DELETE /api/keys");
   }

@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 import {
   badRequestError,
   handleApiError,
-  successResponse,
+  sensitiveSuccessResponse,
   unauthorizedError,
 } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
@@ -143,7 +143,7 @@ export async function POST(
       userId: auth.userId,
     });
 
-    return successResponse(
+    return sensitiveSuccessResponse(
       {
         id: rotated.id,
         name: rotated.name,

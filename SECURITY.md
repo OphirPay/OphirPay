@@ -20,7 +20,7 @@ Please report it through one of the channels below.
    visible only to the repository maintainers.
 
    > The button only appears while **Private vulnerability reporting** is
-   > enabled under *Settings → Code security*. Maintainers: keeping it enabled
+   > enabled under _Settings → Code security_. Maintainers: keeping it enabled
    > is what makes this policy work — see the
    > [maintainer checklist](#maintainer-checklist-keeping-the-channel-working).
    > If the button is missing, use option 2: a maintainer can open the private
@@ -87,13 +87,13 @@ The more complete the report, the faster we can triage it:
 
 ### Response expectations
 
-| Stage | Timeframe |
-|---|---|
-| Acknowledgement of your report | Within **48 hours** |
-| Initial triage and severity assessment | Within **5 business days** |
-| Fix target — Critical / High | As soon as possible, coordinated with you |
-| Fix target — Medium / Low | Next planned release, coordinated with you |
-| Advisory publication | After the fix ships, credited to you (if you consent) |
+| Stage                                  | Timeframe                                             |
+| -------------------------------------- | ----------------------------------------------------- |
+| Acknowledgement of your report         | Within **48 hours**                                   |
+| Initial triage and severity assessment | Within **5 business days**                            |
+| Fix target — Critical / High           | As soon as possible, coordinated with you             |
+| Fix target — Medium / Low              | Next planned release, coordinated with you            |
+| Advisory publication                   | After the fix ships, credited to you (if you consent) |
 
 If you do not hear back within the acknowledgement window, follow up on the
 same advisory thread. If a channel itself is broken, say so in a public issue
@@ -104,10 +104,10 @@ with you (this is how issue #1280 was resolved).
 
 Security fixes are backported to supported release lines:
 
-| Version | Supported |
-| ------- | --------- |
+| Version | Supported                                                   |
+| ------- | ----------------------------------------------------------- |
 | 1.0.x   | ✅ Active (current — incl. `v1.0.0-rc1` release candidates) |
-| 0.1.x   | ⚠️ Security patches only |
+| 0.1.x   | ⚠️ Security patches only                                    |
 
 Only the latest release of each supported line receives security fixes.
 Older versions are not patched; please upgrade. When reporting, state which
@@ -188,6 +188,7 @@ Our security team will validate the vulnerability within **5 business days**. We
 ### Step 4: Resolution
 
 Once validated, we will:
+
 - Develop and test a fix
 - Deploy the fix to production
 - Publish a security advisory on GitHub
@@ -202,6 +203,7 @@ If eligible, you will receive a reward based on the severity of the vulnerabilit
 OphirPay publishes a `security.txt` file at `/.well-known/security.txt` following the [RFC 9116](https://www.rfc-editor.org/rfc/rfc9116) standard. This file provides security researchers with contact information and disclosure policies.
 
 The file is accessible at:
+
 - **Production**: https://ophirpay.vercel.app/.well-known/security.txt — served by
   `src/app/.well-known/security.txt/route.ts` from `src/lib/security-txt.ts`; a
   test asserts this document and the repository file below stay in sync
@@ -314,3 +316,4 @@ import { withCsrf } from "@/lib/csrf";
   are guarded by reentrancy locks
 - Sensitive admin actions are protected by two-step ownership transfer (24h
   timelock) and timelocked upgrades
+```

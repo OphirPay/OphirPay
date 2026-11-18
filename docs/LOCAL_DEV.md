@@ -9,11 +9,13 @@
 ## 0. Devcontainer (Fastest Path)
 
 If you use **GitHub Codespaces** or **VS Code Devcontainers**, you can skip all local toolchain setup. The repository includes a `.devcontainer` configuration that automatically provisions:
+
 - Node 24
 - Rust 1.91.0 with the Soroban `wasm32` targets
 - PostgreSQL and Redis (via `docker-compose`)
 
 **Steps:**
+
 1. Open the project in a Devcontainer.
 2. `cp .env.example .env.local`
 3. `npx prisma db push && npx prisma generate`
@@ -25,14 +27,14 @@ If you prefer to develop natively on your host machine without containers, conti
 
 ## 1. Prerequisites
 
-| Tool | Version | Purpose |
-|---|---|---|
-| [Node.js](https://nodejs.org) | 24 (see `.nvmrc`) | Runtime — use `nvm use` if you have nvm |
-| [npm](https://www.npmjs.com) | 9+ (ships with Node) | Package manager |
-| [Git](https://git-scm.com) | Any | Clone the repo |
-| [Rust](https://rustup.rs) | 1.91.0 (see `contracts/rust-toolchain.toml`) | Compiles Soroban smart contracts to WASM |
-| [Freighter Wallet](https://freighter.app) | Latest | Browser extension for signing Stellar transactions |
-| A Stellar account | — | Create one in Freighter, then fund it on Testnet (see §4) |
+| Tool                                      | Version                                      | Purpose                                                   |
+| ----------------------------------------- | -------------------------------------------- | --------------------------------------------------------- |
+| [Node.js](https://nodejs.org)             | 24 (see `.nvmrc`)                            | Runtime — use `nvm use` if you have nvm                   |
+| [npm](https://www.npmjs.com)              | 9+ (ships with Node)                         | Package manager                                           |
+| [Git](https://git-scm.com)                | Any                                          | Clone the repo                                            |
+| [Rust](https://rustup.rs)                 | 1.91.0 (see `contracts/rust-toolchain.toml`) | Compiles Soroban smart contracts to WASM                  |
+| [Freighter Wallet](https://freighter.app) | Latest                                       | Browser extension for signing Stellar transactions        |
+| A Stellar account                         | —                                            | Create one in Freighter, then fund it on Testnet (see §4) |
 
 ```bash
 # 1. Clone and enter
@@ -80,7 +82,6 @@ If the contract sources were intentionally changed, update the committed expecte
 > accidentally commit credentials.
 
 ---
-
 
 ## 2. Option A — SQLite (fastest, zero external services)
 
@@ -218,11 +219,11 @@ OphirPay supports structured seed profiles via `prisma/seed.ts` and automated ex
 
 ### 4.1 Seed Profiles
 
-| Profile | Command | Data Generated | Target Environment |
-|---|---|---|---|
-| **`minimal`** (default) | `npm run db:seed:minimal` | 1 demo user, 5 payments, 1 batch, 4 refunds, 3 hooks | Local quick development |
-| **`staging`** | `npm run db:seed:staging` or `./scripts/staging-seed.sh` | 4 persona users (Merchant, Buyer, Approver, Auditor), 12 payments with 30-day history, 3 batches, recurrences, scheduled payments, payment links, 4 refunds, webhook + delivery events, 4 audit logs, sanitized API key | Staging & E2E integration testing |
-| **`load`** | `npm run db:seed:load` | 1 user, 5 batches, 75 synthetic payments across XLM/USDC | Performance & query load testing |
+| Profile                 | Command                                                  | Data Generated                                                                                                                                                                                                          | Target Environment                |
+| ----------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| **`minimal`** (default) | `npm run db:seed:minimal`                                | 1 demo user, 5 payments, 1 batch, 4 refunds, 3 hooks                                                                                                                                                                    | Local quick development           |
+| **`staging`**           | `npm run db:seed:staging` or `./scripts/staging-seed.sh` | 4 persona users (Merchant, Buyer, Approver, Auditor), 12 payments with 30-day history, 3 batches, recurrences, scheduled payments, payment links, 4 refunds, webhook + delivery events, 4 audit logs, sanitized API key | Staging & E2E integration testing |
+| **`load`**              | `npm run db:seed:load`                                   | 1 user, 5 batches, 75 synthetic payments across XLM/USDC                                                                                                                                                                | Performance & query load testing  |
 
 ### 4.2 Staging Seed Script & Safety Guards
 
@@ -275,7 +276,7 @@ surfaces a "fund via Friendbot" action that does the same call for you.
 
 ### 5.3 Alternatives & limits
 
-- **Stellar Laboratory** — https://laboratory.stellar.org → *Create account* →
+- **Stellar Laboratory** — https://laboratory.stellar.org → _Create account_ →
   Testnet — same faucet, graphical.
 - Friendbot is rate-limited per IP (~1 request / few seconds). If you get a
   `429`, wait and retry — the `scripts/testnet-integration.mjs` helper already
@@ -308,7 +309,7 @@ A `200` with a `balances` array means you're funded.
    schema and runs migrations against PostgreSQL. Local SQLite edits are
    yours alone.
 4. **`AUTH_SECRET` length** — must be ≥ 32 chars or sessions can't be issued.
-   Generate one: `openssl rand -hex 32`. It's only *required* in production,
+   Generate one: `openssl rand -hex 32`. It's only _required_ in production,
    but set it locally to mirror prod behavior.
 5. **`NEXT_PUBLIC_*` variables are baked at build time** — changing
    `NEXT_PUBLIC_STELLAR_NETWORK`, contract IDs, etc. requires restarting
@@ -365,4 +366,4 @@ Optional extras:
 
 ---
 
-*Related docs: [Deployment Guide](DEPLOYMENT.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Stellar 101](STELLAR_101.md) · [Database Schema](SCHEMA.md) · [Mainnet Runbook](MAINNET_RUNBOOK.md)*
+_Related docs: [Deployment Guide](DEPLOYMENT.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Stellar 101](STELLAR_101.md) · [Database Schema](SCHEMA.md) · [Mainnet Runbook](MAINNET_RUNBOOK.md)_

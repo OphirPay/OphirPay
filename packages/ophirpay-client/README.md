@@ -46,7 +46,7 @@ tolerance window:
 import { verifyWebhookSignature } from "@ophirpay/client";
 
 const ok = verifyWebhookSignature({
-  rawBody: req.rawBody,                                  // exactly as received
+  rawBody: req.rawBody, // exactly as received
   signature: req.headers["x-ophirpay-signature"],
   timestamp: req.headers["x-ophirpay-timestamp"],
   secret: process.env.OPHIRPAY_WEBHOOK_SECRET,
@@ -63,11 +63,7 @@ npm run generate:sdk -- --check   # fail if the committed output is stale (CI)
 `api-types.generated.d.ts` types both sides of every documented operation:
 
 ```ts
-import type {
-  ApiRequestBodies,
-  ApiResponseBodies,
-  ApiHeaderParams,
-} from "@ophirpay/client";
+import type { ApiRequestBodies, ApiResponseBodies, ApiHeaderParams } from "@ophirpay/client";
 
 const body: ApiRequestBodies["postApiPayments"] = { amount: 25, assetCode: "XLM" };
 type Created = ApiResponseBodies["postApiPayments"]["201"];

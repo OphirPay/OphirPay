@@ -190,10 +190,10 @@ stellar contract invoke \
 
 ## 2.6 Contract Address Registry
 
-| Network | OphirPay Contract | Emitter Contract |
-|---|---|---|
+| Network     | OphirPay Contract                                          | Emitter Contract                                           |
+| ----------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
 | **Testnet** | `CBRCZHMNWOFTWOTCI2WBQ5A5HVKVLO2AXHYIWJ5FVYB45OHLSLWGJGYB` | `CA6LAPR4OWABPWORBQGK5O5H5S62GIPQBKP3PH7H2DQ3ZNSWSH3RHFE4` |
-| **Mainnet** | *To be deployed* | *To be deployed* |
+| **Mainnet** | _To be deployed_                                           | _To be deployed_                                           |
 
 > After mainnet deployment, update this table and set the contract IDs in `.env.production`.
 
@@ -291,6 +291,7 @@ curl -H "Authorization: Bearer $METRICS_TOKEN" https://ophirpay.com/api/metrics
 ### 5.3 Configure alerts
 
 Recommended alert thresholds:
+
 - **5xx error rate > 1%** → PagerDuty critical
 - **p99 latency > 2s** → Slack warning
 - **Webhook sustained failure rate > 25% for 10m** → Slack warning. This is
@@ -372,9 +373,11 @@ stellar contract invoke \
 ## 9. Maintenance
 
 ### Nightly backups
+
 Automated via `.github/workflows/db-backup.yml` — runs at 3 AM UTC, retains 30 days.
 
 ### Monthly restore drill
+
 ```bash
 DB_HOST=... DB_USER=... DB_PASSWORD=... \
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
@@ -382,7 +385,9 @@ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
 ```
 
 ### Contract upgrades
+
 Use the two-step timelock:
+
 1. `propose_upgrade(new_wasm_hash)` — starts 24h countdown
 2. Wait 24h
 3. `execute_upgrade()` — applies the upgrade
@@ -391,8 +396,8 @@ Use the two-step timelock:
 
 ## 10. Emergency Contacts
 
-| Role | Contact |
-|---|---|
-| On-call engineer | PagerDuty escalation policy |
-| Stellar network status | https://status.stellar.org |
-| Soroban RPC status | https://status.stellar.org |
+| Role                   | Contact                     |
+| ---------------------- | --------------------------- |
+| On-call engineer       | PagerDuty escalation policy |
+| Stellar network status | https://status.stellar.org  |
+| Soroban RPC status     | https://status.stellar.org  |

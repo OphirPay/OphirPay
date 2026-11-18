@@ -60,13 +60,13 @@ does not change it. For manual setup and provider-specific configuration, use
 
 `prisma/seed.ts` creates the following example data:
 
-| Records | Details |
-|---|---|
-| User | `seed-user-1`, named "OphirPay Demo", with a sample Stellar address |
-| Payments | Five XLM records: three `COMPLETED`, one `PENDING`, and one `FAILED`; each uses the placeholder transaction hash `seed-tx-hash` |
-| Batch | One completed "Demo Batch — Monthly Payroll" |
-| Refunds | Four records attached to the first four seeded payments, with varied reasons, reason codes, and statuses |
-| Notification hooks | Three active hooks for payment, refund, and escrow events pointing to `example.com` |
+| Records            | Details                                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| User               | `seed-user-1`, named "OphirPay Demo", with a sample Stellar address                                                             |
+| Payments           | Five XLM records: three `COMPLETED`, one `PENDING`, and one `FAILED`; each uses the placeholder transaction hash `seed-tx-hash` |
+| Batch              | One completed "Demo Batch — Monthly Payroll"                                                                                    |
+| Refunds            | Four records attached to the first four seeded payments, with varied reasons, reason codes, and statuses                        |
+| Notification hooks | Three active hooks for payment, refund, and escrow events pointing to `example.com`                                             |
 
 Only the user is upserted. Payments, batch, refunds, and hooks use `create`,
 so running the seed more than once adds duplicate rows. Use a disposable

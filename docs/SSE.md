@@ -8,7 +8,7 @@ OphirPay streams **live blockchain events** to browsers and integrations via
 **Server-Sent Events (SSE)** at `GET /api/events`. The endpoint polls the
 deployed `PaymentEventEmitter` Soroban contract and forwards normalized
 events. A **WebSocket channel** (`/api/events` on port `8787`, see
-[docs/WEBSOCKET.md](WEBSOCKET.md) and [Reconnection & transport](#reconnection--transport)) delivers the *same*
+[docs/WEBSOCKET.md](WEBSOCKET.md) and [Reconnection & transport](#reconnection--transport)) delivers the _same_
 events with lower latency; the official client prefers it and falls back to
 SSE automatically.
 
@@ -21,14 +21,14 @@ Client ←── SSE: GET /api/events ────polls──→ PaymentEventEmi
 
 ## Endpoint
 
-| Property | Value |
-|---|---|
-| URL | `GET /api/events` (same origin) |
-| Content-Type | `text/event-stream` |
-| Cache-Control | `no-cache, no-transform` |
-| Connection | `keep-alive` |
+| Property            | Value                                                   |
+| ------------------- | ------------------------------------------------------- |
+| URL                 | `GET /api/events` (same origin)                         |
+| Content-Type        | `text/event-stream`                                     |
+| Cache-Control       | `no-cache, no-transform`                                |
+| Connection          | `keep-alive`                                            |
 | `X-Accel-Buffering` | `no` (disables proxy buffering — required behind Nginx) |
-| Auth | None (public read stream) |
+| Auth                | None (public read stream)                               |
 
 **Try it:**
 
@@ -58,12 +58,12 @@ data: <json>
 
 Emitted once when the stream is established.
 
-| Field | Type | Description |
-|---|---|---|
+| Field     | Type     | Description                 |
+| --------- | -------- | --------------------------- |
 | `message` | `string` | Human-readable confirmation |
 
 ```json
-{"message": "SSE stream connected to emitter contract"}
+{ "message": "SSE stream connected to emitter contract" }
 ```
 
 ### 2. `heartbeat`
@@ -71,12 +71,12 @@ Emitted once when the stream is established.
 Keep-alive ping emitted **every 15 seconds** so proxies and the browser don't
 time out an idle stream.
 
-| Field | Type | Description |
-|---|---|---|
+| Field       | Type     | Description                                |
+| ----------- | -------- | ------------------------------------------ |
 | `timestamp` | `number` | Unix epoch **milliseconds** (`Date.now()`) |
 
 ```json
-{"timestamp": 1724000000000}
+{ "timestamp": 1724000000000 }
 ```
 
 ### 3. `error`
@@ -85,29 +85,29 @@ Emitted only when a slow consumer is disconnected (see
 [Backpressure & slow consumers](#backpressure--slow-consumers-issue-744)). Clients
 should treat it as terminal and reconnect.
 
-| Field | Type | Description |
-|---|---|---|
-| `code` | `string` | Always `"SLOW_CONSUMER"` |
-| `reason` | `string` | `"buffer-overflow"` or `"idle-timeout"` |
-| `message` | `string` | Human-readable explanation |
+| Field     | Type     | Description                             |
+| --------- | -------- | --------------------------------------- |
+| `code`    | `string` | Always `"SLOW_CONSUMER"`                |
+| `reason`  | `string` | `"buffer-overflow"` or `"idle-timeout"` |
+| `message` | `string` | Human-readable explanation              |
 
 ### 4. `payment:created`
 
 A new payment event detected on-chain. This is the normalized `LiveEvent`
 shape — identical across SSE and WebSocket transports.
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `number` | Emitter contract event id — **stable dedup key** across reconnects |
-| `event` | `string` | Always `"payment:created"` for this event |
+| Field       | Type     | Description                                                                     |
+| ----------- | -------- | ------------------------------------------------------------------------------- |
+| `id`        | `number` | Emitter contract event id — **stable dedup key** across reconnects              |
+| `event`     | `string` | Always `"payment:created"` for this event                                       |
 | `timestamp` | `string` | ISO 8601 UTC (`new Date().toISOString()`) — time of delivery, not on-chain time |
-| `paymentId` | `string` | Application payment id, formatted `evt_<id>` |
-| `status` | `string` | Payment status; currently always `"COMPLETED"` |
-| `emitter` | `string` | Emitter label (defaults to `"OphirPay"`) |
-| `payer` | `string` | Payer Stellar address (may be empty) |
-| `payee` | `string` | Payee Stellar address (may be empty) |
-| `amount` | `string` | Payment amount as a decimal string (defaults to `"0"`) |
-| `txHash` | `string` | Stellar transaction hash (may be empty) |
+| `paymentId` | `string` | Application payment id, formatted `evt_<id>`                                    |
+| `status`    | `string` | Payment status; currently always `"COMPLETED"`                                  |
+| `emitter`   | `string` | Emitter label (defaults to `"OphirPay"`)                                        |
+| `payer`     | `string` | Payer Stellar address (may be empty)                                            |
+| `payee`     | `string` | Payee Stellar address (may be empty)                                            |
+| `amount`    | `string` | Payment amount as a decimal string (defaults to `"0"`)                          |
+| `txHash`    | `string` | Stellar transaction hash (may be empty)                                         |
 
 ```json
 {
@@ -134,10 +134,10 @@ The official client listens for exactly these names: `connected`,
 
 ## Cadence
 
-| Interval | Value | Source |
-|---|---|---|
-| Emitter poll | **10 s** (`pollIntervalMs` default) | `createLiveEventSource` |
-| Heartbeat | **15 s** | SSE route `setInterval` |
+| Interval       | Value                                                    | Source                     |
+| -------------- | -------------------------------------------------------- | -------------------------- |
+| Emitter poll   | **10 s** (`pollIntervalMs` default)                      | `createLiveEventSource`    |
+| Heartbeat      | **15 s**                                                 | SSE route `setInterval`    |
 | WebSocket port | `8787` (`EVENTS_WS_PORT` / `NEXT_PUBLIC_EVENTS_WS_PORT`) | `live-events-ws-server.ts` |
 
 ## Reconnection & transport
@@ -167,13 +167,13 @@ The official client (`connectLiveEvents`) negotiates transports:
 
 The client exposes a status enum — useful for UI indicators:
 
-| Status | Meaning |
-|---|---|
-| `connecting` | Transport handshake in progress |
-| `live` | Receiving events |
-| `reconnecting` | WS dropped; backing off before retry |
-| `fallback` | Switched to SSE (WS unavailable/exhausted) |
-| `offline` | SSE connection error (native reconnection still active) |
+| Status         | Meaning                                                 |
+| -------------- | ------------------------------------------------------- |
+| `connecting`   | Transport handshake in progress                         |
+| `live`         | Receiving events                                        |
+| `reconnecting` | WS dropped; backing off before retry                    |
+| `fallback`     | Switched to SSE (WS unavailable/exhausted)              |
+| `offline`      | SSE connection error (native reconnection still active) |
 
 ## Backpressure & slow consumers (issue #744)
 
@@ -182,11 +182,11 @@ the client reads, so a stalled consumer could otherwise grow server memory
 without bound. Both SSE endpoints therefore route every frame through a
 **bounded outbound buffer** (`src/lib/events/sse-buffer.ts`):
 
-| Bound | Default |
-|---|---|
-| Buffered events per connection | `100` |
-| Buffered bytes per connection | `256 KiB` |
-| Idle timeout (backlog not draining) | `60 s` |
+| Bound                               | Default   |
+| ----------------------------------- | --------- |
+| Buffered events per connection      | `100`     |
+| Buffered bytes per connection       | `256 KiB` |
+| Idle timeout (backlog not draining) | `60 s`    |
 
 **Policy — drop-oldest with a marker.** When a new frame would exceed either
 ceiling, the oldest buffered frames are dropped and a `: dropped N
@@ -209,14 +209,14 @@ baseline after disconnects.
 
 ## Errors & edge cases
 
-| Situation | Behavior |
-|---|---|
-| RPC/emitter down during a poll | Poll fails silently; retried on the next 10 s cycle |
-| Slow/stalled consumer | Oldest buffered frames dropped with a marker comment (drop-oldest policy); memory stays bounded. A backlog idle for >60 s is disconnected with an `error` frame. |
-| Truncated or non-JSON frame | Frame ignored (client catches parse errors) |
-| Event seen twice after reconnect | Dropped — dedup by `id` (window: last 1000 ids) |
-| WS server not running | Client falls back to SSE automatically (expected in dev) |
-| Proxy buffers the stream | Heartbeats pause → clients see a stale feed; set `X-Accel-Buffering: no` (already set) and `proxy_buffering off` in Nginx |
+| Situation                        | Behavior                                                                                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RPC/emitter down during a poll   | Poll fails silently; retried on the next 10 s cycle                                                                                                              |
+| Slow/stalled consumer            | Oldest buffered frames dropped with a marker comment (drop-oldest policy); memory stays bounded. A backlog idle for >60 s is disconnected with an `error` frame. |
+| Truncated or non-JSON frame      | Frame ignored (client catches parse errors)                                                                                                                      |
+| Event seen twice after reconnect | Dropped — dedup by `id` (window: last 1000 ids)                                                                                                                  |
+| WS server not running            | Client falls back to SSE automatically (expected in dev)                                                                                                         |
+| Proxy buffers the stream         | Heartbeats pause → clients see a stale feed; set `X-Accel-Buffering: no` (already set) and `proxy_buffering off` in Nginx                                        |
 
 ## Example clients
 
@@ -268,8 +268,7 @@ useEffect(() => {
         setPayments((prev) => [event, ...prev]);
       }
     },
-    onStatus: (status, transport) =>
-      setStatus({ status, transport }), // "live" | "fallback" | ...
+    onStatus: (status, transport) => setStatus({ status, transport }), // "live" | "fallback" | ...
   });
   return disconnect; // cleanup on unmount
 }, []);
@@ -288,13 +287,13 @@ curl -N https://ophirpay.com/api/events | \
 
 ## Configuration
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `NEXT_PUBLIC_EVENTS_WS_PORT` | `8787` | WebSocket port for the preferred transport |
-| `EVENTS_WS_PORT` | `8787` | Server-side WS listen port (`live-events-ws-server.ts`) |
-| `NEXT_PUBLIC_CONTRACT_ID` | testnet default | Main `OphirPayContract` (for event detail APIs) |
-| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | testnet default | `PaymentEventEmitter` the stream polls |
-| `NEXT_PUBLIC_CHAIN_READ_SOURCE` | — | Public key used for read-only contract simulations |
+| Variable                          | Default         | Purpose                                                 |
+| --------------------------------- | --------------- | ------------------------------------------------------- |
+| `NEXT_PUBLIC_EVENTS_WS_PORT`      | `8787`          | WebSocket port for the preferred transport              |
+| `EVENTS_WS_PORT`                  | `8787`          | Server-side WS listen port (`live-events-ws-server.ts`) |
+| `NEXT_PUBLIC_CONTRACT_ID`         | testnet default | Main `OphirPayContract` (for event detail APIs)         |
+| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | testnet default | `PaymentEventEmitter` the stream polls                  |
+| `NEXT_PUBLIC_CHAIN_READ_SOURCE`   | —               | Public key used for read-only contract simulations      |
 
 ## Load testing (issue #391)
 

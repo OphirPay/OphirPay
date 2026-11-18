@@ -7,10 +7,10 @@
 
 ## Why
 
-The existing telemetry answers *how many* and *how slow* (Prometheus counters
-and latency histograms on `/api/metrics`) and *what happened* (structured
-logs with redaction and request ids). Neither reconstructs *where the time
-went* for one particular request. Tracing does: a single payment becomes one
+The existing telemetry answers _how many_ and _how slow_ (Prometheus counters
+and latency histograms on `/api/metrics`) and _what happened_ (structured
+logs with redaction and request ids). Neither reconstructs _where the time
+went_ for one particular request. Tracing does: a single payment becomes one
 trace whose spans cover the API handler, the Soroban simulation and
 submission, the Horizon polls, and the Prisma writes — with per-span timing.
 
@@ -30,14 +30,14 @@ restart the server.
 
 ## Configuration
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `OTEL_TRACING_ENABLED` | *(off)* | `true` starts the Node SDK at boot |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP/HTTP collector endpoint |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/json` | `http/json` or `http/proto` |
-| `OTEL_SERVICE_NAME` | `ophirpay` | Resource name attached to every span |
-| `OTEL_TRACES_SAMPLER` | `parentbased_always_on` | Sampler; `parentbased_traceidratio` for probabilistic |
-| `OTEL_TRACES_SAMPLER_ARG` | `0.1` | Ratio when using `traceidratio` |
+| Variable                      | Default                 | Meaning                                               |
+| ----------------------------- | ----------------------- | ----------------------------------------------------- |
+| `OTEL_TRACING_ENABLED`        | _(off)_                 | `true` starts the Node SDK at boot                    |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP/HTTP collector endpoint                          |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/json`             | `http/json` or `http/proto`                           |
+| `OTEL_SERVICE_NAME`           | `ophirpay`              | Resource name attached to every span                  |
+| `OTEL_TRACES_SAMPLER`         | `parentbased_always_on` | Sampler; `parentbased_traceidratio` for probabilistic |
+| `OTEL_TRACES_SAMPLER_ARG`     | `0.1`                   | Ratio when using `traceidratio`                       |
 
 Minimal local setup with a collector:
 
@@ -58,7 +58,7 @@ Agent, Honeycomb, AWS X-Ray collector) works without code changes.
   between `0.05` and `0.25` depending on traffic. The `parentbased` prefix
   keeps the decision consistent across services that share a trace.
 - Payment submission flows are short-lived and low-volume relative to read
-  traffic; if you need full fidelity on the *write* path, sample at the
+  traffic; if you need full fidelity on the _write_ path, sample at the
   collector instead (tail sampling on `ophirpay.payment_id` presence) rather
   than raising the head-sampling ratio.
 
@@ -84,26 +84,26 @@ attributes on this allowlist may be set or exported; everything else passed
 to `safeSpanAttributes()` (or `span.setAttribute` through the tracer wrapper)
 is dropped:
 
-| Key | Example | Notes |
-|---|---|---|
-| `http.request.method` | `POST` | |
-| `http.route` | `/api/payments/[id]` | Route template, not the raw URL |
-| `http.response.status_code` | `201` | |
-| `server.address` | `api.example.com` | |
-| `url.path` | `/api/payments/p_1` | Path only |
-| `url.query` | `?window=30d` | Never contains tokens |
-| `db.system` | `postgresql` | |
-| `db.operation` | `payments.create` | |
-| `db.statement` | parameterized SQL | Never carries bound values |
-| `stellar.network` | `TESTNET` | |
-| `stellar.contract_id` | `C…` | Contract ID, not a wallet address |
-| `stellar.operation` | `record_payment` | |
-| `ophirpay.request_id` | UUID | The correlation key |
-| `ophirpay.payment_id` | `p_…` | Application id |
-| `ophirpay.batch_id` | `b_…` | Application id |
-| `ophirpay.webhook_id` | `w_…` | Application id |
-| `ophirpay.attempt` | `2` | Delivery attempt number |
-| `error.type` | `TimeoutError` | Exception class name |
+| Key                         | Example              | Notes                             |
+| --------------------------- | -------------------- | --------------------------------- |
+| `http.request.method`       | `POST`               |                                   |
+| `http.route`                | `/api/payments/[id]` | Route template, not the raw URL   |
+| `http.response.status_code` | `201`                |                                   |
+| `server.address`            | `api.example.com`    |                                   |
+| `url.path`                  | `/api/payments/p_1`  | Path only                         |
+| `url.query`                 | `?window=30d`        | Never contains tokens             |
+| `db.system`                 | `postgresql`         |                                   |
+| `db.operation`              | `payments.create`    |                                   |
+| `db.statement`              | parameterized SQL    | Never carries bound values        |
+| `stellar.network`           | `TESTNET`            |                                   |
+| `stellar.contract_id`       | `C…`                 | Contract ID, not a wallet address |
+| `stellar.operation`         | `record_payment`     |                                   |
+| `ophirpay.request_id`       | UUID                 | The correlation key               |
+| `ophirpay.payment_id`       | `p_…`                | Application id                    |
+| `ophirpay.batch_id`         | `b_…`                | Application id                    |
+| `ophirpay.webhook_id`       | `w_…`                | Application id                    |
+| `ophirpay.attempt`          | `2`                  | Delivery attempt number           |
+| `error.type`                | `TimeoutError`       | Exception class name              |
 
 Never attach to a span: wallet addresses or secret keys, memos, emails,
 bearer tokens or API keys, raw request/response bodies, free-form user

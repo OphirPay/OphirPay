@@ -5,20 +5,20 @@ required checks below run on pull requests and are the merge gate. Run
 `npm run ci` locally for the application checks; the repository-specific
 commands are listed so failures can be reproduced individually.
 
-| Required check | Workflow | Local command |
-| --- | --- | --- |
-| Typecheck | `ci.yml` | `npm run typecheck` |
-| ESLint (zero warnings) | `ci.yml` | `npm run lint -- --max-warnings 0` |
-| Unit tests | `ci.yml` | `npm test` |
-| Next.js build | `ci.yml` | `npm run build` |
-| Deploy configuration guards | `ci.yml` | `bash scripts/validate-deploy-config.sh` |
-| Contract WASM and Rust tests | `ci.yml` | `cd contracts/ophirpay && cargo test`; repeat in `contracts/emitter` |
-| Secrets scan | `ci.yml` | `gitleaks detect --config .gitleaks.toml --redact` |
-| Helm lint/render | `ci.yml` | `helm lint helm/ophirpay` |
-| `prisma-gate` (Prisma schema and migration replay) | `prisma-ci.yml` | `npm run db:validate:migrations` |
-| `contract-regression-gate` (WASM size and fee guardrails) | `contract-regression.yml` | `node scripts/check-contract-regressions.mjs` |
-| `docker-smoke-gate` (image build and compose smoke test) | `docker-smoke.yml` | `docker build -t ophirpay:smoke . && docker compose up -d app` |
-| Integration-branch policy | `enforce-integration-branch.yml` | Open the PR against `integration/staging` |
+| Required check                                            | Workflow                         | Local command                                                        |
+| --------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------- |
+| Typecheck                                                 | `ci.yml`                         | `npm run typecheck`                                                  |
+| ESLint (zero warnings)                                    | `ci.yml`                         | `npm run lint -- --max-warnings 0`                                   |
+| Unit tests                                                | `ci.yml`                         | `npm test`                                                           |
+| Next.js build                                             | `ci.yml`                         | `npm run build`                                                      |
+| Deploy configuration guards                               | `ci.yml`                         | `bash scripts/validate-deploy-config.sh`                             |
+| Contract WASM and Rust tests                              | `ci.yml`                         | `cd contracts/ophirpay && cargo test`; repeat in `contracts/emitter` |
+| Secrets scan                                              | `ci.yml`                         | `gitleaks detect --config .gitleaks.toml --redact`                   |
+| Helm lint/render                                          | `ci.yml`                         | `helm lint helm/ophirpay`                                            |
+| `prisma-gate` (Prisma schema and migration replay)        | `prisma-ci.yml`                  | `npm run db:validate:migrations`                                     |
+| `contract-regression-gate` (WASM size and fee guardrails) | `contract-regression.yml`        | `node scripts/check-contract-regressions.mjs`                        |
+| `docker-smoke-gate` (image build and compose smoke test)  | `docker-smoke.yml`               | `docker build -t ophirpay:smoke . && docker compose up -d app`       |
+| Integration-branch policy                                 | `enforce-integration-branch.yml` | Open the PR against `integration/staging`                            |
 
 ### Gate jobs for path-scoped workflows
 

@@ -9,7 +9,7 @@ info:
     **Authentication** — two modes:
     - `Authorization: Bearer <api-key>` (recommended)
     - `X-API-Key: <api-key>`
-    
+
     API keys are generated at `POST /api/keys` and shown only once.
 
     **Conventions** — see [docs/API_GUIDE.md](./API_GUIDE.md) for the
@@ -703,10 +703,22 @@ paths:
               required: [action, address]
               properties:
                 action: { type: string, enum: [grant, revoke] }
-                address: { type: string, description: "Stellar account address (G…, 56 characters)" }
-                role: { type: integer, minimum: 0, maximum: 2, description: "0 Admin, 1 Operator, 2 Auditor; required for grant" }
-                challenge: { type: string, description: "Step-up challenge, present only on the retry" }
-                signature: { type: string, description: "Wallet signature over the challenge message, present only on the retry" }
+                address:
+                  { type: string, description: "Stellar account address (G…, 56 characters)" }
+                role:
+                  {
+                    type: integer,
+                    minimum: 0,
+                    maximum: 2,
+                    description: "0 Admin, 1 Operator, 2 Auditor; required for grant",
+                  }
+                challenge:
+                  { type: string, description: "Step-up challenge, present only on the retry" }
+                signature:
+                  {
+                    type: string,
+                    description: "Wallet signature over the challenge message, present only on the retry",
+                  }
       responses:
         "200":
           description: Action authorized
@@ -752,9 +764,18 @@ paths:
                 batchBaseFee: { type: integer, minimum: 0 }
                 batchPerItemFee: { type: integer, minimum: 0 }
                 enabled: { type: boolean }
-                collector: { type: string, description: "Fee collector address; required for set_fee_collector" }
-                challenge: { type: string, description: "Step-up challenge, present only on the retry" }
-                signature: { type: string, description: "Wallet signature over the challenge message, present only on the retry" }
+                collector:
+                  {
+                    type: string,
+                    description: "Fee collector address; required for set_fee_collector",
+                  }
+                challenge:
+                  { type: string, description: "Step-up challenge, present only on the retry" }
+                signature:
+                  {
+                    type: string,
+                    description: "Wallet signature over the challenge message, present only on the retry",
+                  }
       responses:
         "200":
           description: Action authorized
@@ -2078,11 +2099,12 @@ paths:
                             action_type: { type: string }
                             yes_votes: { type: integer }
                             no_votes: { type: integer }
-                            voting_ends_at: { type: [integer, 'null'] }
+                            voting_ends_at: { type: [integer, "null"] }
                             executed: { type: boolean }
                             proposer: { type: string }
                       total: { type: integer, description: "Total proposal count on-chain" }
-                      truncated: { type: boolean, description: "True when older proposals were dropped" }
+                      truncated:
+                        { type: boolean, description: "True when older proposals were dropped" }
     post:
       tags: [Governance]
       summary: Create a governance proposal (on-chain)
@@ -2100,7 +2122,8 @@ paths:
                 target: { type: string }
                 data: { type: string }
                 depositAsset: { type: string, description: "Stellar asset address for deposit" }
-                depositAmount: { type: integer, description: "Deposit amount (must be >= min_proposal_deposit)" }
+                depositAmount:
+                  { type: integer, description: "Deposit amount (must be >= min_proposal_deposit)" }
       responses:
         "201":
           description: Proposal created
@@ -2261,7 +2284,8 @@ paths:
                 asset: { type: string, default: native }
                 reason: { type: string, maxLength: 500 }
                 reasonCode: { type: integer, minimum: 0, maximum: 5 }
-                onChainId: { type: integer, description: "Contract refund id from the tx return value" }
+                onChainId:
+                  { type: integer, description: "Contract refund id from the tx return value" }
       responses:
         "201":
           description: Refund ledger row created
@@ -2332,7 +2356,8 @@ paths:
               properties:
                 eventType: { type: string, maxLength: 100 }
                 webhookUrl: { type: string, format: uri }
-                onChainId: { type: integer, description: "Contract hook id from the tx return value" }
+                onChainId:
+                  { type: integer, description: "Contract hook id from the tx return value" }
       responses:
         "201":
           description: Hook ledger row created
@@ -2486,7 +2511,7 @@ paths:
       summary: Subscribe to real-time payment events
       description: |
         Server-Sent Events stream. Polls the Stellar emitter contract every 10 seconds.
-        
+
         Events:
         - `connected` — stream established
         - `heartbeat` — keep-alive every 15s
@@ -2785,12 +2810,16 @@ components:
       properties:
         code: { type: string }
         issuer: { type: string }
-        name: { type: [string, 'null'], description: 'Human display name from the [[CURRENCIES]] table' }
-        description: { type: [string, 'null'] }
-        image: { type: [string, 'null'] }
-        decimals: { type: [integer, 'null'] }
-        orgName: { type: [string, 'null'] }
-        homeDomain: { type: [string, 'null'], description: Issuer's home domain, when resolved }
+        name:
+          {
+            type: [string, "null"],
+            description: "Human display name from the [[CURRENCIES]] table",
+          }
+        description: { type: [string, "null"] }
+        image: { type: [string, "null"] }
+        decimals: { type: [integer, "null"] }
+        orgName: { type: [string, "null"] }
+        homeDomain: { type: [string, "null"], description: Issuer's home domain, when resolved }
         source:
           type: string
           enum: [toml, cache, fallback]
@@ -2802,18 +2831,19 @@ components:
         id: { type: string }
         amount: { type: number }
         assetCode: { type: string }
-        assetIssuer: { type: [string, 'null'] }
-        description: { type: [string, 'null'] }
-        memo: { type: [string, 'null'] }
+        assetIssuer: { type: [string, "null"] }
+        description: { type: [string, "null"] }
+        memo: { type: [string, "null"] }
         status: { type: string }
-        transactionHash: { type: [string, 'null'] }
-        idempotencyKey: { type: [string, 'null'], description: 'Per-attempt key; regenerated on every retry' }
+        transactionHash: { type: [string, "null"] }
+        idempotencyKey:
+          { type: [string, "null"], description: "Per-attempt key; regenerated on every retry" }
         sourceAccountId: { type: string }
         userId: { type: string }
-        batchId: { type: [string, 'null'] }
+        batchId: { type: [string, "null"] }
         createdAt: { type: string, format: date-time }
-        completedAt: { type: [string, 'null'], format: date-time }
-        errorMessage: { type: [string, 'null'] }
+        completedAt: { type: [string, "null"], format: date-time }
+        errorMessage: { type: [string, "null"] }
 
     PaymentEnvelopeResponse:
       type: object
@@ -2844,7 +2874,7 @@ components:
             page: { type: integer }
             limit: { type: integer }
             total: { type: integer }
-            nextCursor: { type: [string, 'null'] }
+            nextCursor: { type: [string, "null"] }
             hasMore: { type: boolean }
 
     BatchResponse:
@@ -2853,7 +2883,7 @@ components:
         id: { type: string }
         userId: { type: string }
         name: { type: string }
-        description: { type: [string, 'null'] }
+        description: { type: [string, "null"] }
         status:
           type: string
           enum: [CREATED, PROCESSING, COMPLETED, PARTIALLY_COMPLETED, FAILED]
@@ -2900,7 +2930,7 @@ components:
             page: { type: integer }
             limit: { type: integer }
             total: { type: integer }
-            nextCursor: { type: [string, 'null'] }
+            nextCursor: { type: [string, "null"] }
             hasMore: { type: boolean }
 
     CreatePaymentRequestSchema:
@@ -3106,12 +3136,12 @@ components:
                   type: object
                   properties:
                     status: { type: string, enum: [ok, error] }
-                    latencyMs: { type: [integer, 'null'] }
+                    latencyMs: { type: [integer, "null"] }
                 redis:
                   type: object
                   properties:
                     status: { type: string, enum: [ok, error, disabled] }
-                    latencyMs: { type: [integer, 'null'] }
+                    latencyMs: { type: [integer, "null"] }
                 stellar:
                   type: object
                   properties:
@@ -3122,12 +3152,12 @@ components:
                       type: object
                       properties:
                         status: { type: string, enum: [ok, error, unchecked] }
-                        latencyMs: { type: [integer, 'null'] }
+                        latencyMs: { type: [integer, "null"] }
                     horizon:
                       type: object
                       properties:
                         status: { type: string, enum: [ok, error, unchecked] }
-                        latencyMs: { type: [integer, 'null'] }
+                        latencyMs: { type: [integer, "null"] }
                     contracts:
                       type: object
                       properties:
@@ -3135,17 +3165,17 @@ components:
                         ophirpay:
                           type: object
                           properties:
-                            id: { type: [string, 'null'] }
+                            id: { type: [string, "null"] }
                             status: { type: string, enum: [ok, error, not_configured] }
                         emitter:
                           type: object
                           properties:
-                            id: { type: [string, 'null'] }
+                            id: { type: [string, "null"] }
                             status: { type: string, enum: [ok, error, not_configured] }
                         chainReadSource:
                           type: object
                           properties:
-                            id: { type: [string, 'null'] }
+                            id: { type: [string, "null"] }
                             status: { type: string, enum: [ok, error, not_configured] }
             uptime: { type: number }
         meta:

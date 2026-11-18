@@ -1,6 +1,6 @@
 # Kubernetes deployment
 
-OphirPay ships a Helm chart in `helm/ophirpay/`. It is a starting point for
+OphirPay ships a Helm chart in `helm/ophirpay/`. For a complete values reference table and setup walkthrough, see the [Helm Chart Deployment Guide](../helm/README.md). It is a starting point for
 operators, not a supported hosted product. Review the rendered manifests and
 adapt storage, ingress, network policy, and secret management to your cluster.
 

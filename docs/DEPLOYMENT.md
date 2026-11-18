@@ -66,7 +66,7 @@ cp .env.example .env.local
 |---|---|---|
 | `NODE_ENV` | `development` | `production` for live deploys |
 | `DIRECT_DATABASE_URL` | — | Direct DB URL for Prisma migrations (when using connection pooling) |
-| `RATE_LIMIT_RPM` | `120` | Requests per minute per IP (global proxy limit) |
+| `RATE_LIMIT_RPM` | `120` | Requests per minute per IP (global proxy limit). See [Rate Limiting Guide](api/rate-limiting.md) |
 | `AUTH_RATE_LIMIT_IP_RPM` | `30` | Wallet-auth per-IP requests per minute (`/api/auth/challenge`, `/api/auth/session`) |
 | `AUTH_RATE_LIMIT_WALLET_RPM` | `10` | Wallet-auth per-account requests per minute (keyed by Stellar public key) |
 | `REDIS_URL` | — | Distributed rate limiting. `redis://` = ioredis (Node only); `https://` = Upstash-compatible REST and the only form that shares the *global edge* limit across replicas |
@@ -484,7 +484,7 @@ server {
 ## Option 4: Kubernetes (Helm)
 
 A Helm chart is included in `helm/ophirpay/`. See the detailed
-[Kubernetes guide](KUBERNETES.md) for prerequisites, secret provisioning,
+[Kubernetes guide](KUBERNETES.md) and the comprehensive [Helm Chart Guide](../helm/README.md) for prerequisites, configuration values reference, secret provisioning,
 build-time `NEXT_PUBLIC_*` behavior, migrations, probes, ingress/TLS, and the
 pre-flight validation checklist.
 

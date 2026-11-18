@@ -31,6 +31,17 @@ jobs:
           node-version-file: ".nvmrc"
       - run: npm run check:docs-links
 
+  prettier:
+    name: "Documentation — Prettier Format Check"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm run format:check
+
   # ══════════════════════════════════════════════════════════════
   # 1. LINT — ESLint with zero tolerance (issue #677)
   #    The `npm run ci` gate runs this exact command; the workflow used to
@@ -366,7 +377,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
+        with: { node-version-file: ".nvmrc", cache: "npm" }
       - run: node scripts/validate-grafana-dashboard.mjs
 
   # ══════════════════════════════════════════════════════════════

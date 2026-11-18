@@ -57,6 +57,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # host-side step would silently ship an amd64 engine inside an arm64 image.
 RUN npx prisma generate
 RUN npm run build
+RUN npm prune --production
 
 # Dedicated migration image: includes the Prisma CLI and schema, but is never
 # used as the production application runtime image.
@@ -86,15 +87,20 @@ RUN apt-get update -qq \
   && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
-USER node
+
+# Non-root system user and group for runtime least-privilege (issue #2026)
+RUN addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 nextjs
+
+USER nextjs
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME="0.0.0.0"
 
-COPY --chown=node:node --from=builder /app/public ./public
-COPY --chown=node:node --from=builder /app/package.json ./package.json
+COPY --chown=nextjs:nodejs --from=builder /app/public ./public
+COPY --chown=nextjs:nodejs --from=builder /app/package.json ./package.json
 # .next/standalone already contains a pruned node_modules with exactly the
 # runtime dependencies Next's output tracer selected.  Copying the full
 # builder node_modules on top would double the layer size and ship every
@@ -107,16 +113,16 @@ COPY --chown=node:node --from=builder /app/package.json ./package.json
 # so the correct linux-musl / linux-openssl variant ends up in the image.
 # If you switch database providers or change the Prisma binaryTargets you
 # may need to adjust the glob below.
-COPY --chown=node:node --from=builder /app/.next/standalone ./
-COPY --chown=node:node --from=builder /app/.next/static ./.next/static
+COPY --chown=nextjs:nodejs --from=builder /app/.next/standalone ./
+COPY --chown=nextjs:nodejs --from=builder /app/.next/static ./.next/static
 # Prisma query engine — copy only the native binary, not the whole CLI.
 # The glob matches the openssl-3.x variant produced by `prisma generate` on
 # the node:24-slim (Debian) builder.  The destination mirrors where
 # standalone's own node_modules/.prisma/client/ expects to find the engine.
-COPY --chown=node:node --from=builder /app/node_modules/.prisma/client/*.node ./node_modules/.prisma/client/
-COPY --chown=node:node --from=builder /app/node_modules/@prisma/engines-version ./node_modules/@prisma/engines-version
+COPY --chown=nextjs:nodejs --from=builder /app/node_modules/.prisma/client/*.node ./node_modules/.prisma/client/
+COPY --chown=nextjs:nodejs --from=builder /app/node_modules/@prisma/engines-version ./node_modules/@prisma/engines-version
 
-COPY --chown=node:node --from=builder /app/scripts/healthcheck.js ./scripts/healthcheck.js
+COPY --chown=nextjs:nodejs --from=builder /app/scripts/healthcheck.js ./scripts/healthcheck.js
 
 EXPOSE 3000
 

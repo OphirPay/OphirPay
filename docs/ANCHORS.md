@@ -1,7 +1,7 @@
 # SEP-24 Anchor Integration (Fiat On/Off-Ramp)
 
 OphirPay can hand a user off to a Stellar **anchor** to move between fiat money
-and on-chain assets. The mechanism is [SEP-24][sep24] — an *interactive* deposit
+and on-chain assets. The mechanism is [SEP-24][sep24] — an _interactive_ deposit
 and withdrawal protocol — and it lives in [`src/lib/sep24.ts`](../src/lib/sep24.ts).
 
 Nothing about a specific anchor is hardcoded. The anchor's domain is
@@ -13,14 +13,14 @@ configuration and every endpoint is read from the anchor's own
 
 ## What this app does — and does not do
 
-| Concern | Who owns it |
-| ------- | ----------- |
-| Taking/verifying identity documents (**KYC/AML**) | **The anchor** |
-| Holding fiat (bank rail, card, wire) | **The anchor** |
-| Sanctions screening, licensing, travel rule | **The anchor** |
-| Discovering the anchor and opening its interactive session | This app |
-| Polling the transaction to completion and showing state | This app |
-| Signing the resulting Stellar payment | The user's wallet |
+| Concern                                                    | Who owns it       |
+| ---------------------------------------------------------- | ----------------- |
+| Taking/verifying identity documents (**KYC/AML**)          | **The anchor**    |
+| Holding fiat (bank rail, card, wire)                       | **The anchor**    |
+| Sanctions screening, licensing, travel rule                | **The anchor**    |
+| Discovering the anchor and opening its interactive session | This app          |
+| Polling the transaction to completion and showing state    | This app          |
+| Signing the resulting Stellar payment                      | The user's wallet |
 
 **OphirPay never holds fiat and never performs KYC.** It opens the anchor's
 hosted interactive URL (a new window or an iframe, per the anchor's
@@ -29,13 +29,13 @@ anchor is the regulated counterparty; this app is a client of it.
 
 ## Configuration
 
-| Variable | Default | Meaning |
-| -------- | ------- | ------- |
-| `NEXT_PUBLIC_ANCHOR_DOMAIN` | `testanchor.stellar.org` | Anchor whose `stellar.toml` is fetched |
-| `NEXT_PUBLIC_ANCHOR_FIAT_CURRENCY` | `USD` | Fiat currency shown to the user |
-| `ANCHOR_METADATA_TTL_MS` | `300000` | How long the parsed TOML is cached |
-| `ANCHOR_POLL_INTERVAL_MS` | `5000` | Poll interval for transaction status |
-| `ANCHOR_POLL_TIMEOUT_MS` | `600000` | Budget before polling gives up |
+| Variable                           | Default                  | Meaning                                |
+| ---------------------------------- | ------------------------ | -------------------------------------- |
+| `NEXT_PUBLIC_ANCHOR_DOMAIN`        | `testanchor.stellar.org` | Anchor whose `stellar.toml` is fetched |
+| `NEXT_PUBLIC_ANCHOR_FIAT_CURRENCY` | `USD`                    | Fiat currency shown to the user        |
+| `ANCHOR_METADATA_TTL_MS`           | `300000`                 | How long the parsed TOML is cached     |
+| `ANCHOR_POLL_INTERVAL_MS`          | `5000`                   | Poll interval for transaction status   |
+| `ANCHOR_POLL_TIMEOUT_MS`           | `600000`                 | Budget before polling gives up         |
 
 The default points at SDF's testnet anchor so the flow can be exercised end to
 end without real money. Point it at a production anchor only after reviewing the

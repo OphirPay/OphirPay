@@ -97,14 +97,14 @@ environments for tests that might exercise mutations or real Stellar services.
 Many browser-driven UI specs install deterministic route mocks before
 navigation. The shared helpers currently cover these boundaries:
 
-| Helper | Mocked boundary |
-|---|---|
+| Helper                                                  | Mocked boundary                                                                                                                                                                                                |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `installMultisigMocks` in `e2e/helpers/stellar-mock.ts` | Wallet-session endpoints, `GET /api/multisig` and `/api/multisig/requests`, Soroban RPC (`getLedgerEntries`, `simulateTransaction`, `sendTransaction`, `getTransaction`), and Horizon transaction confirmation |
-| `installStellarMocks` in `e2e/helpers/stellar-mock.ts` | Soroban RPC and Horizon only, with a configurable transaction fixture — compose it with your own app-API mocks |
-| `installAdminMocks` in `e2e/helpers/admin-mocks.ts` | The multisig mocks plus CSRF, pause state, timelock, hooks, fee config, RBAC, and API-key routes |
-| `installRefundsMocks` in `e2e/helpers/refunds-mock.ts` | Wallet-session and CSRF endpoints, a stateful in-memory `/api/refunds` ledger, Soroban RPC, and Horizon transaction confirmation |
-| `installSseMock` in `e2e/helpers/sse-mock.ts` | `GET /api/events`, proxied to a local streaming HTTP server so the test can emit and reconnect to SSE events |
-| `installEscrowMocks` in `e2e/helpers/escrow-helper.ts` | Wallet-session + CSRF endpoints, a stateful `/api/escrows` ledger, Horizon balances/confirmations, and Soroban RPC with `initiate_dispute` / `resolve_dispute` state transitions |
+| `installStellarMocks` in `e2e/helpers/stellar-mock.ts`  | Soroban RPC and Horizon only, with a configurable transaction fixture — compose it with your own app-API mocks                                                                                                 |
+| `installAdminMocks` in `e2e/helpers/admin-mocks.ts`     | The multisig mocks plus CSRF, pause state, timelock, hooks, fee config, RBAC, and API-key routes                                                                                                               |
+| `installRefundsMocks` in `e2e/helpers/refunds-mock.ts`  | Wallet-session and CSRF endpoints, a stateful in-memory `/api/refunds` ledger, Soroban RPC, and Horizon transaction confirmation                                                                               |
+| `installSseMock` in `e2e/helpers/sse-mock.ts`           | `GET /api/events`, proxied to a local streaming HTTP server so the test can emit and reconnect to SSE events                                                                                                   |
+| `installEscrowMocks` in `e2e/helpers/escrow-helper.ts`  | Wallet-session + CSRF endpoints, a stateful `/api/escrows` ledger, Horizon balances/confirmations, and Soroban RPC with `initiate_dispute` / `resolve_dispute` state transitions                               |
 
 The UI tests that use these helpers exercise the browser UI and client
 integration against controlled responses; they do not verify a live database
@@ -141,12 +141,12 @@ simulate → send → get lifecycle.
 common shapes. Every fixture is built from a fixed ed25519 seed and a fixed
 sequence/timebounds, so its hash and XDR are identical on every run and shard.
 
-| Fixture | Operations | Simulated return value |
-|---|---|---|
-| `single-payment` | one `payment` operation | `scvVoid` |
-| `batch-payment` | three `payment` operations | `scvVoid` |
-| `escrow-creation` | one `create_escrow` invocation | `scvU64(1)` |
-| `stream-creation` | one `create_stream` invocation | `scvU64(1)` |
+| Fixture           | Operations                     | Simulated return value |
+| ----------------- | ------------------------------ | ---------------------- |
+| `single-payment`  | one `payment` operation        | `scvVoid`              |
+| `batch-payment`   | three `payment` operations     | `scvVoid`              |
+| `escrow-creation` | one `create_escrow` invocation | `scvU64(1)`            |
+| `stream-creation` | one `create_stream` invocation | `scvU64(1)`            |
 
 Use them from a browser test:
 

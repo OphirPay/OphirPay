@@ -41,7 +41,7 @@ same byte string** before recomputing the HMAC:
    header is absent you may fall back to the body's `timestamp` field, which is
    signed too; the reference verifiers do this.)
 2. **Parse** the received body as JSON.
-3. **Empty the `signature` field** — set it to `""`. Keep the key; do *not*
+3. **Empty the `signature` field** — set it to `""`. Keep the key; do _not_
    delete it. The canonical string contains `"signature":""` as the last key.
 4. **Re-serialize with stable key order** — the order of the keys as received
    (parse-then-stringify preserves insertion order; do not sort or reorder).
@@ -129,8 +129,8 @@ same rule: length-check first, then `timingSafeEqual` (Node),
 
 ## Replay protection
 
-The signature proves *authenticity* (the body came from OphirPay and wasn't
-tampered with). It does **not** by itself prevent *replay* — an attacker can
+The signature proves _authenticity_ (the body came from OphirPay and wasn't
+tampered with). It does **not** by itself prevent _replay_ — an attacker can
 capture a valid request and re-send it later. Combine two defenses:
 
 ### 1. Timestamp freshness window
@@ -173,12 +173,12 @@ This makes replays harmless even if they arrive inside the freshness window.
 Runnable, dependency-free examples are in
 [`examples/webhook-verification/`](../examples/webhook-verification/):
 
-| Language | File | Run |
-|---|---|---|
-| TypeScript | [`node-verifier.ts`](../examples/webhook-verification/node-verifier.ts) | Library export with `verifyWebhookSignature()` and `assertWebhookSignature()` |
-| Node.js (ESM) | [`node/verify.mjs`](../examples/webhook-verification/node/verify.mjs) | `node verify.mjs --secret <secret> --signature <hex> --body-file body.json` |
-| Python 3 | [`python/verify.py`](../examples/webhook-verification/python/verify.py) | `python3 verify.py --secret <secret> --signature <hex> --body-file body.json` |
-| Go | [`go/verify.go`](../examples/webhook-verification/go/verify.go) | `go run . --secret <secret> --signature <hex> --body-file body.json` |
+| Language      | File                                                                    | Run                                                                           |
+| ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| TypeScript    | [`node-verifier.ts`](../examples/webhook-verification/node-verifier.ts) | Library export with `verifyWebhookSignature()` and `assertWebhookSignature()` |
+| Node.js (ESM) | [`node/verify.mjs`](../examples/webhook-verification/node/verify.mjs)   | `node verify.mjs --secret <secret> --signature <hex> --body-file body.json`   |
+| Python 3      | [`python/verify.py`](../examples/webhook-verification/python/verify.py) | `python3 verify.py --secret <secret> --signature <hex> --body-file body.json` |
+| Go            | [`go/verify.go`](../examples/webhook-verification/go/verify.go)         | `go run . --secret <secret> --signature <hex> --body-file body.json`          |
 
 Reference implementations print `VALID` (exit 0) or `INVALID: <reason>` (exit 1), and
 implement the canonical form above plus a configurable freshness window
@@ -221,7 +221,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * @param {string} [timestamp] - X-OphirPay-Timestamp header value
  * @param {number} maxAgeSeconds - replay window (0 disables); default 300
  */
-export function verifyWebhookSignature({ body, signature, secret, timestamp, maxAgeSeconds = 300 }) {
+export function verifyWebhookSignature({
+  body,
+  signature,
+  secret,
+  timestamp,
+  maxAgeSeconds = 300,
+}) {
   // 1–3. Parse, empty the signature field, re-serialize in key order.
   const parsed = JSON.parse(body);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -238,8 +244,7 @@ export function verifyWebhookSignature({ body, signature, secret, timestamp, max
   // 5. Constant-time comparison against the header value.
   const provided = Buffer.from(String(signature ?? ""));
   const expectedBuf = Buffer.from(expected);
-  const matches =
-    provided.length === expectedBuf.length && timingSafeEqual(provided, expectedBuf);
+  const matches = provided.length === expectedBuf.length && timingSafeEqual(provided, expectedBuf);
   if (!matches) return false;
 
   // Replay protection: timestamp freshness window.
@@ -375,17 +380,17 @@ anything not listed is rejected.
 
 **Blocked regardless of port:**
 
-| Category | Examples |
-|---|---|
-| Loopback | `127.0.0.0/8`, `::1` |
-| Private IPv4 | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` |
-| Link-local (cloud metadata) | `169.254.0.0/16`, `fe80::/10` |
-| Carrier-grade NAT | `100.64.0.0/10` |
-| Documentation / benchmarking / multicast / reserved | `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `198.18.0.0/15`, `224.0.0.0/4`, `240.0.0.0/4` |
-| IPv6 ULA / multicast | `fc00::/7`, `ff00::/8` |
-| IPv4-mapped/compatible IPv6 whose embedded IPv4 is private | `::ffff:127.0.0.1`, `::ffff:10.0.0.1` |
-| Internal hostnames | `localhost`, `*.localhost`, `*.local`, `*.internal`, `*.lan`, `*.home.arpa`, `metadata.google.internal` |
-| Embedded credentials | `https://user:pass@host/hook` |
+| Category                                                   | Examples                                                                                                |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Loopback                                                   | `127.0.0.0/8`, `::1`                                                                                    |
+| Private IPv4                                               | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`                                                         |
+| Link-local (cloud metadata)                                | `169.254.0.0/16`, `fe80::/10`                                                                           |
+| Carrier-grade NAT                                          | `100.64.0.0/10`                                                                                         |
+| Documentation / benchmarking / multicast / reserved        | `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `198.18.0.0/15`, `224.0.0.0/4`, `240.0.0.0/4`      |
+| IPv6 ULA / multicast                                       | `fc00::/7`, `ff00::/8`                                                                                  |
+| IPv4-mapped/compatible IPv6 whose embedded IPv4 is private | `::ffff:127.0.0.1`, `::ffff:10.0.0.1`                                                                   |
+| Internal hostnames                                         | `localhost`, `*.localhost`, `*.local`, `*.internal`, `*.lan`, `*.home.arpa`, `metadata.google.internal` |
+| Embedded credentials                                       | `https://user:pass@host/hook`                                                                           |
 
 **DNS rebinding:** the host is re-resolved and re-validated immediately before
 **every** delivery attempt, not once at registration. If a hostname resolves
@@ -398,13 +403,17 @@ publicly when you register it but privately later, that attempt is refused.
 When deliveries fail across all retry attempts, they transition to `DEAD_LETTER` (or `FAILED`). Once an outage at the receiver's endpoint is remediated, administrators can query and selectively bulk-requeue dead-lettered events:
 
 ### Querying Deliveries
+
 Filter deliveries by delivery status (`DEAD_LETTER`, `FAILED`, `PENDING`, `SUCCESS`) or HTTP response status code:
+
 ```bash
 GET /api/webhooks/{webhookId}/deliveries?status=DEAD_LETTER&statusCode=500&limit=20
 ```
 
 ### Requeuing Deliveries
+
 Bulk-requeue dead-lettered events matching specific status codes, timeouts, or explicit delivery IDs:
+
 ```bash
 POST /api/webhooks/{webhookId}/deliveries/requeue
 Content-Type: application/json
@@ -425,4 +434,3 @@ Requeued deliveries preserve their original event timestamp, data payload, and c
 - [Integration guide](integration-guide.md) — end-to-end setup
 - [Architecture](architecture.md) — where webhooks fit in the system
 - `src/lib/webhook-deliver.ts` — sender-side signing (`buildSignedPayload`)
-

@@ -233,7 +233,7 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    - to:  # Allow outbound to Stellar network
+    - to: # Allow outbound to Stellar network
       ports:
         - protocol: TCP
           port: 443

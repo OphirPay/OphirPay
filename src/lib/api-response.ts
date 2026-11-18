@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 import { getCurrentRequestId } from "@/lib/request-logging";
 import { ERROR_CODES } from "@/lib/error-codes";
 import { captureError } from "@/lib/sentry";
+import { isTimeoutError } from "@/lib/timeout";
 
 // ── Standard Response Types ────────────────────────────────────
 
@@ -255,6 +256,15 @@ export interface ClassifiedApiError {
  * serialized.
  */
 export function classifyApiError(err: unknown): ClassifiedApiError {
+  // Timeout errors (gateway timeout, query timeouts)
+  if (isTimeoutError(err)) {
+    return {
+      code: ERROR_CODES.GATEWAY_TIMEOUT,
+      message: err instanceof Error ? err.message : "Database query or upstream request timed out.",
+      status: 504,
+    };
+  }
+
   // Zod validation errors (check first — before Prisma instance checks)
   if (err instanceof z.ZodError) {
     return {

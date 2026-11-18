@@ -1,0 +1,455 @@
+{
+  "info": {
+    "_postman_id": "7f8b9c0d-1e2f-4a3b-9c8d-7e6f5a4b3c2d",
+    "name": "OphirPay REST API",
+    "description": "Production and staging REST API collection for OphirPay payment orchestration layer on Stellar Soroban. Compatible with Postman and Insomnia.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "Target server URL"
+    },
+    {
+      "key": "apiKey",
+      "value": "ophir_test_0123456789abcdef0123456789abcdef",
+      "type": "string",
+      "description": "API Bearer token or X-API-Key credential"
+    },
+    {
+      "key": "metricsToken",
+      "value": "metrics_secret_token_12345",
+      "type": "string",
+      "description": "Bearer token protecting GET /api/metrics"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Monitoring",
+      "description": "System health checks, Kubernetes probes, and Prometheus metrics endpoints.",
+      "item": [
+        {
+          "name": "System Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Checks database, RPC failover state, and subsystem availability."
+          }
+        },
+        {
+          "name": "Liveness Probe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health/live",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health", "live"]
+            },
+            "description": "Kubernetes liveness probe. Checks process event loop without touching external DB."
+          }
+        },
+        {
+          "name": "Readiness Probe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health/ready",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health", "ready"]
+            },
+            "description": "Kubernetes readiness probe. Verifies PostgreSQL connectivity."
+          }
+        },
+        {
+          "name": "Prometheus Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{metricsToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/metrics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "metrics"]
+            },
+            "description": "Scrapes Prometheus metrics for payment rates, latencies, and circuit breaker states."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "description": "Single payment processing, settlement queries, and refund operations.",
+      "item": [
+        {
+          "name": "List Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments?page=1&limit=20&status=COMPLETED",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "status", "value": "COMPLETED" }
+              ]
+            },
+            "description": "Retrieves a paginated list of payment transactions."
+          }
+        },
+        {
+          "name": "Create Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Request-Id",
+                "value": "550e8400-e29b-41d4-a716-446655440000",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"150.50\",\n  \"asset\": \"native\",\n  \"payer\": \"GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN\",\n  \"payee\": \"GB6NV2AA5UV67K5KBOVPYZBXOEAWETDBGZO2FS6KF5OHUKGLYBD45WPT\",\n  \"memo\": \"Invoice #1042\",\n  \"idempotencyKey\": \"idem_9876543210\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments"]
+            },
+            "description": "Submits a new payment transaction with idempotency protection."
+          }
+        },
+        {
+          "name": "Get Payment by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/pay_1234567890",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments", "pay_1234567890"]
+            },
+            "description": "Fetches details of an individual payment record by unique identifier."
+          }
+        },
+        {
+          "name": "Refund Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer return requested within 30-day window\",\n  \"amount\": \"150.50\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/pay_1234567890/refund",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments", "pay_1234567890", "refund"]
+            },
+            "description": "Initiates a refund for an existing settled payment."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Batches",
+      "description": "Batch payment dispatching and atomic multi-recipient disbursements.",
+      "item": [
+        {
+          "name": "List Batches",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/batches?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "batches"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "Lists historical payment batches."
+          }
+        },
+        {
+          "name": "Create Batch Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"asset\": \"native\",\n  \"memo\": \"November Payroll\",\n  \"transfers\": [\n    {\n      \"recipient\": \"GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN\",\n      \"amount\": \"250.00\"\n    },\n    {\n      \"recipient\": \"GB6NV2AA5UV67K5KBOVPYZBXOEAWETDBGZO2FS6KF5OHUKGLYBD45WPT\",\n      \"amount\": \"400.00\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/batches",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "batches"]
+            },
+            "description": "Creates and executes an atomic multi-transfer payment batch."
+          }
+        },
+        {
+          "name": "Get Batch Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/batches/batch_1234567890",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "batches", "batch_1234567890"]
+            },
+            "description": "Inspects status and individual item execution statuses of a payment batch."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Escrows",
+      "description": "Conditional escrow creation, milestone vesting, and fund release.",
+      "item": [
+        {
+          "name": "List Escrows",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/escrows?status=ACTIVE",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "escrows"],
+              "query": [
+                { "key": "status", "value": "ACTIVE" }
+              ]
+            },
+            "description": "Lists existing escrow agreements."
+          }
+        },
+        {
+          "name": "Create Escrow",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"1000.00\",\n  \"asset\": \"native\",\n  \"beneficiary\": \"GB6NV2AA5UV67K5KBOVPYZBXOEAWETDBGZO2FS6KF5OHUKGLYBD45WPT\",\n  \"arbiter\": \"GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN\",\n  \"releaseTime\": 1735689600\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/escrows",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "escrows"]
+            },
+            "description": "Initializes a timelocked or arbiter-controlled escrow."
+          }
+        },
+        {
+          "name": "Release Escrow",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/escrows/escrow_1234567890/release",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "escrows", "escrow_1234567890", "release"]
+            },
+            "description": "Releases locked escrow funds to the designated beneficiary."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication & API Keys",
+      "description": "Wallet cryptographic challenge-response and API key management.",
+      "item": [
+        {
+          "name": "Get Auth Challenge",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/challenge?publicKey=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "challenge"],
+              "query": [
+                {
+                  "key": "publicKey",
+                  "value": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+                }
+              ]
+            },
+            "description": "Requests a cryptographic nonce challenge to prove wallet ownership."
+          }
+        },
+        {
+          "name": "Verify Challenge & Create Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"publicKey\": \"GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN\",\n  \"signedChallenge\": \"base64_encoded_signature_here\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/session",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "session"]
+            },
+            "description": "Exchanges a signed wallet challenge for an authenticated HTTP session."
+          }
+        },
+        {
+          "name": "List API Keys",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/keys",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "keys"]
+            },
+            "description": "Lists active and revoked API keys for the authenticated account."
+          }
+        },
+        {
+          "name": "Create API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"E-commerce Checkout Key\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/keys",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "keys"]
+            },
+            "description": "Generates a new API key (enforces max 5 active keys cap)."
+          }
+        }
+      ]
+    }
+  ]
+}

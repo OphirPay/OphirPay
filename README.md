@@ -104,41 +104,41 @@
 
 Most blockchain payment tools are either developer-facing SDKs or complex enterprise dashboards. **OphirPay bridges the gap** — a production-grade, open-source payment platform that's powerful enough for DAO treasuries yet intuitive enough for a freelancer sending their first crypto payment.
 
-| Capability | OphirPay | Typical dApp |
-|---|---|---|
-| Single payments | ✅ | ✅ |
-| **Escrows** (dashboard creation, claim, owner and arbiter release) | ✅ | ❌ |
-| **Payment streams** (vesting, recipient claims, creator cancellation) | ✅ | ❌ |
-| **Batch payments** (multi-recipient in 1 tx) | ✅ | ❌ |
-| **Recurring payment schedules** | ✅ | ❌ |
-| **Payment requests** (shareable invoices, deadlines, expiry notifications, email reminders) | ✅ | ❌ |
-| **Address book CSV import/export** (validated, duplicate-aware) | ✅ | ❌ |
-| **SEP-7 mobile wallet handoff** (standard Stellar payment URIs) | ✅ | ❌ |
-| **XLM fiat pricing** (source fallback, bounded cache, explicit unavailable state) | ✅ | ❌ |
-| **Real-time event streaming** (SSE) | ✅ | ❌ |
-| **Webhook delivery** (HMAC signed, retries) | ✅ | ❌ |
-| **Cross-contract communication** | ✅ | ❌ |
-| **Multi-wallet support** (6 wallets: Freighter, xBull, Rabet, Albedo, Lobstr, Ledger) | ✅ | ❌ |
-| **Multi-asset support** (USDC, custom tokens) | ✅ | ❌ |
-| **Path payments** (cross-asset sends, rate preview, slippage protection) | ✅ | ❌ |
-| **PWA with an install prompt and offline fallback page** | ✅ | ❌ |
-| **Discoverable keyboard shortcuts and table navigation** | ✅ | ❌ |
-| **Classified error handling** (3 types, 300 contract variants) | ✅ | ❌ |
-| **Page error boundaries that preserve dashboard navigation** | ✅ | ❌ |
-| **PostgreSQL + SQLite** (provider switching) | ✅ | ⚠️ |
-| **Multisig approvals** (N-of-M signers) | ✅ | ❌ |
-| **Spending limits + escalation tiers** | ✅ | ❌ |
-| **RBAC** (Admin/Operator/Auditor roles) | ✅ | ❌ |
-| **On-chain audit log** (immutable trail) | ✅ | ❌ |
-| **Fee configuration** (per-operation bps) | ✅ | ❌ |
-| **Timelocked admin actions** (24h delay) | ✅ | ❌ |
-| **DAO governance** (propose→vote→execute) | ✅ | ❌ |
-| **Structured refund system** (6 reason codes, analytics) | ✅ | ❌ |
-| **On-chain notification hooks** (subscriber-indexed) | ✅ | ❌ |
-| **Cross-contract orchestration** (atomic pause_all) | ✅ | ❌ |
-| **Policy versioning** (immutable config history) | ✅ | ❌ |
-| **Two-step admin rotation** (24h timelock) | ✅ | ❌ |
-| **In-app notification center** (bell, unread count, live SSE updates, session persistence) | ✅ | ❌ |
+| Capability                                                                                  | OphirPay | Typical dApp |
+| ------------------------------------------------------------------------------------------- | -------- | ------------ |
+| Single payments                                                                             | ✅       | ✅           |
+| **Escrows** (dashboard creation, claim, owner and arbiter release)                          | ✅       | ❌           |
+| **Payment streams** (vesting, recipient claims, creator cancellation)                       | ✅       | ❌           |
+| **Batch payments** (multi-recipient in 1 tx)                                                | ✅       | ❌           |
+| **Recurring payment schedules**                                                             | ✅       | ❌           |
+| **Payment requests** (shareable invoices, deadlines, expiry notifications, email reminders) | ✅       | ❌           |
+| **Address book CSV import/export** (validated, duplicate-aware)                             | ✅       | ❌           |
+| **SEP-7 mobile wallet handoff** (standard Stellar payment URIs)                             | ✅       | ❌           |
+| **XLM fiat pricing** (source fallback, bounded cache, explicit unavailable state)           | ✅       | ❌           |
+| **Real-time event streaming** (SSE)                                                         | ✅       | ❌           |
+| **Webhook delivery** (HMAC signed, retries)                                                 | ✅       | ❌           |
+| **Cross-contract communication**                                                            | ✅       | ❌           |
+| **Multi-wallet support** (6 wallets: Freighter, xBull, Rabet, Albedo, Lobstr, Ledger)       | ✅       | ❌           |
+| **Multi-asset support** (USDC, custom tokens)                                               | ✅       | ❌           |
+| **Path payments** (cross-asset sends, rate preview, slippage protection)                    | ✅       | ❌           |
+| **PWA with an install prompt and offline fallback page**                                    | ✅       | ❌           |
+| **Discoverable keyboard shortcuts and table navigation**                                    | ✅       | ❌           |
+| **Classified error handling** (3 types, 300 contract variants)                              | ✅       | ❌           |
+| **Page error boundaries that preserve dashboard navigation**                                | ✅       | ❌           |
+| **PostgreSQL + SQLite** (provider switching)                                                | ✅       | ⚠️           |
+| **Multisig approvals** (N-of-M signers)                                                     | ✅       | ❌           |
+| **Spending limits + escalation tiers**                                                      | ✅       | ❌           |
+| **RBAC** (Admin/Operator/Auditor roles)                                                     | ✅       | ❌           |
+| **On-chain audit log** (immutable trail)                                                    | ✅       | ❌           |
+| **Fee configuration** (per-operation bps)                                                   | ✅       | ❌           |
+| **Timelocked admin actions** (24h delay)                                                    | ✅       | ❌           |
+| **DAO governance** (propose→vote→execute)                                                   | ✅       | ❌           |
+| **Structured refund system** (6 reason codes, analytics)                                    | ✅       | ❌           |
+| **On-chain notification hooks** (subscriber-indexed)                                        | ✅       | ❌           |
+| **Cross-contract orchestration** (atomic pause_all)                                         | ✅       | ❌           |
+| **Policy versioning** (immutable config history)                                            | ✅       | ❌           |
+| **Two-step admin rotation** (24h timelock)                                                  | ✅       | ❌           |
+| **In-app notification center** (bell, unread count, live SSE updates, session persistence)  | ✅       | ❌           |
 
 > All features above have dashboard UI pages. See [roadmap](#-roadmap) for details.
 >
@@ -156,7 +156,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
 
 ### 🔗 **[ophirpay.vercel.app](https://ophirpay.vercel.app)**
 
-*Deployed on Vercel — automatic builds from `main` on every push. PostgreSQL (Neon), Soroban testnet contracts, and a live wallet flow are all wired in.*
+_Deployed on Vercel — automatic builds from `main` on every push. PostgreSQL (Neon), Soroban testnet contracts, and a live wallet flow are all wired in._
 
 ### 🎥 Pitch Video (3 min)
 
@@ -165,7 +165,7 @@ Most blockchain payment tools are either developer-facing SDKs or complex enterp
   <a href="https://ophirpay.vercel.app/demo.mp4">Watch on Vercel →</a>
 </video>
 
-*11 scenes: Problem → Live Dashboard → Vercel Deployment → Soroban Contracts → Send Payment → Real-Time Events → GitHub README → CI Pipeline → Multisig Security → Open Source → Outro*
+_11 scenes: Problem → Live Dashboard → Vercel Deployment → Soroban Contracts → Send Payment → Real-Time Events → GitHub README → CI Pipeline → Multisig Security → Open Source → Outro_
 
 **▶️ Watch on [Loom](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)** · [Watch on Vercel](https://ophirpay.vercel.app/demo.mp4)
 
@@ -243,6 +243,7 @@ cp .env.example .env && npm run dev
 **That's it!** Open http://localhost:3000, connect Freighter, and you're live on Stellar Testnet.
 
 Run the pre-demo smoke test to verify everything works:
+
 ```bash
 bash scripts/demo-test.sh
 ```
@@ -255,12 +256,12 @@ bash scripts/demo-test.sh
 
 ### Prerequisites
 
-| Tool | Version | Purpose |
-|---|---|---|
-| [Node.js](https://nodejs.org) | 18+ | Runtime |
-| [Freighter Wallet](https://freighter.app) | Latest | Browser extension for Stellar |
-| [Git](https://git-scm.com) | Any | Clone the repo |
-| A funded Testnet account | — | Get free XLM from [Friendbot](https://laboratory.stellar.org/#account-creator?network=test) |
+| Tool                                      | Version | Purpose                                                                                     |
+| ----------------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| [Node.js](https://nodejs.org)             | 18+     | Runtime                                                                                     |
+| [Freighter Wallet](https://freighter.app) | Latest  | Browser extension for Stellar                                                               |
+| [Git](https://git-scm.com)                | Any     | Clone the repo                                                                              |
+| A funded Testnet account                  | —       | Get free XLM from [Friendbot](https://laboratory.stellar.org/#account-creator?network=test) |
 
 ### 5-Minute Setup
 
@@ -305,6 +306,7 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
 
 > ⚡ **Mainnet migration**: Change `NEXT_PUBLIC_STELLAR_NETWORK="PUBLIC"` and update RPC/Horizon URLs. That's it.
+
 </details>
 
 ---
@@ -313,28 +315,28 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 OphirPay supports multiple Stellar wallets through a unified connector abstraction. Our `MultiWalletProvider` context wraps the entire application, providing:
 
-| Feature | Implementation |
-|---|---|
-| **Multi-wallet** | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr and Ledger hardware wallets |
-| **Connect** | Wallet selector modal → `connector.connect()` |
-| **Disconnect** | Full state reset + connector-specific cleanup |
-| **Session persistence** | Auto-detects existing connections on page load |
-| **Missing wallet** | Graceful detection — "Not found" badge + actionable error |
-| **Rejected connection** | Caught, displayed as inline error |
-| **Balance refresh** | Manual refresh button + auto-refresh after send |
-| **Loading states** | `balanceLoading` flag → skeleton shimmer |
-| **Network badge** | Live indicator showing TESTNET/PUBLIC with status dot |
+| Feature                 | Implementation                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------- |
+| **Multi-wallet**        | Connector interface for Freighter, Albedo, xBull, Rabet, Lobstr and Ledger hardware wallets |
+| **Connect**             | Wallet selector modal → `connector.connect()`                                               |
+| **Disconnect**          | Full state reset + connector-specific cleanup                                               |
+| **Session persistence** | Auto-detects existing connections on page load                                              |
+| **Missing wallet**      | Graceful detection — "Not found" badge + actionable error                                   |
+| **Rejected connection** | Caught, displayed as inline error                                                           |
+| **Balance refresh**     | Manual refresh button + auto-refresh after send                                             |
+| **Loading states**      | `balanceLoading` flag → skeleton shimmer                                                    |
+| **Network badge**       | Live indicator showing TESTNET/PUBLIC with status dot                                       |
 
 **Supported wallets:**
 
-| Wallet | Type | Status |
-|---|---|---|
-| Freighter | Browser extension | ✅ Supported |
-| xBull | Browser extension | ✅ Supported |
-| Rabet | Browser extension | ✅ Supported |
-| Albedo | Web-based (no extension) | ✅ Supported |
-| Lobstr | Web-based (SEP-7) | ✅ Supported |
-| Ledger | Hardware (WebUSB) | ✅ Supported |
+| Wallet    | Type                     | Status       |
+| --------- | ------------------------ | ------------ |
+| Freighter | Browser extension        | ✅ Supported |
+| xBull     | Browser extension        | ✅ Supported |
+| Rabet     | Browser extension        | ✅ Supported |
+| Albedo    | Web-based (no extension) | ✅ Supported |
+| Lobstr    | Web-based (SEP-7)        | ✅ Supported |
+| Ledger    | Hardware (WebUSB)        | ✅ Supported |
 
 > **Ledger requirements:** connect a Ledger device over USB with its Stellar app
 > open. Browser signing uses WebUSB and is available in Chromium-based browsers
@@ -353,7 +355,7 @@ const { wallet, connect, disconnect, fetchBalance } = useWallet();
 // wallet.activeWalletId → "freighter" | "albedo" | "xbull"
 
 // Connect a specific wallet
-connect("albedo");  // or "freighter", "xbull"
+connect("albedo"); // or "freighter", "xbull"
 ```
 
 ---
@@ -371,11 +373,11 @@ Browser ←── WS:  ws(s)://<host>:8787/api/events ──polls──→ Payme
 
 **Events emitted:**
 
-| Event | Trigger |
-|---|---|
-| `connected` | Stream established |
-| `heartbeat` | Every 15 seconds (SSE) / 30 seconds (WS keep-alive) |
-| `payment:created` | New payment event detected on-chain |
+| Event             | Trigger                                             |
+| ----------------- | --------------------------------------------------- |
+| `connected`       | Stream established                                  |
+| `heartbeat`       | Every 15 seconds (SSE) / 30 seconds (WS keep-alive) |
+| `payment:created` | New payment event detected on-chain                 |
 
 Visit **`/events`** in the app to see the live feed with connection status indicator, event type badges, timestamps, and auto-scroll.
 
@@ -414,71 +416,71 @@ OphirPayContract.emergency_pause_all() / emergency_unpause_all()
 
 ### 📦 Main Contract — `OphirPayContract`
 
-| Detail | Value |
-|---|---|
-| **Contract ID** | `CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET` |
-| **Network** | Stellar Testnet (verified live via Soroban RPC) |
-| **WASM Hash** | Deployed: `2114b304...` · Hardened `31d9aa78...` proposed (24h timelock, security fixes) |
-| **State** | Initialized, actively recording payments on-chain |
-| **Explorer** | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET) |
-| **Mainnet ID** | *Pending deployment* — see [docs/deployment-mainnet.md](docs/deployment-mainnet.md) |
+| Detail          | Value                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Contract ID** | `CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET`                                                                          |
+| **Network**     | Stellar Testnet (verified live via Soroban RPC)                                                                                     |
+| **WASM Hash**   | Deployed: `2114b304...` · Hardened `31d9aa78...` proposed (24h timelock, security fixes)                                            |
+| **State**       | Initialized, actively recording payments on-chain                                                                                   |
+| **Explorer**    | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET) |
+| **Mainnet ID**  | _Pending deployment_ — see [docs/deployment-mainnet.md](docs/deployment-mainnet.md)                                                 |
 
-| Function | Access | Description |
-|---|---|---|
-| `init(owner)` | Admin | Initialize contract with owner address |
+| Function                                                         | Access              | Description                                                                                      |
+| ---------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------ |
+| `init(owner)`                                                    | Admin               | Initialize contract with owner address                                                           |
 | `record_payment(payer, payee, amount, asset, tx_hash, metadata)` | Payer-authenticated | Store payment + publish native Soroban event; deduplicate identical retries by payer + `tx_hash` |
-| `cancel_payment(id)` | Public | Cancel a recorded payment |
-| `propose_payment(...)` | Multisig | Propose a multisig payment request |
-| `approve_payment(id)` | Multisig | Approve a multisig payment request |
-| `execute_approved_payment(id)` | Multisig | Execute an approved payment |
-| `set_multisig_config(...)` | Admin | Configure N-of-M thresholds (versioned) |
-| `set_fee_config(...)` | Admin | Configure per-operation fee basis points |
-| `set_fee_collector(...)` | Admin | Designate fee recipient |
-| `propose_timelocked_action(...)` | Admin | Propose admin action with mandatory delay |
-| `execute_timelocked_action(id)` | Admin | Execute after delay expires |
-| `cancel_timelocked_action(id)` | Admin | Cancel a pending action |
-| `configure_governance(...)` | Admin | Set governance parameters |
-| `create_proposal(...)` | Governance | Create DAO governance proposal (deposit required) |
-| `vote_on_proposal(id, support)` | Governance | Vote YES/NO on a proposal (1 address = 1 vote) |
-| `execute_proposal(id)` | Governance | Execute a passed proposal |
-| `set_spending_limit(...)` | Admin | Set per-user spending limits |
-| `check_spending(user, amount)` | Read | Check limit + escalation tiers |
-| `atomic_spend(...)` | Operator | Spend with limit enforcement |
-| `grant_role(grantee, role)` | Admin | Grant RBAC role (Admin/Operator/Auditor) |
-| `revoke_role(grantee)` | Admin | Revoke a role |
-| `set_emitter(emitter)` | Admin | Point to the event emitter contract |
-| `emergency_pause_all()` | Admin | Atomic cross-contract pause |
-| `emergency_unpause_all()` | Admin | Resume operations |
-| `emergency_withdraw(...)` | Admin | Withdraw capped at `balance − LOCKED_BALANCE` |
-| `propose_upgrade(...)` / `execute_upgrade()` | Admin | 24h-timelocked WASM upgrades |
-| `transfer_ownership(...)` / `accept_ownership()` | Admin | Two-step ownership rotation (24h timelock) |
-| `get_payment(id)` / `get_payments_range(...)` | Read | Retrieve payments |
-| `get_payment_count()` | Read | Total payments recorded |
-| `get_stats()` | Read | All contract counters (gas-optimized) |
-| `get_fee_config()` / `get_fee_config_history()` | Read | Fee configuration + immutable history |
-| `get_audit_log_count()` / `get_audit_entry(id)` | Read | Immutable on-chain audit trail |
+| `cancel_payment(id)`                                             | Public              | Cancel a recorded payment                                                                        |
+| `propose_payment(...)`                                           | Multisig            | Propose a multisig payment request                                                               |
+| `approve_payment(id)`                                            | Multisig            | Approve a multisig payment request                                                               |
+| `execute_approved_payment(id)`                                   | Multisig            | Execute an approved payment                                                                      |
+| `set_multisig_config(...)`                                       | Admin               | Configure N-of-M thresholds (versioned)                                                          |
+| `set_fee_config(...)`                                            | Admin               | Configure per-operation fee basis points                                                         |
+| `set_fee_collector(...)`                                         | Admin               | Designate fee recipient                                                                          |
+| `propose_timelocked_action(...)`                                 | Admin               | Propose admin action with mandatory delay                                                        |
+| `execute_timelocked_action(id)`                                  | Admin               | Execute after delay expires                                                                      |
+| `cancel_timelocked_action(id)`                                   | Admin               | Cancel a pending action                                                                          |
+| `configure_governance(...)`                                      | Admin               | Set governance parameters                                                                        |
+| `create_proposal(...)`                                           | Governance          | Create DAO governance proposal (deposit required)                                                |
+| `vote_on_proposal(id, support)`                                  | Governance          | Vote YES/NO on a proposal (1 address = 1 vote)                                                   |
+| `execute_proposal(id)`                                           | Governance          | Execute a passed proposal                                                                        |
+| `set_spending_limit(...)`                                        | Admin               | Set per-user spending limits                                                                     |
+| `check_spending(user, amount)`                                   | Read                | Check limit + escalation tiers                                                                   |
+| `atomic_spend(...)`                                              | Operator            | Spend with limit enforcement                                                                     |
+| `grant_role(grantee, role)`                                      | Admin               | Grant RBAC role (Admin/Operator/Auditor)                                                         |
+| `revoke_role(grantee)`                                           | Admin               | Revoke a role                                                                                    |
+| `set_emitter(emitter)`                                           | Admin               | Point to the event emitter contract                                                              |
+| `emergency_pause_all()`                                          | Admin               | Atomic cross-contract pause                                                                      |
+| `emergency_unpause_all()`                                        | Admin               | Resume operations                                                                                |
+| `emergency_withdraw(...)`                                        | Admin               | Withdraw capped at `balance − LOCKED_BALANCE`                                                    |
+| `propose_upgrade(...)` / `execute_upgrade()`                     | Admin               | 24h-timelocked WASM upgrades                                                                     |
+| `transfer_ownership(...)` / `accept_ownership()`                 | Admin               | Two-step ownership rotation (24h timelock)                                                       |
+| `get_payment(id)` / `get_payments_range(...)`                    | Read                | Retrieve payments                                                                                |
+| `get_payment_count()`                                            | Read                | Total payments recorded                                                                          |
+| `get_stats()`                                                    | Read                | All contract counters (gas-optimized)                                                            |
+| `get_fee_config()` / `get_fee_config_history()`                  | Read                | Fee configuration + immutable history                                                            |
+| `get_audit_log_count()` / `get_audit_entry(id)`                  | Read                | Immutable on-chain audit trail                                                                   |
 
 ### 📡 Emitter Contract — `PaymentEventEmitter`
 
-| Detail | Value |
-|---|---|
-| **Contract ID** | `CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN` |
-| **WASM Hash** | Deployed: `6ff35169...` · Allow-list `6d02394b...` proposed (24h timelock) |
-| **Purpose** | Stores payment-event records (queried by the SSE stream) + receives cross-contract pause/unpause |
-| **Explorer** | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN) |
-| **Mainnet ID** | *Pending deployment* — see [docs/deployment-mainnet.md](docs/deployment-mainnet.md) |
+| Detail          | Value                                                                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Contract ID** | `CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN`                                                                          |
+| **WASM Hash**   | Deployed: `6ff35169...` · Allow-list `6d02394b...` proposed (24h timelock)                                                          |
+| **Purpose**     | Stores payment-event records (queried by the SSE stream) + receives cross-contract pause/unpause                                    |
+| **Explorer**    | [View on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN) |
+| **Mainnet ID**  | _Pending deployment_ — see [docs/deployment-mainnet.md](docs/deployment-mainnet.md)                                                 |
 
-| Function | Access | Description |
-|---|---|---|
-| `init(owner)` | Admin | Initialize emitter |
-| `emit_payment(emitter, payer, payee, amount, tx_hash)` | Public | Store a PaymentEvent record |
-| `get_event(event_id)` | Read | Retrieve event by ID |
-| `get_event_count()` | Read | Total events emitted |
-| `get_owner()` | Read | Query emitter owner |
-| `pause()` / `unpause()` | Admin | Circuit breaker |
-| `set_allowed_source(source)` | Admin | Allow-list the orchestrator contract that may emit events (MEDIUM-3 fix) |
-| `get_allowed_source()` | Read | Query the allow-listed source (if set) |
-| `propose_upgrade(...)` / `execute_upgrade()` | Admin | Timelocked upgrades |
+| Function                                               | Access | Description                                                              |
+| ------------------------------------------------------ | ------ | ------------------------------------------------------------------------ |
+| `init(owner)`                                          | Admin  | Initialize emitter                                                       |
+| `emit_payment(emitter, payer, payee, amount, tx_hash)` | Public | Store a PaymentEvent record                                              |
+| `get_event(event_id)`                                  | Read   | Retrieve event by ID                                                     |
+| `get_event_count()`                                    | Read   | Total events emitted                                                     |
+| `get_owner()`                                          | Read   | Query emitter owner                                                      |
+| `pause()` / `unpause()`                                | Admin  | Circuit breaker                                                          |
+| `set_allowed_source(source)`                           | Admin  | Allow-list the orchestrator contract that may emit events (MEDIUM-3 fix) |
+| `get_allowed_source()`                                 | Read   | Query the allow-listed source (if set)                                   |
+| `propose_upgrade(...)` / `execute_upgrade()`           | Admin  | Timelocked upgrades                                                      |
 
 ### 🔨 Building & Deploying
 
@@ -490,6 +492,7 @@ OphirPayContract.emergency_pause_all() / emergency_unpause_all()
 cd contracts/ophirpay && cargo build --target wasm32v1-none --release
 cd contracts/emitter && cargo build --target wasm32v1-none --release
 ```
+
 </details>
 
 <details>
@@ -526,6 +529,7 @@ stellar contract invoke --id <OPHIRPAY_ID> --source-account <SECRET_KEY> \
   --network-passphrase "Test SDF Network ; September 2015" \
   -- set_emitter --emitter <EMITTER_ID>
 ```
+
 </details>
 
 <details>
@@ -534,6 +538,7 @@ stellar contract invoke --id <OPHIRPAY_ID> --source-account <SECRET_KEY> \
 ```bash
 ./scripts/deploy-workflow.sh <SECRET_KEY> <OWNER_PUBLIC_KEY> <EMITTER_CONTRACT_ID>
 ```
+
 Automatically builds WASM, uploads, deploys, initializes, and verifies both contracts.
 
 For Stellar Mainnet, set `NETWORK_MODE=PUBLIC` (see [docs/deployment-mainnet.md](docs/deployment-mainnet.md)):
@@ -543,14 +548,17 @@ NETWORK_MODE=PUBLIC ./scripts/deploy-workflow.sh <SECRET_KEY> <OWNER_PUBLIC_KEY>
 ```
 
 > ⚠ **WARNING:** `NETWORK_MODE=PUBLIC` targets the live Stellar Mainnet. There is no friendbot — the deployer account must be funded with real XLM. Always run a dry-run first:
+>
 > ```bash
 > NETWORK_MODE=PUBLIC DRY_RUN=true ./scripts/deploy-workflow.sh <SECRET_KEY> <OWNER_PUBLIC_KEY> <EMITTER_CONTRACT_ID>
 > ```
 >
 > Validate the PUBLIC config (used in CI) before any mainnet deploy:
+>
 > ```bash
 > bash scripts/validate-deploy-config.sh
 > ```
+
 </details>
 
 ---
@@ -559,10 +567,10 @@ NETWORK_MODE=PUBLIC ./scripts/deploy-workflow.sh <SECRET_KEY> <OWNER_PUBLIC_KEY>
 
 Both Soroban contracts include comprehensive `#[cfg(test)]` unit test modules (67 tests total):
 
-| Contract | Tests | Coverage |
-|---|---|---|
-| `OphirPayContract` | 60 tests | init, payments, escrows, streams, batches, multisig, RBAC, fee config, timelock, governance, refunds, pause, stats, invariants, refund validation, reentrancy lock release |
-| `PaymentEventEmitter` | 7 tests | init, emit, get, count, pause/unpause, access control, allow-list |
+| Contract              | Tests    | Coverage                                                                                                                                                                   |
+| --------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OphirPayContract`    | 60 tests | init, payments, escrows, streams, batches, multisig, RBAC, fee config, timelock, governance, refunds, pause, stats, invariants, refund validation, reentrancy lock release |
+| `PaymentEventEmitter` | 7 tests  | init, emit, get, count, pause/unpause, access control, allow-list                                                                                                          |
 
 ```bash
 # Run contract tests
@@ -617,15 +625,15 @@ policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md#coverage-ratchet).
 See [docs/E2E_TESTING.md](docs/E2E_TESTING.md) for the required running
 server, database, contract configuration, and mocked boundaries.
 
-| Spec | Focus |
-|---|---|
+| Spec                     | Focus                                        |
+| ------------------------ | -------------------------------------------- |
 | `critical-flows.spec.ts` | Core user journeys (connect → send → record) |
-| `dashboard.spec.ts` | Dashboard rendering + wallet state |
-| `api.spec.ts` | API route contracts & error shapes |
-| `contracts.spec.ts` | Contract page + on-chain status |
-| `error-codes.spec.ts` | Error catalog & classification |
-| `multisig.spec.ts` | Multisig propose/approve flows |
-| `governance.spec.ts` | Proposal lifecycle |
+| `dashboard.spec.ts`      | Dashboard rendering + wallet state           |
+| `api.spec.ts`            | API route contracts & error shapes           |
+| `contracts.spec.ts`      | Contract page + on-chain status              |
+| `error-codes.spec.ts`    | Error catalog & classification               |
+| `multisig.spec.ts`       | Multisig propose/approve flows               |
+| `governance.spec.ts`     | Proposal lifecycle                           |
 
 ### Visual Regression Tests (Playwright) — critical pages
 
@@ -670,11 +678,11 @@ an unintended regression.
 
 All contract failures route through a 3-tier classifier:
 
-| Type | Icon | Examples |
-|---|---|---|
-| `NETWORK` | 🌐 | RPC timeout, DNS failure, `ECONNREFUSED` |
-| `CONTRACT` | 📜 | HostError, panics, SCError, bad args |
-| `USER_REJECTION` | 🚫 | User declined Freighter prompt |
+| Type             | Icon | Examples                                 |
+| ---------------- | ---- | ---------------------------------------- |
+| `NETWORK`        | 🌐   | RPC timeout, DNS failure, `ECONNREFUSED` |
+| `CONTRACT`       | 📜   | HostError, panics, SCError, bad args     |
+| `USER_REJECTION` | 🚫   | User declined Freighter prompt           |
 
 Each type renders with distinct colors (yellow/red/orange) and actionable messaging in the UI — backed by a ~300-variant typed error catalog mirrored between the Rust contract and the TypeScript API layer.
 
@@ -698,16 +706,16 @@ contract and secret scans:
 
 ### Jobs (`ci.yml`)
 
-| Job | Command | Purpose |
-|---|---|---|
-| Lint | `eslint . --max-warnings 0` | ESLint with zero-error, zero-warning tolerance |
-| TypeCheck | `tsc --noEmit` | Full project strict type-checking |
-| Unit Tests | `vitest run --reporter=verbose` | 2,867 app tests (2 skipped) |
-| Build | `next build` (after `prisma generate`) | Production Next.js build verification |
-| Contracts | `cargo build --target wasm32v1-none` + `cargo test` | Both Soroban contracts to WASM |
-| Deploy Config | `scripts/validate-deploy-config.sh` | Public-config guards on the deploy script |
-| Secrets | `gitleaks detect` + scanner self-test | Secret scanning on every PR |
-| Helm | `helm lint` + `helm template` | Chart validation and render checks |
+| Job           | Command                                             | Purpose                                        |
+| ------------- | --------------------------------------------------- | ---------------------------------------------- |
+| Lint          | `eslint . --max-warnings 0`                         | ESLint with zero-error, zero-warning tolerance |
+| TypeCheck     | `tsc --noEmit`                                      | Full project strict type-checking              |
+| Unit Tests    | `vitest run --reporter=verbose`                     | 2,867 app tests (2 skipped)                    |
+| Build         | `next build` (after `prisma generate`)              | Production Next.js build verification          |
+| Contracts     | `cargo build --target wasm32v1-none` + `cargo test` | Both Soroban contracts to WASM                 |
+| Deploy Config | `scripts/validate-deploy-config.sh`                 | Public-config guards on the deploy script      |
+| Secrets       | `gitleaks detect` + scanner self-test               | Secret scanning on every PR                    |
+| Helm          | `helm lint` + `helm template`                       | Chart validation and render checks             |
 
 Path-scoped workflows add Prisma schema/migration replay
 (`prisma-ci.yml`), contract WASM size guardrails (`contract-regression.yml`),
@@ -731,26 +739,26 @@ the nightly E2E suite (`e2e-nightly.yml`), the Docker image smoke test
 
 ### 🎥 [Watch the Pitch Video (3 min)](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)
 
-*11 scenes: Problem → Live Dashboard → Vercel Deployment → Soroban Contracts → Send Payment → Real-Time Events → GitHub README → CI Pipeline → Multisig Security → Open Source → Outro*
+_11 scenes: Problem → Live Dashboard → Vercel Deployment → Soroban Contracts → Send Payment → Real-Time Events → GitHub README → CI Pipeline → Multisig Security → Open Source → Outro_
 
 **▶️ [Watch on Loom](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)** · [Download MP4](./public/demo.mp4)
 
 > Screenshots below are captured live from the production deployment on Vercel, with a connected wallet.
 
-| Dashboard | Send Payment |
-|---|---|
+| Dashboard                                        | Send Payment                                           |
+| ------------------------------------------------ | ------------------------------------------------------ |
 | ![Dashboard](./public/screenshots/dashboard.png) | ![Send Payment](./public/screenshots/send-payment.png) |
 
-| Payments | Contracts |
-|---|---|
+| Payments                                       | Contracts                                        |
+| ---------------------------------------------- | ------------------------------------------------ |
 | ![Payments](./public/screenshots/payments.png) | ![Contracts](./public/screenshots/contracts.png) |
 
-| Analytics | Multisig |
-|---|---|
+| Analytics                                        | Multisig                                       |
+| ------------------------------------------------ | ---------------------------------------------- |
 | ![Analytics](./public/screenshots/analytics.png) | ![Multisig](./public/screenshots/multisig.png) |
 
-| Governance | Mobile Responsive |
-|---|---|
+| Governance                                         | Mobile Responsive                                     |
+| -------------------------------------------------- | ----------------------------------------------------- |
 | ![Governance](./public/screenshots/governance.png) | ![Mobile](./public/screenshots/mobile-responsive.png) |
 
 </div>
@@ -759,18 +767,18 @@ the nightly E2E suite (`e2e-nightly.yml`), the Docker image smoke test
 
 ## 🛠 Tech Stack
 
-| Layer | Technology | Why |
-|---|---|---|
-| **Framework** | [Next.js 16](https://nextjs.org) | App Router, SSR, API routes, Vercel native |
-| **Language** | [TypeScript](https://www.typescriptlang.org) | Strict mode, full type safety |
-| **Styling** | [Tailwind CSS v4](https://tailwindcss.com) | Utility-first, dark mode, custom theme |
-| **Blockchain** | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org) | Horizon, Soroban RPC, TX building |
-| **Contracts** | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27 | WASM compilation, cross-contract invocation |
-| **Wallet** | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) | 6-wallet connector abstraction, including Ledger hardware signing |
-| **Database** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite | Type-safe ORM, provider switching |
-| **Testing** | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | Unit, integration & E2E coverage |
-| **CI/CD** | [GitHub Actions](https://github.com/features/actions) | Gating pipeline on every PR |
-| **Hosting** | [Vercel](https://vercel.com) | Auto-deploy from `main`, edge network |
+| Layer          | Technology                                                                                                                                                                               | Why                                                               |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **Framework**  | [Next.js 16](https://nextjs.org)                                                                                                                                                         | App Router, SSR, API routes, Vercel native                        |
+| **Language**   | [TypeScript](https://www.typescriptlang.org)                                                                                                                                             | Strict mode, full type safety                                     |
+| **Styling**    | [Tailwind CSS v4](https://tailwindcss.com)                                                                                                                                               | Utility-first, dark mode, custom theme                            |
+| **Blockchain** | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org)                                                                                                          | Horizon, Soroban RPC, TX building                                 |
+| **Contracts**  | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27                                                                                                                                     | WASM compilation, cross-contract invocation                       |
+| **Wallet**     | [Freighter](https://freighter.app) · [xBull](https://xbull.app) · [Rabet](https://rabet.io) · [Albedo](https://albedo.link) · [Lobstr](https://lobstr.co) · [Ledger](https://ledger.com) | 6-wallet connector abstraction, including Ledger hardware signing |
+| **Database**   | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite                                                                                                                                 | Type-safe ORM, provider switching                                 |
+| **Testing**    | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev)                                                                                              | Unit, integration & E2E coverage                                  |
+| **CI/CD**      | [GitHub Actions](https://github.com/features/actions)                                                                                                                                    | Gating pipeline on every PR                                       |
+| **Hosting**    | [Vercel](https://vercel.com)                                                                                                                                                             | Auto-deploy from `main`, edge network                             |
 
 ---
 
@@ -809,6 +817,7 @@ npx playwright test  # E2E suite
 ### Commit Convention
 
 We follow [Conventional Commits](https://www.conventionalcommits.org):
+
 - `feat:` — new feature
 - `fix:` — bug fix
 - `docs:` — documentation
@@ -820,47 +829,47 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 
 ## 🗺 Roadmap
 
-| Milestone | Status |
-|---|---|
-| ✅ Wallet connect/disconnect + balance | **Done** |
-| ✅ Send XLM with Freighter signing | **Done** |
-| ✅ Batch payments (multi-recipient) | **Done** |
-| ✅ Soroban contract deployed (Stellar Testnet) | **Done** |
-| ✅ Cross-contract communication | **Done** |
-| ✅ SSE event streaming from chain | **Done** |
-| ✅ Mobile responsive UI | **Done** |
-| ✅ CI/CD pipeline + 2,867 app tests + 67 contract tests + 97 e2e | **Done** |
-| ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr) | **Done** |
-| ✅ Ledger hardware wallet connector | **Done** — WebUSB Stellar app signing |
-| ✅ Stellar assets (USDC, custom tokens, trustline checks) | **Done** |
-| ✅ Payment request links (shareable invoices, expiry, email notifications and reminders) | **Done** |
-| ✅ Address book CSV import/export with validation | **Done** |
-| ✅ SEP-7 mobile wallet handoff and resilient XLM/USD price display | **Done** |
-| ✅ Webhook delivery (HMAC signed, retries) | **Done** |
-| ✅ PostgreSQL support (provider switching, migrations) | **Done** |
-| ✅ PWA / mobile app (offline fallback, install prompt) | **Done** |
-| ✅ Multisig approvals (N-of-M, propose/approve/execute, full UI) | **Done** |
-| ✅ Spending limits + escalation tiers | **Done** |
-| ✅ RBAC (Admin/Operator/Auditor) — full-stack + dashboard UI | **Done** |
-| ✅ On-chain immutable audit log — full-stack + SSE streaming | **Done** |
-| ✅ Recurring payment scheduler — contract + API + dashboard UI | **Done** |
-| ✅ Fee configuration per operation — full-stack + version history | **Done** |
-| ✅ Live Horizon fee estimator — Low/Recommended/Fast tiers + custom override on the send form | **Done** |
-| ✅ Timelocked admin actions (24h delay) — full-stack | **Done** |
-| ✅ Escrow management — contract-backed dashboard UI | **Done** |
-| ✅ Payment streams — vesting, claims, cancellation dashboard, per-stream timeline with live claim counter and future-date simulator | **Done** |
-| ✅ DAO governance (propose→vote→execute) — full-stack | **Done** |
-| ✅ Structured refund system (6 reason codes) — full-stack | **Done** |
-| ✅ On-chain notification hooks — contract + relayer + UI | **Done** |
-| ✅ Cross-contract orchestration (atomic pause_all) | **Done** |
-| ✅ Policy versioning (immutable config history, capped at 100) | **Done** |
-| ✅ Two-step admin rotation (24h timelock) | **Done** |
-| ✅ soroban-sdk 27 upgrade — 58 contract unit tests green in CI | **Done** |
-| ✅ Gas optimization (92% storage savings, avg 90K stroops) | **Done** |
-| ✅ Testnet deployment (both contracts live, verified on-chain) | **Done** |
-| ✅ Frontend/contract interface alignment (`record_payment` + Horizon verification) | **Done** |
-| ✅ Pitch video — 3 min, AI voiceover, live Vercel + GitHub captures | **Done** |
-| 🔜 Mainnet deployment | Planned |
+| Milestone                                                                                                                           | Status                                |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| ✅ Wallet connect/disconnect + balance                                                                                              | **Done**                              |
+| ✅ Send XLM with Freighter signing                                                                                                  | **Done**                              |
+| ✅ Batch payments (multi-recipient)                                                                                                 | **Done**                              |
+| ✅ Soroban contract deployed (Stellar Testnet)                                                                                      | **Done**                              |
+| ✅ Cross-contract communication                                                                                                     | **Done**                              |
+| ✅ SSE event streaming from chain                                                                                                   | **Done**                              |
+| ✅ Mobile responsive UI                                                                                                             | **Done**                              |
+| ✅ CI/CD pipeline + 2,867 app tests + 67 contract tests + 97 e2e                                                                    | **Done**                              |
+| ✅ Multi-wallet support (Freighter, Albedo, xBull, Rabet, Lobstr)                                                                   | **Done**                              |
+| ✅ Ledger hardware wallet connector                                                                                                 | **Done** — WebUSB Stellar app signing |
+| ✅ Stellar assets (USDC, custom tokens, trustline checks)                                                                           | **Done**                              |
+| ✅ Payment request links (shareable invoices, expiry, email notifications and reminders)                                            | **Done**                              |
+| ✅ Address book CSV import/export with validation                                                                                   | **Done**                              |
+| ✅ SEP-7 mobile wallet handoff and resilient XLM/USD price display                                                                  | **Done**                              |
+| ✅ Webhook delivery (HMAC signed, retries)                                                                                          | **Done**                              |
+| ✅ PostgreSQL support (provider switching, migrations)                                                                              | **Done**                              |
+| ✅ PWA / mobile app (offline fallback, install prompt)                                                                              | **Done**                              |
+| ✅ Multisig approvals (N-of-M, propose/approve/execute, full UI)                                                                    | **Done**                              |
+| ✅ Spending limits + escalation tiers                                                                                               | **Done**                              |
+| ✅ RBAC (Admin/Operator/Auditor) — full-stack + dashboard UI                                                                        | **Done**                              |
+| ✅ On-chain immutable audit log — full-stack + SSE streaming                                                                        | **Done**                              |
+| ✅ Recurring payment scheduler — contract + API + dashboard UI                                                                      | **Done**                              |
+| ✅ Fee configuration per operation — full-stack + version history                                                                   | **Done**                              |
+| ✅ Live Horizon fee estimator — Low/Recommended/Fast tiers + custom override on the send form                                       | **Done**                              |
+| ✅ Timelocked admin actions (24h delay) — full-stack                                                                                | **Done**                              |
+| ✅ Escrow management — contract-backed dashboard UI                                                                                 | **Done**                              |
+| ✅ Payment streams — vesting, claims, cancellation dashboard, per-stream timeline with live claim counter and future-date simulator | **Done**                              |
+| ✅ DAO governance (propose→vote→execute) — full-stack                                                                               | **Done**                              |
+| ✅ Structured refund system (6 reason codes) — full-stack                                                                           | **Done**                              |
+| ✅ On-chain notification hooks — contract + relayer + UI                                                                            | **Done**                              |
+| ✅ Cross-contract orchestration (atomic pause_all)                                                                                  | **Done**                              |
+| ✅ Policy versioning (immutable config history, capped at 100)                                                                      | **Done**                              |
+| ✅ Two-step admin rotation (24h timelock)                                                                                           | **Done**                              |
+| ✅ soroban-sdk 27 upgrade — 58 contract unit tests green in CI                                                                      | **Done**                              |
+| ✅ Gas optimization (92% storage savings, avg 90K stroops)                                                                          | **Done**                              |
+| ✅ Testnet deployment (both contracts live, verified on-chain)                                                                      | **Done**                              |
+| ✅ Frontend/contract interface alignment (`record_payment` + Horizon verification)                                                  | **Done**                              |
+| ✅ Pitch video — 3 min, AI voiceover, live Vercel + GitHub captures                                                                 | **Done**                              |
+| 🔜 Mainnet deployment                                                                                                               | Planned                               |
 
 ---
 
@@ -868,21 +877,22 @@ We follow [Conventional Commits](https://www.conventionalcommits.org):
 
 > ⚠️ **Honest status:** the Kani harnesses in `contracts/ophirpay/spec/` verify hand-written
 > **models** — they share no code with the deployed `OphirPayContract`, are not run in CI, and
-> several are tautological. The list below reflects *modeled intent*, **not** proof of the deployed
+> several are tautological. The list below reflects _modeled intent_, **not** proof of the deployed
 > contract. See [docs/AUDIT.md](docs/AUDIT.md) for details.
 
-| # | Invariant | Status |
-|---|-----------|--------|
-| 1 | **LOCKED_BALANCE Protection** — `emergency_withdraw` cannot drain user funds | ⚠️ Model only — see HIGH-1 in audit |
-| 2 | **One Address = One Vote** — no double-voting per proposal | ⚠️ Model only |
-| 3 | **Reentrancy Lock Atomicity** — lock acquired before cross-contract calls | ⚠️ Model only — see MEDIUM-4 in audit |
-| 4 | **Proposal Deposit Lifecycle** — deposit always refunded on execution | ⚠️ Model only |
-| 5 | **Fee Cap (10% max)** — no fee config exceeds 1000 bps | ⚠️ Model only |
-| 6 | **Multisig Threshold** — N-of-M enforcement before execution | ⚠️ Model only |
-| 7 | **Timelock 24h Delay** — exactly 86400 seconds enforced | ⚠️ Model only — not wired to admin fns |
-| 8 | **Spending Limit Expiry** — expired/inactive limits always reject | ⚠️ Model only — `check_spending` is a read-only check; expiry enforced in `atomic_spend` |
+| #   | Invariant                                                                    | Status                                                                                   |
+| --- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1   | **LOCKED_BALANCE Protection** — `emergency_withdraw` cannot drain user funds | ⚠️ Model only — see HIGH-1 in audit                                                      |
+| 2   | **One Address = One Vote** — no double-voting per proposal                   | ⚠️ Model only                                                                            |
+| 3   | **Reentrancy Lock Atomicity** — lock acquired before cross-contract calls    | ⚠️ Model only — see MEDIUM-4 in audit                                                    |
+| 4   | **Proposal Deposit Lifecycle** — deposit always refunded on execution        | ⚠️ Model only                                                                            |
+| 5   | **Fee Cap (10% max)** — no fee config exceeds 1000 bps                       | ⚠️ Model only                                                                            |
+| 6   | **Multisig Threshold** — N-of-M enforcement before execution                 | ⚠️ Model only                                                                            |
+| 7   | **Timelock 24h Delay** — exactly 86400 seconds enforced                      | ⚠️ Model only — not wired to admin fns                                                   |
+| 8   | **Spending Limit Expiry** — expired/inactive limits always reject            | ⚠️ Model only — `check_spending` is a read-only check; expiry enforced in `atomic_spend` |
 
 **Run the (model) proofs:**
+
 ```bash
 cargo install kani-verifier && cargo kani setup
 cd contracts/ophirpay/spec && cargo kani
@@ -899,15 +909,15 @@ report lives in **[docs/AUDIT.md](docs/AUDIT.md)**.
 
 **Findings summary:**
 
-| Severity | Count | Headline |
-|---|---|---|
-| Critical | 0 | — |
-| High | 2 | ~~Refund path bypasses `LOCKED_BALANCE`~~ ✅ fixed (validation + owner-auth refunds); "10/10 formally verified" claim ~~not substantiated~~ ✅ removed, `docs/VERIFICATION.md` now documents model-only status |
-| Medium | 6 | ~~Unauthenticated `check_spending` mutation · unbounded enumeration · unallowlisted emitter · incomplete reentrancy coverage · `emergency_pause_all` ignores cross-contract result · SSRF bypass via webhook redirects~~ ✅ **all fixed** in code (pending on-chain upgrade) |
-| Low | 11 | Vesting overflow, missing pause guards on refunds, webhook HMAC body mismatch, plain SHA-256 API keys, error-code inflation, misc |
-| Informational | 5 | Admin actions not timelocked on-chain, permissionless executors, untrusted on-chain records |
+| Severity      | Count | Headline                                                                                                                                                                                                                                                                     |
+| ------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Critical      | 0     | —                                                                                                                                                                                                                                                                            |
+| High          | 2     | ~~Refund path bypasses `LOCKED_BALANCE`~~ ✅ fixed (validation + owner-auth refunds); "10/10 formally verified" claim ~~not substantiated~~ ✅ removed, `docs/VERIFICATION.md` now documents model-only status                                                               |
+| Medium        | 6     | ~~Unauthenticated `check_spending` mutation · unbounded enumeration · unallowlisted emitter · incomplete reentrancy coverage · `emergency_pause_all` ignores cross-contract result · SSRF bypass via webhook redirects~~ ✅ **all fixed** in code (pending on-chain upgrade) |
+| Low           | 11    | Vesting overflow, missing pause guards on refunds, webhook HMAC body mismatch, plain SHA-256 API keys, error-code inflation, misc                                                                                                                                            |
+| Informational | 5     | Admin actions not timelocked on-chain, permissionless executors, untrusted on-chain records                                                                                                                                                                                  |
 
-**Status:** ⚠️ **Not yet audited by a third party.** The codebase is *audit-ready*, but the
+**Status:** ⚠️ **Not yet audited by a third party.** The codebase is _audit-ready_, but the
 findings above should be remediated and an independent audit (Runtime Verification, Certora,
 Trail of Bits, or OtterSec) commissioned before mainnet deployment.
 
@@ -922,7 +932,7 @@ OphirPay is designed with defense-in-depth across the contract, API, and web lay
 - **Fund-safety invariant** — `emergency_withdraw` is capped at `contract_balance − LOCKED_BALANCE`, so even the contract **owner cannot drain** funds locked in active escrows, streams, or governance deposits
 - **Reentrancy guard** — `REENTRANCY_LOCK` blocks cross-contract reentrancy on **every** token-transfer path: escrow create/release/claim, stream create/claim/cancel, governance deposit/refund, refund processing, and the emergency pause/unpause/withdraw functions
 - **Pause circuit breaker** — `require_not_paused()` guards every state-changing function
-- **Timelocked upgrades & ownership** — 24h delay on WASM upgrades and two-step ownership transfer (other admin actions are *not* timelocked on-chain — see [docs/AUDIT.md](docs/AUDIT.md))
+- **Timelocked upgrades & ownership** — 24h delay on WASM upgrades and two-step ownership transfer (other admin actions are _not_ timelocked on-chain — see [docs/AUDIT.md](docs/AUDIT.md))
 - **1 address = 1 vote** — governance votes are tracked per-address on-chain; double-voting returns `AlreadyVoted`
 - **Spam-resistant governance** — proposals require a minimum deposit (locked in `LOCKED_BALANCE`, refunded on execution)
 - **No panics** — contract functions return `Result<T, PaymentError>` (the enum defines ~300 variants, many reserved for unimplemented features — see [docs/AUDIT.md](docs/AUDIT.md))
@@ -951,7 +961,7 @@ OphirPay is engineered for predictable on-chain costs and fast reads:
 
 - **Gas-report CI gate** — the `contract-gas-report` job compiles both contracts, enforces the 128 KB Soroban WASM protocol limit, estimates base inclusion fees, and uploads a per-function gas report as a build artifact (`docs/GAS.md` mirrors the cost model)
 - **Cached on-chain reads** — read-only simulations are cached server-side (30–60 s TTL) with per-key granularity; governance/multisig/escrow listings hit the RPC once per window instead of per request
-- **Bounded N+1 enumeration** — list endpoints cap per-record reads (e.g. 100 proposals), enumerate the *most recent* tail first, and return an explicit `truncated` flag instead of silently dropping data
+- **Bounded N+1 enumeration** — list endpoints cap per-record reads (e.g. 100 proposals), enumerate the _most recent_ tail first, and return an explicit `truncated` flag instead of silently dropping data
 - **Scoped cache invalidation** — mutations invalidate only the affected query keys, so an on-chain write never triggers a full re-enumeration of unrelated (expensive) lists
 - **RPC failover** — the RPC layer retries across endpoints and falls back between public providers to stay available during provider outages
 
@@ -967,12 +977,12 @@ OphirPay is engineered for predictable on-chain costs and fast reads:
 
 ## 🌐 Community
 
-| Channel | Link |
-|---|---|
+| Channel                | Link                                                                                         |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
 | **GitHub Discussions** | [github.com/OphirPay/OphirPay/discussions](https://github.com/OphirPay/OphirPay/discussions) |
-| **Issue Tracker** | [github.com/OphirPay/OphirPay/issues](https://github.com/OphirPay/OphirPay/issues) |
-| **Security Reports** | [SECURITY.md](SECURITY.md) — Bug bounty program available |
-| **Stellar Ecosystem** | [stellar.org](https://stellar.org) · [Soroban Docs](https://soroban.stellar.org) |
+| **Issue Tracker**      | [github.com/OphirPay/OphirPay/issues](https://github.com/OphirPay/OphirPay/issues)           |
+| **Security Reports**   | [SECURITY.md](SECURITY.md) — Bug bounty program available                                    |
+| **Stellar Ecosystem**  | [stellar.org](https://stellar.org) · [Soroban Docs](https://soroban.stellar.org)             |
 
 ## 📄 License & Credits
 

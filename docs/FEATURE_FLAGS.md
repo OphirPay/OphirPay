@@ -12,13 +12,13 @@ Source of truth: [`src/lib/feature-flags.ts`](../src/lib/feature-flags.ts)
 
 ## Flag reference
 
-| Flag | Env variable | Default (no var set) | What it gates | Default type |
-|---|---|---|---|---|
-| `MULTI_ASSET` | `NEXT_PUBLIC_FEATURE_MULTI_ASSET` | **enabled** | Multi-asset send/receive UI, asset-selector component, multi-asset contract calls | opt-out |
-| `RECURRING_PAYMENTS` | `NEXT_PUBLIC_FEATURE_RECURRING` | **enabled** | Recurring / scheduled payment creation UI and the `/api/scheduled/*` routes | opt-out |
-| `WEBHOOKS` | `NEXT_PUBLIC_FEATURE_WEBHOOKS` | **enabled** | Webhook management UI and the `/api/webhooks/*` delivery routes | opt-out |
-| `ADVANCED_ANALYTICS` | `NEXT_PUBLIC_FEATURE_ADVANCED_ANALYTICS` | **disabled** | Extended analytics dashboard, exportable reports, advanced chart views | opt-in |
-| `API_KEYS` | `NEXT_PUBLIC_FEATURE_API_KEYS` | **enabled** | API key management UI and the `/api/keys/*` CRUD routes | opt-out |
+| Flag                 | Env variable                             | Default (no var set) | What it gates                                                                     | Default type |
+| -------------------- | ---------------------------------------- | -------------------- | --------------------------------------------------------------------------------- | ------------ |
+| `MULTI_ASSET`        | `NEXT_PUBLIC_FEATURE_MULTI_ASSET`        | **enabled**          | Multi-asset send/receive UI, asset-selector component, multi-asset contract calls | opt-out      |
+| `RECURRING_PAYMENTS` | `NEXT_PUBLIC_FEATURE_RECURRING`          | **enabled**          | Recurring / scheduled payment creation UI and the `/api/scheduled/*` routes       | opt-out      |
+| `WEBHOOKS`           | `NEXT_PUBLIC_FEATURE_WEBHOOKS`           | **enabled**          | Webhook management UI and the `/api/webhooks/*` delivery routes                   | opt-out      |
+| `ADVANCED_ANALYTICS` | `NEXT_PUBLIC_FEATURE_ADVANCED_ANALYTICS` | **disabled**         | Extended analytics dashboard, exportable reports, advanced chart views            | opt-in       |
+| `API_KEYS`           | `NEXT_PUBLIC_FEATURE_API_KEYS`           | **enabled**          | API key management UI and the `/api/keys/*` CRUD routes                           | opt-out      |
 
 ### Default behaviour
 
@@ -91,13 +91,13 @@ Open the browser's DevTools console on any OphirPay page and run:
 
 ```js
 // Enable a flag
-localStorage.setItem('ff_ADVANCED_ANALYTICS', 'true');
+localStorage.setItem("ff_ADVANCED_ANALYTICS", "true");
 
 // Disable a flag
-localStorage.setItem('ff_MULTI_ASSET', 'false');
+localStorage.setItem("ff_MULTI_ASSET", "false");
 
 // Remove override (reverts to build-time value)
-localStorage.removeItem('ff_MULTI_ASSET');
+localStorage.removeItem("ff_MULTI_ASSET");
 ```
 
 Then **reload the page** — `isFeatureEnabled()` is called during render, not
@@ -106,9 +106,9 @@ reactively.
 You can also use the typed helper exported from `src/lib/feature-flags.ts`:
 
 ```ts
-import { overrideFeatureFlag } from '@/lib/feature-flags';
+import { overrideFeatureFlag } from "@/lib/feature-flags";
 
-overrideFeatureFlag('ADVANCED_ANALYTICS', true);
+overrideFeatureFlag("ADVANCED_ANALYTICS", true);
 ```
 
 ### Restriction
@@ -131,9 +131,9 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
 ## Checking a flag in application code
 
 ```ts
-import { isFeatureEnabled } from '@/lib/feature-flags';
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
-if (isFeatureEnabled('ADVANCED_ANALYTICS')) {
+if (isFeatureEnabled("ADVANCED_ANALYTICS")) {
   // render analytics dashboard
 }
 ```
@@ -146,9 +146,9 @@ site agnostic of the override mechanism.
 
 ## Adding a new flag
 
-1. Add an entry to `FEATURE_FLAGS` in `src/lib/feature-flags.ts`.  
-   - Opt-out: `MY_FLAG: process.env.NEXT_PUBLIC_FEATURE_MY_FLAG !== 'false'`  
-   - Opt-in:  `MY_FLAG: process.env.NEXT_PUBLIC_FEATURE_MY_FLAG === 'true'`
+1. Add an entry to `FEATURE_FLAGS` in `src/lib/feature-flags.ts`.
+   - Opt-out: `MY_FLAG: process.env.NEXT_PUBLIC_FEATURE_MY_FLAG !== 'false'`
+   - Opt-in: `MY_FLAG: process.env.NEXT_PUBLIC_FEATURE_MY_FLAG === 'true'`
 2. Add the variable to `.env.example` under the `# ── Feature Flags` section
    with a comment explaining what it controls.
 3. Add a row to the [Flag reference](#flag-reference) table above.

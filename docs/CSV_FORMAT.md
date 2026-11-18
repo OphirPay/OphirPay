@@ -15,15 +15,15 @@ The importer lives in [`src/lib/csv-import.ts`](../src/lib/csv-import.ts)
 
 ## Quick reference
 
-| | |
-| --- | --- |
-| Delimiter | Comma (`,`) |
-| Encoding | UTF-8 (a leading BOM is stripped automatically) |
-| Line endings | `LF` or Windows `CRLF` (both accepted) |
-| Header row | **Required** — first row, skipped during import |
-| Columns | `address,amount,assetCode,memo` |
-| Max recipients per batch | 100 |
-| Address format | Stellar public key, `G` followed by 55 uppercase alphanumerics |
+|                          |                                                                |
+| ------------------------ | -------------------------------------------------------------- |
+| Delimiter                | Comma (`,`)                                                    |
+| Encoding                 | UTF-8 (a leading BOM is stripped automatically)                |
+| Line endings             | `LF` or Windows `CRLF` (both accepted)                         |
+| Header row               | **Required** — first row, skipped during import                |
+| Columns                  | `address,amount,assetCode,memo`                                |
+| Max recipients per batch | 100                                                            |
+| Address format           | Stellar public key, `G` followed by 55 uppercase alphanumerics |
 
 ```csv
 address,amount,assetCode,memo
@@ -60,12 +60,12 @@ CSV must have a header row and at least one data row.
 
 ## Columns
 
-| Column | Required | Description | Validation |
-| --- | --- | --- | --- |
-| `address` | ✅ | Stellar recipient public key | Must match `G` followed by exactly 55 uppercase letters/digits (`/^G[A-Z0-9]{55}$/`) |
-| `amount` | ✅ | Payment amount for this recipient | Must parse as a number greater than `0` |
-| `assetCode` | ❌ | Asset code to send (defaults to `XLM`) | Free-form string; empty cells fall back to `XLM` |
-| `memo` | ❌ | Optional Stellar memo (≤ 28 bytes) | Free-form text; empty cells are omitted |
+| Column      | Required | Description                            | Validation                                                                           |
+| ----------- | -------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
+| `address`   | ✅       | Stellar recipient public key           | Must match `G` followed by exactly 55 uppercase letters/digits (`/^G[A-Z0-9]{55}$/`) |
+| `amount`    | ✅       | Payment amount for this recipient      | Must parse as a number greater than `0`                                              |
+| `assetCode` | ❌       | Asset code to send (defaults to `XLM`) | Free-form string; empty cells fall back to `XLM`                                     |
+| `memo`      | ❌       | Optional Stellar memo (≤ 28 bytes)     | Free-form text; empty cells are omitted                                              |
 
 Notes:
 
@@ -111,12 +111,12 @@ the transaction is built:
 
 ### Import errors (`parseRecipientsCsv`)
 
-| Scenario | Row reported | Message |
-| --- | --- | --- |
-| Empty file, or file with only a header | `0` | `CSV must have a header row and at least one data row.` |
-| Row with fewer than 2 cells | row number (1-based) | `Each row must have at least address and amount.` |
-| Malformed Stellar address | row number | `Invalid Stellar address at row {N}.` |
-| Amount missing, non-numeric, or ≤ 0 | row number | `Invalid amount at row {N}.` |
+| Scenario                               | Row reported         | Message                                                 |
+| -------------------------------------- | -------------------- | ------------------------------------------------------- |
+| Empty file, or file with only a header | `0`                  | `CSV must have a header row and at least one data row.` |
+| Row with fewer than 2 cells            | row number (1-based) | `Each row must have at least address and amount.`       |
+| Malformed Stellar address              | row number           | `Invalid Stellar address at row {N}.`                   |
+| Amount missing, non-numeric, or ≤ 0    | row number           | `Invalid amount at row {N}.`                            |
 
 Example — `address` with a lowercase letter and `amount` of `0`:
 
@@ -135,20 +135,20 @@ Invalid amount at row 3.
 
 ### Validator errors (`validateBatchRecipients`)
 
-| Scenario | Field | Message |
-| --- | --- | --- |
-| No recipients at all | `recipients` | `At least one recipient is required.` |
-| More than 100 recipients | `recipients` | `Maximum 100 recipients per batch.` |
-| Invalid address | `address` | `Invalid Stellar address.` |
-| Duplicate address | `address` | `Duplicate address.` |
-| Amount ≤ 0 or non-numeric | `amount` | `Amount must be greater than 0.` |
-| Total exceeds balance | `total` | `Total of {total} exceeds available balance of {balance}.` |
+| Scenario                  | Field        | Message                                                    |
+| ------------------------- | ------------ | ---------------------------------------------------------- |
+| No recipients at all      | `recipients` | `At least one recipient is required.`                      |
+| More than 100 recipients  | `recipients` | `Maximum 100 recipients per batch.`                        |
+| Invalid address           | `address`    | `Invalid Stellar address.`                                 |
+| Duplicate address         | `address`    | `Duplicate address.`                                       |
+| Amount ≤ 0 or non-numeric | `amount`     | `Amount must be greater than 0.`                           |
+| Total exceeds balance     | `total`      | `Total of {total} exceeds available balance of {balance}.` |
 
 ---
 
 ## Tips
 
-- **Excel / Google Sheets:** export as *CSV UTF-8* — the importer strips the
+- **Excel / Google Sheets:** export as _CSV UTF-8_ — the importer strips the
   UTF-8 BOM that these tools prepend, and normalizes `CRLF` line endings.
 - **Memo column:** leave it empty (trailing comma, or nothing after the
   third column) when the recipient doesn't need a memo.
@@ -170,14 +170,14 @@ produce CSV as output. Their format is defined by
 
 ### `GET /api/payments/export`
 
-| | |
-| --- | --- |
-| Filters | `status`, `search`, `dateFrom`, `dateTo`, `asset` — identical to the payments list filters |
-| Formats | `format=csv` (default) or `format=json` |
-| Filename | `ophirpay-payments-YYYY-MM-DD.csv` / `.json` (UTC date) |
-| Transfer | `Transfer-Encoding: chunked`, header first, then 250-row chunks |
-| Row cap | **None.** A streamed export never withholds rows |
-| Rate limit | 20 exports per account per minute; 429 carries `Retry-After` |
+|            |                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| Filters    | `status`, `search`, `dateFrom`, `dateTo`, `asset` — identical to the payments list filters |
+| Formats    | `format=csv` (default) or `format=json`                                                    |
+| Filename   | `ophirpay-payments-YYYY-MM-DD.csv` / `.json` (UTC date)                                    |
+| Transfer   | `Transfer-Encoding: chunked`, header first, then 250-row chunks                            |
+| Row cap    | **None.** A streamed export never withholds rows                                           |
+| Rate limit | 20 exports per account per minute; 429 carries `Retry-After`                               |
 
 Columns, in order (header text is what appears in the file):
 

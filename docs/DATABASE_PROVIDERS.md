@@ -20,16 +20,16 @@ work involving migrations, use PostgreSQL.
 
 ## What changes on SQLite
 
-| Area | PostgreSQL (canonical) | SQLite local-development consequence |
-|---|---|---|
-| Concurrent writes | Multiple writers are coordinated by PostgreSQL. | SQLite serializes writes; overlapping requests, workers, or tests can contend for the database lock. It is not a useful load/concurrency test and does not reproduce production contention behavior. |
-| Transactions | Prisma transactions run against PostgreSQL transaction and locking semantics. | SQLite supports transactions, but permits only one writer at a time. A transaction that succeeds locally is not evidence that races, lock behavior, or throughput are correct on PostgreSQL. |
-| Enums | Native PostgreSQL enum types are created and altered by migrations. | Prisma represents enum values as text with client-side validation. Raw SQL or other writers can store values Prisma would reject. |
-| Monetary values | The five `Decimal` amounts use `@db.Decimal(18, 7)`, preserving the database precision contract. | SQLite has no fixed-precision decimal storage. The local instructions remove the native annotation; do not rely on SQLite arithmetic or SQLite tests to prove rounding and precision behavior. Keep monetary calculations in the application's Decimal code. |
-| Scalar lists | `ApiKey.scopes` is a PostgreSQL `String[]`. | Prisma scalar lists are not supported by the SQLite connector. The checked-in model cannot be treated as a fully equivalent SQLite schema; API-key scope behavior requires PostgreSQL. |
-| Full-text search | PostgreSQL migration `20260925120000_add_full_text_search` creates generated `tsvector` columns and GIN indexes. | SQLite has neither `tsvector` nor GIN. The migration and PostgreSQL-ranked search path cannot be used; the local substring fallback has fewer ranking/prefix capabilities and is not a performance substitute. |
-| Raw SQL | PostgreSQL-specific expressions and DDL are available. | PostgreSQL syntax such as `::text`, `ILIKE`, `to_tsquery`, `ts_rank`, `tsvector`, `GIN`, `ALTER TYPE`, and array literals does not port to SQLite. Keep raw SQL on provider-specific branches and bind values rather than interpolating input. |
-| Referential integrity | Application relations use Prisma's `relationMode = "prisma"`; database enforcement is not generally provided by foreign keys. | Prisma emulates relation behavior for supported client operations. Direct SQL/imports can bypass it on either provider, so validate references during data transfer. |
+| Area                  | PostgreSQL (canonical)                                                                                                        | SQLite local-development consequence                                                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Concurrent writes     | Multiple writers are coordinated by PostgreSQL.                                                                               | SQLite serializes writes; overlapping requests, workers, or tests can contend for the database lock. It is not a useful load/concurrency test and does not reproduce production contention behavior.                                                         |
+| Transactions          | Prisma transactions run against PostgreSQL transaction and locking semantics.                                                 | SQLite supports transactions, but permits only one writer at a time. A transaction that succeeds locally is not evidence that races, lock behavior, or throughput are correct on PostgreSQL.                                                                 |
+| Enums                 | Native PostgreSQL enum types are created and altered by migrations.                                                           | Prisma represents enum values as text with client-side validation. Raw SQL or other writers can store values Prisma would reject.                                                                                                                            |
+| Monetary values       | The five `Decimal` amounts use `@db.Decimal(18, 7)`, preserving the database precision contract.                              | SQLite has no fixed-precision decimal storage. The local instructions remove the native annotation; do not rely on SQLite arithmetic or SQLite tests to prove rounding and precision behavior. Keep monetary calculations in the application's Decimal code. |
+| Scalar lists          | `ApiKey.scopes` is a PostgreSQL `String[]`.                                                                                   | Prisma scalar lists are not supported by the SQLite connector. The checked-in model cannot be treated as a fully equivalent SQLite schema; API-key scope behavior requires PostgreSQL.                                                                       |
+| Full-text search      | PostgreSQL migration `20260925120000_add_full_text_search` creates generated `tsvector` columns and GIN indexes.              | SQLite has neither `tsvector` nor GIN. The migration and PostgreSQL-ranked search path cannot be used; the local substring fallback has fewer ranking/prefix capabilities and is not a performance substitute.                                               |
+| Raw SQL               | PostgreSQL-specific expressions and DDL are available.                                                                        | PostgreSQL syntax such as `::text`, `ILIKE`, `to_tsquery`, `ts_rank`, `tsvector`, `GIN`, `ALTER TYPE`, and array literals does not port to SQLite. Keep raw SQL on provider-specific branches and bind values rather than interpolating input.               |
+| Referential integrity | Application relations use Prisma's `relationMode = "prisma"`; database enforcement is not generally provided by foreign keys. | Prisma emulates relation behavior for supported client operations. Direct SQL/imports can bypass it on either provider, so validate references during data transfer.                                                                                         |
 
 Use SQLite for UI work, small local experiments, and code paths that do not
 depend on provider-specific behavior. Use PostgreSQL for migration testing,
@@ -50,26 +50,26 @@ That does not make them a usable subset: earlier migrations are required, the
 provider lock is PostgreSQL, and the complete sequence does not apply on
 SQLite.
 
-| Migration | SQLite assessment |
-|---|---|
-| `20260810210941_initial_migration` | PostgreSQL-only: creates native enum types and uses PostgreSQL column types. |
-| `20260810212500_fix_amount_decimal` | PostgreSQL-only: `ALTER COLUMN ... TYPE DECIMAL(18,7)` is not SQLite `ALTER TABLE` syntax. |
-| `20260810213500_add_missing_relations` | SQL is portable in isolation (indexes only). |
-| `20260810220000_add_relation_indexes` | SQL is portable in isolation (indexes only). |
-| `20260811120000_add_refund_hook_onchain_id` | SQL is portable in isolation (add columns and unique indexes). |
-| `20260826120000_add_webhook_event_storage` | PostgreSQL-only: creates a native enum type. |
-| `20260826130000_add_delivery_latency_attempts` | Not SQLite-compatible: adds several columns in one `ALTER TABLE`. |
-| `20260826140000_add_payment_idempotency_key` | SQL is portable in isolation (one text column). |
-| `20260827000000_add_apikey_scopes` | PostgreSQL-only: `TEXT[]` and `ARRAY[]::TEXT[]`. |
-| `20260827000000_add_batch_idempotency_key` | SQL is portable in isolation (nullable text column and unique index). |
-| `20260827120000_add_api_key_request_logs` | Not SQLite-compatible: adds a foreign-key constraint with `ALTER TABLE ... ADD CONSTRAINT`. |
-| `20260827120000_add_paymentsync_run` | SQL is portable in isolation (table and indexes). |
-| `20260828120000_add_scheduled_payments` | PostgreSQL-only: creates a native enum type. |
-| `20260829000000_add_payment_status_lifecycle_values` | PostgreSQL-only: `ALTER TYPE ... ADD VALUE`. |
-| `20260829000000_add_refund_idempotency_and_audit_log` | SQL is portable in isolation, but SQLite's flexible `JSONB` affinity is not PostgreSQL JSONB behavior. |
-| `20260829010000_add_schedule_run_key` | PostgreSQL-only overall: includes `ALTER TYPE ... ADD VALUE`, despite its preceding column/index being portable. |
-| `20260925000000_add_webhook_deliveries` | Not SQLite-compatible: adds several columns in one `ALTER TABLE`. |
-| `20260925120000_add_full_text_search` | PostgreSQL-only: generated `tsvector` expressions and GIN indexes. |
+| Migration                                             | SQLite assessment                                                                                                |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `20260810210941_initial_migration`                    | PostgreSQL-only: creates native enum types and uses PostgreSQL column types.                                     |
+| `20260810212500_fix_amount_decimal`                   | PostgreSQL-only: `ALTER COLUMN ... TYPE DECIMAL(18,7)` is not SQLite `ALTER TABLE` syntax.                       |
+| `20260810213500_add_missing_relations`                | SQL is portable in isolation (indexes only).                                                                     |
+| `20260810220000_add_relation_indexes`                 | SQL is portable in isolation (indexes only).                                                                     |
+| `20260811120000_add_refund_hook_onchain_id`           | SQL is portable in isolation (add columns and unique indexes).                                                   |
+| `20260826120000_add_webhook_event_storage`            | PostgreSQL-only: creates a native enum type.                                                                     |
+| `20260826130000_add_delivery_latency_attempts`        | Not SQLite-compatible: adds several columns in one `ALTER TABLE`.                                                |
+| `20260826140000_add_payment_idempotency_key`          | SQL is portable in isolation (one text column).                                                                  |
+| `20260827000000_add_apikey_scopes`                    | PostgreSQL-only: `TEXT[]` and `ARRAY[]::TEXT[]`.                                                                 |
+| `20260827000000_add_batch_idempotency_key`            | SQL is portable in isolation (nullable text column and unique index).                                            |
+| `20260827120000_add_api_key_request_logs`             | Not SQLite-compatible: adds a foreign-key constraint with `ALTER TABLE ... ADD CONSTRAINT`.                      |
+| `20260827120000_add_paymentsync_run`                  | SQL is portable in isolation (table and indexes).                                                                |
+| `20260828120000_add_scheduled_payments`               | PostgreSQL-only: creates a native enum type.                                                                     |
+| `20260829000000_add_payment_status_lifecycle_values`  | PostgreSQL-only: `ALTER TYPE ... ADD VALUE`.                                                                     |
+| `20260829000000_add_refund_idempotency_and_audit_log` | SQL is portable in isolation, but SQLite's flexible `JSONB` affinity is not PostgreSQL JSONB behavior.           |
+| `20260829010000_add_schedule_run_key`                 | PostgreSQL-only overall: includes `ALTER TYPE ... ADD VALUE`, despite its preceding column/index being portable. |
+| `20260925000000_add_webhook_deliveries`               | Not SQLite-compatible: adds several columns in one `ALTER TABLE`.                                                |
+| `20260925120000_add_full_text_search`                 | PostgreSQL-only: generated `tsvector` expressions and GIN indexes.                                               |
 
 For PostgreSQL, use the checked-in workflow in
 [Database Schema & Migration Guide](DATABASE_SCHEMA_MIGRATIONS.md) and validate
@@ -92,27 +92,36 @@ setting `DIRECT_DATABASE_URL` changes the URL used by the current schema.
 Under heavy batch payment processing, webhook delivery storms, or high API traffic, Prisma connection pools can experience starvation if undersized or misconfigured.
 
 #### Recommended Pool Sizing Formula
+
 To avoid database thrashing and connection exhaustion, size the connection pool using the standard formula:
+
 ```text
 connection_limit = (number_of_cpu_cores * 2) + effective_spindle_count
 ```
+
 Configure pool parameters directly on the PostgreSQL `DATABASE_URL`:
+
 ```text
 DATABASE_URL="postgresql://user:password@host:5432/ophirpay?connection_limit=20&pool_timeout=10&connect_timeout=15"
 ```
+
 - `connection_limit`: Maximum simultaneous connections per application instance (default: `num_cpus * 2 + 1`).
 - `pool_timeout`: Seconds to wait before throwing a connection acquisition timeout (default: `10s`).
 - `connect_timeout`: Seconds to wait to establish a TCP connection with PostgreSQL.
 
 #### Automated Health Monitoring & Telemetry
+
 Prisma connection pool metrics are exposed to Prometheus at `/api/metrics`:
+
 - `prisma_pool_connections_busy`: Current active database connections executing queries.
 - `prisma_pool_connections_idle`: Established connections idle and immediately available.
 - `prisma_pool_connections_open`: Total open connections currently maintained by the client.
 - `prisma_pool_wait_duration_ms`: Latency histogram and cumulative time spent waiting to acquire a connection from the pool.
 
 #### High Wait Time Structured Warning Logs
+
 In `src/lib/prisma.ts`, queries and pool acquisitions exceeding **500ms** automatically trigger structured warning logs:
+
 ```json
 {
   "timestamp": "2026-10-19T01:23:45.000Z",
@@ -128,7 +137,9 @@ In `src/lib/prisma.ts`, queries and pool acquisitions exceeding **500ms** automa
 ```
 
 #### Recommended Grafana PromQL Alerts
+
 Operators can track pool health and exhaustion using the following PromQL queries:
+
 - **Pool Saturation Percentage**:
   ```promql
   (prisma_pool_connections_busy / clamp_min(prisma_pool_connections_open, 1)) * 100

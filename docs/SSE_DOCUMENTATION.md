@@ -13,6 +13,7 @@ The authoritative, field-by-field wire contract — payload schemas, heartbeat c
 ## Architecture & Transport Protocols
 
 OphirPay implements a dual-transport fallback strategy orchestrated by the client-side event manager:
+
 1. **Primary Transport:** WebSocket (`ws://` / `wss://`) for interactive bidirectional sessions.
 2. **Fallback & Streaming Transport:** Server-Sent Events (`http://` / `https://`) via `/api/events` and `/api/audit-log/sse`.
 
@@ -138,7 +139,9 @@ interface PaymentEvent {
 
 export function PaymentLiveTracker({ paymentId }: { paymentId: string }) {
   const [payment, setPayment] = useState<PaymentEvent | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "offline">("connecting");
+  const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "offline">(
+    "connecting"
+  );
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -177,7 +180,9 @@ export function PaymentLiveTracker({ paymentId }: { paymentId: string }) {
     <div className="rounded-lg border p-4 shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-medium">Real-Time Payment Status</h3>
-        <span className={`h-2 w-2 rounded-full ${connectionStatus === "live" ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
+        <span
+          className={`h-2 w-2 rounded-full ${connectionStatus === "live" ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
+        />
       </div>
       {payment ? (
         <div className="space-y-1 text-sm">

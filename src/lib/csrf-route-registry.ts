@@ -87,6 +87,9 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "POST", path: "/api/fee-config", routeFile: "fee-config/route.ts", description: "Authorize a protocol fee-config change (sudo step-up)" },
   { method: "POST", path: "/api/rbac", routeFile: "rbac/route.ts", description: "Authorize a role grant/revoke (sudo step-up)" },
 
+  // Settings
+  { method: "POST", path: "/api/settings", routeFile: "settings/route.ts", description: "Update application and custom RPC settings" },
+
   // Governance
   { method: "POST", path: "/api/governance/proposals", routeFile: "governance/proposals/route.ts", description: "Create governance proposal" },
   { method: "POST", path: "/api/governance/vote", routeFile: "governance/vote/route.ts", description: "Cast vote" },

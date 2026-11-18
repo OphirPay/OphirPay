@@ -31,7 +31,11 @@ import {
 import { revokeWalletSessions } from "@/lib/session-revocation";
 import { verifyChallengeToken, challengeMessage, verifyWalletSignature } from "@/lib/challenge";
 import { isValidStellarAddress } from "@/lib/stellar";
-import { successResponse, badRequestError, unauthorizedError } from "@/lib/api-response";
+import {
+  badRequestError,
+  unauthorizedError,
+  sensitiveSuccessResponse,
+} from "@/lib/api-response";
 import { verifyCsrf } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
 import { enforceAuthRateLimit } from "@/lib/auth-rate-limit";
@@ -94,7 +98,7 @@ export const POST = withMetrics("POST /api/auth/session", withRequestLogging(asy
     }
   }
 
-  const response = successResponse({ authenticated: true, publicKey, network });
+  const response = sensitiveSuccessResponse({ authenticated: true, publicKey, network });
 
   // Issue (or roll) the cookie: a fresh login always reissues, and an existing
   // session is reissued once it has less than half its TTL left so it never
@@ -104,6 +108,18 @@ export const POST = withMetrics("POST /api/auth/session", withRequestLogging(asy
     response.headers.set("Set-Cookie", buildSessionCookie(publicKey, network));
   }
   return response;
+}));
+
+export const GET = withMetrics("GET /api/auth/session", withRequestLogging(async function GET(request: Request) {
+  const session = readSessionCookie(request);
+  if (!session) {
+    return sensitiveSuccessResponse({ authenticated: false, session: null });
+  }
+  return sensitiveSuccessResponse({
+    authenticated: true,
+    publicKey: session.pk,
+    network: session.nw,
+  });
 }));
 
 export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging(async function DELETE(request: Request) {
@@ -123,7 +139,7 @@ export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging
     await revokeWalletSessions(session.pk);
   }
 
-  const response = successResponse({ authenticated: false });
+  const response = sensitiveSuccessResponse({ authenticated: false });
   response.headers.set("Set-Cookie", buildLogoutCookie());
   return response;
 }));

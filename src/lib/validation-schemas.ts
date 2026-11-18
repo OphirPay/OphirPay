@@ -248,11 +248,12 @@ export const createRecurringSchema = z.object({
 
 // ── Webhook Schemas ───────────────────────────────────────────
 
-export const createWebhookSchema = z.object({
-  url: z.string().url("Invalid webhook URL"),
-  events: z.array(z.string()).default([]),
-  isActive: z.boolean().default(true),
-});
+export {
+  createWebhookSchema,
+  webhookUrlSchema,
+  isAllowedWebhookProtocol,
+  type CreateWebhookInput,
+} from "@/lib/validation/webhook";
 
 export const webhookReplaySchema = z.object({
   since: z.string().datetime().optional(),

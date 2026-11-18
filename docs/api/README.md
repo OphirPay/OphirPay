@@ -20,6 +20,7 @@ Welcome to the OphirPay REST API documentation. This directory provides develope
 ## API Overview
 
 OphirPay provides production-grade payment orchestration over the Stellar network and Soroban smart contracts. The REST API handles:
+
 - **Payments**: Single payments, status tracking, idempotency, and refunds.
 - **Batch Disbursements**: Atomic multi-recipient payments amortizing base fees.
 - **Escrows & Streaming**: Time-locked vesting, milestone escrows, and streaming payments.
@@ -50,11 +51,11 @@ OphirPay ships a complete, pre-configured collection in [`examples/postman_colle
 
 The collection is pre-configured with collection-level variables. Customize them for your target environment:
 
-| Variable | Default Value | Description |
-|---|---|---|
-| `baseUrl` | `http://localhost:3000` | The target OphirPay server host. For production, set to your API domain (e.g. `https://api.ophirpay.com`). |
-| `apiKey` | `ophir_test_0123...` | Your secret API key. Passed via `Authorization: Bearer {{apiKey}}`. |
-| `metricsToken` | `metrics_secret_...` | Bearer token for authorized Prometheus scraping at `GET /api/metrics`. |
+| Variable       | Default Value           | Description                                                                                                |
+| -------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `baseUrl`      | `http://localhost:3000` | The target OphirPay server host. For production, set to your API domain (e.g. `https://api.ophirpay.com`). |
+| `apiKey`       | `ophir_test_0123...`    | Your secret API key. Passed via `Authorization: Bearer {{apiKey}}`.                                        |
+| `metricsToken` | `metrics_secret_...`    | Bearer token for authorized Prometheus scraping at `GET /api/metrics`.                                     |
 
 ---
 

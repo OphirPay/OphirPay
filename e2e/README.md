@@ -4,11 +4,11 @@ This directory holds the end-to-end specs. The visual regression specs live in
 [`tests/visual/`](../tests/visual/) but are driven by Playwright too, which is
 why their local/Docker instructions live here as well.
 
-| Suite | Specs | Config | Command | Needs a running app |
-|---|---|---|---|---|
-| E2E | `e2e/*.spec.ts` | `playwright.config.ts` | `npm run test:e2e` | **yes** |
-| Visual regression | `tests/visual/*.spec.ts` | `playwright.visual.config.ts` | `npm run test:visual` | **yes** |
-| Offline subset | `@offline` specs | `playwright.config.ts` | `npm run test:e2e:offline` | no |
+| Suite             | Specs                    | Config                        | Command                    | Needs a running app |
+| ----------------- | ------------------------ | ----------------------------- | -------------------------- | ------------------- |
+| E2E               | `e2e/*.spec.ts`          | `playwright.config.ts`        | `npm run test:e2e`         | **yes**             |
+| Visual regression | `tests/visual/*.spec.ts` | `playwright.visual.config.ts` | `npm run test:visual`      | **yes**             |
+| Offline subset    | `@offline` specs         | `playwright.config.ts`        | `npm run test:e2e:offline` | no                  |
 
 Neither config has a `webServer` block, so Playwright never starts the app
 itself. Start it first (`npm run dev`, or a production build) and point the
@@ -24,11 +24,11 @@ suite and the browser/runtime setup both suites share.
 Screenshots of the critical pages are committed as baselines and compared on
 every run. The config defines six projects:
 
-| Project | Scope |
-|---|---|
-| `visual-light`, `visual-dark` | Every page in `visual-regression.spec.ts`, at 1440×900, one screenshot per colour scheme |
-| `visual-mobile-light`, `visual-mobile-dark` | `visual-payment-modal.spec.ts` at 375×667 |
-| `visual-mobile-wide-light`, `visual-mobile-wide-dark` | `visual-payment-modal.spec.ts` at 414×896 |
+| Project                                               | Scope                                                                                    |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `visual-light`, `visual-dark`                         | Every page in `visual-regression.spec.ts`, at 1440×900, one screenshot per colour scheme |
+| `visual-mobile-light`, `visual-mobile-dark`           | `visual-payment-modal.spec.ts` at 375×667                                                |
+| `visual-mobile-wide-light`, `visual-mobile-wide-dark` | `visual-payment-modal.spec.ts` at 414×896                                                |
 
 `visual-network-status-banner.spec.ts` covers the RPC status banner states and
 runs under the two desktop projects.
@@ -138,16 +138,16 @@ why a pixel moved, it is a regression until proven otherwise.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| `browserType.launch: Executable doesn't exist` | Chromium not installed for this Playwright version | `npx playwright install chromium` |
-| Chromium exits instantly, `error while loading shared libraries` | Missing OS libraries | `npx playwright install --with-deps chromium`, or use Docker |
-| Every page differs, including static headings | Wrong rendering environment: different OS/fonts, wrong browser, or a Playwright/Chromium version mismatch | Compare inside the pinned Docker image; `npx playwright --version` should be 1.62.1 |
-| Every screenshot is the same blank/error page | The app was not reachable at `E2E_BASE_URL` | `curl --fail http://localhost:3000/api/health` before the run |
-| One page differs only in charts, dates or on-chain values | Dynamic content did not settle | Re-run; check the page manually; use `VISUAL_PAYMENT_ID` for the payment-detail baseline if the deployment has no payment `1` |
-| Diff is tiny and only on text edges | Font anti-aliasing / font fallback differs from the environment that produced the baseline | Regenerate once inside the matching Docker image, then keep using that environment |
-| Mobile modal specs are skipped/ignored | They are matched only by the `visual-mobile*` projects | Run `npm run test:visual` (all projects) or `--project=visual-mobile-dark` |
-| Baselines updated, but CI still fails | Only one colour scheme or viewport was regenerated | Re-run `npm run test:visual:update` so all six projects regenerate, and commit every changed PNG |
+| Symptom                                                          | Cause                                                                                                     | Fix                                                                                                                           |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `browserType.launch: Executable doesn't exist`                   | Chromium not installed for this Playwright version                                                        | `npx playwright install chromium`                                                                                             |
+| Chromium exits instantly, `error while loading shared libraries` | Missing OS libraries                                                                                      | `npx playwright install --with-deps chromium`, or use Docker                                                                  |
+| Every page differs, including static headings                    | Wrong rendering environment: different OS/fonts, wrong browser, or a Playwright/Chromium version mismatch | Compare inside the pinned Docker image; `npx playwright --version` should be 1.62.1                                           |
+| Every screenshot is the same blank/error page                    | The app was not reachable at `E2E_BASE_URL`                                                               | `curl --fail http://localhost:3000/api/health` before the run                                                                 |
+| One page differs only in charts, dates or on-chain values        | Dynamic content did not settle                                                                            | Re-run; check the page manually; use `VISUAL_PAYMENT_ID` for the payment-detail baseline if the deployment has no payment `1` |
+| Diff is tiny and only on text edges                              | Font anti-aliasing / font fallback differs from the environment that produced the baseline                | Regenerate once inside the matching Docker image, then keep using that environment                                            |
+| Mobile modal specs are skipped/ignored                           | They are matched only by the `visual-mobile*` projects                                                    | Run `npm run test:visual` (all projects) or `--project=visual-mobile-dark`                                                    |
+| Baselines updated, but CI still fails                            | Only one colour scheme or viewport was regenerated                                                        | Re-run `npm run test:visual:update` so all six projects regenerate, and commit every changed PNG                              |
 
 ## CI
 

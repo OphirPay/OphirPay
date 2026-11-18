@@ -216,7 +216,7 @@ const response = await server.getEvents({
 
 for (const event of response.events) {
   // Topics: [payment_event, payer_address, payee_address]
-  const topics = event.topic.map(t => scValToNative(xdr.ScVal.fromXDR(t, "base64")));
+  const topics = event.topic.map((t) => scValToNative(xdr.ScVal.fromXDR(t, "base64")));
   // Value: [amount, tx_hash]
   const value = scValToNative(xdr.ScVal.fromXDR(event.value, "base64"));
 }

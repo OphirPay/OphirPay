@@ -17,7 +17,7 @@ OphirPay implements a dual-transport fallback strategy orchestrated by the clien
 1. **Primary Transport:** WebSocket (`ws://` / `wss://`) for interactive bidirectional sessions.
 2. **Fallback & Streaming Transport:** Server-Sent Events (`http://` / `https://`) via `/api/events` and `/api/audit-log/sse`.
 
-Both payment transports are fed by the *same* shared source: `createLiveEventSource()` polls the on-chain `PaymentEventEmitter` contract and normalizes each event into a `LiveEvent`. The SSE route and the WebSocket server therefore cannot disagree about what happened — see the [sequence diagram in SSE.md](./SSE.md#architecture-flow) for the exact call order and timings.
+Both payment transports are fed by the _same_ shared source: `createLiveEventSource()` polls the on-chain `PaymentEventEmitter` contract and normalizes each event into a `LiveEvent`. The SSE route and the WebSocket server therefore cannot disagree about what happened — see the [sequence diagram in SSE.md](./SSE.md#architecture-flow) for the exact call order and timings.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -44,22 +44,22 @@ Both payment transports are fed by the *same* shared source: `createLiveEventSou
 
 Streams confirmed on-chain payments, including every recipient transfer of a batch disbursement and claims/releases of escrows and streams.
 
-* **Endpoint:** `GET /api/events`
-* **Response headers:**
-  * `Content-Type: text/event-stream`
-  * `Cache-Control: no-cache, no-transform`
-  * `Connection: keep-alive`
-  * `X-Accel-Buffering: no`
-* **Authentication:** none — this is a public read stream of public on-chain data.
+- **Endpoint:** `GET /api/events`
+- **Response headers:**
+  - `Content-Type: text/event-stream`
+  - `Cache-Control: no-cache, no-transform`
+  - `Connection: keep-alive`
+  - `X-Accel-Buffering: no`
+- **Authentication:** none — this is a public read stream of public on-chain data.
 
 #### Frames
 
-| Frame | When | Payload |
-|---|---|---|
-| `connected` | Once, on stream open | `{ "message": "SSE stream connected to emitter contract" }` |
-| `heartbeat` | Every 15 s | `{ "timestamp": <epoch ms> }` |
-| `payment:created` | Once per new emitter event (10 s poll) | `LiveEvent` — see below |
-| `error` | Slow-consumer disconnect only | `{ "code": "SLOW_CONSUMER", "reason": "buffer-overflow" \| "idle-timeout", "message": ... }` |
+| Frame             | When                                   | Payload                                                                                      |
+| ----------------- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `connected`       | Once, on stream open                   | `{ "message": "SSE stream connected to emitter contract" }`                                  |
+| `heartbeat`       | Every 15 s                             | `{ "timestamp": <epoch ms> }`                                                                |
+| `payment:created` | Once per new emitter event (10 s poll) | `LiveEvent` — see below                                                                      |
+| `error`           | Slow-consumer disconnect only          | `{ "code": "SLOW_CONSUMER", "reason": "buffer-overflow" \| "idle-timeout", "message": ... }` |
 
 A `: ping` **comment** frame (ignored by `EventSource`) is additionally sent every 20 s so proxies do not reap an idle connection.
 
@@ -90,17 +90,17 @@ A `: ping` **comment** frame (ignored by `EventSource`) is additionally sent eve
 
 Streams security-relevant contract audit entries (role changes, multisig configuration, fee configuration, timelock actions, governance execution).
 
-* **Endpoint:** `GET /api/audit-log/sse`
-* **Response headers:** identical to `/api/events`
-* **Authentication:** the route enforces none in this build — it exposes public on-chain audit data. Do not treat it as a privileged admin feed.
+- **Endpoint:** `GET /api/audit-log/sse`
+- **Response headers:** identical to `/api/events`
+- **Authentication:** the route enforces none in this build — it exposes public on-chain audit data. Do not treat it as a privileged admin feed.
 
 #### Frames
 
-| Frame | When | Payload |
-|---|---|---|
-| `connected` | Once, on stream open | `{ "clientId": 3, "contractId": "C...", "message": "Audit log SSE stream connected" }` |
-| `audit:entry` | Once per new audit entry (15 s poll) | contract audit entry — see below |
-| `: ping` comment | Every 20 s | none (keep-alive only) |
+| Frame            | When                                 | Payload                                                                                |
+| ---------------- | ------------------------------------ | -------------------------------------------------------------------------------------- |
+| `connected`      | Once, on stream open                 | `{ "clientId": 3, "contractId": "C...", "message": "Audit log SSE stream connected" }` |
+| `audit:entry`    | Once per new audit entry (15 s poll) | contract audit entry — see below                                                       |
+| `: ping` comment | Every 20 s                           | none (keep-alive only)                                                                 |
 
 The stream polls the `OphirPayContract` audit log every 15 s, replays existing entries on open, and auto-closes after a **10 minute** safety timeout.
 
@@ -186,9 +186,13 @@ export function PaymentLiveTracker({ paymentId }: { paymentId: string }) {
       </div>
       {payment ? (
         <div className="space-y-1 text-sm">
-          <div>Status: <span className="font-semibold">{payment.status}</span></div>
+          <div>
+            Status: <span className="font-semibold">{payment.status}</span>
+          </div>
           <div>Amount: {payment.amount}</div>
-          {payment.txHash && <div className="text-xs text-gray-500 truncate">Tx: {payment.txHash}</div>}
+          {payment.txHash && (
+            <div className="text-xs text-gray-500 truncate">Tx: {payment.txHash}</div>
+          )}
         </div>
       ) : (
         <p className="text-xs text-gray-400">Waiting for live ledger confirmation...</p>

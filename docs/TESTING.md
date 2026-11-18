@@ -17,10 +17,10 @@ involved — not at re-reading the SDK docs.
 Both harnesses run under `cargo test`, and the split is deliberate
 (see [CONTRIBUTING.md](../CONTRIBUTING.md#soroban-contract-tests)):
 
-| Location | Use it for | Visibility |
-|---|---|---|
-| `contracts/ophirpay/src/test.rs` | Unit tests that need private helpers, storage keys, or internal functions | Inside the crate (`#[cfg(test)] mod tests`) |
-| `contracts/ophirpay/tests/*.rs` | Public-API tests: integration flows, property tests, one-issue reproductions | External crate — only what `lib.rs` re-exports |
+| Location                         | Use it for                                                                   | Visibility                                     |
+| -------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------- |
+| `contracts/ophirpay/src/test.rs` | Unit tests that need private helpers, storage keys, or internal functions    | Inside the crate (`#[cfg(test)] mod tests`)    |
+| `contracts/ophirpay/tests/*.rs`  | Public-API tests: integration flows, property tests, one-issue reproductions | External crate — only what `lib.rs` re-exports |
 
 `tests/integration_tests.rs` contains a `TestFixture` that wires an
 initialised contract, a Stellar asset contract (SAC) and an emitter. Reuse it
@@ -74,7 +74,7 @@ env.ledger().set_timestamp(1_000_000);       // deterministic "now" (seconds)
 ```
 
 - `mock_all_auths()` is what lets a test call an entry point that calls
-  `address.require_auth()`. To test the *failure* path, drop it and use
+  `address.require_auth()`. To test the _failure_ path, drop it and use
   `env.mock_auths(&[...])` or `try_*` methods.
 - `env.ledger().set_timestamp(..)` controls escrow deadlines, stream vesting and
   timelocks. Without it, `ledger().timestamp()` is 0, so a deadline of
@@ -151,14 +151,14 @@ cargo test --manifest-path contracts/ophirpay/Cargo.toml escrow_release_moves_to
 
 Why each part is there:
 
-| Step | Why it matters |
-|---|---|
-| `env.register(OphirPayContract, ())` | Deploys the contract into the test host and returns its `Address`. `()` is the constructor argument tuple — OphirPay is initialised via `init`, not a constructor. |
-| `OphirPayContractClient::new(&env, &contract_id)` | The generated typed client. Calling methods on it is a real cross-contract call; errors surface as `Result`. |
-| `register_stellar_asset_contract_v2(admin)` | Deploys a SAC so token transfers are real and returns a handle whose `.address()` is the asset contract. Without a SAC, any flow that transfers value panics on an unknown contract. |
-| `StellarAssetClient::mint` | Mints test balance. The SAC admin must be the minter (`admin` above). |
-| `client.init(&owner)` then `set_timelock_enabled(&owner, &false)` | Initialises ownership. Disabling the timelock keeps governance-side tests short; leave it on when the test is *about* the timelock. |
-| Asserting token balances | The point of the test. Asserting only the escrow struct would pass even if no tokens moved. |
+| Step                                                              | Why it matters                                                                                                                                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `env.register(OphirPayContract, ())`                              | Deploys the contract into the test host and returns its `Address`. `()` is the constructor argument tuple — OphirPay is initialised via `init`, not a constructor.                   |
+| `OphirPayContractClient::new(&env, &contract_id)`                 | The generated typed client. Calling methods on it is a real cross-contract call; errors surface as `Result`.                                                                         |
+| `register_stellar_asset_contract_v2(admin)`                       | Deploys a SAC so token transfers are real and returns a handle whose `.address()` is the asset contract. Without a SAC, any flow that transfers value panics on an unknown contract. |
+| `StellarAssetClient::mint`                                        | Mints test balance. The SAC admin must be the minter (`admin` above).                                                                                                                |
+| `client.init(&owner)` then `set_timelock_enabled(&owner, &false)` | Initialises ownership. Disabling the timelock keeps governance-side tests short; leave it on when the test is _about_ the timelock.                                                  |
+| Asserting token balances                                          | The point of the test. Asserting only the escrow struct would pass even if no tokens moved.                                                                                          |
 
 ## Asserting contract errors
 
@@ -208,15 +208,15 @@ ledger sequence rather than a new timestamp.
 
 ## Common failure modes
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| `Error(Auth, InvalidAction)` / `require_auth` panic | The test did not mock the right auth | Call `env.mock_all_auths()`, or mock the specific address with `env.mock_auths` when testing the rejection path |
-| Host panic on an unknown contract | A token transfer used an address that is not a deployed SAC | Deploy one with `env.register_stellar_asset_contract_v2(admin).address()` |
-| `InsufficientBalance`-style SAC panic | The payer was never minted | `StellarAssetClient::mint(&payer, &amount)` |
-| Every call returns `NotInitialized` | `init` was never called | Call `client.init(&owner)` first |
-| Timelock surprises | Default timelock is enabled | `set_timelock_enabled(&owner, &false)` unless the test is about timelocks |
-| Deadline/stream tests behave as if time froze | Ledger timestamp was never advanced | `env.ledger().set_timestamp(..)` |
-| `no_std` / `std` import errors | Test code added to `lib.rs` outside `#[cfg(test)]` | Keep tests in `src/test.rs` or `tests/`, and import std-only helpers there |
+| Symptom                                             | Cause                                                       | Fix                                                                                                             |
+| --------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `Error(Auth, InvalidAction)` / `require_auth` panic | The test did not mock the right auth                        | Call `env.mock_all_auths()`, or mock the specific address with `env.mock_auths` when testing the rejection path |
+| Host panic on an unknown contract                   | A token transfer used an address that is not a deployed SAC | Deploy one with `env.register_stellar_asset_contract_v2(admin).address()`                                       |
+| `InsufficientBalance`-style SAC panic               | The payer was never minted                                  | `StellarAssetClient::mint(&payer, &amount)`                                                                     |
+| Every call returns `NotInitialized`                 | `init` was never called                                     | Call `client.init(&owner)` first                                                                                |
+| Timelock surprises                                  | Default timelock is enabled                                 | `set_timelock_enabled(&owner, &false)` unless the test is about timelocks                                       |
+| Deadline/stream tests behave as if time froze       | Ledger timestamp was never advanced                         | `env.ledger().set_timestamp(..)`                                                                                |
+| `no_std` / `std` import errors                      | Test code added to `lib.rs` outside `#[cfg(test)]`          | Keep tests in `src/test.rs` or `tests/`, and import std-only helpers there                                      |
 
 ## Before you open the PR
 

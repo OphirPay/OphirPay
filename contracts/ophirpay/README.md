@@ -10,19 +10,19 @@ RBAC, governance/timelocks, spending limits and notification hooks.
 
 ## Layout
 
-| File | Contents |
-|---|---|
-| `src/lib.rs` | Module wiring and re-exports — the public crate surface |
-| `src/contract.rs` | `#[contractimpl]` entry points |
-| `src/types.rs` | `#[contracttype]` structs, enums and protocol constants |
-| `src/errors.rs` | `PaymentError` enum (the on-chain error discriminants) |
-| `src/storage.rs` | Storage keys, TTL bump policy, locked-balance accounting |
-| `src/events.rs` | Emitted events |
-| `src/helpers.rs` | Auth, pause, reentrancy and validation helpers |
-| `src/spending_limit.rs` | Daily/monthly spending-window logic |
-| `src/test.rs` | Unit tests that need crate internals |
-| `tests/` | Public-API integration, regression and property tests |
-| `spec/` | Contract spec used for client generation |
+| File                    | Contents                                                 |
+| ----------------------- | -------------------------------------------------------- |
+| `src/lib.rs`            | Module wiring and re-exports — the public crate surface  |
+| `src/contract.rs`       | `#[contractimpl]` entry points                           |
+| `src/types.rs`          | `#[contracttype]` structs, enums and protocol constants  |
+| `src/errors.rs`         | `PaymentError` enum (the on-chain error discriminants)   |
+| `src/storage.rs`        | Storage keys, TTL bump policy, locked-balance accounting |
+| `src/events.rs`         | Emitted events                                           |
+| `src/helpers.rs`        | Auth, pause, reentrancy and validation helpers           |
+| `src/spending_limit.rs` | Daily/monthly spending-window logic                      |
+| `src/test.rs`           | Unit tests that need crate internals                     |
+| `tests/`                | Public-API integration, regression and property tests    |
+| `spec/`                 | Contract spec used for client generation                 |
 
 ## Build and test
 

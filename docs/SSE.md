@@ -194,10 +194,10 @@ shape — identical across SSE and WebSocket transports.
 Two names show up in design discussions that are **not** SSE frame names. This
 is the mapping to what the server actually sends:
 
-| Concept | What `/api/events` emits | Notes |
-|---|---|---|
-| `payment_confirmed` | `payment:created` with `status: "COMPLETED"` | There is no separate confirmation frame. A payment is only ever streamed once it is recorded on-chain, so every `payment:created` is a confirmed payment. |
-| `batch_completed` | N × `payment:created` | `PaymentEventEmitter` stores one `PaymentEvent` per transfer; it has no batch-level event. A batch of 24 recipients produces 24 frames that share a `txHash`. |
+| Concept             | What `/api/events` emits                     | Notes                                                                                                                                                         |
+| ------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `payment_confirmed` | `payment:created` with `status: "COMPLETED"` | There is no separate confirmation frame. A payment is only ever streamed once it is recorded on-chain, so every `payment:created` is a confirmed payment.     |
+| `batch_completed`   | N × `payment:created`                        | `PaymentEventEmitter` stores one `PaymentEvent` per transfer; it has no batch-level event. A batch of 24 recipients produces 24 frames that share a `txHash`. |
 
 The in-app notification pipeline does model batch completion as
 `payment.batch_completed` (`src/lib/notifications.ts`), but that is a
@@ -250,13 +250,13 @@ The official client (`connectLiveEvents`) negotiates transports:
 
 With the defaults that ladder is short and predictable:
 
-| Event | Delay before the next attempt | Attempt counter |
-|---|---|---|
-| Initial connect fails | none — straight to SSE | `0` |
-| 1st drop after opening | **250 ms** (`250 × 2^0`) | `1` |
-| 2nd drop | **500 ms** (`250 × 2^1`) | `2` |
-| 3rd drop | **1000 ms** (`250 × 2^2`) | `3` |
-| Next drop | none — budget exhausted, switch to SSE | `3 >= maxReconnectAttempts` |
+| Event                  | Delay before the next attempt          | Attempt counter             |
+| ---------------------- | -------------------------------------- | --------------------------- |
+| Initial connect fails  | none — straight to SSE                 | `0`                         |
+| 1st drop after opening | **250 ms** (`250 × 2^0`)               | `1`                         |
+| 2nd drop               | **500 ms** (`250 × 2^1`)               | `2`                         |
+| 3rd drop               | **1000 ms** (`250 × 2^2`)              | `3`                         |
+| Next drop              | none — budget exhausted, switch to SSE | `3 >= maxReconnectAttempts` |
 
 The cap (`maxBackoffMs`, default 10 s) only applies if you raise
 `maxReconnectAttempts`; at `250 ms × 2^n` the delay reaches 10 s at attempt 6.

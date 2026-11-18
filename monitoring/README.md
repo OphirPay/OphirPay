@@ -147,6 +147,7 @@ Alert rules are defined in `monitoring/prometheus-alerts.yml` (and `monitoring/a
 ### Payment Error Rate Spikes & Latency
 
 #### 1. High API Error Rate (`ApiHighErrorRate`)
+
 - **Trigger**: Error ratio (`5xx` errors divided by total requests) exceeds **5%** for 5 consecutive minutes:
   ```promql
   sum(rate(ophirpay_endpoint_request_errors_total[5m])) /
@@ -156,6 +157,7 @@ Alert rules are defined in `monitoring/prometheus-alerts.yml` (and `monitoring/a
 - **Meaning**: Active payment or auth endpoints are failing for merchants or users.
 
 #### 2. High Payment Processing Latency (`PaymentProcessingLatencyHigh`)
+
 - **Trigger**: 95th percentile (p95) API response time exceeds **30 seconds** for 5 consecutive minutes:
   ```promql
   histogram_quantile(0.95, rate(ophirpay_endpoint_request_duration_seconds_bucket[5m])) > 30
@@ -164,6 +166,7 @@ Alert rules are defined in `monitoring/prometheus-alerts.yml` (and `monitoring/a
 - **Meaning**: Stellar RPC congestion, database query locks, or external network latency is slowing down payment settlement.
 
 #### 3. Webhook Delivery Failure Rate (`WebhookDeliveryFailureRateHigh`)
+
 - **Trigger**: Terminal webhook delivery failures exceed **25%** over a 15-minute window for 10 minutes:
   ```promql
   sum(rate(ophirpay_delivery_final_outcomes_total{delivery_type="webhook",final_outcome="failure"}[15m])) /
@@ -177,6 +180,7 @@ Alert rules are defined in `monitoring/prometheus-alerts.yml` (and `monitoring/a
 ### RPC Connectivity Drops & Circuit Breaker Failovers
 
 #### 1. Soroban RPC Degraded (`OphirPayRpcProviderDegraded`)
+
 - **Trigger**: Primary Soroban RPC p95 latency exceeds **2.5s** or returns server errors for 3 minutes:
   ```promql
   histogram_quantile(0.95, rate(ophirpay_soroban_rpc_duration_seconds_bucket[5m])) > 2.5
@@ -185,6 +189,7 @@ Alert rules are defined in `monitoring/prometheus-alerts.yml` (and `monitoring/a
 - **Meaning**: Upstream Stellar Soroban RPC node is degraded or timing out.
 
 #### 2. RPC Failover Active (`RpcFailoverDegraded`)
+
 - **Trigger**: OphirPay has switched traffic to a fallback Soroban RPC endpoint for $\ge$ **2 minutes**:
   ```promql
   ophirpay_rpc_circuit_breaker_state{state="fallback"} == 1
@@ -193,6 +198,7 @@ Alert rules are defined in `monitoring/prometheus-alerts.yml` (and `monitoring/a
 - **Meaning**: Circuit breaker opened and routed queries to secondary RPC provider. Primary requires investigation.
 
 #### 3. Frequent RPC Transitions (`RpcFailoverFrequent`)
+
 - **Trigger**: At least **3 primary-to-fallback transitions** occur in 30 minutes, sustained for 5 minutes:
   ```promql
   increase(ophirpay_rpc_failover_transitions_total[30m]) >= 3
@@ -205,6 +211,7 @@ Alert rules are defined in `monitoring/prometheus-alerts.yml` (and `monitoring/a
 ### Database & System Availability
 
 #### 1. API Down (`ApiDown`)
+
 - **Trigger**: Prometheus target is unreachable (`up{job="ophirpay"} == 0`) for **2 minutes**:
   ```promql
   up{job="ophirpay"} == 0
@@ -213,6 +220,7 @@ Alert rules are defined in `monitoring/prometheus-alerts.yml` (and `monitoring/a
 - **Meaning**: Pods or instances are offline, crashing, or network partition has occurred.
 
 #### 2. Database Connection Pool Exhaustion (`OphirPayDatabasePoolExhaustion`)
+
 - **Trigger**: Prisma connection pool queue wait time exceeds **500ms** for 1 minute:
   ```promql
   rate(prisma_client_queries_wait_duration_ms[1m]) > 500

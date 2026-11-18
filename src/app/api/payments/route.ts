@@ -9,6 +9,7 @@ import {
   badRequestError,
   unauthorizedError,
   handleApiError,
+  requireJsonContentType,
 } from "@/lib/api-response";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
@@ -119,6 +120,9 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
 
 export const POST = withMetrics("POST /api/payments", withRequestLogging(async function POST(request: Request) {
   try {
+    const contentTypeError = requireJsonContentType(request);
+    if (contentTypeError) return contentTypeError;
+
     const csrfError = verifyCsrf(request);
     if (csrfError) return csrfError;
 

@@ -97,25 +97,55 @@ export class RedisRateLimitStore implements RateLimitStore {
     }
   ) {}
 
+  /**
+   * In-memory fallback used when Redis is temporarily unreachable.
+   * Shared across the lifetime of this store instance so rate-limit
+   * counters survive individual Redis hiccups.
+   */
+  private fallback = new InMemoryRateLimitStore();
+
+  /** Whether the last Redis call failed — used for logging hygiene. */
+  private usingFallback = false;
+
   async increment(
     key: string,
     windowMs: number,
     maxRequests: number
   ): Promise<RateLimitResult> {
-    const now = Date.now();
-    const ttl = Math.ceil(windowMs / 1000);
+    try {
+      const now = Date.now();
+      const ttl = Math.ceil(windowMs / 1000);
 
-    const count = await this.redis.incr(key);
-    if (count === 1) {
-      await this.redis.expire(key, ttl);
+      const count = await this.redis.incr(key);
+      if (count === 1) {
+        await this.redis.expire(key, ttl);
+      }
+
+      if (this.usingFallback) {
+        console.log("[rate-limit] Redis connection restored");
+        this.usingFallback = false;
+      }
+
+      const remaining = Math.max(0, maxRequests - count);
+      return { allowed: count <= maxRequests, remaining, resetAt: now + windowMs };
+    } catch (err) {
+      if (!this.usingFallback) {
+        console.warn(
+          "[rate-limit] Redis unavailable, falling back to in-memory store.",
+          String(err)
+        );
+        this.usingFallback = true;
+      }
+      return this.fallback.increment(key, windowMs, maxRequests);
     }
-
-    const remaining = Math.max(0, maxRequests - count);
-    return { allowed: count <= maxRequests, remaining, resetAt: now + windowMs };
   }
 
   async reset(key: string): Promise<void> {
-    await this.redis.del(key);
+    try {
+      await this.redis.del(key);
+    } catch {
+      // Silently ignore — the key will expire via TTL.
+    }
   }
 }
 

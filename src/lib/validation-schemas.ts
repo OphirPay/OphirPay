@@ -66,7 +66,13 @@ export const createPaymentSchema = z.object({
   assetIssuer: z.string().optional(),
   description: z.string().max(200).optional(),
   memo: memoField,
-});
+}).refine(
+  (data) => data.destAddress !== data.sourceAccountId,
+  {
+    message: "Recipient address cannot be identical to sender address",
+    path: ["destAddress"],
+  }
+);
 
 /** Body for POST /api/payments/retry — which failed payment to retry. */
 export const retryPaymentSchema = z.object({
@@ -269,8 +275,8 @@ export const createScheduledPaymentSchema = z.object({
       "Scheduled date must be a valid date"
     )
     .refine(
-      (value) => new Date(value).getTime() > Date.now(),
-      "Scheduled date must be in the future"
+      (value) => new Date(value).getTime() > Date.now() + 60_000,
+      "Scheduled date must be in the future (at least 60 seconds)"
     ),
 });
 

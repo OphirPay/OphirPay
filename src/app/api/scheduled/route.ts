@@ -12,6 +12,7 @@ import {
   badRequestError,
   notFoundError,
   handleApiError,
+  requireJsonContentType,
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
@@ -60,6 +61,9 @@ export const GET = withRequestLogging(async function GET(request: Request) {
 /** Create a scheduled payment. The date must be in the future. */
 export const POST = withRequestLogging(async function POST(request: Request) {
   try {
+    const contentTypeError = requireJsonContentType(request);
+    if (contentTypeError) return contentTypeError;
+
     const csrfError = verifyCsrf(request);
     if (csrfError) return csrfError;
 

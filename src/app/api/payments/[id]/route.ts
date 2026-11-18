@@ -9,6 +9,7 @@ import {
   notFoundError,
   unauthorizedError,
   handleApiError,
+  requireJsonContentType,
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
@@ -50,6 +51,9 @@ export const PATCH = withMetrics("PATCH /api/payments/[id]", withRequestLogging(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const contentTypeError = requireJsonContentType(request);
+    if (contentTypeError) return contentTypeError;
+
     const csrfError = verifyCsrf(request);
     if (csrfError) return csrfError;
 

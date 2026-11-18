@@ -27,8 +27,14 @@ import {
   formatTokenAmount,
   formatCompact,
 } from "@/lib/format-currency";
+import {
+  formatXlmAmount,
+  parseXlmAmount,
+} from "@/lib/stellar-amount";
 
 const ONE_STROOP_IN_XLM = 1e-7;
+const MAX_INT64 = BigInt("9223372036854775807");
+const MIN_INT64 = BigInt("-9223372036854775808");
 
 describe("Stellar 7-decimal precision (amount.ts)", () => {
   it.each([
@@ -77,6 +83,39 @@ describe("Stellar 7-decimal precision (amount.ts)", () => {
   it("keeps negative stroops signed", () => {
     expect(stroopsToDisplay(-1)).toBe("-0.0000001");
     expect(stroopsToDisplay(-10_000_000)).toBe("-1");
+  });
+});
+
+// The issue references the retired `src/lib/stellar/format.ts`; the exact
+// formatter now lives in `src/lib/stellar-amount.ts`.
+describe("exact XLM formatter boundaries (issue #1919)", () => {
+  it.each([
+    [BigInt(0), "0"],
+    [BigInt(1), "0.0000001"],
+    [BigInt(-1), "-0.0000001"],
+    [BigInt(10_000_000), "1"],
+    [BigInt(-10_000_000), "-1"],
+    [BigInt(12_345_678_901), "1234.5678901"],
+  ])("formatXlmAmount(%s) → %s", (stroops, expected) => {
+    expect(formatXlmAmount(stroops)).toBe(expected);
+  });
+
+  it("formats the largest signed 64-bit stroop count exactly", () => {
+    expect(formatXlmAmount(MAX_INT64)).toBe("922337203685.4775807");
+  });
+
+  it("keeps the smallest signed 64-bit stroop count exact and negative", () => {
+    expect(formatXlmAmount(MIN_INT64)).toBe("-922337203685.4775808");
+  });
+
+  it("round-trips the largest supported payment amount through the parser", () => {
+    expect(parseXlmAmount(formatXlmAmount(MAX_INT64))).toBe(MAX_INT64);
+  });
+
+  it("formats safe numeric and decimal-string inputs consistently", () => {
+    expect(formatXlmAmount(10_000_000)).toBe(formatXlmAmount("10000000"));
+    expect(formatXlmAmount(12_500_000)).toBe("1.25");
+    expect(formatXlmAmount("12500000")).toBe("1.25");
   });
 });
 

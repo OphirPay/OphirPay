@@ -265,6 +265,57 @@ mod tests {
     }
 
     #[test]
+    fn test_disputed_escrow_blocks_release() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        let token_client = token::Client::new(&env, &sac);
+        sac_client.mint(&depositor, &10_000i128);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        let escrow_id = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Option::<Address>::Some(arbiter.clone()),
+            &1000i128,
+            &sac,
+            &(env.ledger().timestamp() + 86400),
+            &String::from_str(&env, "dispute escrow test"),
+        );
+        assert_eq!(escrow_id, 1);
+        assert_eq!(token_client.balance(&contract_id), 1000i128);
+
+        // 1. Initiate dispute
+        client.initiate_dispute(&depositor, &escrow_id);
+
+        let escrow_disputed = client.get_escrow(&escrow_id);
+        assert!(escrow_disputed.dispute_initiated_at > 0);
+        assert!(!escrow_disputed.released);
+        assert!(!escrow_disputed.claimed);
+
+        // 2. Attempt standard release_escrow and assert PaymentError::EscrowInDispute error
+        let release_result = client.try_release_escrow(&owner, &escrow_id);
+        assert_eq!(release_result, Err(Ok(PaymentError::EscrowInDispute)));
+
+        // 3. Verify escrow balance and state remain intact
+        let escrow_after = client.get_escrow(&escrow_id);
+        assert!(!escrow_after.released);
+        assert!(!escrow_after.claimed);
+        assert_eq!(escrow_after.amount, 1000i128);
+        assert_eq!(token_client.balance(&contract_id), 1000i128);
+    }
+
+    #[test]
     fn test_claim_escrow_after_deadline() {
         let env = Env::default();
         env.mock_all_auths();
@@ -2162,6 +2213,81 @@ mod tests {
             &String::from_str(&env, "over limit"),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_spending_limit_sliding_window_resets_after_24_hours() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let t0 = 100_000u64;
+        env.ledger().set_timestamp(t0);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        let daily_limit = 10_000i128;
+        let monthly_limit = 100_000i128;
+        let expires_at = t0 + 30 * 86_400; // 30 days expiry
+
+        client.set_spending_limit(
+            &owner,
+            &payer,
+            &daily_limit,
+            &monthly_limit,
+            &expires_at,
+            &true,
+        );
+
+        // 1. Spend 80% of daily limit (8,000) at ledger time T
+        let spend_80_percent = 8_000i128;
+        let id1 = client.atomic_spend(
+            &payer,
+            &payee,
+            &spend_80_percent,
+            &sac,
+            &String::from_str(&env, "tx1"),
+            &String::from_str(&env, "spend 80%"),
+        );
+        assert_eq!(id1, 1);
+
+        let limit_after_first = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit_after_first.current_daily_spend, spend_80_percent);
+
+        // Attempting to spend the full daily limit (10,000) now should fail (8,000 + 10,000 > 10,000)
+        let fail_result = client.try_atomic_spend(
+            &payer,
+            &payee,
+            &daily_limit,
+            &sac,
+            &String::from_str(&env, "tx_fail"),
+            &String::from_str(&env, "exceeds daily limit"),
+        );
+        assert_eq!(fail_result, Err(Ok(PaymentError::SpendingLimitExceeded)));
+
+        // 2. Advance ledger timestamp by 86,401 seconds (> 24 hours)
+        env.ledger().set_timestamp(t0 + 86_401);
+
+        // 3. Verify that spending the full limit (10,000) succeeds without error
+        let id2 = client.atomic_spend(
+            &payer,
+            &payee,
+            &daily_limit,
+            &sac,
+            &String::from_str(&env, "tx2"),
+            &String::from_str(&env, "spend full limit after 24h reset"),
+        );
+        assert_eq!(id2, 2);
+
+        let limit_after_reset = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit_after_reset.current_daily_spend, daily_limit);
     }
 
     // ── New Error Path Tests (governance + reentrancy) ──

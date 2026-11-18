@@ -59,7 +59,7 @@ jobs:
       - run: npm run lint -- --max-warnings 0
 
   # ══════════════════════════════════════════════════════════════
-  # 2. TYPECHECK — TypeScript strict type-checking
+  # 2. TYPECHECK — TypeScript strict type-checking (issue #1979)
   # ══════════════════════════════════════════════════════════════
   typecheck:
     name: "2️⃣ Frontend — TypeCheck (tsc)"
@@ -68,7 +68,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
-      - run: npx tsc --noEmit
+      - name: Verify TypeScript types without emitting JS
+        run: npx tsc --noEmit
       - name: Verify generated SDK matches docs/openapi.yaml (issues #822, #1439)
         # Regenerates from the committed spec and fails if ANY artefact is
         # stale: the operation catalogue (operations.generated.*) and the typed
@@ -115,6 +116,7 @@ jobs:
   build:
     name: "9️⃣ Frontend — Build (Next.js)"
     runs-on: ubuntu-latest
+    needs: [lint, typecheck]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -274,6 +276,12 @@ jobs:
         run: cd contracts/ophirpay && PROPTEST_CASES=64 cargo test
       - name: Run Emitter contract unit tests
         run: cd contracts/emitter && cargo test
+      - name: Audit contract dependencies with cargo-audit (issue #1977)
+        run: |
+          which cargo-audit || cargo install cargo-audit --locked
+          cd contracts
+          cargo audit -f ophirpay/Cargo.lock
+          cargo audit -f emitter/Cargo.lock
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
         with:

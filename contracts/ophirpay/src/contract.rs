@@ -90,6 +90,22 @@ impl OphirPayContract {
     // ═══════════════════════════════════════════════════════════
 
     /// Initialize the contract with owner address.
+    ///
+    /// Sets the initial super-administrator owner address and the current contract
+    /// version in instance storage. Must be called once upon contract deployment.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The Soroban environment context.
+    /// * `owner` - The address designated as the contract super-administrator / owner. Must authenticate.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(u32)` - Returns the deployed contract version number (`CONTRACT_VERSION`) on success.
+    ///
+    /// # Errors
+    ///
+    /// * [`PaymentError::AlreadyInitialized`] - If the contract has already been initialized.
     pub fn init(env: Env, owner: Address) -> Result<u32, PaymentError> {
         if env.storage().instance().has(&OWNER) {
             return Err(PaymentError::AlreadyInitialized);
@@ -2450,7 +2466,34 @@ impl OphirPayContract {
     // ═══════════════════════════════════════════════════════════
 
     /// Record an off-chain payment on the Soroban ledger.
-    /// Anyone can call — this just stores a record, no tokens move.
+    ///
+    /// Stores an immutable audit record for an off-chain transaction without transferring tokens.
+    /// Implements idempotency: repeating the call with identical `(payer, tx_hash)` parameters
+    /// returns the existing payment id, while repeating with conflicting payload parameters returns
+    /// a conflict error.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The Soroban environment context.
+    /// * `payer` - Address of the payer recording the transaction. Requires caller authentication.
+    /// * `payee` - Address of the payment beneficiary.
+    /// * `amount` - Amount transferred, in base stroops / token units. Must be strictly positive (> 0).
+    /// * `asset` - Contract address of the Stellar asset or token.
+    /// * `tx_hash` - Transaction identifier or hash (memo validation applied).
+    /// * `metadata` - Additional descriptive memo or JSON string (memo validation applied).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(u64)` - The unique identifier of the recorded payment.
+    ///
+    /// # Errors
+    ///
+    /// * [`PaymentError::ContractPaused`] - If payment recording operations are currently paused.
+    /// * [`PaymentError::MemoTooLong`] - If `tx_hash` or `metadata` exceeds maximum length or contains invalid control characters.
+    /// * [`PaymentError::ZeroAmountNotAllowed`] - If `amount` is zero.
+    /// * [`PaymentError::InvalidAmount`] - If `amount` is negative.
+    /// * [`PaymentError::InvalidDecimalPrecision`] - If `amount` has precision incompatible with the asset.
+    /// * [`PaymentError::PaymentIdempotencyConflict`] - If a payment with `(payer, tx_hash)` already exists with conflicting fields.
     pub fn record_payment(
         env: Env,
         payer: Address,
@@ -2464,7 +2507,10 @@ impl OphirPayContract {
         require_not_paused(&env, PauseScope::Payments)?;
         validate_memo_text(&tx_hash)?;
         validate_memo_text(&metadata)?;
-        if amount <= 0 {
+        if amount == 0 {
+            return Err(PaymentError::ZeroAmountNotAllowed);
+        }
+        if amount < 0 {
             return Err(PaymentError::InvalidAmount);
         }
         Self::validate_token_decimal_precision(&env, &asset, amount)?;
@@ -3034,7 +3080,34 @@ impl OphirPayContract {
     //  PAYMENT STREAMING — Vest tokens linearly over time
     // ═══════════════════════════════════════════════════════════
 
-    /// Create a payment stream. Tokens are locked and vest linearly.
+    /// Create a payment stream where tokens are locked in the contract and vest linearly over time.
+    ///
+    /// Transfers `total_amount` of `asset` from `creator` to the contract, records the stream,
+    /// and tracks locked funds under protocol balance invariants. Protected against reentrancy.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The Soroban environment context.
+    /// * `creator` - Address funding the stream. Requires caller authentication.
+    /// * `recipient` - Address authorized to withdraw vested funds over time.
+    /// * `total_amount` - Total amount of tokens to vest across the stream duration. Must be > 0.
+    /// * `asset` - Contract address of the token being streamed.
+    /// * `start_time` - Unix timestamp when vesting begins.
+    /// * `end_time` - Unix timestamp when vesting finishes. Must be greater than `start_time`.
+    /// * `metadata` - Arbitrary description or metadata memo string.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(u64)` - Unique identifier of the newly created stream.
+    ///
+    /// # Errors
+    ///
+    /// * [`PaymentError::ReentrantCall`] - If a reentrant call is detected.
+    /// * [`PaymentError::ContractPaused`] - If streaming operations are currently paused.
+    /// * [`PaymentError::MemoTooLong`] - If `metadata` exceeds maximum length or contains invalid control characters.
+    /// * [`PaymentError::InvalidAmount`] - If `total_amount <= 0` or `end_time <= start_time`.
+    /// * [`PaymentError::StreamDurationTooShort`] - If `end_time - start_time` is less than `MIN_STREAM_DURATION`.
+    /// * [`PaymentError::StreamDurationTooLong`] - If `end_time - start_time` exceeds `MAX_STREAM_DURATION`.
     pub fn create_stream(
         env: Env,
         creator: Address,
@@ -3977,10 +4050,35 @@ impl OphirPayContract {
     //  BATCH PAYMENTS — Record multiple payments atomically
     // ═══════════════════════════════════════════════════════════
 
-    /// Record a batch of payments with partial failure support.
-    /// Valid entries are processed; invalid (zero amount, out-of-range index)
-    /// entries are skipped and counted as failures. The batch succeeds as
-    /// long as at least one payment was recorded.
+    /// Record a batch of payments with atomic spending-limit checks and partial failure support.
+    ///
+    /// Evaluates the total valid batch volume against the creator's daily spending limit before
+    /// recording any individual payment. Valid entries are recorded while invalid entries (zero amount,
+    /// out-of-range indices) are skipped and counted as failures. Succeeds if at least one payment is recorded.
+    ///
+    /// # Arguments
+    ///
+    /// * `env` - The Soroban environment context.
+    /// * `creator` - Address creating and funding the batch. Requires caller authentication.
+    /// * `payees` - List of beneficiary addresses (1 to 100 entries).
+    /// * `amounts` - List of payment amounts corresponding to each payee in `payees`.
+    /// * `asset` - Contract address of the token asset.
+    /// * `tx_hash` - Transaction batch reference identifier or memo.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(BatchCreateResult)` - Summary containing `batch_id`, total amount processed, success count, and failure count.
+    ///
+    /// # Errors
+    ///
+    /// * [`PaymentError::ContractPaused`] - If batch payment operations are currently paused.
+    /// * [`PaymentError::MemoTooLong`] - If `tx_hash` exceeds allowed length or contains invalid control characters.
+    /// * [`PaymentError::BatchEmpty`] - If `payees` list is empty.
+    /// * [`PaymentError::BatchTooLarge`] - If `payees` list exceeds 100 recipients.
+    /// * [`PaymentError::InvalidAmount`] - If an entry has a positive amount without a corresponding payee.
+    /// * [`PaymentError::ArithmeticOverflow`] - If the cumulative batch amount overflows `i128`.
+    /// * [`PaymentError::SpendingLimitExceeded`] - If the batch total breaches creator's remaining daily spending capacity.
+    /// * [`PaymentError::BatchItemFailed`] - If all entries failed and zero payments could be recorded.
     pub fn create_batch(
         env: Env,
         creator: Address,

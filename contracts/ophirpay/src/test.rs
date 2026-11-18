@@ -189,6 +189,17 @@ mod tests {
                 &String::from_str(&env, "tx"),
                 &String::from_str(&env, ""),
             ),
+            Err(Ok(PaymentError::ZeroAmountNotAllowed))
+        );
+        assert_eq!(
+            client.try_record_payment(
+                &payer,
+                &payee,
+                &-100i128,
+                &sac,
+                &String::from_str(&env, "tx_neg"),
+                &String::from_str(&env, ""),
+            ),
             Err(Ok(PaymentError::InvalidAmount))
         );
     }
@@ -282,6 +293,7 @@ mod tests {
 
         let _ = client.init(&owner);
         client.set_timelock_enabled(&owner, &false);
+        env.ledger().set_timestamp(1000);
 
         let escrow_id = client.create_escrow(
             &depositor,
@@ -918,6 +930,41 @@ mod tests {
         assert_eq!(client.get_payment_count(), 1);
     }
 
+    #[test]
+    fn test_multisig_threshold_cannot_exceed_signer_count() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let signer1 = Address::generate(&env);
+        let signer2 = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        let signers = vec![&env, signer1.clone(), signer2.clone()];
+
+        // 1. Attempt threshold of 3 with only 2 signers: must return PaymentError::InvalidThreshold
+        let invalid_res = client.try_set_multisig_config(&owner, &3u32, &signers, &true);
+        assert_eq!(invalid_res, Err(Ok(PaymentError::InvalidThreshold)));
+
+        // 2. Also assert threshold of 0 returns PaymentError::InvalidThreshold
+        let zero_res = client.try_set_multisig_config(&owner, &0u32, &signers, &true);
+        assert_eq!(zero_res, Err(Ok(PaymentError::InvalidThreshold)));
+
+        // 3. Test valid threshold equal to signer count (2 of 2) succeeds
+        let valid_res = client.try_set_multisig_config(&owner, &2u32, &signers, &true);
+        assert!(valid_res.is_ok());
+
+        let config = client.get_multisig_config();
+        assert!(config.is_some());
+        let cfg = config.unwrap();
+        assert_eq!(cfg.threshold, 2);
+        assert_eq!(cfg.signers.len(), 2);
+        assert!(cfg.enabled);
+    }
+
     // ── Spending Limit Tests ───────────────────────────────
 
     #[test]
@@ -959,6 +1006,54 @@ mod tests {
 
         let result = client.check_spending(&user, &500i128);
         assert!(matches!(result, SpendCheckResult::Rejected));
+    }
+
+    #[test]
+    fn test_spending_limit_exceeded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Configure 1,000 stroop spending limit
+        client.set_spending_limit(&owner, &payer, &1000i128, &5000i128, &0u64, &true);
+
+        // 2. Execute first payment of 600 stroops (succeeds within limit)
+        let pid1 = client.atomic_spend(
+            &payer,
+            &payee,
+            &600i128,
+            &sac,
+            &String::from_str(&env, "tx_spend_1"),
+            &String::from_str(&env, "payment 1"),
+        );
+        assert_eq!(pid1, 1);
+
+        let limit = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit.current_daily_spend, 600);
+
+        // 3. Execute second payment of 500 stroops (600 + 500 = 1,100 > 1,000 daily limit -> fails)
+        let result = client.try_atomic_spend(
+            &payer,
+            &payee,
+            &500i128,
+            &sac,
+            &String::from_str(&env, "tx_spend_2"),
+            &String::from_str(&env, "payment 2"),
+        );
+        assert_eq!(result, Err(Ok(PaymentError::SpendingLimitExceeded)));
+
+        // Verify daily spend remains 600 and was not modified by the failed spend
+        let limit_after = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit_after.current_daily_spend, 600);
     }
 
     #[test]

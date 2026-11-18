@@ -326,6 +326,7 @@ export enum PaymentError {
   SpendingLimitExceeded = 317,
   DuplicateSigner = 318,
   EscrowInDispute = 319,
+  ZeroAmountNotAllowed = 320,
 }
 
 export const PAYMENT_ERROR_NAMES: Record<number, string> = {
@@ -648,6 +649,7 @@ export const PAYMENT_ERROR_NAMES: Record<number, string> = {
   317: "SpendingLimitExceeded",
   318: "DuplicateSigner",
   319: "EscrowInDispute",
+  320: "ZeroAmountNotAllowed",
 };
 
 export const PAYMENT_ERROR_DISCRIMINANTS: Record<string, number> = {
@@ -970,6 +972,7 @@ export const PAYMENT_ERROR_DISCRIMINANTS: Record<string, number> = {
   "SpendingLimitExceeded": 317,
   "DuplicateSigner": 318,
   "EscrowInDispute": 319,
+  "ZeroAmountNotAllowed": 320,
 };
 
 export const ERROR_MESSAGES: Record<number, string> = {
@@ -1292,4 +1295,5 @@ export const ERROR_MESSAGES: Record<number, string> = {
   317: "Requested spend exceeds the remaining daily/monthly limit",
   318: "Duplicate signer address in multisig config",
   319: "Escrow is in dispute: release is blocked until dispute is resolved",
+  320: "Transfer or payment amount cannot be zero: must be strictly positive",
 };

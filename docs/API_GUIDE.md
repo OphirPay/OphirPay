@@ -81,23 +81,26 @@ import {
   handleApiError,
 } from "@/lib/api-response";
 
-export const GET = apiRoute({
-  name: "GET /api/counterparties",
-  querySchema: counterpartyQuerySchema,
-}, async (request, { auth, query }) => {
-  const where: any = { userId: auth.userId };
-  if (query.search) {
-    where.name = { contains: query.search, mode: "insensitive" };
+export const GET = apiRoute(
+  {
+    name: "GET /api/counterparties",
+    querySchema: counterpartyQuerySchema,
+  },
+  async (request, { auth, query }) => {
+    const where: any = { userId: auth.userId };
+    if (query.search) {
+      where.name = { contains: query.search, mode: "insensitive" };
+    }
+
+    const items = await prisma.counterparty.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: query.limit,
+    });
+
+    return successResponse(items, { limit: query.limit });
   }
-
-  const items = await prisma.counterparty.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: query.limit,
-  });
-
-  return successResponse(items, { limit: query.limit });
-});
+);
 ```
 
 The try/catch around the whole body is **mandatory** — `handleApiError` is what
@@ -163,16 +166,16 @@ if (!parsed.success) return validationError(parsed.error);
 All error responses are produced by helpers in **`src/lib/api-response.ts`**.
 Never hand-roll an error body.
 
-| Helper | HTTP | When to use |
-|---|---|---|
-| `validationError(zodError)` | 400 | Zod `safeParse` failed |
-| `badRequestError(message)` | 400 | Malformed/unsupported request (not schema-shaped) |
-| `unauthorizedError(message?)` | 401 | No/invalid session or API key |
-| `notFoundError(resource?)` | 404 | Resource does not exist |
-| `conflictError(message)` | 409 | State conflict (e.g. duplicate, invalid transition) |
-| `rateLimitError(message?)` | 429 | Route-level limit exceeded |
-| `serverError(message?)` | 500 | Unexpected failure (message masked in prod) |
-| `handleApiError(err, context)` | varies | **Always** in `catch` |
+| Helper                         | HTTP   | When to use                                         |
+| ------------------------------ | ------ | --------------------------------------------------- |
+| `validationError(zodError)`    | 400    | Zod `safeParse` failed                              |
+| `badRequestError(message)`     | 400    | Malformed/unsupported request (not schema-shaped)   |
+| `unauthorizedError(message?)`  | 401    | No/invalid session or API key                       |
+| `notFoundError(resource?)`     | 404    | Resource does not exist                             |
+| `conflictError(message)`       | 409    | State conflict (e.g. duplicate, invalid transition) |
+| `rateLimitError(message?)`     | 429    | Route-level limit exceeded                          |
+| `serverError(message?)`        | 500    | Unexpected failure (message masked in prod)         |
+| `handleApiError(err, context)` | varies | **Always** in `catch`                               |
 
 `handleApiError` is the single entry point for unexpected errors:
 
@@ -204,9 +207,7 @@ From `@/lib/auth-session`. Resolves either:
 ```ts
 const auth = await getAuthContext(request);
 if (!auth) {
-  return unauthorizedError(
-    "Authentication required. Connect your wallet or provide an API key."
-  );
+  return unauthorizedError("Authentication required. Connect your wallet or provide an API key.");
 }
 // auth.userId — always scope queries to this!
 ```
@@ -233,9 +234,11 @@ if (!("userId" in auth)) return auth; // auth is an error Response
 #### API Key Format & Entropy (#1397)
 
 All generated API keys follow a standardized, cryptographically secure structure:
+
 ```text
 op_{env}_{32_hex_bytes}_{4_byte_crc}
 ```
+
 - **Prefix**: `op_live_` for production or `op_test_` for sandbox/test environments.
 - **Random Payload**: 32 cryptographically secure random bytes rendered as 64 hexadecimal characters, delivering 256 bits of Shannon entropy.
 - **Checksum**: 4-byte CRC32 (IEEE 802.3 standard) rendered as 8 hexadecimal characters, computed over `op_{env}_{payload}`.
@@ -244,6 +247,7 @@ op_{env}_{32_hex_bytes}_{4_byte_crc}
 ### Safe Database Queries & SQL Injection Prevention (#1396)
 
 All database operations must use parameterized queries:
+
 - **Prisma Client methods**: `prisma.<model>.findMany()`, `findUnique()`, `create()`, etc. are strongly preferred and fully parameterized.
 - **Raw SQL queries**: If raw SQL is required, always use tagged template literals (`prisma.$queryRaw`...`` or `Prisma.sql`...``). Variables passed into the template expressions are bound as SQL parameters by Prisma's query engine.
 - **Prohibited Patterns**:
@@ -274,8 +278,8 @@ successResponse(data, meta?, status = 200, cacheHeader?)
   safely — never `JSON.stringify` Prisma rows yourself.
 
 ```ts
-return successResponse(payments, { page, limit, total });   // 200 list
-return successResponse(payment, undefined, 201);            // 201 created
+return successResponse(payments, { page, limit, total }); // 200 list
+return successResponse(payment, undefined, 201); // 201 created
 ```
 
 ### Error
@@ -305,7 +309,7 @@ Content-Type: application/json
 In a route, the guards live in `src/lib/api-route.ts`:
 
 ```ts
-const idempotency = requireIdempotencyKey(request);   // 400 when absent/short
+const idempotency = requireIdempotencyKey(request); // 400 when absent/short
 if (!idempotency.ok) return idempotency.response;
 
 return withIdempotency(request, { userId: auth.userId, key: idempotency.key }, async () => {
@@ -313,13 +317,13 @@ return withIdempotency(request, { userId: auth.userId, key: idempotency.key }, a
 });
 ```
 
-| Situation | Response |
-|---|---|
-| No key, or shorter than 8 / longer than 255 characters | `400` before any work |
-| First successful request | Normal `2xx`; its status and body are cached for **24 h** |
-| Repeat after completion | `409` + the **original body**, `Idempotency-Replay: true`, `X-Original-Status: <code>` |
-| Repeat while the first is still running | `409` + `Retry-After`, code `OPERATION_IN_PROGRESS` |
-| Route failed (non-2xx / threw) | Lease released immediately — retry with the same key |
+| Situation                                              | Response                                                                               |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| No key, or shorter than 8 / longer than 255 characters | `400` before any work                                                                  |
+| First successful request                               | Normal `2xx`; its status and body are cached for **24 h**                              |
+| Repeat after completion                                | `409` + the **original body**, `Idempotency-Replay: true`, `X-Original-Status: <code>` |
+| Repeat while the first is still running                | `409` + `Retry-After`, code `OPERATION_IN_PROGRESS`                                    |
+| Route failed (non-2xx / threw)                         | Lease released immediately — retry with the same key                                   |
 
 The cache is Redis-backed (`src/lib/idempotency.ts`); without Redis the route
 still runs, and each route keeps its durable guard where it has one (batches
@@ -344,6 +348,7 @@ For deep collections (such as `/api/audit-log` or enterprise payment lists), off
 ```
 
 #### Usage Example (`GET /api/audit-log`)
+
 - First page (descending order by timestamp):
   ```bash
   GET /api/audit-log?source=db&limit=20&order=desc
@@ -354,7 +359,6 @@ For deep collections (such as `/api/audit-log` or enterprise payment lists), off
   ```
 - Directional sorting is supported via `order=asc` or `order=desc`.
 - When `hasMore` is `false`, `nextCursor` resolves to `null`.
-
 
 ---
 
@@ -371,7 +375,7 @@ How it works:
 - **Exempt paths**: `/api/health` and `/api/metrics` are never throttled
   (monitoring endpoints are hit frequently by orchestrators). `/api/metrics`
   is still **authenticated** — it requires `Authorization: Bearer
-  $METRICS_TOKEN` (see [Per-Endpoint Metrics](./metrics-endpoints.md)).
+$METRICS_TOKEN` (see [Per-Endpoint Metrics](./metrics-endpoints.md)).
 - **Headers** on every API response:
   `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
 - **On exceed**: `429` with `Retry-After` and body
@@ -400,8 +404,8 @@ import { rateLimitError } from "@/lib/api-response";
 
 const result = await getRateLimitStore().increment(
   `user:${auth.userId}:<operation>`,
-  60_000,     // window
-  10          // max per window
+  60_000, // window
+  10 // max per window
 );
 if (!result.allowed) return rateLimitError();
 ```
@@ -449,56 +453,59 @@ import {
   handleApiError,
 } from "@/lib/api-response";
 import { getRateLimitStore } from "@/lib/rate-limit";
-import {
-  createCounterpartySchema,
-  counterpartyQuerySchema,
-} from "@/lib/validation-schemas";
+import { createCounterpartySchema, counterpartyQuerySchema } from "@/lib/validation-schemas";
 
-export const GET = apiRoute({
-  name: "GET /api/counterparties",
-  querySchema: counterpartyQuerySchema,
-}, async (request, { auth, query }) => {
-  const where: any = { userId: auth.userId };
-  if (query.search) {
-    where.name = { contains: query.search, mode: "insensitive" };
-  }
-
-  const items = await prisma.counterparty.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: query.limit,
-  });
-
-  return successResponse(items, { limit: query.limit });
-});
-
-export const POST = apiRoute({
-  name: "POST /api/counterparties",
-  bodySchema: createCounterpartySchema,
-}, async (request, { auth, body }) => {
-  try {
-    // Stricter per-user limit than the global per-IP one (example of §7)
-    const rate = await getRateLimitStore().increment(
-      `user:${auth.userId}:counterparties`,
-      60_000,
-      30
-    );
-    if (!rate.allowed) {
-      return errorResponse("RATE_LIMITED", "Too many requests", 429);
+export const GET = apiRoute(
+  {
+    name: "GET /api/counterparties",
+    querySchema: counterpartyQuerySchema,
+  },
+  async (request, { auth, query }) => {
+    const where: any = { userId: auth.userId };
+    if (query.search) {
+      where.name = { contains: query.search, mode: "insensitive" };
     }
 
-    const item = await prisma.counterparty.create({
-      data: {
-        ...body,
-        userId: auth.userId,
-      },
+    const items = await prisma.counterparty.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: query.limit,
     });
 
-    return successResponse(item, undefined, 201);
-  } catch (err) {
-    return handleApiError(err, "POST /api/counterparties");
+    return successResponse(items, { limit: query.limit });
   }
-});
+);
+
+export const POST = apiRoute(
+  {
+    name: "POST /api/counterparties",
+    bodySchema: createCounterpartySchema,
+  },
+  async (request, { auth, body }) => {
+    try {
+      // Stricter per-user limit than the global per-IP one (example of §7)
+      const rate = await getRateLimitStore().increment(
+        `user:${auth.userId}:counterparties`,
+        60_000,
+        30
+      );
+      if (!rate.allowed) {
+        return errorResponse("RATE_LIMITED", "Too many requests", 429);
+      }
+
+      const item = await prisma.counterparty.create({
+        data: {
+          ...body,
+          userId: auth.userId,
+        },
+      });
+
+      return successResponse(item, undefined, 201);
+    } catch (err) {
+      return handleApiError(err, "POST /api/counterparties");
+    }
+  }
+);
 ```
 
 > Note the `where` filter is always scoped to `auth.userId` — the single most
@@ -588,6 +595,7 @@ OphirPay provides built-in interactive OpenAPI documentation and a live testing 
 - **Committed Specification**: [`docs/openapi.yaml`](./openapi.yaml).
 
 ### Key Features
+
 1. **Interactive "Try It Out"**: Directly test endpoints against Stellar Testnet nodes (`https://soroban-testnet.stellar.org`, `https://horizon-testnet.stellar.org`), local development (`http://localhost:3000`), or production APIs.
 2. **Strict CSP Compliance**: Built with native Next.js App Router components without external script injections or un-nonced inline scripts, strictly complying with the CSP policy in `src/proxy.ts`.
 3. **Automated Drift Protection**: CI guards verify bidirectional conformance (`src/__tests__/openapi-conformance.test.ts`) and ensure all client SDK packages are up to date (`node scripts/generate-api-client.mjs --check`).
@@ -600,22 +608,27 @@ Use this checklist before opening (or requesting review of) a PR that adds or
 changes an API endpoint:
 
 **Structure**
+
 - [ ] Route file is `src/app/api/<resource>/route.ts`
 - [ ] File starts with `// SPDX-License-Identifier: MIT`
 - [ ] Handlers use the `apiRoute` wrapper from `src/lib/api-route.ts`
 - [ ] Business logic lives in `src/lib/`, not in the route file
 
 **Validation & Wrapper**
+
 - [ ] Schema validation is passed via `bodySchema` and `querySchema` to `apiRoute`
 - [ ] Exemptions for Auth or CSRF explicitly set `auth: "opt-out"` or `csrf: "opt-out"`
 
 **Auth & security**
+
 - [ ] Every query scoped to `ctx.auth.userId` (or `keyId`) — no cross-user reads
 - [ ] Client-supplied `userId`/ownership fields are ignored in favor of auth context
 
 **Errors & Responses**
+
 - [ ] Return standard helpers from `src/lib/api-response.ts` (e.g. `successResponse`)
 
 **Rate limiting & Testing**
+
 - [ ] `docs/openapi.yaml` updated with the new/changed path and schemas
 - [ ] Unit tests added in `src/__tests__/`

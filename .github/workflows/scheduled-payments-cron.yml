@@ -21,7 +21,6 @@ on:
 permissions:
   contents: read
 
-
 # -- Global Concurrency � singleton group for scheduled runs --------
 concurrency:
   group: ${{ github.workflow }}

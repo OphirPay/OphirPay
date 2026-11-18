@@ -20,6 +20,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash scripts/container-healthcheck.sh /api/health/live || node scripts/healthcheck.js /api/health/live"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     volumes:
       - .:/app
       - /app/node_modules

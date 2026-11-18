@@ -18,6 +18,7 @@
 **Cause**: The Freighter extension is not installed, is not unlocked, or the page was loaded before the extension injected its API into the page.
 
 **Resolution**:
+
 1. Install Freighter from the [official extension store](https://freighter.app) (Chrome/Edge/Firefox).
 2. Unlock it with your password and make sure you have a funded account selected.
 3. Refresh the page — the wallet API is injected at page load, so a reload is required after installing/unlocking.
@@ -43,6 +44,7 @@ cargo build --target wasm32v1-none --release
 **Cause**: The database is unreachable (`DATABASE_URL` unset/wrong), the client is out of sync with `prisma/schema.prisma`, or pending migrations were never applied.
 
 **Resolution**:
+
 1. Verify `DATABASE_URL` is set in `.env.local` (and `DATABASE_PROVIDER` is `postgresql` for production, `sqlite` for local dev).
 2. Apply the schema to your database: `npx prisma db push`.
 3. Regenerate the client: `npx prisma generate`.
@@ -84,6 +86,7 @@ npm ci
 **Cause**: Another process is already listening on the default port (3000 for Next.js, 8787 for the event WebSocket server).
 
 **Resolution**:
+
 1. Find the offender: `lsof -i :3000` (macOS/Linux) or `netstat -ano | findstr :3000` (Windows), then kill it.
 2. Or run on a different port: `npm run dev -- -p 3001`.
 3. For the events server, set `EVENTS_WS_PORT` (default `8787`) to a free port.
@@ -95,6 +98,7 @@ npm ci
 **Cause**: Lockfile out of sync, registry/network issue, or a platform-specific dependency.
 
 **Resolution**:
+
 1. Delete `node_modules` and re-run `npm ci` (uses the committed lockfile): `rm -rf node_modules && npm ci`.
 2. If you changed dependencies, run `npm install` and **commit the updated `package-lock.json`**.
 3. Check `npm config get registry` is a reachable registry (default `https://registry.npmjs.org/`).
@@ -134,6 +138,7 @@ npm ci
 **Cause**: You requested funds for the **wrong network** (friendbot only funds **testnet**), the address is malformed, or the account already has funds (friendbot refuses duplicates).
 
 **Resolution**:
+
 1. Only use friendbot on **testnet**: `curl "https://friendbot.stellar.org?addr=<PUBLIC_KEY>"`.
 2. Verify the address is a valid Stellar `G…` strkey (56 chars).
 3. Check the balance via Horizon: `curl -s "https://horizon-testnet.stellar.org/accounts/<PUBLIC_KEY>" | jq '.balances[] | select(.asset_type=="native") | .balance'`.
@@ -166,6 +171,7 @@ npm ci
 **Cause**: Soroban RPC endpoint unreachable, wrong URL, or a firewall/proxy issue.
 
 **Resolution**:
+
 1. Verify the endpoint responds: `curl -s -X POST https://soroban-testnet.stellar.org:443 -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'`.
 2. Check `NEXT_PUBLIC_STELLAR_RPC_URL` (testnet: `https://soroban-testnet.stellar.org:443`, mainnet: `https://soroban.stellar.org:443`).
 3. Check [status.stellar.org](https://status.stellar.org) for an outage.
@@ -178,6 +184,7 @@ npm ci
 **Cause**: Horizon endpoint down, slow, or misconfigured.
 
 **Resolution**:
+
 1. Verify: `curl -s https://horizon-testnet.stellar.org/ | jq .core_version`.
 2. Confirm `NEXT_PUBLIC_STELLAR_HORIZON_URL` matches the network.
 3. Check status.stellar.org.
@@ -198,6 +205,7 @@ npm ci
 **Cause**: Wrong `NEXT_PUBLIC_CONTRACT_ID` / `NEXT_PUBLIC_EMITTER_CONTRACT_ID`, or the contract lives on a different network.
 
 **Resolution**:
+
 1. Verify the IDs in `.env.local` against the [contract registry](deployment-mainnet.md#26-contract-address-registry) (testnet IDs are pre-configured in `.env.example`).
 2. Confirm the contract was deployed on the same network you're pointing at.
 
@@ -212,6 +220,7 @@ npm ci
 **Cause**: The destination/your account has no **trustline** for that asset+issuer. OphirPay checks this via `checkTrustline` before selecting an asset.
 
 **Resolution**:
+
 1. Add a trustline for the asset in Freighter (Assets → Add asset, enter code + issuer).
 2. Confirm it registered: check the account balances on Horizon and look for the asset's `asset_code`/`asset_issuer`.
 3. Retry the payment.
@@ -235,6 +244,7 @@ npm ci
 **Cause**: Freighter extension not installed, or not unlocked.
 
 **Resolution**:
+
 1. Install Freighter from the [extension store](https://freighter.app).
 2. Unlock it.
 3. Refresh the page.
@@ -255,6 +265,7 @@ npm ci
 **Cause**: The user clicked "Reject", or the wallet auto-rejected (e.g. fee too high, or the account is a hardware wallet requiring confirmation).
 
 **Resolution**:
+
 1. Retry and **approve** the transaction in the popup.
 2. Check the fee estimate isn't above the wallet's threshold.
 3. For hardware wallets, confirm the transaction on the device.
@@ -266,6 +277,7 @@ npm ci
 **Cause**: Common causes: insufficient funds, invalid destination, missing memo for memo-required destination, or expired timebounds.
 
 **Resolution**:
+
 1. Confirm the payer has XLM to cover the amount + fee.
 2. Confirm the destination `G…`/`C…` address is valid.
 3. If the destination requires a memo, include one.
@@ -298,6 +310,7 @@ npm ci
 **Cause**: The page reads from the contract via RPC; a stale RPC response or wrong contract ID.
 
 **Resolution**:
+
 1. Verify on-chain: `stellar contract invoke --id <CONTRACT_ID> -- get_payment_count`.
 2. Check the [contract registry](deployment-mainnet.md#26-contract-address-registry) for the right ID.
 3. Refresh after a few seconds (the chain confirms asynchronously).
@@ -313,6 +326,7 @@ npm ci
 **Cause**: The SSE route (`GET /api/events`) is unreachable — often a reverse proxy that buffers the stream, or the emitter contract/RPC is down.
 
 **Resolution**:
+
 1. Verify the stream: `curl -N http://localhost:3000/api/events` — you should see a `connected` event then `heartbeat` frames every 15 s.
 2. If behind Nginx, disable buffering (`proxy_buffering off;`) — see the [Nginx example](DEPLOYMENT.md#reverse-proxy-nginx).
 3. Check the emitter contract ID and RPC health (see [RPC & network](#-rpc--network)).
@@ -324,6 +338,7 @@ npm ci
 **Cause**: The WebSocket event server (port `8787`, `EVENTS_WS_PORT`) isn't running or isn't reachable; the client falls back to SSE automatically.
 
 **Resolution**:
+
 1. This is **expected behavior** — SSE fallback works.
 2. The WebSocket server starts automatically on boot via `instrumentation.ts` (`EVENTS_WS_PORT`, default `8787`); check the startup log for `WebSocket event server listening`.
 3. Confirm `ws(s)://<host>:8787/api/events` connects.
@@ -342,11 +357,13 @@ npm ci
 **Symptom**: Webhook deliveries fail repeatedly, exceeding the allowed 5% threshold over a 5-minute rolling window or 25% threshold over a 15-minute window.
 
 **Cause**:
+
 - Subscriber endpoints are offline, returning 5xx or 429 status codes, or timing out.
 - TLS/SSL handshake failures or misconfigured endpoint URLs.
 - Delivery worker queue backlog or rate limiting by destination firewalls.
 
 **Resolution**:
+
 1. Inspect Prometheus counters `ophirpay_delivery_final_outcomes_total` and `ophirpay_delivery_attempts_total` to check failure rates and retry distributions.
 2. Review application logs for webhook dispatcher errors (`grep "webhook delivery failed"`).
 3. Verify subscriber endpoints via direct test ping (`POST /api/webhooks/test`).
@@ -363,11 +380,13 @@ npm ci
 **Symptom**: Soroban RPC calls take more than 2.5 seconds (p95) or return 5xx server errors for 3 minutes.
 
 **Cause**:
+
 - Primary Soroban RPC provider is suffering from network congestion, degraded performance, or node outages.
 - Upstream rate limiting or node synchronization lag on the Stellar network.
 - Misconfigured RPC URL or network instability between the host and RPC provider.
 
 **Resolution**:
+
 1. Check `GET /api/health` and the `rpcFailover` status block to verify active endpoint and probe results.
 2. Verify Stellar network status at [status.stellar.org](https://status.stellar.org).
 3. If the primary RPC provider is persistently down, verify the automatic failover to the configured fallback endpoint (`FALLBACK_RPC_URLS`).
@@ -385,12 +404,14 @@ npm ci
 **Symptom**: Prisma database queries experience severe queue wait times (> 500ms) before acquiring a connection from the pool.
 
 **Cause**:
+
 - Connection pool size is too small for current traffic volume (`connection_limit` parameter in `DATABASE_URL`).
 - Long-running transactions or slow database queries holding pool connections open.
 - Connection leaks or unindexed queries causing query queues to back up.
 - Upstream database (PostgreSQL, Neon, Supabase) is under high load or PgBouncer pool limits reached.
 
 **Resolution**:
+
 1. Check active database queries and lock waits in the database engine (`pg_stat_activity`).
 2. Inspect `ophirpay_db_query_duration_seconds` to identify if slow queries are exhausting the pool.
 3. Review connection pool settings in `DATABASE_URL` (e.g., `connection_limit=20&pool_timeout=10`).

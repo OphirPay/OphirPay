@@ -4,11 +4,11 @@ This document defines the governance model for the OphirPay open-source project.
 
 ## Roles
 
-| Role | Description | Permissions |
-|---|---|---|
-| **Maintainer** | Core project steward | Merge PRs, cut releases, manage CI, triage issues |
-| **Contributor** | Anyone who submits a merged PR | Submit PRs, review code, participate in discussions |
-| **Community Member** | Anyone using or interested in OphirPay | Open issues, ask questions, provide feedback |
+| Role                 | Description                            | Permissions                                         |
+| -------------------- | -------------------------------------- | --------------------------------------------------- |
+| **Maintainer**       | Core project steward                   | Merge PRs, cut releases, manage CI, triage issues   |
+| **Contributor**      | Anyone who submits a merged PR         | Submit PRs, review code, participate in discussions |
+| **Community Member** | Anyone using or interested in OphirPay | Open issues, ask questions, provide feedback        |
 
 ## Decision Making
 
@@ -24,6 +24,7 @@ OphirPay uses a **lazy consensus** model:
 ### Tie-Breaking
 
 If consensus cannot be reached, **maintainers** make the final decision. Decisions should be:
+
 - Documented in the relevant issue or PR
 - Based on project principles: safety, simplicity, and Stellar ecosystem alignment
 
@@ -47,6 +48,7 @@ Contributors who demonstrate sustained, high-quality contributions may be invite
 ## Removing a Maintainer
 
 A maintainer may be removed by unanimous vote of all other maintainers if they:
+
 - Violate the Code of Conduct
 - Are inactive for 6+ months without notice
 - Act against the project's interests

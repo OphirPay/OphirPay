@@ -314,7 +314,7 @@ PRs and pushes touching `prisma/**` (and the drift scripts/docs):
    committed migrations without a database and fails with the exact drifted
    fields/models.
 5. **Shadow-DB Drift Check**: `prisma migrate diff --from-migrations …
-   --to-schema-datamodel … --exit-code` compares the migrations with the schema
+--to-schema-datamodel … --exit-code` compares the migrations with the schema
    on a real PostgreSQL shadow database. `--exit-code` is what makes the step
    fail (exit 2) on drift; without it Prisma prints the diff and exits 0.
 6. **Migration Deploy Replay**: Executes all migrations in `prisma/migrations/`

@@ -8,9 +8,9 @@ tests:
   - interval: 1m
     input_series:
       - series: 'ophirpay_delivery_final_outcomes_total{delivery_type="webhook",final_outcome="failure"}'
-        values: '0+10x15'
+        values: "0+10x15"
       - series: 'ophirpay_delivery_final_outcomes_total{delivery_type="webhook",final_outcome="success"}'
-        values: '0+10x15'
+        values: "0+10x15"
     alert_rule_test:
       - eval_time: 6m
         alertname: OphirPayWebhookHighFailureRate
@@ -27,9 +27,9 @@ tests:
   - interval: 1m
     input_series:
       - series: 'ophirpay_rpc_requests_total{status_class="5xx"}'
-        values: '0+10x10'
+        values: "0+10x10"
       - series: 'ophirpay_rpc_requests_total{status_class="2xx"}'
-        values: '0+10x10'
+        values: "0+10x10"
     alert_rule_test:
       - eval_time: 4m
         alertname: OphirPayRpcProviderDegraded
@@ -45,8 +45,8 @@ tests:
   # ── Test OphirPayDatabasePoolExhaustion ─────────────────────────
   - interval: 1m
     input_series:
-      - series: 'ophirpay_database_pool_wait_seconds'
-        values: '0.8+0x5'
+      - series: "ophirpay_database_pool_wait_seconds"
+        values: "0.8+0x5"
     alert_rule_test:
       - eval_time: 1m
         alertname: OphirPayDatabasePoolExhaustion

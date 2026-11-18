@@ -14,7 +14,7 @@ If you already know a test is unreliable, mark it explicitly instead of
 letting it quietly eat a retry every run:
 
 ```ts
-test('some flaky flow', async ({ page }) => {
+test("some flaky flow", async ({ page }) => {
   test.info().annotations.push({ type: "flaky", description: "issue #123" });
   // ...
 });

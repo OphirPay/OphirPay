@@ -65,6 +65,7 @@ export function problemTitleForStatus(status: number): string {
     451: "Unavailable For Legal Reasons",
     500: "Internal Server Error",
     503: "Service Unavailable",
+    504: "Gateway Timeout",
   };
   if (titles[status]) return titles[status];
   return status >= 500 ? "Server Error" : "Client Error";
@@ -252,6 +253,23 @@ export function problemTooManyRequests(
   return formatProblemDetails({
     status: 429,
     code: options.code ?? "RATE_LIMITED",
+    detail,
+    instance: options.instance,
+    headers: options.headers,
+  });
+}
+
+/**
+ * 504 for database queries, external calls, or aggregations that timed out.
+ */
+export function problemGatewayTimeout(
+  detail = "The server timed out waiting for an upstream or database response.",
+  options: { instance?: string; code?: string; headers?: Record<string, string> } = {}
+): NextResponse {
+  return formatProblemDetails({
+    status: 504,
+    code: options.code ?? "GATEWAY_TIMEOUT",
+    title: "Gateway Timeout",
     detail,
     instance: options.instance,
     headers: options.headers,

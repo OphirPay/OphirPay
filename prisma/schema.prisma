@@ -859,3 +859,29 @@ model CronExecutionLog {
   /// Speeds up status-filtered queries.
   @@index([status])
 }
+
+// ── Idempotency Keys ──────────────────────────────────────────
+
+/// Ephemeral record of an idempotency key for replay prevention and request deduplication (issue #2025).
+/// Automatically pruned by the scheduled cleanup routine after expiration.
+model IdempotencyKey {
+  /// Primary key — CUID generated at insert time.
+  id        String   @id @default(cuid())
+  /// Client-supplied or generated idempotency key.
+  key       String
+  /// Owner of the idempotency key (user or API client).
+  userId    String
+  /// Cached response payload string (JSON) for byte-identical replays.
+  response  String?
+  /// Cached HTTP status code for replays.
+  status    Int?
+  /// When the key was claimed/created.
+  createdAt DateTime @default(now())
+  /// Expiration date after which the key is eligible for pruning (default 7 days).
+  expiresAt DateTime
+
+  /// Unique per user and key.
+  @@unique([userId, key])
+  /// Speeds up expiration queries and cleanup pruning ("expiresAt < now").
+  @@index([expiresAt])
+}

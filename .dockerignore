@@ -19,3 +19,15 @@ contracts/**/target/
 contracts/*/target/
 contracts/**/Cargo.lock
 **/test_snapshots/
+# Dev and local testing artifacts (issue #2026)
+.vscode
+.idea
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+.tsbuildinfo
+e2e
+tests
+helm

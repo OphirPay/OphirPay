@@ -5,14 +5,14 @@ name: README Sync Check
 on:
   push:
     paths:
-      - 'README.md'
-      - 'README.*.md'
-      - 'scripts/check-readme-sync.mjs'
+      - "README.md"
+      - "README.*.md"
+      - "scripts/check-readme-sync.mjs"
   pull_request:
     paths:
-      - 'README.md'
-      - 'README.*.md'
-      - 'scripts/check-readme-sync.mjs'
+      - "README.md"
+      - "README.*.md"
+      - "scripts/check-readme-sync.mjs"
 
 jobs:
   readme-sync:
@@ -28,7 +28,7 @@ jobs:
         with:
           # Read the required Node version from .nvmrc so it stays in sync
           # with the rest of the project toolchain.
-          node-version-file: '.nvmrc'
+          node-version-file: ".nvmrc"
 
       - name: Run README sync check
         run: node scripts/check-readme-sync.mjs

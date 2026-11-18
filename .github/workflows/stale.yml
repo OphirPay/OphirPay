@@ -8,8 +8,7 @@ permissions:
   issues: write
   pull-requests: write
 
-
-# -- Global Concurrency — singleton group for scheduled runs --------
+# -- Global Concurrency ï¿½ singleton group for scheduled runs --------
 concurrency:
   group: ${{ github.workflow }}
 

@@ -19,7 +19,7 @@ two places:
 
 - **`secrets.existingSecret`** (recommended) — the name of a Secret that already
   exists in the namespace. The chart then renders no Secret object at all and
-the Deployment reads that name, so External Secrets, Sealed Secrets, Vault, or
+  the Deployment reads that name, so External Secrets, Sealed Secrets, Vault, or
   your platform team own the credentials.
 - **`values.secrets`** — the chart renders `<release>-<chart>-secrets`. This
   mode fails fast: `helm template`/`helm install` abort with a message naming
@@ -28,12 +28,12 @@ the Deployment reads that name, so External Secrets, Sealed Secrets, Vault, or
 
 Either way the pods need at least:
 
-| Secret | Purpose |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `AUTH_SECRET` | Session signing secret |
-| `NEXT_PUBLIC_CONTRACT_ID` | Deployed OphirPay contract |
-| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | Deployed emitter contract |
+| Secret                            | Purpose                      |
+| --------------------------------- | ---------------------------- |
+| `DATABASE_URL`                    | PostgreSQL connection string |
+| `AUTH_SECRET`                     | Session signing secret       |
+| `NEXT_PUBLIC_CONTRACT_ID`         | Deployed OphirPay contract   |
+| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | Deployed emitter contract    |
 
 Add `REDIS_URL` when using a shared rate-limit store and any deployment-specific
 credentials required by the application. Optional chart values also support

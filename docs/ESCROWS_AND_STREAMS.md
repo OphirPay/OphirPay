@@ -56,10 +56,10 @@ always the authoritative source of truth.
 
 All endpoints require authentication. Two methods are accepted:
 
-| Method | How to supply |
-|--------|--------------|
+| Method         | How to supply                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------ |
 | Wallet session | Connect with Freighter (or any SEP-10 compatible wallet). A session cookie is set automatically. |
-| API key | Pass the key in the `Authorization` header: `Authorization: Bearer <key>` |
+| API key        | Pass the key in the `Authorization` header: `Authorization: Bearer <key>`                        |
 
 Unauthenticated requests receive:
 
@@ -169,13 +169,13 @@ Authorization: Bearer ophirpay_sk_live_abc123
 
 **Status field mapping**
 
-| Value | State |
-|-------|-------|
-| 0 | PENDING |
-| 1 | ACTIVE |
-| 2 | RELEASED |
-| 3 | CLAIMED |
-| 4 | EXPIRED |
+| Value | State    |
+| ----- | -------- |
+| 0     | PENDING  |
+| 1     | ACTIVE   |
+| 2     | RELEASED |
+| 3     | CLAIMED  |
+| 4     | EXPIRED  |
 
 **Response when escrow ID is not found on-chain**
 
@@ -220,19 +220,19 @@ Cookie: __Host-csrf=tok_csrf_example
 
 **Required fields**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `depositor` | string | Stellar account ID of the party funding the escrow |
-| `beneficiary` | string | Stellar account ID of the intended recipient |
-| `amount` | string | Amount in stroops (XLM) or token units |
+| Field         | Type   | Description                                        |
+| ------------- | ------ | -------------------------------------------------- |
+| `depositor`   | string | Stellar account ID of the party funding the escrow |
+| `beneficiary` | string | Stellar account ID of the intended recipient       |
+| `amount`      | string | Amount in stroops (XLM) or token units             |
 
 **Optional fields**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `asset` | string | `"native"` | Asset code. Use `"native"` for XLM or a Stellar asset identifier |
-| `deadline` | number | none | Unix timestamp after which the escrow expires |
-| `metadata` | object | none | Arbitrary JSON object stored with the escrow |
+| Field      | Type   | Default    | Description                                                      |
+| ---------- | ------ | ---------- | ---------------------------------------------------------------- |
+| `asset`    | string | `"native"` | Asset code. Use `"native"` for XLM or a Stellar asset identifier |
+| `deadline` | number | none       | Unix timestamp after which the escrow expires                    |
+| `metadata` | object | none       | Arbitrary JSON object stored with the escrow                     |
 
 **Response 202**
 
@@ -242,12 +242,12 @@ Cookie: __Host-csrf=tok_csrf_example
   "data": {
     "message": "Escrow creation requires wallet signing via the client-side createEscrow flow.",
     "params": {
-      "depositor":   "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "depositor": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
       "beneficiary": "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
-      "amount":      "500",
-      "asset":       "native",
-      "deadline":    1785000000,
-      "metadata":    { "invoice": "INV-2026-0099" }
+      "amount": "500",
+      "asset": "native",
+      "deadline": 1785000000,
+      "metadata": { "invoice": "INV-2026-0099" }
     }
   }
 }
@@ -346,12 +346,12 @@ Authorization: Bearer ophirpay_sk_live_abc123
     └──────────┘  └─────────┘  └─────────┘
 ```
 
-| Transition | Triggered by |
-|------------|-------------|
-| PENDING → ACTIVE | `create_escrow` on-chain confirmation + funds locked |
+| Transition        | Triggered by                                                   |
+| ----------------- | -------------------------------------------------------------- |
+| PENDING → ACTIVE  | `create_escrow` on-chain confirmation + funds locked           |
 | ACTIVE → RELEASED | `release_escrow` (depositor) or `release_by_arbiter` (arbiter) |
-| ACTIVE → CLAIMED | `claim_escrow` (beneficiary, after release) |
-| ACTIVE → EXPIRED | `deadline` passes without release |
+| ACTIVE → CLAIMED  | `claim_escrow` (beneficiary, after release)                    |
+| ACTIVE → EXPIRED  | `deadline` passes without release                              |
 
 **Arbiter role** — An optional third party (`arbiter` field) can call
 `release_by_arbiter` to release funds when the depositor and beneficiary
@@ -363,16 +363,16 @@ designated arbiter returns `UNAUTHORIZED_ARBITER` (403).
 
 ### Escrow error codes
 
-| Code | HTTP status | When it occurs |
-|------|-------------|----------------|
-| `ESCROW_NOT_FOUND` | 404 | The escrow ID does not exist on-chain |
-| `ESCROW_ALREADY_FUNDED` | 409 | A `create_escrow` call targets an ID already funded |
-| `ESCROW_ALREADY_COMPLETED` | 409 | The escrow is in a terminal state (RELEASED, CLAIMED, or EXPIRED) |
-| `ESCROW_EXPIRED` | 422 | A release or claim was attempted after the deadline passed |
-| `ESCROW_DISPUTED` | 422 | The escrow is in a disputed state pending arbiter resolution |
-| `UNAUTHORIZED_ARBITER` | 403 | `release_by_arbiter` was called by an account that is not the designated arbiter |
-| `UNAUTHORIZED` | 401 | Request lacks a valid wallet session or API key |
-| `BAD_REQUEST` | 400 | Required fields missing or malformed |
+| Code                       | HTTP status | When it occurs                                                                   |
+| -------------------------- | ----------- | -------------------------------------------------------------------------------- |
+| `ESCROW_NOT_FOUND`         | 404         | The escrow ID does not exist on-chain                                            |
+| `ESCROW_ALREADY_FUNDED`    | 409         | A `create_escrow` call targets an ID already funded                              |
+| `ESCROW_ALREADY_COMPLETED` | 409         | The escrow is in a terminal state (RELEASED, CLAIMED, or EXPIRED)                |
+| `ESCROW_EXPIRED`           | 422         | A release or claim was attempted after the deadline passed                       |
+| `ESCROW_DISPUTED`          | 422         | The escrow is in a disputed state pending arbiter resolution                     |
+| `UNAUTHORIZED_ARBITER`     | 403         | `release_by_arbiter` was called by an account that is not the designated arbiter |
+| `UNAUTHORIZED`             | 401         | Request lacks a valid wallet session or API key                                  |
+| `BAD_REQUEST`              | 400         | Required fields missing or malformed                                             |
 
 ---
 
@@ -420,26 +420,26 @@ Authorization: Bearer ophirpay_sk_live_abc123
   "success": true,
   "data": {
     "id": 3,
-    "creator":       "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-    "recipient":     "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
-    "totalAmount":   1000,
+    "creator": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "recipient": "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
+    "totalAmount": 1000,
     "claimedAmount": 250,
-    "asset":         "native",
-    "startTime":     1753920000,
-    "endTime":       1785456000,
-    "status":        0,
-    "metadata":      { "project": "retainer-q3" }
+    "asset": "native",
+    "startTime": 1753920000,
+    "endTime": 1785456000,
+    "status": 0,
+    "metadata": { "project": "retainer-q3" }
   }
 }
 ```
 
 **Status field mapping**
 
-| Value | State |
-|-------|-------|
-| 0 | ACTIVE |
-| 1 | FULLY_CLAIMED |
-| 2 | CANCELLED |
+| Value | State         |
+| ----- | ------------- |
+| 0     | ACTIVE        |
+| 1     | FULLY_CLAIMED |
+| 2     | CANCELLED     |
 
 **Response when stream ID is not found on-chain**
 
@@ -485,20 +485,20 @@ Cookie: __Host-csrf=tok_csrf_example
 
 **Required fields**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `creator` | string | Stellar account ID of the party funding the stream |
-| `recipient` | string | Stellar account ID receiving the streamed funds |
+| Field         | Type   | Description                                            |
+| ------------- | ------ | ------------------------------------------------------ |
+| `creator`     | string | Stellar account ID of the party funding the stream     |
+| `recipient`   | string | Stellar account ID receiving the streamed funds        |
 | `totalAmount` | string | Total amount to stream in stroops (XLM) or token units |
 
 **Optional fields**
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `asset` | string | `"native"` | Asset code. Use `"native"` for XLM or a Stellar asset identifier |
-| `startTime` | number | current block time | Unix timestamp when streaming begins |
-| `endTime` | number | none | Unix timestamp when streaming ends (required for vesting calculation) |
-| `metadata` | object | none | Arbitrary JSON object stored with the stream |
+| Field       | Type   | Default            | Description                                                           |
+| ----------- | ------ | ------------------ | --------------------------------------------------------------------- |
+| `asset`     | string | `"native"`         | Asset code. Use `"native"` for XLM or a Stellar asset identifier      |
+| `startTime` | number | current block time | Unix timestamp when streaming begins                                  |
+| `endTime`   | number | none               | Unix timestamp when streaming ends (required for vesting calculation) |
+| `metadata`  | object | none               | Arbitrary JSON object stored with the stream                          |
 
 **Response 202**
 
@@ -508,13 +508,13 @@ Cookie: __Host-csrf=tok_csrf_example
   "data": {
     "message": "Stream creation requires wallet signing via the client-side createStream flow.",
     "params": {
-      "creator":     "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-      "recipient":   "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
+      "creator": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "recipient": "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
       "totalAmount": "1000",
-      "asset":       "native",
-      "startTime":   1753920000,
-      "endTime":     1785456000,
-      "metadata":    { "project": "retainer-q3" }
+      "asset": "native",
+      "startTime": 1753920000,
+      "endTime": 1785456000,
+      "metadata": { "project": "retainer-q3" }
     }
   }
 }
@@ -556,15 +556,15 @@ Authorization: Bearer ophirpay_sk_live_abc123
   "success": true,
   "data": {
     "id": 3,
-    "creator":       "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-    "recipient":     "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
-    "totalAmount":   1000,
+    "creator": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "recipient": "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
+    "totalAmount": 1000,
     "claimedAmount": 250,
-    "asset":         "native",
-    "startTime":     1753920000,
-    "endTime":       1785456000,
-    "status":        0,
-    "metadata":      { "project": "retainer-q3" }
+    "asset": "native",
+    "startTime": 1753920000,
+    "endTime": 1785456000,
+    "status": 0,
+    "metadata": { "project": "retainer-q3" }
   }
 }
 ```
@@ -597,11 +597,11 @@ Authorization: Bearer ophirpay_sk_live_abc123
   └──────────────┘   └───────────┘
 ```
 
-| Transition | Triggered by |
-|------------|-------------|
-| → ACTIVE | `create_stream` on-chain confirmation |
+| Transition             | Triggered by                                            |
+| ---------------------- | ------------------------------------------------------- |
+| → ACTIVE               | `create_stream` on-chain confirmation                   |
 | ACTIVE → FULLY_CLAIMED | `claim_stream` called after full vesting period elapses |
-| ACTIVE → CANCELLED | `cancel_stream` called by the creator |
+| ACTIVE → CANCELLED     | `cancel_stream` called by the creator                   |
 
 When a stream is cancelled, the contract immediately pays any vested-but-
 unclaimed funds to the recipient, returns the unvested balance to the creator,
@@ -618,6 +618,7 @@ claimable = totalAmount × (now − startTime) / (endTime − startTime)
 ```
 
 Where:
+
 - `now` is the current ledger close time (Unix timestamp)
 - All values are integers (stroops or token units)
 - `claimable` is clamped to `[0, totalAmount]`
@@ -643,15 +644,15 @@ The contract uses integer arithmetic; the result is rounded down.
 
 ### Stream error codes
 
-| Code | HTTP status | When it occurs |
-|------|-------------|----------------|
-| `STREAM_NOT_FOUND` | 404 | The stream ID does not exist on-chain |
-| `STREAM_ALREADY_ACTIVE` | 409 | A `create_stream` call targets an ID already in use |
-| `STREAM_CANCELLED` | 422 | A claim was attempted on a cancelled stream |
-| `STREAM_COMPLETED` | 422 | A claim was attempted on a fully-claimed stream |
-| `STREAM_PAUSED` | 422 | A claim was attempted while the stream is paused |
-| `UNAUTHORIZED` | 401 | Request lacks a valid wallet session or API key |
-| `BAD_REQUEST` | 400 | Required fields missing or malformed |
+| Code                    | HTTP status | When it occurs                                      |
+| ----------------------- | ----------- | --------------------------------------------------- |
+| `STREAM_NOT_FOUND`      | 404         | The stream ID does not exist on-chain               |
+| `STREAM_ALREADY_ACTIVE` | 409         | A `create_stream` call targets an ID already in use |
+| `STREAM_CANCELLED`      | 422         | A claim was attempted on a cancelled stream         |
+| `STREAM_COMPLETED`      | 422         | A claim was attempted on a fully-claimed stream     |
+| `STREAM_PAUSED`         | 422         | A claim was attempted while the stream is paused    |
+| `UNAUTHORIZED`          | 401         | Request lacks a valid wallet session or API key     |
+| `BAD_REQUEST`           | 400         | Required fields missing or malformed                |
 
 ---
 
@@ -687,20 +688,20 @@ receiving a `202` response from the POST endpoints above.
 
 ### Escrow contract functions
 
-| Function | Caller | Description |
-|----------|--------|-------------|
-| `create_escrow(depositor, beneficiary, amount, asset, deadline, metadata)` | Depositor | Creates and funds the escrow. Locks `amount` in `LOCKED_BALANCE`. |
-| `release_escrow(escrow_id)` | Depositor | Releases funds to the beneficiary. Escrow moves to RELEASED state. |
-| `release_by_arbiter(escrow_id)` | Arbiter | Releases funds when the depositor and beneficiary cannot agree. Caller must match the `arbiter` set at creation. |
-| `claim_escrow(escrow_id)` | Beneficiary | Claims the released funds. Escrow moves to CLAIMED state. |
+| Function                                                                   | Caller      | Description                                                                                                      |
+| -------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `create_escrow(depositor, beneficiary, amount, asset, deadline, metadata)` | Depositor   | Creates and funds the escrow. Locks `amount` in `LOCKED_BALANCE`.                                                |
+| `release_escrow(escrow_id)`                                                | Depositor   | Releases funds to the beneficiary. Escrow moves to RELEASED state.                                               |
+| `release_by_arbiter(escrow_id)`                                            | Arbiter     | Releases funds when the depositor and beneficiary cannot agree. Caller must match the `arbiter` set at creation. |
+| `claim_escrow(escrow_id)`                                                  | Beneficiary | Claims the released funds. Escrow moves to CLAIMED state.                                                        |
 
 ### Stream contract functions
 
-| Function | Caller | Description |
-|----------|--------|-------------|
-| `create_stream(creator, recipient, totalAmount, asset, startTime, endTime, metadata)` | Creator | Creates the stream and locks `totalAmount` in `LOCKED_BALANCE`. |
-| `claim_stream(stream_id)` | Recipient | Claims the currently vested and unclaimed portion. Moves to FULLY_CLAIMED when all funds are claimed. |
-| `cancel_stream(stream_id)` | Creator | Pays vested-but-unclaimed funds to the recipient and returns unvested funds to the creator. |
+| Function                                                                              | Caller    | Description                                                                                           |
+| ------------------------------------------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------- |
+| `create_stream(creator, recipient, totalAmount, asset, startTime, endTime, metadata)` | Creator   | Creates the stream and locks `totalAmount` in `LOCKED_BALANCE`.                                       |
+| `claim_stream(stream_id)`                                                             | Recipient | Claims the currently vested and unclaimed portion. Moves to FULLY_CLAIMED when all funds are claimed. |
+| `cancel_stream(stream_id)`                                                            | Creator   | Pays vested-but-unclaimed funds to the recipient and returns unvested funds to the creator.           |
 
 For the full contract ABI including argument types see
 [`docs/CONTRACT_FUNCTION_REFERENCE.md`](./CONTRACT_FUNCTION_REFERENCE.md).

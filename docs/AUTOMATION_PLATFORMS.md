@@ -17,14 +17,14 @@ polling, and no API-key management on the receiving side.
 
 ## How delivery works
 
-| Property | Value |
-|---|---|
-| Method | `POST` (application/json) |
-| Headers | `X-OphirPay-Signature`, `X-OphirPay-Timestamp`, `X-OphirPay-Event` |
-| Retries | 3 attempts with exponential backoff (1s → 2s → 4s) |
-| Success | Any 2xx status code |
-| Failure | Non-2xx, timeout (5s per attempt) or unreachable target |
-| Replay window | Delivery is rejected as stale only on *your* side (see [Idempotency](#idempotency-and-retries)) |
+| Property      | Value                                                                                           |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| Method        | `POST` (application/json)                                                                       |
+| Headers       | `X-OphirPay-Signature`, `X-OphirPay-Timestamp`, `X-OphirPay-Event`                              |
+| Retries       | 3 attempts with exponential backoff (1s → 2s → 4s)                                              |
+| Success       | Any 2xx status code                                                                             |
+| Failure       | Non-2xx, timeout (5s per attempt) or unreachable target                                         |
+| Replay window | Delivery is rejected as stale only on _your_ side (see [Idempotency](#idempotency-and-retries)) |
 
 Subscribe by registering your endpoint in **Webhooks** (dashboard) or via
 `POST /api/webhooks`, passing the event types you want in `events`.
@@ -39,14 +39,14 @@ UTC, when the event was produced), `data` (event-specific), and `signature`
 
 ### Payments (`payment.*`)
 
-| Event | Fired when | `data` fields |
-|---|---|---|
-| `payment.created` | A payment record is created | `paymentId`, `amount`, `assetCode`, `status` (`CREATED`), `createdAt` |
-| `payment.signed` | The payment transaction has been signed | `paymentId`, `amount`, `assetCode`, `status` (`SIGNED`), `signedAt` |
-| `payment.submitted` | The signed transaction hit the network | `paymentId`, `amount`, `assetCode`, `transactionHash`, `submittedAt` |
-| `payment.confirmed` | The transaction is confirmed on-chain | `paymentId`, `amount`, `assetCode`, `transactionHash`, `confirmedAt` |
-| `payment.completed` | The payment is fully settled | `paymentId`, `amount`, `assetCode`, `transactionHash`, `completedAt` |
-| `payment.failed` | The payment failed at any stage | `paymentId`, `amount`, `assetCode`, `errorMessage`, `failedAt` |
+| Event               | Fired when                              | `data` fields                                                         |
+| ------------------- | --------------------------------------- | --------------------------------------------------------------------- |
+| `payment.created`   | A payment record is created             | `paymentId`, `amount`, `assetCode`, `status` (`CREATED`), `createdAt` |
+| `payment.signed`    | The payment transaction has been signed | `paymentId`, `amount`, `assetCode`, `status` (`SIGNED`), `signedAt`   |
+| `payment.submitted` | The signed transaction hit the network  | `paymentId`, `amount`, `assetCode`, `transactionHash`, `submittedAt`  |
+| `payment.confirmed` | The transaction is confirmed on-chain   | `paymentId`, `amount`, `assetCode`, `transactionHash`, `confirmedAt`  |
+| `payment.completed` | The payment is fully settled            | `paymentId`, `amount`, `assetCode`, `transactionHash`, `completedAt`  |
+| `payment.failed`    | The payment failed at any stage         | `paymentId`, `amount`, `assetCode`, `errorMessage`, `failedAt`        |
 
 Field meanings:
 
@@ -66,11 +66,11 @@ Field meanings:
 
 ### Batches (`batch.*`)
 
-| Event | Fired when | `data` fields |
-|---|---|---|
-| `batch.created` | A batch payment starts processing | `batchId`, `itemCount`, `totalAmount`, `assetCode`, `status`, `createdAt` |
+| Event             | Fired when                          | `data` fields                                                                                      |
+| ----------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `batch.created`   | A batch payment starts processing   | `batchId`, `itemCount`, `totalAmount`, `assetCode`, `status`, `createdAt`                          |
 | `batch.completed` | Every item reached a terminal state | `batchId`, `itemCount`, `succeeded`, `failed`, `totalAmount`, `assetCode`, `status`, `completedAt` |
-| `batch.failed` | The batch was aborted | `batchId`, `itemCount`, `succeeded`, `failed`, `assetCode`, `errorMessage`, `failedAt` |
+| `batch.failed`    | The batch was aborted               | `batchId`, `itemCount`, `succeeded`, `failed`, `assetCode`, `errorMessage`, `failedAt`             |
 
 `batch.completed` is the "normal end" event — check `failed` for partial
 failures. `batch.failed` means the batch aborted early; `succeeded` counts the
@@ -85,11 +85,11 @@ items that went through before the abort. Field meanings:
 
 ### Recurrences (`recurrence.*`)
 
-| Event | Fired when | `data` fields |
-|---|---|---|
-| `recurrence.triggered` | A scheduled payment fires | `recurrenceId`, `paymentId`, `amount`, `assetCode`, `interval`, `triggeredAt` |
+| Event                  | Fired when                    | `data` fields                                                                        |
+| ---------------------- | ----------------------------- | ------------------------------------------------------------------------------------ |
+| `recurrence.triggered` | A scheduled payment fires     | `recurrenceId`, `paymentId`, `amount`, `assetCode`, `interval`, `triggeredAt`        |
 | `recurrence.completed` | The triggered payment settled | `recurrenceId`, `paymentId`, `amount`, `assetCode`, `transactionHash`, `completedAt` |
-| `recurrence.failed` | The triggered payment failed | `recurrenceId`, `paymentId`, `amount`, `assetCode`, `errorMessage`, `failedAt` |
+| `recurrence.failed`    | The triggered payment failed  | `recurrenceId`, `paymentId`, `amount`, `assetCode`, `errorMessage`, `failedAt`       |
 
 `recurrence.triggered` carries the freshly created `paymentId`; subscribe to
 the `payment.*` events as well if you want the payment's own lifecycle.
@@ -103,10 +103,10 @@ Field meanings:
 
 ### Payment requests (`request.*`)
 
-| Event | Fired when | `data` fields |
-|---|---|---|
-| `request.created` | A payment request is published | `requestId`, `amount`, `assetCode`, `description`, `status` (`PENDING`), `createdAt` |
-| `request.paid` | Someone paid the request | `requestId`, `amount`, `assetCode`, `paymentId`, `transactionHash`, `paidAt` |
+| Event             | Fired when                         | `data` fields                                                                        |
+| ----------------- | ---------------------------------- | ------------------------------------------------------------------------------------ |
+| `request.created` | A payment request is published     | `requestId`, `amount`, `assetCode`, `description`, `status` (`PENDING`), `createdAt` |
+| `request.paid`    | Someone paid the request           | `requestId`, `amount`, `assetCode`, `paymentId`, `transactionHash`, `paidAt`         |
 | `request.expired` | The request deadline passed unpaid | `requestId`, `amount`, `assetCode`, `description`, `status` (`EXPIRED`), `expiredAt` |
 
 Field meanings:
@@ -242,7 +242,7 @@ Each delivery carries:
   `<X-OphirPay-Timestamp>.<canonical body>`;
 - `X-OphirPay-Timestamp` — the timestamp that is bound into that HMAC.
 
-The *canonical body* is the JSON with the `signature` field emptied (the key
+The _canonical body_ is the JSON with the `signature` field emptied (the key
 stays, set to `""`) re-serialized exactly like Node's `JSON.stringify`: no
 whitespace, keys in received order. See
 [`webhook-verification.md`](webhook-verification.md) for the exact recipe and
@@ -269,8 +269,8 @@ in their trigger steps). Do **not** try to approximate it. Instead:
 3. **Re-check critical events against the API.** For high-value actions,
    ignore the envelope's trust problem entirely: when a `payment.confirmed`
    arrives, call `GET /api/payments/<paymentId>` with an API key and act only
-   if the stored state agrees. The webhook is then just a *prompt*, not a
-   *proof*.
+   if the stored state agrees. The webhook is then just a _prompt_, not a
+   _proof_.
 
 Rule of thumb: **verification via relay for money-adjacent flows; URL
 secrecy + API re-check for dashboards and notifications.**
@@ -295,7 +295,7 @@ Make every automation idempotent:
   `payment.created` can arrive after a live `payment.confirmed`. Store state
   keyed by id and apply events by their lifecycle position rather than by
   arrival order.
-- **Answer fast.** Trigger heavy automation *after* returning 200. Long
+- **Answer fast.** Trigger heavy automation _after_ returning 200. Long
   processing inside the trigger step risks the 5s attempt timeout, which
   turns a successful run into a retry — and a duplicate.
 
@@ -304,7 +304,7 @@ Make every automation idempotent:
 ### n8n
 
 - Use the **Webhook** node with HTTP method `POST` and response mode
-  *Immediately* (return 200 fast).
+  _Immediately_ (return 200 fast).
 - Register the production URL (not the test URL) in OphirPay's Webhooks page.
 - Deduplicate with the **Data Store** or **Redis** node on
   `{{ $json.event }}:{{ $json.data.paymentId }}`.
@@ -317,7 +317,7 @@ Make every automation idempotent:
 - Create a **Webhooks by Zapier** trigger ("Catch Hook"), then enable the
   OphirPay integration by registering the Zapier-provided URL.
 - Zapier delivers at-least-once; use a **Filter** step plus a Storage-based
-  dedup (e.g. *Storage by Zapier → Set Value* with the composite key) before
+  dedup (e.g. _Storage by Zapier → Set Value_ with the composite key) before
   any paid action.
 - Zapier cannot compute the HMAC — use the relay (option 1) or the API
   re-check (option 3) for anything money-adjacent.

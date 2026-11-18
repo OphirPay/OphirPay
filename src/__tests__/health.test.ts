@@ -240,4 +240,58 @@ describe("GET /api/health", () => {
       }
     }
   });
+
+  it("queries Horizon root and reports ledger sync status and system uptime (issue #1950)", async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ 1: 1 }]);
+    vi.mocked(global.fetch).mockImplementation(async (url) => {
+      const urlStr = String(url);
+      if (urlStr.includes("horizon") || urlStr === "https://horizon-testnet.stellar.org") {
+        return {
+          ok: true,
+          json: async () => ({
+            core_latest_ledger: 500000,
+            history_latest_ledger: 500000,
+          }),
+        } as unknown as Response;
+      }
+      return { ok: true } as Response;
+    });
+
+    const res = await GET(new Request("http://localhost/api/health"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.data.status).toBe("ok");
+    expect(body.data.uptime).toBeTypeOf("number");
+    expect(body.data.uptime).toBeGreaterThanOrEqual(0);
+    expect(body.data.services.stellar.horizon.sync).toEqual({
+      coreLatestLedger: 500000,
+      historyLatestLedger: 500000,
+      synced: true,
+    });
+  });
+
+  it("reports degraded when Horizon core and history ledgers are desynchronized (issue #1950)", async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ 1: 1 }]);
+    vi.mocked(global.fetch).mockImplementation(async (url) => {
+      const urlStr = String(url);
+      if (urlStr.includes("horizon") || urlStr === "https://horizon-testnet.stellar.org") {
+        return {
+          ok: true,
+          json: async () => ({
+            core_latest_ledger: 500050,
+            history_latest_ledger: 500000,
+          }),
+        } as unknown as Response;
+      }
+      return { ok: true } as Response;
+    });
+
+    const res = await GET(new Request("http://localhost/api/health"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.data.status).toBe("degraded");
+    expect(body.data.services.stellar.horizon.sync.synced).toBe(false);
+  });
 });

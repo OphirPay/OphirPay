@@ -203,5 +203,18 @@ describe("Theme FOUC Prevention & Initial Load Flicker Fixes (#1376)", () => {
       fireEvent.click(toggleBtn);
       expect(localStorage.getItem("theme")).toBeDefined();
     });
+
+    it("applies smooth transition-colors classes to header container", () => {
+      mockMatchMedia(true);
+      render(
+        <ThemeProvider>
+          <Header />
+        </ThemeProvider>
+      );
+
+      const header = screen.getByRole("banner");
+      expect(header.className).toContain("transition-colors");
+      expect(header.className).toContain("duration-200");
+    });
   });
 });

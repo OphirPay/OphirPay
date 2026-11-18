@@ -33,6 +33,8 @@ mod spending_limit;
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod test_proptest;
 
 // The module split moved every item out of this file, so re-export them all at
 // the crate root. This preserves both the pre-split public paths

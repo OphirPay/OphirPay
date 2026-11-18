@@ -211,6 +211,7 @@ describe("RPC failover state (issue #820)", () => {
     }));
     vi.doMock("@/lib/request-logging", () => ({
       withRequestLogging: (handler: unknown) => handler,
+      getCurrentRequestId: () => undefined,
     }));
     const { GET } = await import("@/app/api/health/route");
 

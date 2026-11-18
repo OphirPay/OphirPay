@@ -325,6 +325,7 @@ export enum PaymentError {
   DisputeCoolingOffActive = 316,
   SpendingLimitExceeded = 317,
   DuplicateSigner = 318,
+  EscrowInDispute = 319,
 }
 
 export const PAYMENT_ERROR_NAMES: Record<number, string> = {
@@ -646,6 +647,7 @@ export const PAYMENT_ERROR_NAMES: Record<number, string> = {
   316: "DisputeCoolingOffActive",
   317: "SpendingLimitExceeded",
   318: "DuplicateSigner",
+  319: "EscrowInDispute",
 };
 
 export const PAYMENT_ERROR_DISCRIMINANTS: Record<string, number> = {
@@ -967,6 +969,7 @@ export const PAYMENT_ERROR_DISCRIMINANTS: Record<string, number> = {
   "DisputeCoolingOffActive": 316,
   "SpendingLimitExceeded": 317,
   "DuplicateSigner": 318,
+  "EscrowInDispute": 319,
 };
 
 export const ERROR_MESSAGES: Record<number, string> = {
@@ -1288,4 +1291,5 @@ export const ERROR_MESSAGES: Record<number, string> = {
   316: "Dispute cooling-off period is still active",
   317: "Requested spend exceeds the remaining daily/monthly limit",
   318: "Duplicate signer address in multisig config",
+  319: "Escrow is in dispute: release is blocked until dispute is resolved",
 };

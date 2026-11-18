@@ -685,6 +685,9 @@ pub enum PaymentError {
     // ── Multisig Signer Deduplication (318) ─────────────────────
     /// Duplicate signer address in multisig config
     DuplicateSigner = 318,
+    // ── Escrow Dispute Protection (319) ─────────────────────────
+    /// Escrow is in dispute: release is blocked until dispute is resolved
+    EscrowInDispute = 319,
 }
 
 impl PaymentError {

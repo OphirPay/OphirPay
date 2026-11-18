@@ -2709,6 +2709,10 @@ impl OphirPayContract {
             return Err(PaymentError::EscrowAlreadyReleased);
         }
 
+        if escrow.dispute_initiated_at > 0 {
+            return Err(PaymentError::EscrowInDispute);
+        }
+
         // Transfer tokens to beneficiary (reentrancy-guarded, MEDIUM-4)
         let token_client = token::Client::new(&env, &escrow.asset);
         let contract_addr = env.current_contract_address();

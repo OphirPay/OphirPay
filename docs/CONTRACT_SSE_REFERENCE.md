@@ -175,8 +175,56 @@ The contract rejects `emit_payment` while paused (pause is controlled by the orc
 | 13   | `EmitFailed`              | Generic emit failure.              |
 | 14   | `CrossContractCallFailed` | Cross-contract call failed.        |
 
+## Subscribing via Stellar RPC (Code Example)
+
+While OphirPay provides high-level Server-Sent Events (SSE) via `/api/events`, backend indexers and automated services can also subscribe directly to native on-chain contract events via Soroban RPC using `@stellar/stellar-sdk`.
+
+An executable TypeScript example is provided in [examples/subscribe-events.ts](../examples/subscribe-events.ts).
+
+### Running the Example
+
+```bash
+# Run with default testnet settings
+npx tsx examples/subscribe-events.ts
+
+# Or run with custom RPC and contract parameters
+NEXT_PUBLIC_STELLAR_RPC_URL="https://soroban-testnet.stellar.org" \
+NEXT_PUBLIC_EMITTER_CONTRACT_ID="CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN" \
+START_LEDGER=123456 \
+npx tsx examples/subscribe-events.ts
+```
+
+### Soroban RPC Query Mechanism
+
+The example connects via `rpc.Server` and queries `server.getEvents`:
+
+```typescript
+import { rpc, scValToNative, xdr } from "@stellar/stellar-sdk";
+
+const server = new rpc.Server("https://soroban-testnet.stellar.org");
+
+const response = await server.getEvents({
+  startLedger: 100000,
+  filters: [
+    {
+      type: "contract",
+      contractIds: [contractId],
+    },
+  ],
+  limit: 100,
+});
+
+for (const event of response.events) {
+  // Topics: [payment_event, payer_address, payee_address]
+  const topics = event.topic.map(t => scValToNative(xdr.ScVal.fromXDR(t, "base64")));
+  // Value: [amount, tx_hash]
+  const value = scValToNative(xdr.ScVal.fromXDR(event.value, "base64"));
+}
+```
+
 ## Related Documentation
 
+- [examples/subscribe-events.ts](../examples/subscribe-events.ts) — executable event listener script.
 - `docs/SSE.md` — normalized SSE payloads delivered to clients.
 - `docs/SSE_DOCUMENTATION.md` — client integration, reconnection, and endpoint guidance.
 - `docs/integration-guide.md` — end-to-end integration overview.

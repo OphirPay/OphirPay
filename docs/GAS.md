@@ -16,15 +16,15 @@ OphirPay's Soroban contracts are optimized for **ultra-low gas fees** through:
 
 Soroban uses a **resource-fee model** with three cost tiers:
 
-| Resource | Relative Cost | Example |
-|---|---|---|
-| **Storage Write** (persistent) | $$$ | Storing a payment record (~300 bytes) |
-| **Storage Write** (instance) | $$ | Incrementing a counter (16 bytes) |
-| **Storage Read** (persistent) | $$ | Fetching a payment by ID (~300 bytes) |
-| **Storage Read** (instance) | $ | Reading a counter (16 bytes) |
-| **Event Emission** | $$ | Publishing a payment event |
-| **Cross-contract Call** | $$$$$ | Pausing the Emitter from OphirPay |
-| **CPU (Wasm)** | $ | Arithmetic, comparisons, string ops |
+| Resource                       | Relative Cost | Example                               |
+| ------------------------------ | ------------- | ------------------------------------- |
+| **Storage Write** (persistent) | $$$           | Storing a payment record (~300 bytes) |
+| **Storage Write** (instance)   | $$            | Incrementing a counter (16 bytes)     |
+| **Storage Read** (persistent)  | $$            | Fetching a payment by ID (~300 bytes) |
+| **Storage Read** (instance)    | $             | Reading a counter (16 bytes)          |
+| **Event Emission**             | $$            | Publishing a payment event            |
+| **Cross-contract Call**        | $$$$$         | Pausing the Emitter from OphirPay     |
+| **CPU (Wasm)**                 | $             | Arithmetic, comparisons, string ops   |
 
 ---
 
@@ -34,36 +34,36 @@ Estimates based on the Soroban resource model (~100 gas/byte write, ~50 gas/byte
 
 ### OphirPay Contract
 
-| Operation | Storage Writes | Storage Reads | Events | Est. Gas | Optimized vs Baseline |
-|---|---|---|---|---|---|
-| `init` | 2 instance | 1 instance | 0 | ~3,000 | **-60%** (was 8 writes for counter pre-init) |
-| `record_payment` | 1 persistent + 2 instance | 1 instance | 1 | ~12,000 | **-35%** (was ContractStats monolith read/write) |
-| `create_escrow` | 1 persistent + 2 instance | 1 instance | 1 | ~14,000 | **-35%** |
-| `create_stream` | 1 persistent + 2 instance | 1 instance | 1 | ~14,000 | **-35%** |
-| `create_batch` (10 items) | 10 persistent + 3 instance | 1 instance | 1 | ~80,000 | **-33%** |
-| `atomic_spend` | 1 persistent + 2 instance | 2 persistent + 1 instance | 1 | ~35,000 | **-35%** |
-| `approve_payment` | 1 persistent | 2 persistent + 1 instance | 1 | ~22,000 | N/A |
-| `vote_on_proposal` | 1 persistent | 1 persistent | 1 | ~18,000 | N/A |
-| `request_refund` | 1 persistent + 1 instance | 1 instance | 1 | ~25,000 | **-35%** |
-| `get_payment` | 0 | 1 persistent | 0 | ~500 | N/A (read-only, already minimal) |
-| `get_stats` | 0 | 11 instance | 0 | ~1,500 | N/A (on-demand, reads individual counters) |
-| `calculate_fee` | 0 | 0 | 0 | ~100 | N/A (pure computation) |
+| Operation                 | Storage Writes             | Storage Reads             | Events | Est. Gas | Optimized vs Baseline                            |
+| ------------------------- | -------------------------- | ------------------------- | ------ | -------- | ------------------------------------------------ |
+| `init`                    | 2 instance                 | 1 instance                | 0      | ~3,000   | **-60%** (was 8 writes for counter pre-init)     |
+| `record_payment`          | 1 persistent + 2 instance  | 1 instance                | 1      | ~12,000  | **-35%** (was ContractStats monolith read/write) |
+| `create_escrow`           | 1 persistent + 2 instance  | 1 instance                | 1      | ~14,000  | **-35%**                                         |
+| `create_stream`           | 1 persistent + 2 instance  | 1 instance                | 1      | ~14,000  | **-35%**                                         |
+| `create_batch` (10 items) | 10 persistent + 3 instance | 1 instance                | 1      | ~80,000  | **-33%**                                         |
+| `atomic_spend`            | 1 persistent + 2 instance  | 2 persistent + 1 instance | 1      | ~35,000  | **-35%**                                         |
+| `approve_payment`         | 1 persistent               | 2 persistent + 1 instance | 1      | ~22,000  | N/A                                              |
+| `vote_on_proposal`        | 1 persistent               | 1 persistent              | 1      | ~18,000  | N/A                                              |
+| `request_refund`          | 1 persistent + 1 instance  | 1 instance                | 1      | ~25,000  | **-35%**                                         |
+| `get_payment`             | 0                          | 1 persistent              | 0      | ~500     | N/A (read-only, already minimal)                 |
+| `get_stats`               | 0                          | 11 instance               | 0      | ~1,500   | N/A (on-demand, reads individual counters)       |
+| `calculate_fee`           | 0                          | 0                         | 0      | ~100     | N/A (pure computation)                           |
 
 ### Emitter Contract
 
-| Operation | Storage Writes | Storage Reads | Events | Est. Gas |
-|---|---|---|---|---|
-| `init` | 2 instance | 1 instance | 0 | ~3,000 |
-| `emit_payment` | 1 persistent + 1 instance | 1 instance | 1 | ~10,000 |
-| `get_event` | 0 | 1 persistent | 0 | ~500 |
-| `pause` / `unpause` | 1 instance | 1 instance | 0 | ~2,000 |
+| Operation           | Storage Writes            | Storage Reads | Events | Est. Gas |
+| ------------------- | ------------------------- | ------------- | ------ | -------- |
+| `init`              | 2 instance                | 1 instance    | 0      | ~3,000   |
+| `emit_payment`      | 1 persistent + 1 instance | 1 instance    | 1      | ~10,000  |
+| `get_event`         | 0                         | 1 persistent  | 0      | ~500     |
+| `pause` / `unpause` | 1 instance                | 1 instance    | 0      | ~2,000   |
 
 ### Cross-Contract Operations
 
-| Operation | Est. Gas (combined) | Note |
-|---|---|---|
-| `emergency_pause_all` | ~50,000–80,000 | Includes cross-contract call (~30K). Higher cost justified by **atomicity guarantee** — both contracts pause in one transaction. No partial-pause attack possible. |
-| `emergency_unpause_all` | ~50,000–80,000 | Same atomicity guarantee. |
+| Operation               | Est. Gas (combined) | Note                                                                                                                                                               |
+| ----------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `emergency_pause_all`   | ~50,000–80,000      | Includes cross-contract call (~30K). Higher cost justified by **atomicity guarantee** — both contracts pause in one transaction. No partial-pause attack possible. |
+| `emergency_unpause_all` | ~50,000–80,000      | Same atomicity guarantee.                                                                                                                                          |
 
 ---
 
@@ -72,6 +72,7 @@ Estimates based on the Soroban resource model (~100 gas/byte write, ~50 gas/byte
 ### 1. Individual Counters vs `ContractStats` Monolith
 
 **Before:**
+
 ```rust
 // Every counter increment: read 11-field struct (~200 bytes), modify 1 field, write back all 11
 fn inc_stat_u64(env, get, set) {
@@ -82,6 +83,7 @@ fn inc_stat_u64(env, get, set) {
 ```
 
 **After:**
+
 ```rust
 // Single-key read+write: 16 bytes each direction
 fn inc_counter(env, key) {
@@ -125,12 +127,12 @@ All measurements from Stellar Testnet, contract `CAW7OOR...`, fees via Horizon A
 After the fresh deployment of the **300-variant** WASM (`CCQGGUJRR...`, version 2), write operations
 were re-measured live on testnet via Horizon `fee_charged`:
 
-| Operation | Stroops | XLM | Successful |
-|---|---|---|---|
-| `record_payment` (payer, payee, amount, asset, tx_hash, metadata) | 103,967 | 0.104 | ✅ |
-| `grant_role` (Admin) | 70,100 | 0.070 | ✅ |
-| `set_fee_config` (6-field struct + version archive) | 127,115 | 0.127 | ✅ |
-| `propose_timelocked_action` | 96,018 | 0.096 | ✅ |
+| Operation                                                         | Stroops | XLM   | Successful |
+| ----------------------------------------------------------------- | ------- | ----- | ---------- |
+| `record_payment` (payer, payee, amount, asset, tx_hash, metadata) | 103,967 | 0.104 | ✅         |
+| `grant_role` (Admin)                                              | 70,100  | 0.070 | ✅         |
+| `set_fee_config` (6-field struct + version archive)               | 127,115 | 0.127 | ✅         |
+| `propose_timelocked_action`                                       | 96,018  | 0.096 | ✅         |
 
 All read-only operations (`get_stats`, `get_fee_config`, `get_payment_count`) cost **0 stroops** —
 simulated, no transaction required. The 2026-08-07 figures below remain valid as reference
@@ -139,36 +141,36 @@ cost band (avg ~90–130K stroops per write).
 
 ### Write Operations
 
-| Operation | Stroops | XLM | TX Hash | Notes |
-|---|---|---|---|---|
-| `init` | 17,237 | 0.017 | `f71a20cd...` | One-time deployment init |
-| `record_payment` | 69,715 | 0.070 | `7043a2d4...` | Record-keeping only, no token transfer |
-| `create_escrow` | 168,644 | 0.169 | `31d389b8...` | Includes SAC token transfer (~99K extra) |
-| `set_fee_config` | 123,778 | 0.124 | `71eac64f...` | Writes 6-field struct + archives version |
-| `propose_timelocked_action` | 54,360 | 0.054 | `af9d06fe...` | 1 persistent write + 1 instance + 2 events |
-| `revoke_role` | 48,231 | 0.048 | `658c736b...` | Removes persistent entry + audit event |
+| Operation                   | Stroops | XLM   | TX Hash       | Notes                                      |
+| --------------------------- | ------- | ----- | ------------- | ------------------------------------------ |
+| `init`                      | 17,237  | 0.017 | `f71a20cd...` | One-time deployment init                   |
+| `record_payment`            | 69,715  | 0.070 | `7043a2d4...` | Record-keeping only, no token transfer     |
+| `create_escrow`             | 168,644 | 0.169 | `31d389b8...` | Includes SAC token transfer (~99K extra)   |
+| `set_fee_config`            | 123,778 | 0.124 | `71eac64f...` | Writes 6-field struct + archives version   |
+| `propose_timelocked_action` | 54,360  | 0.054 | `af9d06fe...` | 1 persistent write + 1 instance + 2 events |
+| `revoke_role`               | 48,231  | 0.048 | `658c736b...` | Removes persistent entry + audit event     |
 
 ### Read-Only Operations
 
-| Operation | Cost | Notes |
-|---|---|---|
-| `get_stats` | **0** stroops | Pure simulation, no TX needed |
-| `get_fee_config` | **0** stroops | Instance storage read |
-| `get_payment` | **0** stroops | Persistent storage read via simulation |
-| `get_multisig_config_history` | **0** stroops | Read-only paginated query |
+| Operation                     | Cost          | Notes                                  |
+| ----------------------------- | ------------- | -------------------------------------- |
+| `get_stats`                   | **0** stroops | Pure simulation, no TX needed          |
+| `get_fee_config`              | **0** stroops | Instance storage read                  |
+| `get_payment`                 | **0** stroops | Persistent storage read via simulation |
+| `get_multisig_config_history` | **0** stroops | Read-only paginated query              |
 
 ### Estimated Operations (based on actual measurements + known byte counts)
 
-| Operation | Est. Stroops | Est. XLM | Basis |
-|---|---|---|---|
-| `create_stream` | ~168,000 | ~0.168 | Same as create_escrow (SAC transfer + storage) |
-| `create_batch` (10 items) | ~450,000 | ~0.450 | 10 persistence writes + SAC transfers |
-| `approve_payment` (multisig) | ~70,000 | ~0.070 | Similar to record_payment |
-| `request_refund` | ~70,000 | ~0.070 | Persistent write + instance counter |
-| `approve_refund` | ~50,000 | ~0.050 | Single persistent write |
-| `grant_role` | ~50,000 | ~0.050 | Similar to revoke_role |
-| `vote_on_proposal` | ~55,000 | ~0.055 | Persistent write + event |
-| `execute_approved_payment` | ~80,000 | ~0.080 | Includes payment execution |
+| Operation                    | Est. Stroops | Est. XLM | Basis                                          |
+| ---------------------------- | ------------ | -------- | ---------------------------------------------- |
+| `create_stream`              | ~168,000     | ~0.168   | Same as create_escrow (SAC transfer + storage) |
+| `create_batch` (10 items)    | ~450,000     | ~0.450   | 10 persistence writes + SAC transfers          |
+| `approve_payment` (multisig) | ~70,000      | ~0.070   | Similar to record_payment                      |
+| `request_refund`             | ~70,000      | ~0.070   | Persistent write + instance counter            |
+| `approve_refund`             | ~50,000      | ~0.050   | Single persistent write                        |
+| `grant_role`                 | ~50,000      | ~0.050   | Similar to revoke_role                         |
+| `vote_on_proposal`           | ~55,000      | ~0.055   | Persistent write + event                       |
+| `execute_approved_payment`   | ~80,000      | ~0.080   | Includes payment execution                     |
 
 > **Note:** Total fees = classic base fee (~100 stroops) + Soroban resource fee.
 > Operations marked with "SAC" interact with the Stellar Asset Contract for
@@ -177,6 +179,7 @@ cost band (avg ~90–130K stroops per write).
 > which is free and doesn't require a transaction.
 
 To reproduce:
+
 ```bash
 stellar keys generate --fund --network testnet --rpc-url https://soroban-testnet.stellar.org test-key
 stellar contract invoke --id <CONTRACT_ID> --source-account test-key \
@@ -194,13 +197,13 @@ curl -s "https://horizon-testnet.stellar.org/transactions/<TX_HASH>" | jq .fee_c
 The `LOCKED_BALANCE` tracking system (see `docs/SPEC.md` INV-3) adds one
 extra instance storage read + write per fund-movement operation:
 
-| Operation | Extra gas (locked tracking) | Percentage overhead |
-|---|---|---|
-| `create_escrow` / `create_stream` | ~300 gas (1 read + 1 write, 16 bytes each) | ~2% |
-| `release_escrow` / `claim_escrow` | ~300 gas | ~2% |
-| `claim_stream` | ~300 gas | ~2% |
-| `cancel_stream` | ~300 gas | ~2% |
-| `emergency_withdraw` | ~450 gas (1 read + 1 balance check + 1 transfer) | N/A (admin-only) |
+| Operation                         | Extra gas (locked tracking)                      | Percentage overhead |
+| --------------------------------- | ------------------------------------------------ | ------------------- |
+| `create_escrow` / `create_stream` | ~300 gas (1 read + 1 write, 16 bytes each)       | ~2%                 |
+| `release_escrow` / `claim_escrow` | ~300 gas                                         | ~2%                 |
+| `claim_stream`                    | ~300 gas                                         | ~2%                 |
+| `cancel_stream`                   | ~300 gas                                         | ~2%                 |
+| `emergency_withdraw`              | ~450 gas (1 read + 1 balance check + 1 transfer) | N/A (admin-only)    |
 
 **Tradeoff accepted:** ~2% gas overhead per fund-movement operation in exchange
 for preventing the owner from draining user-deposited funds. This is the
@@ -227,35 +230,36 @@ correct security/gas tradeoff per the Stellar Drips Wave Bot review.
 ## Storage-Bump Strategy
 
 Soroban persistent storage entries have a TTL (time-to-live) measured in
-ledgers.  Without periodic bumps, entries expire and data is lost
-permanently.  OphirPay implements a two-tier bump strategy:
+ledgers. Without periodic bumps, entries expire and data is lost
+permanently. OphirPay implements a two-tier bump strategy:
 
-| Tier | When | TTL ceiling | Scope |
-|---|---|---|---|
-| **On-write bump** | Every persistent write | `BUMP_MAX_TTL` (50K ledgers ≈ 35 days) | All record types |
+| Tier                 | When                    | TTL ceiling                                     | Scope                       |
+| -------------------- | ----------------------- | ----------------------------------------------- | --------------------------- |
+| **On-write bump**    | Every persistent write  | `BUMP_MAX_TTL` (50K ledgers ≈ 35 days)          | All record types            |
 | **Maintenance bump** | Periodic off-chain cron | `BUMP_MAINTENANCE_TTL` (100K ledgers ≈ 70 days) | All record types + instance |
 
 **Constants** (defined in `contracts/ophirpay/src/lib.rs`):
+
 - `BUMP_MIN_TTL = 5,000` (≈ 3.5 days) — minimum TTL applied
 - `BUMP_MAX_TTL = 50,000` (≈ 35 days) — ceiling on every write
 - `BUMP_MAINTENANCE_TTL = 100,000` (≈ 70 days) — ceiling for maintenance calls
 
 **Maintenance function:** `bump_storage()` accepts per-type ID ranges and
-bumps every existing entry in those ranges.  Returns the count of entries
-bumped.  Gas cost: ~5K–15K instructions per batch (varies by entry count).
+bumps every existing entry in those ranges. Returns the count of entries
+bumped. Gas cost: ~5K–15K instructions per batch (varies by entry count).
 
 **Gas impact:** Each `extend_ttl` call costs ~1,500 WASM instructions
-(~300 gas).  On-write bumps add ~600 gas to `record_payment` and similar
+(~300 gas). On-write bumps add ~600 gas to `record_payment` and similar
 operations — well under 1% of total operation cost.
 
 ## Future Optimizations (Not Yet Implemented)
 
-| Optimization | Est. Savings | Priority | Effort |
-|---|---|---|---|
-| ~~TTL batching per function~~ | ~~15–20% per op~~ | ~~Medium~~ | ~~Low~~ ✅ Implemented |
-| Audit action names as `Symbol` instead of `String` | ~2K CPU/audit | Low | Medium |
-| Reduce event payload sizes | ~1K/event | Low | Low |
-| Lazy audit (event-only, skip persistent storage) | ~5K/audit (optional) | Low | High |
+| Optimization                                       | Est. Savings         | Priority   | Effort                 |
+| -------------------------------------------------- | -------------------- | ---------- | ---------------------- |
+| ~~TTL batching per function~~                      | ~~15–20% per op~~    | ~~Medium~~ | ~~Low~~ ✅ Implemented |
+| Audit action names as `Symbol` instead of `String` | ~2K CPU/audit        | Low        | Medium                 |
+| Reduce event payload sizes                         | ~1K/event            | Low        | Low                    |
+| Lazy audit (event-only, skip persistent storage)   | ~5K/audit (optional) | Low        | High                   |
 
 ---
 
@@ -265,13 +269,13 @@ operations — well under 1% of total operation cost.
 
 The OphirPay contract was ported from soroban-sdk pre-v22 to v22.0.11 (Rust 1.88.0). Key API changes addressed:
 
-| Change | Impact | Lines |
-|---|---|---|
+| Change                                     | Impact                                          | Lines   |
+| ------------------------------------------ | ----------------------------------------------- | ------- |
 | `get::<V, _>(&key)` to `get::<_, V>(&key)` | K/V generic order reversed (K=key first in v22) | 8 sites |
-| Address no longer `Deref` | `*s == signer` to `s == signer` | 4 sites |
-| `Vec::get_mut()` removed | Replaced with `get()` + `set()` pattern | 1 site |
-| Clone-before-move required | Added `clone()` before struct initialization | 4 sites |
-| `Option<Address>` unwrap in batch | Explicit `.ok_or()` added | 2 sites |
+| Address no longer `Deref`                  | `*s == signer` to `s == signer`                 | 4 sites |
+| `Vec::get_mut()` removed                   | Replaced with `get()` + `set()` pattern         | 1 site  |
+| Clone-before-move required                 | Added `clone()` before struct initialization    | 4 sites |
+| `Option<Address>` unwrap in batch          | Explicit `.ok_or()` added                       | 2 sites |
 
 **Migration result:** 30 compile errors to 0 errors.
 
@@ -294,10 +298,10 @@ separate change with frontend compatibility tests.
 
 Compiled with Rust 1.91.0, soroban-sdk 27.0.5, `--release`, `wasm32v1-none`, `opt-level = "z"`:
 
-| Contract | Size | Headroom |
-|---|---|---|
+| Contract                 | Size                       | Headroom                        |
+| ------------------------ | -------------------------- | ------------------------------- |
 | `ophirpay_contract.wasm` | **94,096 bytes (91.9 KB)** | 36.1 KB (mainnet limit: 128 KB) |
-| `ophirpay_emitter.wasm` | **7,338 bytes (7.2 KB)** | 121 KB (mainnet limit: 128 KB) |
+| `ophirpay_emitter.wasm`  | **7,338 bytes (7.2 KB)**   | 121 KB (mainnet limit: 128 KB)  |
 
 > These are the **post-optimization** figures (after `wasm-strip` + `wasm-opt -Oz`,
 > as the `contract-wasm` CI job produces them). The contract regression workflow
@@ -317,10 +321,10 @@ The OphirPay contract at 92 KB is reasonable for its scope (~5,600 lines, 90+ fu
 reviewer can judge whether a growth is justified. The report appears in the job
 summary and as a sticky PR comment:
 
-| Contract | Baseline (bytes) | New (bytes) | Δ bytes | Δ % | Absolute guardrail |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `ophirpay` | 172364 | … | +N | +x.xx% | new / 524288 |
-| `emitter` | 25182 | … | +N | +x.xx% | new / 262144 |
+| Contract   | Baseline (bytes) | New (bytes) | Δ bytes |    Δ % | Absolute guardrail |
+| ---------- | ---------------: | ----------: | ------: | -----: | -----------------: |
+| `ophirpay` |           172364 |           … |      +N | +x.xx% |       new / 524288 |
+| `emitter`  |            25182 |           … |      +N | +x.xx% |       new / 262144 |
 
 alongside a fee table diffing `calculate_fee()` outputs against
 `contracts/fee-baseline.json` (produced by
@@ -334,11 +338,11 @@ vs 94,096 optimized, `emitter` 25,182 raw vs 7,338 optimized).
 
 ### Thresholds
 
-| Knob | Where | Default | Effect |
-| --- | --- | --- | --- |
-| `sizeThresholdPercent` | `contracts/wasm-baseline.json` | `3` | Percentage growth over the committed baseline that fails the job, naming the contract |
-| `WASM_SIZE_THRESHOLD_PERCENT` | Repository variable (or env when running the script locally) | inherits the above | Per-PR/per-run override |
-| `maxBytes` | `contracts/wasm-baseline.json` | per contract | Hard ceiling; never exceeded regardless of the percentage |
+| Knob                          | Where                                                        | Default            | Effect                                                                                |
+| ----------------------------- | ------------------------------------------------------------ | ------------------ | ------------------------------------------------------------------------------------- |
+| `sizeThresholdPercent`        | `contracts/wasm-baseline.json`                               | `3`                | Percentage growth over the committed baseline that fails the job, naming the contract |
+| `WASM_SIZE_THRESHOLD_PERCENT` | Repository variable (or env when running the script locally) | inherits the above | Per-PR/per-run override                                                               |
+| `maxBytes`                    | `contracts/wasm-baseline.json`                               | per contract       | Hard ceiling; never exceeded regardless of the percentage                             |
 
 Any change to `calculate_fee` also fails the job, because the fee table would
 show a non-zero delta.
@@ -371,15 +375,15 @@ contract, and explain the growth in the PR description.
 
 ## Audit Summary — Gas Optimization Score
 
-| Metric | Value | Rating |
-|---|---|---|
-| **Average write TX cost** | ~90K stroops | 🟢 Excellent (sub-0.1 XLM) |
-| **Cheapest write TX** | 17K stroops (init) | 🟢 Minimal |
-| **Most expensive TX** | 169K stroops (create_escrow) | 🟡 Expected (SAC transfer) |
-| **Read operations** | 0 stroops (all) | 🟢 Free |
-| **WASM size** | 92 KB / 128 KB limit | 🟢 72% utilized |
-| **Storage efficiency** | 16 bytes/counter | 🟢 92% vs monolith |
-| **Locked-funds overhead** | ~2% per op | 🟢 Acceptable |
+| Metric                    | Value                        | Rating                     |
+| ------------------------- | ---------------------------- | -------------------------- |
+| **Average write TX cost** | ~90K stroops                 | 🟢 Excellent (sub-0.1 XLM) |
+| **Cheapest write TX**     | 17K stroops (init)           | 🟢 Minimal                 |
+| **Most expensive TX**     | 169K stroops (create_escrow) | 🟡 Expected (SAC transfer) |
+| **Read operations**       | 0 stroops (all)              | 🟢 Free                    |
+| **WASM size**             | 92 KB / 128 KB limit         | 🟢 72% utilized            |
+| **Storage efficiency**    | 16 bytes/counter             | 🟢 92% vs monolith         |
+| **Locked-funds overhead** | ~2% per op                   | 🟢 Acceptable              |
 
 **Verdict:** The OphirPay contract is production-ready for gas efficiency. All write operations cost under 0.17 XLM, most under 0.10 XLM. The 92 KB WASM leaves ample headroom for future features. The cross-contract emergency pause (~80K gas estimate) is the only operation above 0.20 XLM and is justified by its atomicity guarantee.
 

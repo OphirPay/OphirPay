@@ -28,10 +28,10 @@
 
 ## 1. Recovery Objectives (RPO & RTO)
 
-| Metric | Target | How it is met |
-|--------|--------|---------------|
+| Metric                                                            | Target       | How it is met                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **RPO** (Recovery Point Objective — maximum acceptable data loss) | **24 hours** | `.github/workflows/db-backup.yml` runs `pg_dump → gzip → S3` every day at **03:00 UTC** (`cron: "0 3 * * *"`). The worst-case scenario is a failure that occurs just before the next backup, meaning up to 24 hours of transactions must be reconciled from on-chain state (see [Phase 4](#phase-4--chain-vs-database-reconciliation)). |
-| **RTO** (Recovery Time Objective — time to restore service) | **2 hours** | Breakdown: ~15 min to locate the backup and spin up a fresh PostgreSQL instance, ~30 min to restore + verify (depending on database size), ~45 min for chain reconciliation, ~15 min for traffic cutover and smoke testing. The 2-hour target assumes a single on-call engineer with the required credentials and tool access. |
+| **RTO** (Recovery Time Objective — time to restore service)       | **2 hours**  | Breakdown: ~15 min to locate the backup and spin up a fresh PostgreSQL instance, ~30 min to restore + verify (depending on database size), ~45 min for chain reconciliation, ~15 min for traffic cutover and smoke testing. The 2-hour target assumes a single on-call engineer with the required credentials and tool access.          |
 
 Backups are stored in **S3 bucket `ophirpay-backups`** with the `STANDARD_IA`
 storage class and a **30-day retention policy**. This means up to 30 recovery
@@ -64,13 +64,13 @@ before proceeding.
 
 ### 3.1 Tools
 
-| Tool | Version | Check command |
-|------|---------|---------------|
-| `aws` CLI | v2+ | `aws --version` |
-| `docker` | 24+ | `docker --version` |
-| `psql` (PostgreSQL client) | 14+ | `psql --version` |
-| `jq` | 1.6+ | `jq --version` |
-| `curl` | any | `curl --version` |
+| Tool                       | Version | Check command      |
+| -------------------------- | ------- | ------------------ |
+| `aws` CLI                  | v2+     | `aws --version`    |
+| `docker`                   | 24+     | `docker --version` |
+| `psql` (PostgreSQL client) | 14+     | `psql --version`   |
+| `jq`                       | 1.6+    | `jq --version`     |
+| `curl`                     | any     | `curl --version`   |
 
 ### 3.2 Credentials
 
@@ -110,7 +110,7 @@ export BACKUP_BUCKET="ophirpay-backups"
 > growing while you work.
 
 - [ ] **1.1 Put the application into maintenance mode** — scale down the app
-  pods or flip the load balancer to a maintenance page:
+      pods or flip the load balancer to a maintenance page:
 
   ```bash
   # Kubernetes (scale to 0 replicas)
@@ -126,15 +126,15 @@ export BACKUP_BUCKET="ophirpay-backups"
   > namespace with `kubectl get deployments -n ophirpay` before running.
 
 - [ ] **1.2 Record the exact time maintenance mode was activated** — you will
-  use this timestamp in Phase 4 to bound the chain query window.
+      use this timestamp in Phase 4 to bound the chain query window.
 
   ```bash
   echo "MAINTENANCE_START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" | tee -a recovery.log
   ```
 
 - [ ] **1.3 Notify stakeholders** — see [Communication Templates](#communication-templates).
-  At minimum: post in the incident Slack channel, update the status page to
-  "Investigating", and page the on-call engineer if not already active.
+      At minimum: post in the incident Slack channel, update the status page to
+      "Investigating", and page the on-call engineer if not already active.
 
 - [ ] **1.4 Open a recovery log file** and record every command and its output:
 
@@ -162,6 +162,7 @@ bash scripts/restore-drill.sh
 ```
 
 Expected output:
+
 ```
 === OphirPay Restore Drill ===
 Timestamp: 2026-09-25T10:00:00Z
@@ -498,10 +499,10 @@ echo "Reconciliation complete at $(date -u). Re-indexed <N> transactions." | tee
   ```
 
 - [ ] **5.4 Update the status page** — change from "Investigating" to
-  "Monitoring" or "Resolved" depending on confidence.
+      "Monitoring" or "Resolved" depending on confidence.
 
 - [ ] **5.5 Notify stakeholders** that service has been restored — see
-  [Communication Templates](#communication-templates).
+      [Communication Templates](#communication-templates).
 
 ---
 
@@ -526,20 +527,20 @@ Run these checks after traffic has been restored to confirm end-to-end health.
   ```
 
 - [ ] Metrics are healthy: `GET /api/metrics` (with `METRICS_TOKEN` bearer
-  token) returns Prometheus-format counters with no error spikes.
+      token) returns Prometheus-format counters with no error spikes.
 
 - [ ] Verify a small test payment end-to-end (non-production funds only — use
-  the on-call team's test wallet).
+      the on-call team's test wallet).
 
 - [ ] Re-enable the nightly backup workflow if it was disabled during the
-  incident:
+      incident:
 
   ```bash
   gh workflow enable db-backup.yml --repo OphirPay/OphirPay
   ```
 
 - [ ] Confirm the next scheduled backup runs successfully (check GitHub Actions
-  at 03:00 UTC the following day).
+      at 03:00 UTC the following day).
 
 ---
 
@@ -637,13 +638,13 @@ Recovery complete — summary:
 
 ## Related Documents
 
-| Document | Relevance |
-|----------|-----------|
-| [docs/SECRETS_ROTATION.md](./SECRETS_ROTATION.md) | How to retrieve and rotate the credentials needed for this runbook |
-| [docs/DEPLOYMENT.md](./DEPLOYMENT.md) | Helm values, replica counts, and environment configuration for cutover |
-| [docs/MAINNET_RUNBOOK.md](./MAINNET_RUNBOOK.md) | App-level rollback procedures; Phase 4 registry for contract IDs |
-| [docs/SCHEMA.md](./SCHEMA.md) | Database schema reference for reconciliation SQL |
-| [docs/STELLAR_101.md](./STELLAR_101.md) | Stellar ledger and Horizon API concepts used in Phase 4 |
-| [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Symptom → fix for common errors during recovery |
-| `.github/workflows/db-backup.yml` | Backup workflow definition (schedule, bucket, retention) |
-| `scripts/restore-drill.sh` | Automated restore drill script used in Phase 2 |
+| Document                                          | Relevance                                                              |
+| ------------------------------------------------- | ---------------------------------------------------------------------- |
+| [docs/SECRETS_ROTATION.md](./SECRETS_ROTATION.md) | How to retrieve and rotate the credentials needed for this runbook     |
+| [docs/DEPLOYMENT.md](./DEPLOYMENT.md)             | Helm values, replica counts, and environment configuration for cutover |
+| [docs/MAINNET_RUNBOOK.md](./MAINNET_RUNBOOK.md)   | App-level rollback procedures; Phase 4 registry for contract IDs       |
+| [docs/SCHEMA.md](./SCHEMA.md)                     | Database schema reference for reconciliation SQL                       |
+| [docs/STELLAR_101.md](./STELLAR_101.md)           | Stellar ledger and Horizon API concepts used in Phase 4                |
+| [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md)   | Symptom → fix for common errors during recovery                        |
+| `.github/workflows/db-backup.yml`                 | Backup workflow definition (schedule, bucket, retention)               |
+| `scripts/restore-drill.sh`                        | Automated restore drill script used in Phase 2                         |

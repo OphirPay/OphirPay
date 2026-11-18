@@ -3,7 +3,7 @@
 > ⚠️ **Honest status (2026-08-14):** the Kani harnesses in `contracts/ophirpay/spec/`
 > verify **hand-written models** that share no code with the deployed `OphirPayContract`.
 > They are not run in CI, and several are tautological. The table below documents
-> *modeled intent* — it is **not** proof of the deployed contract, and OphirPay must
+> _modeled intent_ — it is **not** proof of the deployed contract, and OphirPay must
 > **not** be presented as "formally verified" until real harnesses against the contract
 > (or an independent audit) exist. See [docs/AUDIT.md](AUDIT.md) HIGH-2.
 
@@ -13,18 +13,18 @@ formal verification of the OphirPay smart contracts using
 
 ## Modeled Invariants (not proofs of the deployed contract)
 
-| # | Invariant | Modeled Property |
-|---|-----------|----------|
-| **1** | **LOCKED_BALANCE Protection** | `emergency_withdraw(amount)` succeeds iff `amount ≤ contract_balance - LOCKED_BALANCE`. Prevents owner from draining user-deposited funds (escrows, streams, proposal deposits) even with a compromised owner key. |
-| **2** | **One Address = One Vote** | Each address can vote at most once per governance proposal. Prevents the self-reported-weight attack. |
-| **3** | **Reentrancy Lock Atomicity** | The `REENTRANCY_LOCK` prevents re-entering the contract during cross-contract calls (`emergency_pause_all`, `emergency_unpause_all`, `emergency_withdraw`). |
-| **4** | **Proposal Deposit Lifecycle** | Deposit is always refunded on `execute_proposal()` (pass or fail). `LOCKED_BALANCE += deposit` on create, `LOCKED_BALANCE -= deposit` on execute. Net change = 0 after full cycle. |
-| **5** | **Fee Cap (10% max)** | No fee config field (`payment_fee_bps`, `escrow_fee_bps`, `stream_fee_bps`) can exceed 1000 bps (10%). Enforced in `set_fee_config()`. |
-| **6** | **Multisig Threshold** | `execute_approved_payment(request_id)` succeeds iff `approvals.len() >= config.threshold`. N-of-M enforcement. |
-| **7** | **Timelock 24h Delay** | `execute_timelocked_action()` succeeds iff `now >= proposed_at + 86400`. Exact 24-hour enforcement. |
-| **8** | **Spending Limit Expiry** | `atomic_spend()` rejects if limit is inactive, expired (`now >= expires_at`), or daily/monthly caps are exceeded. |
-| **9** | **Composite: LOCKED_BALANCE + Deposit** | Cross-invariant proof that invariants 1 and 4 are consistent: proposal deposit is locked and refunded correctly. |
-| **10** | **compute_vested No Overflow** | Linear vesting is evaluated at 256-bit precision (`checked_mul` fast path, quotient/remainder fallback on overflow) — the exact vested value is returned, never `0` and never more than the stream total. |
+| #      | Invariant                               | Modeled Property                                                                                                                                                                                                   |
+| ------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **1**  | **LOCKED_BALANCE Protection**           | `emergency_withdraw(amount)` succeeds iff `amount ≤ contract_balance - LOCKED_BALANCE`. Prevents owner from draining user-deposited funds (escrows, streams, proposal deposits) even with a compromised owner key. |
+| **2**  | **One Address = One Vote**              | Each address can vote at most once per governance proposal. Prevents the self-reported-weight attack.                                                                                                              |
+| **3**  | **Reentrancy Lock Atomicity**           | The `REENTRANCY_LOCK` prevents re-entering the contract during cross-contract calls (`emergency_pause_all`, `emergency_unpause_all`, `emergency_withdraw`).                                                        |
+| **4**  | **Proposal Deposit Lifecycle**          | Deposit is always refunded on `execute_proposal()` (pass or fail). `LOCKED_BALANCE += deposit` on create, `LOCKED_BALANCE -= deposit` on execute. Net change = 0 after full cycle.                                 |
+| **5**  | **Fee Cap (10% max)**                   | No fee config field (`payment_fee_bps`, `escrow_fee_bps`, `stream_fee_bps`) can exceed 1000 bps (10%). Enforced in `set_fee_config()`.                                                                             |
+| **6**  | **Multisig Threshold**                  | `execute_approved_payment(request_id)` succeeds iff `approvals.len() >= config.threshold`. N-of-M enforcement.                                                                                                     |
+| **7**  | **Timelock 24h Delay**                  | `execute_timelocked_action()` succeeds iff `now >= proposed_at + 86400`. Exact 24-hour enforcement.                                                                                                                |
+| **8**  | **Spending Limit Expiry**               | `atomic_spend()` rejects if limit is inactive, expired (`now >= expires_at`), or daily/monthly caps are exceeded.                                                                                                  |
+| **9**  | **Composite: LOCKED_BALANCE + Deposit** | Cross-invariant proof that invariants 1 and 4 are consistent: proposal deposit is locked and refunded correctly.                                                                                                   |
+| **10** | **compute_vested No Overflow**          | Linear vesting is evaluated at 256-bit precision (`checked_mul` fast path, quotient/remainder fallback on overflow) — the exact vested value is returned, never `0` and never more than the stream total.          |
 
 ## Quickstart
 
@@ -49,6 +49,7 @@ cargo kani --harness all
 ```
 
 Expected output:
+
 ```
 VERIFICATION:- SUCCESSFUL
   - locked_balance_invariant
@@ -180,10 +181,10 @@ formal-verification:
 
 ## Interpreting Results
 
-| Kani Output | Meaning |
-|---|---|
-| `VERIFICATION:- SUCCESSFUL` | ✅ Property proved for ALL possible inputs |
-| `VERIFICATION:- FAILED` | ❌ Counterexample found — Kani will show the exact inputs that violate the invariant |
+| Kani Output                   | Meaning                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------ |
+| `VERIFICATION:- SUCCESSFUL`   | ✅ Property proved for ALL possible inputs                                           |
+| `VERIFICATION:- FAILED`       | ❌ Counterexample found — Kani will show the exact inputs that violate the invariant |
 | `VERIFICATION:- UNDETERMINED` | ⚠️ Kani ran out of resources — try increasing `--unwind` or simplifying the property |
 
 ### When a proof FAILS
@@ -201,10 +202,10 @@ This means the invariant is broken. Fix the contract code, then re-run Kani.
 
 ## Timeline
 
-| Phase | Duration | Description |
-|---|---|---|
-| Setup | 1 day | Install Kani, configure Rust toolchain |
-| Existing invariants | 1 day | Run all 10 harnesses, fix any failures |
-| New invariants | 1-3 weeks | Add proofs for escrow, streams, batches, hooks, RBAC |
-| Certora/Komet | 1-2 weeks | Port to Certora for web reports (optional) |
-| CI integration | 1 day | Add to GitHub Actions pipeline |
+| Phase               | Duration  | Description                                          |
+| ------------------- | --------- | ---------------------------------------------------- |
+| Setup               | 1 day     | Install Kani, configure Rust toolchain               |
+| Existing invariants | 1 day     | Run all 10 harnesses, fix any failures               |
+| New invariants      | 1-3 weeks | Add proofs for escrow, streams, batches, hooks, RBAC |
+| Certora/Komet       | 1-2 weeks | Port to Certora for web reports (optional)           |
+| CI integration      | 1 day     | Add to GitHub Actions pipeline                       |

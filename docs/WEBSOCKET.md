@@ -64,14 +64,10 @@ export async function register() {
     await bootstrap();
 
     try {
-      const { startLiveEventsWsServer } = await import(
-        "@/lib/events/live-events-ws-server"
-      );
+      const { startLiveEventsWsServer } = await import("@/lib/events/live-events-ws-server");
       const wsServer = await startLiveEventsWsServer();
       wsServer.startEventStream();
-      console.info(
-        `[OphirPay] WebSocket event server listening on port ${wsServer.port}`
-      );
+      console.info(`[OphirPay] WebSocket event server listening on port ${wsServer.port}`);
     } catch (error) {
       console.warn(
         "[OphirPay] WebSocket event server unavailable — clients will use SSE:",
@@ -107,6 +103,7 @@ Sec-WebSocket-Version: 13
 ```
 
 #### Server Validation & Response
+
 1. **Path Enforcement**: The server checks `url.pathname === path` (default `/api/events`). If the path does not match or `Sec-WebSocket-Key` is missing, the underlying socket is immediately destroyed (`socket.destroy()`).
 2. **Plain HTTP Handling**: Standard non-upgrade HTTP requests receive a `426 Upgrade Required` status:
    ```json
@@ -136,13 +133,13 @@ Sec-WebSocket-Version: 13
 
 ### 2. Supported Opcodes
 
-| Opcode | Value | Type | Direction | Description |
-|---|---|---|---|---|
-| `OPCODE_CONTINUATION` | `0x0` | Data | Client → Server | Fragmented frame payload chunk |
-| `OPCODE_TEXT` | `0x1` | Data | Bidirectional | UTF-8 JSON text payload |
-| `OPCODE_CLOSE` | `0x8` | Control | Bidirectional | Connection closure handshake |
-| `OPCODE_PING` | `0x9` | Control | Bidirectional | Liveness check probe |
-| `OPCODE_PONG` | `0xa` | Control | Bidirectional | Liveness check response |
+| Opcode                | Value | Type    | Direction       | Description                    |
+| --------------------- | ----- | ------- | --------------- | ------------------------------ |
+| `OPCODE_CONTINUATION` | `0x0` | Data    | Client → Server | Fragmented frame payload chunk |
+| `OPCODE_TEXT`         | `0x1` | Data    | Bidirectional   | UTF-8 JSON text payload        |
+| `OPCODE_CLOSE`        | `0x8` | Control | Bidirectional   | Connection closure handshake   |
+| `OPCODE_PING`         | `0x9` | Control | Bidirectional   | Liveness check probe           |
+| `OPCODE_PONG`         | `0xa` | Control | Bidirectional   | Liveness check response        |
 
 ### 3. Frame Encoding (`encodeFrame`)
 
@@ -157,6 +154,7 @@ Server-to-client frames are **never masked** (as mandated by RFC 6455 §5.1):
 ### 4. Frame Decoding (`FrameDecoder`)
 
 Client-to-server frames are parsed by `FrameDecoder` in `ws-protocol.ts`:
+
 - **Stateful Buffer Accumulation**: Incoming TCP chunks from `socket.on("data")` are concatenated into an internal buffer. If a partial frame arrives across TCP segments, decoding pauses until sufficient bytes are available.
 - **Masking Enforcement**: Client-to-server frames must be masked (`buffer[1] & 0x80 !== 0`). A 4-byte masking key is extracted and applied via byte-wise XOR:
   ```typescript
@@ -181,9 +179,9 @@ Emitted immediately upon completion of the RFC 6455 handshake:
 }
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `event` | `string` | Always `"connected"` |
+| Field     | Type     | Description                            |
+| --------- | -------- | -------------------------------------- |
+| `event`   | `string` | Always `"connected"`                   |
 | `message` | `string` | Human-readable connection confirmation |
 
 ### 2. `payment:created` (Live Payment Event)
@@ -205,24 +203,25 @@ Emitted whenever a new payment event is detected on-chain by the `PaymentEventEm
 }
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `number` | Monotonic contract event ID — **primary deduplication key across reconnects and transport switches** |
-| `event` | `string` | Event type identifier (`"payment:created"`) |
-| `timestamp` | `string` | ISO 8601 UTC timestamp generated at delivery (`new Date().toISOString()`) |
-| `paymentId` | `string` | Synthesized application identifier, formatted as `evt_<id>` |
-| `status` | `string` | Payment lifecycle state (`"COMPLETED"`) |
-| `emitter` | `string` | Emitter identity label (defaults to `"OphirPay"`) |
-| `payer` | `string` | Stellar account or contract address of the sender |
-| `payee` | `string` | Stellar account or contract address of the recipient |
-| `amount` | `string` | Payment amount formatted as a decimal string |
-| `txHash` | `string` | On-chain transaction hash |
+| Field       | Type     | Description                                                                                          |
+| ----------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `id`        | `number` | Monotonic contract event ID — **primary deduplication key across reconnects and transport switches** |
+| `event`     | `string` | Event type identifier (`"payment:created"`)                                                          |
+| `timestamp` | `string` | ISO 8601 UTC timestamp generated at delivery (`new Date().toISOString()`)                            |
+| `paymentId` | `string` | Synthesized application identifier, formatted as `evt_<id>`                                          |
+| `status`    | `string` | Payment lifecycle state (`"COMPLETED"`)                                                              |
+| `emitter`   | `string` | Emitter identity label (defaults to `"OphirPay"`)                                                    |
+| `payer`     | `string` | Stellar account or contract address of the sender                                                    |
+| `payee`     | `string` | Stellar account or contract address of the recipient                                                 |
+| `amount`    | `string` | Payment amount formatted as a decimal string                                                         |
+| `txHash`    | `string` | On-chain transaction hash                                                                            |
 
 > **Critical Integrator Rule**: Always deduplicate messages by `id`. The `id` is guaranteed monotonic and stable across transport reconnects and failovers.
 
 ### 3. Heartbeats & Liveness Detection
 
 To detect dead connections and prevent NAT/proxy timeouts:
+
 - The server runs a heartbeat loop every **30 seconds** (`heartbeatMs ?? 30000`).
 - On each tick:
   1. If `client.alive === false`, the socket did not answer the prior ping. The server closes and destroys the socket:
@@ -284,16 +283,18 @@ The official client implementation in [`src/lib/events/event-client.ts`](../src/
 ### 2. Exponential Backoff on Dropped Connections
 
 If a WebSocket connection was previously established and subsequently disconnects:
+
 - The client attempts up to `maxReconnectAttempts` (default **3** retries).
 - The retry delay follows capped exponential backoff:
   $$\text{delay} = \min(\text{maxBackoffMs}, 250 \times 2^{\text{attempt}})$$
-  *(Defaults: initial delay 250 ms, doubling on each attempt, capped at 10,000 ms).*
+  _(Defaults: initial delay 250 ms, doubling on each attempt, capped at 10,000 ms)._
 - The client reports status `"reconnecting"` with transport `"ws"`.
 - Once `maxReconnectAttempts` is exceeded, the client transitions to status `"fallback"` and establishes a permanent SSE connection (`connectSse()`).
 
 ### 3. Event Deduplication Across Transports
 
 Because switching transports or reconnecting can cause transient overlap, the client maintains a bounded history of observed event IDs:
+
 - Bounded window of seen IDs (`dedupWindow`, default **1,000** items).
 - Before calling `onEvent(event)`, the client verifies `seen.has(event.id)`. If already seen, the event is silently ignored.
 - When the window exceeds `dedupWindow`, the oldest ID is evicted.
@@ -302,27 +303,27 @@ Because switching transports or reconnecting can cause transient overlap, the cl
 
 The `onStatus(status, transport)` callback reports lifecycle transitions:
 
-| Status | Transport | Meaning |
-|---|---|---|
-| `connecting` | `ws` | Initial WebSocket upgrade in progress |
-| `live` | `ws` | WebSocket connected and actively streaming |
-| `reconnecting` | `ws` | WebSocket dropped; waiting for backoff timer to retry |
-| `fallback` | `sse` | WebSocket unavailable or retries exhausted; switching to SSE |
-| `connecting` | `sse` | SSE HTTP connection establishing |
-| `live` | `sse` | SSE stream established and receiving events |
-| `offline` | `sse` | SSE connection interrupted (native `EventSource` reconnecting) |
+| Status         | Transport | Meaning                                                        |
+| -------------- | --------- | -------------------------------------------------------------- |
+| `connecting`   | `ws`      | Initial WebSocket upgrade in progress                          |
+| `live`         | `ws`      | WebSocket connected and actively streaming                     |
+| `reconnecting` | `ws`      | WebSocket dropped; waiting for backoff timer to retry          |
+| `fallback`     | `sse`     | WebSocket unavailable or retries exhausted; switching to SSE   |
+| `connecting`   | `sse`     | SSE HTTP connection establishing                               |
+| `live`         | `sse`     | SSE stream established and receiving events                    |
+| `offline`      | `sse`     | SSE connection interrupted (native `EventSource` reconnecting) |
 
 ---
 
 ## ⚙️ Configuration & Environment Variables
 
-| Variable | Default | Component | Purpose |
-|---|---|---|---|
-| `EVENTS_WS_PORT` | `8787` | Server (`live-events-ws-server.ts`) | Port the in-process WebSocket HTTP server binds to |
-| `NEXT_PUBLIC_EVENTS_WS_PORT` | `8787` | Client (`event-client.ts`) | Port used to construct client WebSocket connection URL |
-| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | testnet default | Server (`event-source.ts`) | Soroban `PaymentEventEmitter` contract polled for events |
-| `NEXT_PUBLIC_CHAIN_READ_SOURCE` | testnet default | Server (`event-source.ts`) | Public key used for read-only contract simulation |
-| `SOROBAN_RPC_URL` | testnet RPC | Server (`event-source.ts`) | Stellar RPC endpoint for contract simulations |
+| Variable                          | Default         | Component                           | Purpose                                                  |
+| --------------------------------- | --------------- | ----------------------------------- | -------------------------------------------------------- |
+| `EVENTS_WS_PORT`                  | `8787`          | Server (`live-events-ws-server.ts`) | Port the in-process WebSocket HTTP server binds to       |
+| `NEXT_PUBLIC_EVENTS_WS_PORT`      | `8787`          | Client (`event-client.ts`)          | Port used to construct client WebSocket connection URL   |
+| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | testnet default | Server (`event-source.ts`)          | Soroban `PaymentEventEmitter` contract polled for events |
+| `NEXT_PUBLIC_CHAIN_READ_SOURCE`   | testnet default | Server (`event-source.ts`)          | Public key used for read-only contract simulation        |
+| `SOROBAN_RPC_URL`                 | testnet RPC     | Server (`event-source.ts`)          | Stellar RPC endpoint for contract simulations            |
 
 ### Programmatic Server Options (`WsServerOptions`)
 
@@ -528,17 +529,17 @@ ws.on("close", (code, reason) => {
 
 ## 📊 Transport Comparison: WebSocket vs. SSE
 
-| Dimension | WebSocket (`LiveEventsWsServer`) | Server-Sent Events (`GET /api/events`) |
-|---|---|---|
-| **Port** | `8787` (`EVENTS_WS_PORT`) | `3000` / HTTP origin port |
-| **Protocol** | RFC 6455 (`ws://` / `wss://`) | HTTP/1.1 or HTTP/2 (`text/event-stream`) |
-| **Connection Direction** | Bidirectional TCP duplex | Unidirectional (Server → Client) |
-| **Latency** | Minimal socket frame overhead | HTTP streaming response |
-| **Serverless Ready** | No (requires stateful Node process) | Yes (standard Next.js Route Handler) |
-| **Keepalive** | RFC 6455 ping/pong frames (`0x9`/`0xa`) | SSE `heartbeat` events (every 15s) |
-| **Client Reconnect** | Managed by `event-client.ts` with backoff | Native browser `EventSource` auto-reconnect |
-| **Browser Compatibility** | All modern browsers | All modern browsers |
-| **Primary Role** | Preferred transport for active clients | Universal fallback & serverless transport |
+| Dimension                 | WebSocket (`LiveEventsWsServer`)          | Server-Sent Events (`GET /api/events`)      |
+| ------------------------- | ----------------------------------------- | ------------------------------------------- |
+| **Port**                  | `8787` (`EVENTS_WS_PORT`)                 | `3000` / HTTP origin port                   |
+| **Protocol**              | RFC 6455 (`ws://` / `wss://`)             | HTTP/1.1 or HTTP/2 (`text/event-stream`)    |
+| **Connection Direction**  | Bidirectional TCP duplex                  | Unidirectional (Server → Client)            |
+| **Latency**               | Minimal socket frame overhead             | HTTP streaming response                     |
+| **Serverless Ready**      | No (requires stateful Node process)       | Yes (standard Next.js Route Handler)        |
+| **Keepalive**             | RFC 6455 ping/pong frames (`0x9`/`0xa`)   | SSE `heartbeat` events (every 15s)          |
+| **Client Reconnect**      | Managed by `event-client.ts` with backoff | Native browser `EventSource` auto-reconnect |
+| **Browser Compatibility** | All modern browsers                       | All modern browsers                         |
+| **Primary Role**          | Preferred transport for active clients    | Universal fallback & serverless transport   |
 
 ---
 

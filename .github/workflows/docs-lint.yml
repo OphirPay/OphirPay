@@ -4,17 +4,17 @@ on:
   pull_request:
     branches: [main, integration/staging]
     paths:
-      - '**/*.md'
-      - '**/*.mdx'
-      - 'scripts/check-markdown-links.mjs'
-      - '.github/workflows/docs-lint.yml'
+      - "**/*.md"
+      - "**/*.mdx"
+      - "scripts/check-markdown-links.mjs"
+      - ".github/workflows/docs-lint.yml"
   push:
     branches: [main, integration/staging]
     paths:
-      - '**/*.md'
-      - '**/*.mdx'
-      - 'scripts/check-markdown-links.mjs'
-      - '.github/workflows/docs-lint.yml'
+      - "**/*.md"
+      - "**/*.mdx"
+      - "scripts/check-markdown-links.mjs"
+      - ".github/workflows/docs-lint.yml"
 
 permissions:
   contents: read

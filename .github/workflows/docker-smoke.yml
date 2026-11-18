@@ -86,13 +86,13 @@ jobs:
       - name: Scan Docker image
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ophirpay:smoke'
-          format: 'table'
-          exit-code: '1'
+          image-ref: "ophirpay:smoke"
+          format: "table"
+          exit-code: "1"
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          trivyignores: '.trivyignore'
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          trivyignores: ".trivyignore"
 
       - name: Start backing services
         run: docker compose -f docker-compose.yml up -d db redis

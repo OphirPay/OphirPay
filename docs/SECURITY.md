@@ -8,12 +8,12 @@ self-hosted, API overrides, and how to inspect a live response), see
 
 ## Where the policy lives
 
-| File | Responsibility |
-|---|---|
-| `src/lib/security-headers.ts` | Baseline header names and values shared by both layers. |
-| `next.config.ts` | Applies the baseline headers statically to every route; owns path-specific cache/CORP rules. |
-| `src/proxy.ts` | Re-applies the baseline headers per request (including early 401/403/429 responses) and sets the per-request CSP + reporting headers on document routes. |
-| `src/lib/proxy-config.ts` | `CSP_POLICY` (reviewable origin allowlists) and `buildCsp(nonce)`. |
+| File                          | Responsibility                                                                                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/security-headers.ts` | Baseline header names and values shared by both layers.                                                                                                  |
+| `next.config.ts`              | Applies the baseline headers statically to every route; owns path-specific cache/CORP rules.                                                             |
+| `src/proxy.ts`                | Re-applies the baseline headers per request (including early 401/403/429 responses) and sets the per-request CSP + reporting headers on document routes. |
+| `src/lib/proxy-config.ts`     | `CSP_POLICY` (reviewable origin allowlists) and `buildCsp(nonce)`.                                                                                       |
 
 `vercel.json` deliberately declares **no** security headers. The application
 layer is the single owner, so a deployed response cannot depend on which layer
@@ -23,16 +23,16 @@ ran last.
 
 Every document and API response carries:
 
-| Header | Value | Purpose |
-|---|---|---|
-| `X-Content-Type-Options` | `nosniff` | Stop MIME-type sniffing. |
-| `X-Frame-Options` | `DENY` | Clickjacking defence for legacy browsers. |
-| `X-XSS-Protection` | `0` | Disable the deprecated XSS filter (it has itself been abused). |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | Limit referrer detail on cross-origin navigation. |
-| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` | Disable browser capabilities the app does not use. |
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | Require HTTPS after the first secure response (browsers ignore it over plain HTTP). |
-| `Cross-Origin-Opener-Policy` | `same-origin` | Isolate top-level browsing contexts. |
-| `Cross-Origin-Resource-Policy` | `same-origin`, `cross-origin` on `/api/*` | Allow API responses to be read under the API CORS policy. |
+| Header                         | Value                                                  | Purpose                                                                             |
+| ------------------------------ | ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `X-Content-Type-Options`       | `nosniff`                                              | Stop MIME-type sniffing.                                                            |
+| `X-Frame-Options`              | `DENY`                                                 | Clickjacking defence for legacy browsers.                                           |
+| `X-XSS-Protection`             | `0`                                                    | Disable the deprecated XSS filter (it has itself been abused).                      |
+| `Referrer-Policy`              | `strict-origin-when-cross-origin`                      | Limit referrer detail on cross-origin navigation.                                   |
+| `Permissions-Policy`           | `camera=(), microphone=(), geolocation=(), payment=()` | Disable browser capabilities the app does not use.                                  |
+| `Strict-Transport-Security`    | `max-age=63072000; includeSubDomains; preload`         | Require HTTPS after the first secure response (browsers ignore it over plain HTTP). |
+| `Cross-Origin-Opener-Policy`   | `same-origin`                                          | Isolate top-level browsing contexts.                                                |
+| `Cross-Origin-Resource-Policy` | `same-origin`, `cross-origin` on `/api/*`              | Allow API responses to be read under the API CORS policy.                           |
 
 ## Content Security Policy (document routes)
 
@@ -107,6 +107,7 @@ in CSP Level 3 browsers.
    `/webhooks`, `/api/webhooks`, `/api/webhooks/:id`, `/api/health`, plus a
    proxy-generated 401. The config suites pin static-header ownership and the
    no-`unsafe-inline` rule.
+
 3. **Update this file and `SECURITY_HEADERS.md`** in the same change. A policy
    change without documentation is a review-blocking omission.
 4. **Verify a real response** (CDNs and reverse proxies can add headers):

@@ -22,13 +22,13 @@
 
 ## Prerequisites
 
-| Requirement | Version | Notes |
-|---|---|---|
-| Node.js | 18+ | 20+ recommended |
-| PostgreSQL | 14+ | Neon, Supabase, RDS, or self-hosted |
-| Stellar wallet | — | Freighter for testnet, hardware wallet for mainnet |
-| Docker | 24+ | Only for Docker deployment |
-| Helm | 3+ | Only for Kubernetes deployment |
+| Requirement    | Version | Notes                                              |
+| -------------- | ------- | -------------------------------------------------- |
+| Node.js        | 18+     | 20+ recommended                                    |
+| PostgreSQL     | 14+     | Neon, Supabase, RDS, or self-hosted                |
+| Stellar wallet | —       | Freighter for testnet, hardware wallet for mainnet |
+| Docker         | 24+     | Only for Docker deployment                         |
+| Helm           | 3+      | Only for Kubernetes deployment                     |
 
 ---
 
@@ -42,59 +42,59 @@ cp .env.example .env.local
 
 ### Required
 
-| Variable | Description | Example |
-|---|---|---|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@host:5432/ophirpay` |
-| `DATABASE_PROVIDER` | Database provider | `postgresql` |
-| `NEXT_PUBLIC_STELLAR_NETWORK` | Stellar network | `TESTNET` or `PUBLIC` |
-| `NEXT_PUBLIC_STELLAR_RPC_URL` | Soroban RPC endpoint | `https://soroban-testnet.stellar.org:443` |
-| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | Horizon API endpoint | `https://horizon-testnet.stellar.org` |
-| `STELLAR_NETWORK_PASSPHRASE` | Network passphrase | `Test SDF Network ; September 2015` |
-| `NEXT_PUBLIC_CONTRACT_ID` | Deployed OphirPay contract ID | `CCQGGU...` |
-| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | Deployed emitter contract ID | `CDAVU2...` |
-| `NEXT_PUBLIC_APP_URL` | App base URL | `https://ophirpay.vercel.app` |
+| Variable                          | Description                   | Example                                     |
+| --------------------------------- | ----------------------------- | ------------------------------------------- |
+| `DATABASE_URL`                    | PostgreSQL connection string  | `postgresql://user:pass@host:5432/ophirpay` |
+| `DATABASE_PROVIDER`               | Database provider             | `postgresql`                                |
+| `NEXT_PUBLIC_STELLAR_NETWORK`     | Stellar network               | `TESTNET` or `PUBLIC`                       |
+| `NEXT_PUBLIC_STELLAR_RPC_URL`     | Soroban RPC endpoint          | `https://soroban-testnet.stellar.org:443`   |
+| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | Horizon API endpoint          | `https://horizon-testnet.stellar.org`       |
+| `STELLAR_NETWORK_PASSPHRASE`      | Network passphrase            | `Test SDF Network ; September 2015`         |
+| `NEXT_PUBLIC_CONTRACT_ID`         | Deployed OphirPay contract ID | `CCQGGU...`                                 |
+| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | Deployed emitter contract ID  | `CDAVU2...`                                 |
+| `NEXT_PUBLIC_APP_URL`             | App base URL                  | `https://ophirpay.vercel.app`               |
 
 ### Production Required
 
-| Variable | Description | How to generate |
-|---|---|---|
+| Variable      | Description            | How to generate        |
+| ------------- | ---------------------- | ---------------------- |
 | `AUTH_SECRET` | Session signing secret | `openssl rand -hex 32` |
 
 ### Optional
 
-| Variable | Default | Description |
-|---|---|---|
-| `NODE_ENV` | `development` | `production` for live deploys |
-| `DIRECT_DATABASE_URL` | — | Direct DB URL for Prisma migrations (when using connection pooling) |
-| `RATE_LIMIT_RPM` | `120` | Requests per minute per IP (global proxy limit) |
-| `AUTH_RATE_LIMIT_IP_RPM` | `30` | Wallet-auth per-IP requests per minute (`/api/auth/challenge`, `/api/auth/session`) |
-| `AUTH_RATE_LIMIT_WALLET_RPM` | `10` | Wallet-auth per-account requests per minute (keyed by Stellar public key) |
-| `REDIS_URL` | — | Distributed rate limiting. `redis://` = ioredis (Node only); `https://` = Upstash-compatible REST and the only form that shares the *global edge* limit across replicas |
-| `NEXT_PUBLIC_SENTRY_DSN` | — | Optional Sentry DSN for client and server error reporting |
-| `NEXT_PUBLIC_DEMO_MODE` | `false` | Enable demo mode |
-| `NEXT_PUBLIC_FEATURE_MULTI_ASSET` | `false` | Enable multi-asset support |
-| `NEXT_PUBLIC_FEATURE_WEBHOOKS` | `false` | Enable webhook features |
-| `CRON_SECRET` | — | Shared secret protecting `/api/cron`. Required to run the scheduled-payment cron — see [Scheduled Payment Cron](scheduled-payment-cron.md) |
-| `SCHEDULED_PAYMENTS_SOURCE_SECRET` | — | Stellar secret key of the funded operator account that signs due scheduled payments |
+| Variable                           | Default       | Description                                                                                                                                                             |
+| ---------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                         | `development` | `production` for live deploys                                                                                                                                           |
+| `DIRECT_DATABASE_URL`              | —             | Direct DB URL for Prisma migrations (when using connection pooling)                                                                                                     |
+| `RATE_LIMIT_RPM`                   | `120`         | Requests per minute per IP (global proxy limit)                                                                                                                         |
+| `AUTH_RATE_LIMIT_IP_RPM`           | `30`          | Wallet-auth per-IP requests per minute (`/api/auth/challenge`, `/api/auth/session`)                                                                                     |
+| `AUTH_RATE_LIMIT_WALLET_RPM`       | `10`          | Wallet-auth per-account requests per minute (keyed by Stellar public key)                                                                                               |
+| `REDIS_URL`                        | —             | Distributed rate limiting. `redis://` = ioredis (Node only); `https://` = Upstash-compatible REST and the only form that shares the _global edge_ limit across replicas |
+| `NEXT_PUBLIC_SENTRY_DSN`           | —             | Optional Sentry DSN for client and server error reporting                                                                                                               |
+| `NEXT_PUBLIC_DEMO_MODE`            | `false`       | Enable demo mode                                                                                                                                                        |
+| `NEXT_PUBLIC_FEATURE_MULTI_ASSET`  | `false`       | Enable multi-asset support                                                                                                                                              |
+| `NEXT_PUBLIC_FEATURE_WEBHOOKS`     | `false`       | Enable webhook features                                                                                                                                                 |
+| `CRON_SECRET`                      | —             | Shared secret protecting `/api/cron`. Required to run the scheduled-payment cron — see [Scheduled Payment Cron](scheduled-payment-cron.md)                              |
+| `SCHEDULED_PAYMENTS_SOURCE_SECRET` | —             | Stellar secret key of the funded operator account that signs due scheduled payments                                                                                     |
 
 ### Transactional Email
 
 Required for `src/lib/email.ts` to deliver payment and webhook notification
 emails (Resend is called over its HTTPS API — no SMTP, no extra dependency).
 
-| Variable | Required | Description |
-|---|---|---|
+| Variable         | Required      | Description                                                                                                                                                                                          |
+| ---------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `RESEND_API_KEY` | To send email | Resend API key from <https://resend.com/api-keys>. Without it `sendEmail()` throws `EmailConfigurationError` instead of silently dropping the message, and startup logs that email is not configured |
-| `EMAIL_FROM` | No | Sender identity, e.g. `OphirPay <payments@ophirpay.com>`. Must be a verified Resend domain. Defaults to `OphirPay <payments@ophirpay.com>` |
+| `EMAIL_FROM`     | No            | Sender identity, e.g. `OphirPay <payments@ophirpay.com>`. Must be a verified Resend domain. Defaults to `OphirPay <payments@ophirpay.com>`                                                           |
 
 ### Testnet vs Mainnet
 
-| Setting | Testnet (default) | Mainnet |
-|---|---|---|
-| `NEXT_PUBLIC_STELLAR_NETWORK` | `TESTNET` | `PUBLIC` |
-| `NEXT_PUBLIC_STELLAR_RPC_URL` | `https://soroban-testnet.stellar.org:443` | `https://soroban.stellar.org:443` |
-| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | `https://horizon-testnet.stellar.org` | `https://horizon.stellar.org` |
-| `STELLAR_NETWORK_PASSPHRASE` | `Test SDF Network ; September 2015` | `Public Global Stellar Network ; September 2015` |
+| Setting                           | Testnet (default)                         | Mainnet                                          |
+| --------------------------------- | ----------------------------------------- | ------------------------------------------------ |
+| `NEXT_PUBLIC_STELLAR_NETWORK`     | `TESTNET`                                 | `PUBLIC`                                         |
+| `NEXT_PUBLIC_STELLAR_RPC_URL`     | `https://soroban-testnet.stellar.org:443` | `https://soroban.stellar.org:443`                |
+| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | `https://horizon-testnet.stellar.org`     | `https://horizon.stellar.org`                    |
+| `STELLAR_NETWORK_PASSPHRASE`      | `Test SDF Network ; September 2015`       | `Public Global Stellar Network ; September 2015` |
 
 ---
 
@@ -174,12 +174,12 @@ curl http://localhost:3000/api/health
 
 ### Docker Compose Services
 
-| Service | Image | Port | Purpose |
-|---|---|---|---|
-| `app` | Built from `Dockerfile` | 3000 | OphirPay application |
-| `migrator` | `Dockerfile` `migrator` target | — | Prisma migrations; opt-in Compose profile |
-| `db` | `postgres:16-alpine` | 5432 | PostgreSQL database |
-| `redis` | `redis:7-alpine` | 6379 | Rate limiting cache |
+| Service    | Image                          | Port | Purpose                                   |
+| ---------- | ------------------------------ | ---- | ----------------------------------------- |
+| `app`      | Built from `Dockerfile`        | 3000 | OphirPay application                      |
+| `migrator` | `Dockerfile` `migrator` target | —    | Prisma migrations; opt-in Compose profile |
+| `db`       | `postgres:16-alpine`           | 5432 | PostgreSQL database                       |
+| `redis`    | `redis:7-alpine`               | 6379 | Rate limiting cache                       |
 
 ### Customizing Docker Compose
 
@@ -238,14 +238,15 @@ docker run -p 3000:3000 \
 
 The `Dockerfile` uses separate dependency, build, migration, and runtime stages:
 
-| Stage | Base Image | Purpose |
-|---|---|---|
-| `deps` | `node:24-slim` | Install npm dependencies (with OpenSSL for Prisma) |
-| `builder` | `node:24-slim` | Generate Prisma client, run `next build` |
-| `migrator` | `node:24-slim` | Prisma CLI + schema; runs `prisma migrate deploy` |
-| `runner` | `node:24-slim` | Minimal production image, runs as the non-root `node` user |
+| Stage      | Base Image     | Purpose                                                    |
+| ---------- | -------------- | ---------------------------------------------------------- |
+| `deps`     | `node:24-slim` | Install npm dependencies (with OpenSSL for Prisma)         |
+| `builder`  | `node:24-slim` | Generate Prisma client, run `next build`                   |
+| `migrator` | `node:24-slim` | Prisma CLI + schema; runs `prisma migrate deploy`          |
+| `runner`   | `node:24-slim` | Minimal production image, runs as the non-root `node` user |
 
 **Key details:**
+
 - Uses **Debian (glibc)**, not Alpine (musl) — Tailwind v4's native binaries require glibc
 - Puppeteer download is skipped (`PUPPETEER_SKIP_DOWNLOAD=true`) — not needed for production
 - Final image runs as **non-root** user for security
@@ -256,7 +257,7 @@ The `Dockerfile` uses separate dependency, build, migration, and runtime stages:
   only the runtime dependencies the server actually needs. Copying the full builder
   `node_modules` on top would double the image size and ship every devDependency
   (TypeScript, Prisma CLI, Tailwind, Playwright, Puppeteer) into the distroless layer —
-  defeating the purpose of standalone output.  The runner stage only copies the native
+  defeating the purpose of standalone output. The runner stage only copies the native
   Prisma query-engine binary, which the standalone tracer intentionally omits because it
   is platform-specific.
 - The `migrator` target is a separate image for one-shot migrations. It contains
@@ -296,7 +297,7 @@ CI is `.github/workflows/docker-multiarch.yml`:
 
 **Why the image is architecture-agnostic without extra work.** The Prisma client is
 regenerated inside the `builder` stage, and `docker buildx build --platform X` runs
-every stage *for platform X* (under QEMU when X is not the host). The native Prisma
+every stage _for platform X_ (under QEMU when X is not the host). The native Prisma
 query engine copied into `runner` is therefore always the engine for the target
 architecture. `docker-compose.yml` deliberately contains **no** `platform:`
 key, so `docker compose up` picks the host architecture from the manifest; adding
@@ -306,11 +307,11 @@ one would pin every developer and deployment host to a single architecture.
 `type=gha` BuildKit cache (one scope per architecture) and only run when
 `Dockerfile`, dependency, Next config or Prisma files change:
 
-| Leg | Expected run time | Notes |
-|---|---|---|
-| `linux/amd64` | baseline (unchanged) | Native on GitHub's amd64 runners |
-| `linux/arm64` | **≈2–3× the amd64 leg** | Every build stage and the container boot run under QEMU emulation |
-| Full CI wall-clock | **≈ +5–8 minutes** on a cold cache, ≈ +0–1 minute warm | `build` and `publish` share cache scopes |
+| Leg                | Expected run time                                      | Notes                                                             |
+| ------------------ | ------------------------------------------------------ | ----------------------------------------------------------------- |
+| `linux/amd64`      | baseline (unchanged)                                   | Native on GitHub's amd64 runners                                  |
+| `linux/arm64`      | **≈2–3× the amd64 leg**                                | Every build stage and the container boot run under QEMU emulation |
+| Full CI wall-clock | **≈ +5–8 minutes** on a cold cache, ≈ +0–1 minute warm | `build` and `publish` share cache scopes                          |
 
 The figures above are the expectation driving the design (QEMU's typical 2–3×
 penalty for a Next.js build); the authoritative numbers are the job durations in
@@ -319,7 +320,7 @@ result there.
 
 The increase buys correctness that cannot be bought more cheaply: without an
 arm64 image, every Apple Silicon developer and every Graviton/Ampere deployment
-pays a much larger penalty at *their* run time (emulated builds, slower-than-native
+pays a much larger penalty at _their_ run time (emulated builds, slower-than-native
 containers, subtle `exec format error` failures), and none of them find out until
 they try it. QEMU is the only option without ARM hardware; the natural follow-up
 is to move the arm64 leg to a native `ubuntu-24.04-arm` runner, which removes the
@@ -332,9 +333,9 @@ OphirPay exposes two probes with deliberately different meanings. They are
 lets a transient Postgres/Soroban/Redis outage restart-loop a perfectly healthy
 container.
 
-| Probe | Endpoint | Checks | Failure meaning |
-|---|---|---|---|
-| **Liveness** | `GET /api/health/live` | Process is up and serving HTTP. No database, RPC, Horizon or Redis I/O | The process is wedged — restarting it is the right response |
+| Probe         | Endpoint                | Checks                                                                     | Failure meaning                                                        |
+| ------------- | ----------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Liveness**  | `GET /api/health/live`  | Process is up and serving HTTP. No database, RPC, Horizon or Redis I/O     | The process is wedged — restarting it is the right response            |
 | **Readiness** | `GET /api/health/ready` | Database only (`SELECT 1`, 503 when down); never contacts Stellar or Redis | The database is unavailable — stop routing traffic, do **not** restart |
 
 `GET /api/health` remains the detailed dashboard endpoint. Its optional checks
@@ -364,7 +365,7 @@ The healthcheck uses `--interval=30s --timeout=5s --start-period=20s
 `helm/ophirpay/values.yaml`:
 
 ```yaml
-livenessProbe:                     # process only — never restarts on a DB blip
+livenessProbe: # process only — never restarts on a DB blip
   httpGet:
     path: /api/health/live
     port: 3000
@@ -372,7 +373,7 @@ livenessProbe:                     # process only — never restarts on a DB bli
   periodSeconds: 15
   timeoutSeconds: 5
   failureThreshold: 3
-readinessProbe:                    # database-only — external outages do not drain pods
+readinessProbe: # database-only — external outages do not drain pods
   httpGet:
     path: /api/health/ready
     port: 3000
@@ -693,7 +694,7 @@ fails the render instead of producing an unpullable reference.
 > `--set image.repository` / `--set image.tag`. `helm upgrade` prints the same
 > reminder through `helm/ophirpay/templates/NOTES.txt`.
 >
-> Non-`NEXT_PUBLIC_` variables (for example `STELLAR_NETWORK_PASSPHRASE`) *are*
+> Non-`NEXT_PUBLIC_` variables (for example `STELLAR_NETWORK_PASSPHRASE`) _are_
 > read from the environment at runtime and may be set with
 > `--set config.STELLAR_NETWORK_PASSPHRASE=...`.
 >
@@ -718,12 +719,12 @@ standalone Node — therefore serves identical headers. Do not re-declare these
 headers in `vercel.json`; `src/__tests__/security-headers.test.ts` fails the
 build if the two layers disagree (issues #681 and #740).
 
-| Path | `Cache-Control` | Why |
-|---|---|---|
-| `/_next/static/(.*)` | `public, max-age=31536000, immutable` | Build output is content-addressed: the filename changes when the bytes change, so a 1-year immutable TTL never serves stale code. |
-| `/_next/image` | `public, max-age=3600, stale-while-revalidate=86400` | The optimiser URL is stable but the underlying image can change, so it gets a short TTL plus a background revalidation window instead of a year. |
-| `/api/(.*)` | `no-cache, no-store, must-revalidate` | Never let a browser or intermediary replay financial data. |
-| everything else | *(none set)* | Next's defaults apply. |
+| Path                 | `Cache-Control`                                      | Why                                                                                                                                              |
+| -------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/_next/static/(.*)` | `public, max-age=31536000, immutable`                | Build output is content-addressed: the filename changes when the bytes change, so a 1-year immutable TTL never serves stale code.                |
+| `/_next/image`       | `public, max-age=3600, stale-while-revalidate=86400` | The optimiser URL is stable but the underlying image can change, so it gets a short TTL plus a background revalidation window instead of a year. |
+| `/api/(.*)`          | `no-cache, no-store, must-revalidate`                | Never let a browser or intermediary replay financial data.                                                                                       |
+| everything else      | _(none set)_                                         | Next's defaults apply.                                                                                                                           |
 
 All of the above are in addition to the security header set declared on the
 `/(.*)` rule (`X-Content-Type-Options`, `X-Frame-Options`,
@@ -762,10 +763,10 @@ OphirPay requires two Soroban contracts. Deploy them before starting the app.
 
 The testnet contracts are pre-deployed and configured in `.env.example`:
 
-| Contract | ID |
-|---|---|
+| Contract | ID                                                         |
+| -------- | ---------------------------------------------------------- |
 | OphirPay | `CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET` |
-| Emitter | `CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN` |
+| Emitter  | `CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN` |
 
 No action needed — just use the defaults.
 
@@ -915,57 +916,57 @@ curl -s https://your-domain.com/api/health | jq .database
 
 ### Build Failures
 
-| Error | Cause | Fix |
-|---|---|---|
-| `Prisma generate failed` | Prisma CLI not installed | Run `npx prisma generate` explicitly, or `npm ci` to install devDependencies |
-| `ENOENT: no such file or directory, open '.env'` | Missing `.env` file | Copy `.env.example` to `.env.local` |
-| `tailwindcss/postcss` crash on musl | Alpine Linux uses musl libc | Use the Debian-based Dockerfile (already configured) or switch to `node:24-slim` |
-| `next build` fails with `ENOENT .next/next-server.js.nft.json` | Standalone mode on Vercel | Already handled — `output` is disabled when `VERCEL` env is set |
+| Error                                                          | Cause                       | Fix                                                                              |
+| -------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------- |
+| `Prisma generate failed`                                       | Prisma CLI not installed    | Run `npx prisma generate` explicitly, or `npm ci` to install devDependencies     |
+| `ENOENT: no such file or directory, open '.env'`               | Missing `.env` file         | Copy `.env.example` to `.env.local`                                              |
+| `tailwindcss/postcss` crash on musl                            | Alpine Linux uses musl libc | Use the Debian-based Dockerfile (already configured) or switch to `node:24-slim` |
+| `next build` fails with `ENOENT .next/next-server.js.nft.json` | Standalone mode on Vercel   | Already handled — `output` is disabled when `VERCEL` env is set                  |
 
 ### Database Errors
 
-| Error | Cause | Fix |
-|---|---|---|
-| `P1001: Can't reach database server` | Wrong `DATABASE_URL` or DB is down | Verify the connection string, check if the DB server is running |
-| `P1003: Database does not exist` | Database not created | Create the database first, then run `npx prisma migrate deploy` |
-| `P3009: found incompatible migrations` | Migration history mismatch | Run `npx prisma migrate reset` (dev only) or check migration folders |
-| `relation "User" does not exist` | Migrations not applied | Run `npx prisma migrate deploy` |
-| `DIRECT_DATABASE_URL` errors | Pooled connection doesn't support migrations | Set `DIRECT_DATABASE_URL` to the direct (non-pooled) connection |
+| Error                                  | Cause                                        | Fix                                                                  |
+| -------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------- |
+| `P1001: Can't reach database server`   | Wrong `DATABASE_URL` or DB is down           | Verify the connection string, check if the DB server is running      |
+| `P1003: Database does not exist`       | Database not created                         | Create the database first, then run `npx prisma migrate deploy`      |
+| `P3009: found incompatible migrations` | Migration history mismatch                   | Run `npx prisma migrate reset` (dev only) or check migration folders |
+| `relation "User" does not exist`       | Migrations not applied                       | Run `npx prisma migrate deploy`                                      |
+| `DIRECT_DATABASE_URL` errors           | Pooled connection doesn't support migrations | Set `DIRECT_DATABASE_URL` to the direct (non-pooled) connection      |
 
 ### Stellar / Contract Errors
 
-| Error | Cause | Fix |
-|---|---|---|
-| `Contract not found` | Wrong contract ID | Verify `NEXT_PUBLIC_CONTRACT_ID` matches a deployed contract |
-| `Network passphrase mismatch` | Wrong network config | Ensure `STELLAR_NETWORK_PASSPHRASE` matches `NEXT_PUBLIC_STELLAR_NETWORK` |
-| `Horizon timeout` | RPC endpoint down or slow | Check [status.stellar.org](https://status.stellar.org), try a different Horizon URL |
-| `Insufficient funds` | Account not funded | Fund via Friendbot (testnet) or send XLM (mainnet) |
+| Error                         | Cause                     | Fix                                                                                 |
+| ----------------------------- | ------------------------- | ----------------------------------------------------------------------------------- |
+| `Contract not found`          | Wrong contract ID         | Verify `NEXT_PUBLIC_CONTRACT_ID` matches a deployed contract                        |
+| `Network passphrase mismatch` | Wrong network config      | Ensure `STELLAR_NETWORK_PASSPHRASE` matches `NEXT_PUBLIC_STELLAR_NETWORK`           |
+| `Horizon timeout`             | RPC endpoint down or slow | Check [status.stellar.org](https://status.stellar.org), try a different Horizon URL |
+| `Insufficient funds`          | Account not funded        | Fund via Friendbot (testnet) or send XLM (mainnet)                                  |
 
 ### Runtime Errors
 
-| Error | Cause | Fix |
-|---|---|---|
-| `AUTH_SECRET is not set` | Missing session secret | Generate with `openssl rand -hex 32` and set in env |
-| `CSRF_INVALID` | Session expired or cross-origin issue | Clear cookies, ensure `NEXT_PUBLIC_APP_URL` matches your domain |
-| `Rate limit exceeded` | Too many requests | Increase `RATE_LIMIT_RPM` or set up Redis for distributed limiting |
-| `WebSocket connection failed` | SSE endpoint unreachable | Check if your reverse proxy supports SSE (disable buffering) |
+| Error                         | Cause                                 | Fix                                                                |
+| ----------------------------- | ------------------------------------- | ------------------------------------------------------------------ |
+| `AUTH_SECRET is not set`      | Missing session secret                | Generate with `openssl rand -hex 32` and set in env                |
+| `CSRF_INVALID`                | Session expired or cross-origin issue | Clear cookies, ensure `NEXT_PUBLIC_APP_URL` matches your domain    |
+| `Rate limit exceeded`         | Too many requests                     | Increase `RATE_LIMIT_RPM` or set up Redis for distributed limiting |
+| `WebSocket connection failed` | SSE endpoint unreachable              | Check if your reverse proxy supports SSE (disable buffering)       |
 
 ### Docker-Specific
 
-| Error | Cause | Fix |
-|---|---|---|
-| `Cannot connect to the Docker daemon` | Docker not running | Start Docker Desktop or `sudo systemctl start docker` |
-| `port is already allocated` | Port 3000/5432/6379 in use | Change ports in `docker-compose.yml` or stop the conflicting service |
-| `db is unhealthy` | PostgreSQL not ready | Wait for healthcheck, or run `docker compose up -d db` first |
-| `npm ci` fails in Docker | Lock file missing or outdated | Delete `package-lock.json` and run `npm install` locally, then commit |
+| Error                                 | Cause                         | Fix                                                                   |
+| ------------------------------------- | ----------------------------- | --------------------------------------------------------------------- |
+| `Cannot connect to the Docker daemon` | Docker not running            | Start Docker Desktop or `sudo systemctl start docker`                 |
+| `port is already allocated`           | Port 3000/5432/6379 in use    | Change ports in `docker-compose.yml` or stop the conflicting service  |
+| `db is unhealthy`                     | PostgreSQL not ready          | Wait for healthcheck, or run `docker compose up -d db` first          |
+| `npm ci` fails in Docker              | Lock file missing or outdated | Delete `package-lock.json` and run `npm install` locally, then commit |
 
 ### Vercel-Specific
 
-| Error | Cause | Fix |
-|---|---|---|
-| `Function has timed out` | API route too slow | Check database queries, add indexes, increase timeout in `vercel.json` |
-| `BUILD_ERROR: prisma generate` | Build step issue | Ensure `vercel.json` has `"buildCommand": "npx prisma generate && next build"` |
-| ` preview expired` | Preview deployment expired | Redeploy by pushing a commit or clicking "Redeploy" in the dashboard |
+| Error                          | Cause                      | Fix                                                                            |
+| ------------------------------ | -------------------------- | ------------------------------------------------------------------------------ |
+| `Function has timed out`       | API route too slow         | Check database queries, add indexes, increase timeout in `vercel.json`         |
+| `BUILD_ERROR: prisma generate` | Build step issue           | Ensure `vercel.json` has `"buildCommand": "npx prisma generate && next build"` |
+| ` preview expired`             | Preview deployment expired | Redeploy by pushing a commit or clicking "Redeploy" in the dashboard           |
 
 ---
 

@@ -11,6 +11,7 @@ Unlike bidirectional WebSockets or resource-intensive polling intervals, SSE pro
 ## Architecture & Transport Protocols
 
 OphirPay implements a dual-transport fallback strategy orchestrated by the client-side event manager:
+
 1. **Primary Transport:** WebSocket (`ws://` / `wss://`) for interactive bidirectional sessions.
 2. **Fallback & Streaming Transport:** Server-Sent Events (`http://` / `https://`) via `/api/events` and `/api/audit-log/sse`.
 
@@ -39,16 +40,17 @@ OphirPay implements a dual-transport fallback strategy orchestrated by the clien
 
 Streams real-time updates for active payments, batch disbursements, escrows, and streaming payments.
 
-* **Endpoint:** `GET /api/events`
-* **Headers:**
-  * `Accept: text/event-stream`
-  * `Cache-Control: no-cache`
-  * `Connection: keep-alive`
-* **Authentication:** Session cookie or `Authorization: Bearer <API_KEY>`
+- **Endpoint:** `GET /api/events`
+- **Headers:**
+  - `Accept: text/event-stream`
+  - `Cache-Control: no-cache`
+  - `Connection: keep-alive`
+- **Authentication:** Session cookie or `Authorization: Bearer <API_KEY>`
 
 #### Event Types & Payloads
 
 ##### `payment_status_update`
+
 Emitted whenever an on-chain Stellar transaction transitions between states.
 
 ```json
@@ -72,6 +74,7 @@ Emitted whenever an on-chain Stellar transaction transitions between states.
 ```
 
 ##### `batch_processed`
+
 Emitted when a multi-recipient batch disbursement completes on-chain.
 
 ```json
@@ -94,10 +97,10 @@ Emitted when a multi-recipient batch disbursement completes on-chain.
 
 Streams security events, administrative role modifications, and governance proposal executions.
 
-* **Endpoint:** `GET /api/audit-log/sse`
-* **Headers:**
-  * `Accept: text/event-stream`
-  * `Authorization: Bearer <ADMIN_API_KEY>`
+- **Endpoint:** `GET /api/audit-log/sse`
+- **Headers:**
+  - `Accept: text/event-stream`
+  - `Authorization: Bearer <ADMIN_API_KEY>`
 
 #### Event Payload Example
 
@@ -138,7 +141,9 @@ interface PaymentEvent {
 
 export function PaymentLiveTracker({ paymentId }: { paymentId: string }) {
   const [payment, setPayment] = useState<PaymentEvent | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "offline">("connecting");
+  const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "offline">(
+    "connecting"
+  );
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -177,13 +182,21 @@ export function PaymentLiveTracker({ paymentId }: { paymentId: string }) {
     <div className="rounded-lg border p-4 shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-medium">Real-Time Payment Status</h3>
-        <span className={`h-2 w-2 rounded-full ${connectionStatus === "live" ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
+        <span
+          className={`h-2 w-2 rounded-full ${connectionStatus === "live" ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
+        />
       </div>
       {payment ? (
         <div className="space-y-1 text-sm">
-          <div>Status: <span className="font-semibold">{payment.status}</span></div>
-          <div>Amount: {payment.amount} {payment.assetCode}</div>
-          {payment.txHash && <div className="text-xs text-gray-500 truncate">Tx: {payment.txHash}</div>}
+          <div>
+            Status: <span className="font-semibold">{payment.status}</span>
+          </div>
+          <div>
+            Amount: {payment.amount} {payment.assetCode}
+          </div>
+          {payment.txHash && (
+            <div className="text-xs text-gray-500 truncate">Tx: {payment.txHash}</div>
+          )}
         </div>
       ) : (
         <p className="text-xs text-gray-400">Waiting for live ledger confirmation...</p>

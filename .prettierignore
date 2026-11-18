@@ -1,0 +1,19 @@
+# Dependencies and build outputs
+node_modules/
+.next/
+dist/
+coverage/
+target/
+contracts/target/
+packages/ophirpay-client/dist/
+
+# Helm templates contain Go templating syntax which is not standard YAML
+helm/**/templates/**
+
+# GitHub issue form templates containing Markdown blocks
+.github/ISSUE_TEMPLATE/**
+
+# Generated / lock files
+package-lock.json
+pnpm-lock.yaml
+yarn.lock

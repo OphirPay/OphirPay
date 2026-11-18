@@ -6,12 +6,12 @@ platform settings outside the repository can add or override response headers.
 
 ## Configuration ownership
 
-| Layer | Responsibility | Applies to |
-|---|---|---|
-| `src/lib/security-headers.ts` | Baseline security header values shared by the app layer. | Imported by `next.config.ts` and `src/proxy.ts`. |
-| `next.config.ts` `headers()` | Static security headers and cache policy. This is the shared source for Vercel and self-hosted Next.js deployments. | All paths, with specific API and static-asset overrides. |
-| `src/proxy.ts` | Per-request CSP and CSP reporting on page requests; request, rate-limit, CORS, and a matching subset of security headers on API requests. | Matched page and `/api/*` requests. |
-| `vercel.json` | Next.js build/deployment settings and the `/home` redirect. It currently defines **no security headers**. | Vercel routing/deployment only. |
+| Layer                         | Responsibility                                                                                                                            | Applies to                                               |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `src/lib/security-headers.ts` | Baseline security header values shared by the app layer.                                                                                  | Imported by `next.config.ts` and `src/proxy.ts`.         |
+| `next.config.ts` `headers()`  | Static security headers and cache policy. This is the shared source for Vercel and self-hosted Next.js deployments.                       | All paths, with specific API and static-asset overrides. |
+| `src/proxy.ts`                | Per-request CSP and CSP reporting on page requests; request, rate-limit, CORS, and a matching subset of security headers on API requests. | Matched page and `/api/*` requests.                      |
+| `vercel.json`                 | Next.js build/deployment settings and the `/home` redirect. It currently defines **no security headers**.                                 | Vercel routing/deployment only.                          |
 
 `next.config.ts` applies the static headers on both Vercel and self-hosted
 Next.js targets. The proxy's page response supplies the dynamic CSP. The
@@ -31,18 +31,18 @@ those external layers are outside this repository's precedence.
 
 ## Effective repository policy
 
-| Header | Page responses | API responses | Source / intent |
-|---|---|---|---|
-| `X-Content-Type-Options: nosniff` | Yes | Yes | Prevent MIME-type sniffing. |
-| `X-Frame-Options: DENY` | Yes | Yes | Block framing to reduce clickjacking risk. |
-| `X-XSS-Protection: 0` | Yes | Static policy | Disable the deprecated browser XSS filter; do not restore `1; mode=block`. |
-| `Referrer-Policy: strict-origin-when-cross-origin` | Yes | Yes | Limit referrer detail on cross-origin navigation. |
-| `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()` | Yes | Static policy | Disable browser capabilities OphirPay does not use. |
-| `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` | Yes | Static policy | Require HTTPS in browsers after a secure response. Browsers ignore HSTS over ordinary local HTTP. |
-| `Cross-Origin-Opener-Policy: same-origin` | Yes | Static policy | Isolate top-level browsing contexts. |
-| `Cross-Origin-Resource-Policy` | `same-origin` | `cross-origin` | Allow API responses to be read under the API's CORS policy; static API-specific rule overrides the global value. |
-| `Content-Security-Policy` | Per-request policy below | Not set by the proxy | Restrict scripts, styles, connections, frames, objects, and form destinations; see [SECURITY.md](SECURITY.md). |
-| `Report-To` / `Reporting-Endpoints` | CSP collector at `/api/csp-report` | Not set by the proxy | Direct supported browsers to the CSP reporting endpoint. |
+| Header                                                                     | Page responses                     | API responses        | Source / intent                                                                                                  |
+| -------------------------------------------------------------------------- | ---------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `X-Content-Type-Options: nosniff`                                          | Yes                                | Yes                  | Prevent MIME-type sniffing.                                                                                      |
+| `X-Frame-Options: DENY`                                                    | Yes                                | Yes                  | Block framing to reduce clickjacking risk.                                                                       |
+| `X-XSS-Protection: 0`                                                      | Yes                                | Static policy        | Disable the deprecated browser XSS filter; do not restore `1; mode=block`.                                       |
+| `Referrer-Policy: strict-origin-when-cross-origin`                         | Yes                                | Yes                  | Limit referrer detail on cross-origin navigation.                                                                |
+| `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()` | Yes                                | Static policy        | Disable browser capabilities OphirPay does not use.                                                              |
+| `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`  | Yes                                | Static policy        | Require HTTPS in browsers after a secure response. Browsers ignore HSTS over ordinary local HTTP.                |
+| `Cross-Origin-Opener-Policy: same-origin`                                  | Yes                                | Static policy        | Isolate top-level browsing contexts.                                                                             |
+| `Cross-Origin-Resource-Policy`                                             | `same-origin`                      | `cross-origin`       | Allow API responses to be read under the API's CORS policy; static API-specific rule overrides the global value. |
+| `Content-Security-Policy`                                                  | Per-request policy below           | Not set by the proxy | Restrict scripts, styles, connections, frames, objects, and form destinations; see [SECURITY.md](SECURITY.md).   |
+| `Report-To` / `Reporting-Endpoints`                                        | CSP collector at `/api/csp-report` | Not set by the proxy | Direct supported browsers to the CSP reporting endpoint.                                                         |
 
 The static cache rules are also in `next.config.ts`: content-addressed
 `/_next/static/*` assets are immutable for one year, and `/_next/image` uses a
@@ -70,9 +70,9 @@ report-uri /api/csp-report
 
 The script policy varies by runtime:
 
-| Runtime | `script-src` |
-|---|---|
-| Production | `'self' 'nonce-<per-request>' 'strict-dynamic' 'wasm-unsafe-eval'` |
+| Runtime                    | `script-src`                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| Production                 | `'self' 'nonce-<per-request>' 'strict-dynamic' 'wasm-unsafe-eval'`               |
 | Development/non-production | `'self' 'nonce-<per-request>' 'strict-dynamic' 'unsafe-eval' 'wasm-unsafe-eval'` |
 
 `'unsafe-inline'` is deliberately absent from `script-src` (issue #1257): the

@@ -27,6 +27,7 @@ import {
   type WebhookRetryQueueSummary,
 } from "@/lib/webhook-delivery-service";
 import { incCronLogsPruned, incApiKeyLogsPruned } from "@/lib/metrics-counters";
+import { cleanupExpiredIdempotencyKeys } from "@/lib/db/cleanup";
 
 export const CRON_LOG_RETENTION_DAYS = 90;
 export const CRON_LOG_PRUNE_BATCH_SIZE = 1000;
@@ -222,6 +223,8 @@ interface RunSummary {
   prunedLogs?: number;
   /** Number of expired API key request logs pruned during this run (issue #1830). */
   prunedApiKeyLogs?: number;
+  /** Number of expired idempotency keys pruned during this run (issue #2025). */
+  prunedIdempotencyKeys?: number;
 }
 
 /**
@@ -267,12 +270,14 @@ async function runScheduledPayments(request: Request) {
     if (task === "cleanup") {
       const pruneResult = await pruneCronExecutionLogs();
       const apiKeyPruneResult = await pruneApiKeyRequestLogs();
+      const idempotencyResult = await cleanupExpiredIdempotencyKeys();
       return successResponse({
         prunedCount: pruneResult.prunedCount,
         batches: pruneResult.batches,
         cutoffDate: pruneResult.cutoffDate.toISOString(),
         apiKeyLogsPruned: apiKeyPruneResult.prunedCount,
         apiKeyBatches: apiKeyPruneResult.batches,
+        idempotencyKeysPruned: idempotencyResult.deletedCount,
       });
     }
 
@@ -481,6 +486,16 @@ async function runScheduledPayments(request: Request) {
       logger.warn("Failed to prune expired API key request logs", { error: pruneErr });
     }
 
+    // 4. Prune expired idempotency keys (issue #2025)
+    try {
+      const idempotencyResult = await cleanupExpiredIdempotencyKeys();
+      if (idempotencyResult.deletedCount > 0) {
+        summary.prunedIdempotencyKeys = idempotencyResult.deletedCount;
+      }
+    } catch (idempotencyErr) {
+      logger.warn("Failed to prune expired idempotency keys", { error: idempotencyErr });
+    }
+
     logger.info("Scheduled payment run complete", {
       runId,
       picked: summary.picked,
@@ -489,6 +504,7 @@ async function runScheduledPayments(request: Request) {
       skipped: summary.skipped,
       prunedLogs: summary.prunedLogs,
       prunedApiKeyLogs: summary.prunedApiKeyLogs,
+      prunedIdempotencyKeys: summary.prunedIdempotencyKeys,
     });
 
     return successResponse(summary);

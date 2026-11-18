@@ -159,9 +159,9 @@ second signal cannot re-run `$disconnect()`/`quit()`.
 
 **Configuration**
 
-| Variable                    | Default | Purpose                                              |
-| --------------------------- | ------- | ---------------------------------------------------- |
-| `SHUTDOWN_GRACE_PERIOD_MS`  | `5000`  | Time allowed for in-flight operations before cleanup |
+| Variable                   | Default | Purpose                                              |
+| -------------------------- | ------- | ---------------------------------------------------- |
+| `SHUTDOWN_GRACE_PERIOD_MS` | `5000`  | Time allowed for in-flight operations before cleanup |
 
 Keep Kubernetes `terminationGracePeriodSeconds` above this value (for example
 15 s for the 5 s default) so the kernel does not SIGKILL the process while it

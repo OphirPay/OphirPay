@@ -179,4 +179,3 @@ groups:
             The OphirPay metrics endpoint is not responding to Prometheus scrapes.
             Instance: {{ $labels.instance }}.
           runbook_url: "https://github.com/OphirPay/OphirPay/blob/main/docs/TROUBLESHOOTING.md#-app-runtime"
-

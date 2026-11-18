@@ -21,10 +21,10 @@ first-load JS**, measured from the App Router client-reference manifests that
 
 ### What CI does
 
-| Job | Workflow | What it proves |
-|---|---|---|
-| `build` → "JavaScript bundle-size budget" | `ci.yml` | The PR build stays within every committed per-route budget. |
-| `bundle-analysis` → "Bundle Diff" | `ci.yml` | Builds the PR **and the PR's base branch**, then posts a route-by-route table (base KB, PR KB, Δ, Δ %, budget, status) to the job summary. |
+| Job                                       | Workflow | What it proves                                                                                                                             |
+| ----------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `build` → "JavaScript bundle-size budget" | `ci.yml` | The PR build stays within every committed per-route budget.                                                                                |
+| `bundle-analysis` → "Bundle Diff"         | `ci.yml` | Builds the PR **and the PR's base branch**, then posts a route-by-route table (base KB, PR KB, Δ, Δ %, budget, status) to the job summary. |
 
 The bundle-diff job hard-fails when any route exceeds its committed budget.
 It **warns** when a route grows by more than `BUNDLE_GROWTH_WARN_KB`
@@ -60,7 +60,7 @@ equivalent.
 
 - **Measured** is the union of the route's entry chunks, shared framework
   chunks and client-module chunks, gzip-sized. A shared chunk is counted for
-every route that loads it, so totals are first-load cost per route, not a
+  every route that loads it, so totals are first-load cost per route, not a
   deduplicated site total.
 - **Δ** is `PR − base`. A positive value means the route got heavier; the
   percentage is relative to the base measurement.
@@ -87,11 +87,11 @@ every route that loads it, so totals are first-load cost per route, not a
 
 ## What is load-tested
 
-| Endpoint | Auth | Notes |
-|---|---|---|
-| `GET /api/health` | none | DB `SELECT 1`, Soroban RPC health, optional Redis ping |
-| `GET /api/payments?limit=20` | API key (Bearer) | Authenticated list query (keyset pagination) |
-| `GET /api/events` | none | SSE stream — measured as connection + first-byte latency, not throughput |
+| Endpoint                     | Auth             | Notes                                                                    |
+| ---------------------------- | ---------------- | ------------------------------------------------------------------------ |
+| `GET /api/health`            | none             | DB `SELECT 1`, Soroban RPC health, optional Redis ping                   |
+| `GET /api/payments?limit=20` | API key (Bearer) | Authenticated list query (keyset pagination)                             |
+| `GET /api/events`            | none             | SSE stream — measured as connection + first-byte latency, not throughput |
 
 ## How to run
 
@@ -153,13 +153,13 @@ bare `--json` to drop a timestamped file in `LOAD_TEST_OUTPUT_DIR`.
 
 Config (all optional):
 
-| Env var | Default | Purpose |
-|---|---|---|
-| `LOAD_TEST_BASE_URL` | `http://localhost:3000` | Target instance |
-| `LOAD_TEST_API_KEY` | *(unset)* | Bearer key for authenticated endpoints; unauthenticated endpoints are skipped with a warning when absent |
-| `LOAD_TEST_DURATION` | `10` | Seconds per pass |
-| `LOAD_TEST_CONNECTIONS` | `1,5,10,25,50` | Comma-separated concurrency levels |
-| `LOAD_TEST_OUTPUT_DIR` | `tests/load/results` | Where raw JSON results are written |
+| Env var                 | Default                 | Purpose                                                                                                  |
+| ----------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| `LOAD_TEST_BASE_URL`    | `http://localhost:3000` | Target instance                                                                                          |
+| `LOAD_TEST_API_KEY`     | _(unset)_               | Bearer key for authenticated endpoints; unauthenticated endpoints are skipped with a warning when absent |
+| `LOAD_TEST_DURATION`    | `10`                    | Seconds per pass                                                                                         |
+| `LOAD_TEST_CONNECTIONS` | `1,5,10,25,50`          | Comma-separated concurrency levels                                                                       |
+| `LOAD_TEST_OUTPUT_DIR`  | `tests/load/results`    | Where raw JSON results are written                                                                       |
 
 Raw JSON results are written to `tests/load/results/` (gitignored) so you can
 diff runs without polluting the repo.
@@ -170,24 +170,24 @@ diff runs without polluting the repo.
 payments dashboard. It holds **200 concurrent connections** and sends a
 realistic request mix through autocannon's request iterator:
 
-| Share | Operation | Request |
-|---:|---|---|
-| 70% | Status queries | `GET /api/payments?limit=20` |
-| 20% | Payment creations | `POST /api/payments` (unique `[<id>]` per request) |
-| 10% | Webhook polling | `GET /api/hooks?event_type=payment.created` |
+| Share | Operation         | Request                                            |
+| ----: | ----------------- | -------------------------------------------------- |
+|   70% | Status queries    | `GET /api/payments?limit=20`                       |
+|   20% | Payment creations | `POST /api/payments` (unique `[<id>]` per request) |
+|   10% | Webhook polling   | `GET /api/hooks?event_type=payment.created`        |
 
 The ten-entry plan repeats in a 7:2:1 ratio, so no custom load generator is
 needed and every operation travels through the same Next.js route handler as
 production traffic. The benchmark enforces the published ingestion SLOs:
 
-| Threshold | Default | Env override |
-|---|---:|---|
-| p95 latency | `< 350 ms` | `LOAD_TEST_P95_MS` |
-| HTTP 5xx | `0%` | `LOAD_TEST_MAX_5XX_PCT` |
-| Sustained throughput | `>= 150 req/s` | `LOAD_TEST_MIN_RPS` |
-| Concurrent users | `200` | `LOAD_TEST_CONCURRENCY` |
-| Duration | `15 s` | `LOAD_TEST_DURATION` |
-| Offered rate | `150 req/s` | `LOAD_TEST_TARGET_RPS` |
+| Threshold            |        Default | Env override            |
+| -------------------- | -------------: | ----------------------- |
+| p95 latency          |     `< 350 ms` | `LOAD_TEST_P95_MS`      |
+| HTTP 5xx             |           `0%` | `LOAD_TEST_MAX_5XX_PCT` |
+| Sustained throughput | `>= 150 req/s` | `LOAD_TEST_MIN_RPS`     |
+| Concurrent users     |          `200` | `LOAD_TEST_CONCURRENCY` |
+| Duration             |         `15 s` | `LOAD_TEST_DURATION`    |
+| Offered rate         |    `150 req/s` | `LOAD_TEST_TARGET_RPS`  |
 
 ```bash
 # Full run against a local instance (authenticated routes need a key).
@@ -226,7 +226,7 @@ baselines below when behavior intentionally changes.
 
 ### Scheduled CI gate (weekly + manual dispatch)
 
-The load tests *do* run on a schedule —
+The load tests _do_ run on a schedule —
 [`.github/workflows/load-test.yml`](../.github/workflows/load-test.yml) fires
 **every Monday at 03:00 UTC** and on `workflow_dispatch` (with `duration`,
 `connections`, `margin`, `sse_concurrency` and `seed_payments` inputs). It:
@@ -240,7 +240,7 @@ The load tests *do* run on a schedule —
 5. **fails the run** when a measured value exceeds its threshold, printing the
    measured value and the allowed ceiling.
 
-This is a regression *tripwire*, not a PR gate: no PR is blocked on it.
+This is a regression _tripwire_, not a PR gate: no PR is blocked on it.
 
 ### Thresholds are deliberate, not recorded
 
@@ -248,11 +248,11 @@ This is a regression *tripwire*, not a PR gate: no PR is blocked on it.
 worst documented row per endpoint (from the table below), and
 `scripts/check-load-baselines.mjs` applies:
 
-| Threshold | Compared as |
-|---|---|
+| Threshold        | Compared as                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `p95Ms`, `p99Ms` | measured ≤ threshold × the endpoint's `margin` when set, otherwise `LOAD_TEST_MARGIN` (default **3**) — latency scales with runner hardware |
-| `errorPct` | measured ≤ threshold (absolute) — transport errors per connection |
-| `non2xxPct` | measured ≤ threshold (absolute) — 4xx/5xx per request (`null` for SSE) |
+| `errorPct`       | measured ≤ threshold (absolute) — transport errors per connection                                                                           |
+| `non2xxPct`      | measured ≤ threshold (absolute) — 4xx/5xx per request (`null` for SSE)                                                                      |
 
 A new endpoint in `scripts/load-test.js` with no entry in the file **fails the
 gate** rather than passing unmeasured.
@@ -264,7 +264,7 @@ Baselines are only allowed to move as an explicit, reviewed decision:
 1. Run the load test locally (or dispatch the workflow) and look at the numbers.
 2. If the change is intentional (a real feature, a deliberate trade-off, a
    slower-but-correct query), update **`tests/load/baselines.json`** — change
-   the value and extend its `note` with *why*.
+   the value and extend its `note` with _why_.
 3. If the reference hardware changed, use `node scripts/load-test.js --write-docs`
    to regenerate the informational table below, and adjust the JSON thresholds
    to match.
@@ -295,23 +295,24 @@ with a different `margin` input (the value is echoed in the job summary).
 
 Generated on 2026-08-27T03:48:25.922Z against http://localhost:3000 (8s per pass). Regenerate with `node scripts/load-test.js --write-docs`.
 
-| Endpoint | Connections | Req/s | p50 | p95 | p99 | Error % | Non-2xx % |
-|---|---|---|---|---|---|---|---|
-| /api/health | 1 | 9 | 100 ms | 187 ms | 276 ms | 0.00% | 0.00% |
-| /api/health | 5 | 44 | 107 ms | 150 ms | 183 ms | 0.00% | 0.00% |
-| /api/health | 10 | 79 | 122 ms | 174 ms | 204 ms | 0.00% | 0.00% |
-| /api/health | 25 | 101 | 211 ms | 354 ms | 1211 ms | 0.00% | 0.00% |
-| /api/health | 50 | 122 | 383 ms | 503 ms | 945 ms | 0.00% | 0.00% |
-| /api/payments | 1 | 49 | 13 ms | 32 ms | 67 ms | 0.00% | 0.00% |
-| /api/payments | 5 | 70 | 64 ms | 115 ms | 148 ms | 0.00% | 0.00% |
-| /api/payments | 10 | 69 | 135 ms | 212 ms | 258 ms | 0.00% | 0.00% |
-| /api/payments | 25 | 69 | 343 ms | 472 ms | 655 ms | 0.00% | 0.00% |
-| /api/payments | 50 | 71 | 654 ms | 847 ms | 2103 ms | 0.00% | 0.00% |
-| /api/events | 1 | n/a | - | - | - | 0.00% | n/a |
-| /api/events | 5 | n/a | - | - | - | 0.00% | n/a |
-| /api/events | 10 | n/a | - | - | - | 0.00% | n/a |
-| /api/events | 25 | n/a | - | - | - | 0.00% | n/a |
-| /api/events | 50 | n/a | - | - | - | 0.00% | n/a |
+| Endpoint      | Connections | Req/s | p50    | p95    | p99     | Error % | Non-2xx % |
+| ------------- | ----------- | ----- | ------ | ------ | ------- | ------- | --------- |
+| /api/health   | 1           | 9     | 100 ms | 187 ms | 276 ms  | 0.00%   | 0.00%     |
+| /api/health   | 5           | 44    | 107 ms | 150 ms | 183 ms  | 0.00%   | 0.00%     |
+| /api/health   | 10          | 79    | 122 ms | 174 ms | 204 ms  | 0.00%   | 0.00%     |
+| /api/health   | 25          | 101   | 211 ms | 354 ms | 1211 ms | 0.00%   | 0.00%     |
+| /api/health   | 50          | 122   | 383 ms | 503 ms | 945 ms  | 0.00%   | 0.00%     |
+| /api/payments | 1           | 49    | 13 ms  | 32 ms  | 67 ms   | 0.00%   | 0.00%     |
+| /api/payments | 5           | 70    | 64 ms  | 115 ms | 148 ms  | 0.00%   | 0.00%     |
+| /api/payments | 10          | 69    | 135 ms | 212 ms | 258 ms  | 0.00%   | 0.00%     |
+| /api/payments | 25          | 69    | 343 ms | 472 ms | 655 ms  | 0.00%   | 0.00%     |
+| /api/payments | 50          | 71    | 654 ms | 847 ms | 2103 ms | 0.00%   | 0.00%     |
+| /api/events   | 1           | n/a   | -      | -      | -       | 0.00%   | n/a       |
+| /api/events   | 5           | n/a   | -      | -      | -       | 0.00%   | n/a       |
+| /api/events   | 10          | n/a   | -      | -      | -       | 0.00%   | n/a       |
+| /api/events   | 25          | n/a   | -      | -      | -       | 0.00%   | n/a       |
+| /api/events   | 50          | n/a   | -      | -      | -       | 0.00%   | n/a       |
+
 ## Methodology
 
 1. Each endpoint is exercised at each concurrency level in
@@ -340,13 +341,13 @@ request — one Soroban simulation per call for the contract-backed reads, four
 aggregate queries for `/api/analytics`. They are now served through
 `src/lib/api-cache.ts`:
 
-| Endpoint | Upstream work per request (before) | TTL (after) | Cache key |
-|---|---|---:|---|
-| `GET /api/stats` | 1 × `get_stats` simulation | 15 s | `stats:<contract>` |
-| `GET /api/analytics` | 3 × `count` + 1 × `aggregate` + `groupBy` | 30 s | `analytics:<userId>` |
-| `GET /api/contracts` | 2 × simulation (`get_version`, `get_owner`) | 60 s | `contracts:<contract>` |
-| `GET /api/audit-log` (+ `/sse`, `/export`) | 1 × `get_audit_log_count` + 1 × `get_audit_entry` per entry | 5 s | `audit-log:count:<contract>`, `audit-log:entry:<contract>:<id>` |
-| `GET /api/fee-config` (+ `/history`, `/collector`) | 1 × simulation each | 30 s | `fee-config:<contract>`, `fee-config:history:<contract>`, `fee-config:collector:<contract>` |
+| Endpoint                                           | Upstream work per request (before)                          | TTL (after) | Cache key                                                                                   |
+| -------------------------------------------------- | ----------------------------------------------------------- | ----------: | ------------------------------------------------------------------------------------------- |
+| `GET /api/stats`                                   | 1 × `get_stats` simulation                                  |        15 s | `stats:<contract>`                                                                          |
+| `GET /api/analytics`                               | 3 × `count` + 1 × `aggregate` + `groupBy`                   |        30 s | `analytics:<userId>`                                                                        |
+| `GET /api/contracts`                               | 2 × simulation (`get_version`, `get_owner`)                 |        60 s | `contracts:<contract>`                                                                      |
+| `GET /api/audit-log` (+ `/sse`, `/export`)         | 1 × `get_audit_log_count` + 1 × `get_audit_entry` per entry |         5 s | `audit-log:count:<contract>`, `audit-log:entry:<contract>:<id>`                             |
+| `GET /api/fee-config` (+ `/history`, `/collector`) | 1 × simulation each                                         |        30 s | `fee-config:<contract>`, `fee-config:history:<contract>`, `fee-config:collector:<contract>` |
 
 ### Measured before/after
 
@@ -358,11 +359,11 @@ end of the range.
 
 Measured 2026-09-24, 2 000 cache-hit samples against 25 miss samples:
 
-| Path | Iterations | Avg latency |
-|---|---:|---:|
-| Uncached (pays the upstream call) | 25 | **8.21 ms** |
-| Cache hit (L1, in-process) | 2 000 | **0.003 ms** |
-| Speedup | | **~2 600×** |
+| Path                              | Iterations |  Avg latency |
+| --------------------------------- | ---------: | -----------: |
+| Uncached (pays the upstream call) |         25 |  **8.21 ms** |
+| Cache hit (L1, in-process)        |      2 000 | **0.003 ms** |
+| Speedup                           |            |  **~2 600×** |
 
 Read as: the cache removes essentially all of the upstream cost, which is the
 part that scales with load. The remaining per-request cost of a cached endpoint
@@ -371,19 +372,19 @@ in the baseline table above. L2 (Redis) hits add one round trip instead of an
 RPC/DB call, so the win there is bounded by the network hop to Redis.
 
 > Numbers are indicative, not contractual — re-run on your hardware. To extend
-the end-to-end picture, add the cached endpoints to `scripts/load-test.js` and
-regenerate the Baselines table.
+> the end-to-end picture, add the cached endpoints to `scripts/load-test.js` and
+> regenerate the Baselines table.
 
 ### Invalidation matrix
 
 Correctness does not depend on the TTL: every server-side mutation that changes
 the data drops the affected keys immediately.
 
-| Mutation | Invalidates |
-|---|---|
-| `POST /api/payments` (payment creation) | `stats`, `analytics:<userId>`, `audit-log` |
-| `POST /api/refunds`, `PATCH /api/refunds/[id]` (audit writes) | `audit-log` |
-| `POST /api/governance/execute` (proposal execution — can change fee config) | `fee-config`, `stats`, `audit-log` |
+| Mutation                                                                    | Invalidates                                |
+| --------------------------------------------------------------------------- | ------------------------------------------ |
+| `POST /api/payments` (payment creation)                                     | `stats`, `analytics:<userId>`, `audit-log` |
+| `POST /api/refunds`, `PATCH /api/refunds/[id]` (audit writes)               | `audit-log`                                |
+| `POST /api/governance/execute` (proposal execution — can change fee config) | `fee-config`, `stats`, `audit-log`         |
 
 `invalidateCache(scope, subject?)` is the primitive: pass `subject` for
 per-user payloads so one tenant's write never flushes another's cache, or omit
@@ -429,11 +430,11 @@ Fees are no longer a hardcoded constant. Before building a transaction the app
 calls `getRecommendedFee()` (`src/lib/fee-stats.ts`), which reads Horizon's
 `/fee_stats` aggregate and picks a percentile of the recently **charged** fees:
 
-| `NEXT_PUBLIC_FEE_AGGRESSIVENESS` | Percentile | When to use |
-| -------------------------------- | ---------- | ----------- |
+| `NEXT_PUBLIC_FEE_AGGRESSIVENESS` | Percentile | When to use                                            |
+| -------------------------------- | ---------- | ------------------------------------------------------ |
 | `low`                            | `p50`      | Cost-sensitive, tolerant of occasional inclusion delay |
-| `medium` (default)               | `p90`      | Balanced — clears ordinary congestion |
-| `high`                           | `p99`      | Latency-critical payouts during fee spikes |
+| `medium` (default)               | `p90`      | Balanced — clears ordinary congestion                  |
+| `high`                           | `p99`      | Latency-critical payouts during fee spikes             |
 
 The recommendation is floored at `last_ledger_base_fee`, so it is never below
 the protocol minimum, and it is **per operation** — a 40-recipient batch bids
@@ -447,7 +448,7 @@ matches the fee submitted. If Horizon is unreachable the last known good sample
 is served (`source: "cache"`, `stale: true`); a cold start with no sample ever
 falls back to `FEE_FALLBACK_BASE_FEE` (default 100 stroops). The recommendation
 never throws, and the confirmation screens render the `basis` string so the
-user sees *why* a fee is higher than usual.
+user sees _why_ a fee is higher than usual.
 
 ### Related modules
 

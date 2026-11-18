@@ -34,7 +34,7 @@ the same account would collide (`tx_bad_seq`).
 The endpoint is safe to run concurrently — overlapping cron runs, a manual
 trigger during a scheduled run, or a retried invocation.
 
-Selection is only a *hint*. The guarantee comes from the claim, a conditional
+Selection is only a _hint_. The guarantee comes from the claim, a conditional
 update that the database evaluates atomically:
 
 ```sql
@@ -65,12 +65,12 @@ A submission error returns the row to `SCHEDULED` so the next run retries it —
 a transient Horizon outage delays a payment rather than cancelling it. After
 **3 attempts** the row is marked `FAILED` with the last error message.
 
-| Outcome | Row status | Reported as |
-|---|---|---|
-| Submitted | `EXECUTED` (+ `transactionHash`, `executedAt`) | `EXECUTED` |
-| Failed, attempts remain | `SCHEDULED` (+ `errorMessage`) | `RETRY_SCHEDULED` |
-| Failed, attempts exhausted | `FAILED` (+ `errorMessage`) | `FAILED` |
-| Claimed by another run | unchanged | `SKIPPED` |
+| Outcome                    | Row status                                     | Reported as       |
+| -------------------------- | ---------------------------------------------- | ----------------- |
+| Submitted                  | `EXECUTED` (+ `transactionHash`, `executedAt`) | `EXECUTED`        |
+| Failed, attempts remain    | `SCHEDULED` (+ `errorMessage`)                 | `RETRY_SCHEDULED` |
+| Failed, attempts exhausted | `FAILED` (+ `errorMessage`)                    | `FAILED`          |
+| Claimed by another run     | unchanged                                      | `SKIPPED`         |
 
 ## The endpoint
 
@@ -83,12 +83,12 @@ external schedulers and manual triggering.
 `Authorization: Bearer <secret>`. The `x-cron-secret` header is accepted too.
 The comparison is constant-time.
 
-| Status | Meaning |
-|---|---|
-| `200` | Run completed (possibly with nothing due) |
-| `401` | Missing or wrong cron secret |
-| `500` | `SCHEDULED_PAYMENTS_SOURCE_SECRET` is not a valid Stellar secret key |
-| `503` | `CRON_SECRET` or `SCHEDULED_PAYMENTS_SOURCE_SECRET` is unset |
+| Status | Meaning                                                              |
+| ------ | -------------------------------------------------------------------- |
+| `200`  | Run completed (possibly with nothing due)                            |
+| `401`  | Missing or wrong cron secret                                         |
+| `500`  | `SCHEDULED_PAYMENTS_SOURCE_SECRET` is not a valid Stellar secret key |
+| `503`  | `CRON_SECRET` or `SCHEDULED_PAYMENTS_SOURCE_SECRET` is unset         |
 
 **Response**
 
@@ -121,10 +121,10 @@ curl -sS -H "Authorization: Bearer $CRON_SECRET" \
 
 ## Configuration
 
-| Env var | Purpose |
-|---|---|
-| `CRON_SECRET` | Shared secret protecting the endpoint. Generate with `openssl rand -hex 32`. The GitHub Actions cron sends it via the `x-cron-secret` header, so the same value must be set as both the `CRON_SECRET` GitHub Actions secret and the `CRON_SECRET` environment variable on the Vercel project. |
-| `SCHEDULED_PAYMENTS_SOURCE_SECRET` | Stellar secret key of the operator account that signs and submits due payments. It must be funded, and hold enough balance (plus trustlines for non-native assets) for every payment in a run. |
+| Env var                            | Purpose                                                                                                                                                                                                                                                                                       |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CRON_SECRET`                      | Shared secret protecting the endpoint. Generate with `openssl rand -hex 32`. The GitHub Actions cron sends it via the `x-cron-secret` header, so the same value must be set as both the `CRON_SECRET` GitHub Actions secret and the `CRON_SECRET` environment variable on the Vercel project. |
+| `SCHEDULED_PAYMENTS_SOURCE_SECRET` | Stellar secret key of the operator account that signs and submits due payments. It must be funded, and hold enough balance (plus trustlines for non-native assets) for every payment in a run.                                                                                                |
 
 Schedule — `.github/workflows/scheduled-payments-cron.yml`:
 
@@ -149,11 +149,11 @@ no-op when nothing is due.
 
 The policy constants live in [`src/lib/scheduler.ts`](../src/lib/scheduler.ts):
 
-| Constant | Default | Effect |
-|---|---|---|
-| `MAX_PAYMENTS_PER_RUN` | `25` | Rows executed per run, so a run fits inside its 60s function timeout |
-| `PROCESSING_LEASE_MS` | `5 min` | How long a claimed row is protected before another run may reclaim it |
-| `MAX_EXECUTION_ATTEMPTS` | `3` | Submissions before a payment is given up on |
+| Constant                 | Default | Effect                                                                |
+| ------------------------ | ------- | --------------------------------------------------------------------- |
+| `MAX_PAYMENTS_PER_RUN`   | `25`    | Rows executed per run, so a run fits inside its 60s function timeout  |
+| `PROCESSING_LEASE_MS`    | `5 min` | How long a claimed row is protected before another run may reclaim it |
+| `MAX_EXECUTION_ATTEMPTS` | `3`     | Submissions before a payment is given up on                           |
 
 Keep `PROCESSING_LEASE_MS` at or above the function's `maxDuration`, otherwise
 a slow-but-alive run can have its rows stolen mid-submission.

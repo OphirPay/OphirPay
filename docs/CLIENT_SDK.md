@@ -28,14 +28,14 @@ await client.createBatch({ recipients: [{ address: "G...", amount: 5 }] });
 await client.getPayment("pay_1");
 ```
 
-| Method | Operation |
-| ------ | --------- |
-| `createPayment(input)` | `POST /api/payments` |
-| `listPayments(query)` | `GET /api/payments` |
-| `getPayment(id)` | `GET /api/payments/{id}` |
-| `createBatch(input, { idempotencyKey })` | `POST /api/batches` |
-| `getBatch(id)` | `GET /api/batches/{id}` |
-| `getStats()` | `GET /api/stats` |
+| Method                                   | Operation                |
+| ---------------------------------------- | ------------------------ |
+| `createPayment(input)`                   | `POST /api/payments`     |
+| `listPayments(query)`                    | `GET /api/payments`      |
+| `getPayment(id)`                         | `GET /api/payments/{id}` |
+| `createBatch(input, { idempotencyKey })` | `POST /api/batches`      |
+| `getBatch(id)`                           | `GET /api/batches/{id}`  |
+| `getStats()`                             | `GET /api/stats`         |
 
 Any other documented operation is reachable through
 `client.operation(name)` + `client.request(...)`, using the generated
@@ -94,7 +94,7 @@ The action runs the CLI's `batch:submit`, so a rejected payment fails the job.
   ships as a new API major and a matching client major.
 - A deprecated operation stays in `docs/openapi.yaml` and remains callable from
   the previous client minor for at least one release cycle, with a `deprecated:
-  true` marker and a migration note in this document.
+true` marker and a migration note in this document.
 - `npm run client:check` is part of `npm run ci`, so the client is regenerated
   in the same PR that changes the spec.
 

@@ -13,7 +13,6 @@ on:
 permissions:
   contents: read
 
-
 # -- Global Concurrency — cancel stale runs on same PR --------
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

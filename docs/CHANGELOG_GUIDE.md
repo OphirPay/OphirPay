@@ -56,7 +56,7 @@ Rules that keep the file diff-friendly and reviewable:
 - **Entries are grouped by category** under `### ` subheadings. Omit a category
   heading when it has no entries for that release.
 - **Each entry is a bullet point** that starts with a short, bolded summary and
-  explains the *why* where it matters. Entries are ordered most-recent-first
+  explains the _why_ where it matters. Entries are ordered most-recent-first
   within a category.
 - **No trailing punctuation required**, but entries must be complete sentences
   when read aloud.
@@ -77,6 +77,7 @@ used when a feature is marked for removal but still works.
 
 ```markdown
 ### Added
+
 - **Refunds page**: Request → Approve → Process lifecycle, reason code
   analytics bar chart, status badges, Freighter signing
 - **On-chain notification hooks**: `register_hook` / `unregister_hook`,
@@ -94,6 +95,7 @@ used when a feature is marked for removal but still works.
 
 ```markdown
 ### Changed
+
 - **Next.js 16 upgrade**: bumped `next` + `eslint-config-next` to 16.3 —
   removed the removed `instrumentationHook` config option
 - **React Query rollout complete**: all 16 remaining data-driven pages
@@ -109,6 +111,7 @@ used when a feature is marked for removal but still works.
 
 ```markdown
 ### Fixed
+
 - **Governance list renders real proposals**: `GET /api/governance/proposals`
   now enumerates proposals on-chain and returns an array; the page previously
   received a bare count number and always showed the empty state
@@ -125,6 +128,7 @@ used when a feature is marked for removal but still works.
 
 ```markdown
 ### Removed
+
 - **`instrumentationHook` config option**: removed with the Next.js 16 upgrade
   (enabled by default in 16)
 - **Hardcoded testnet fallbacks**: contract IDs and RPC source are now
@@ -140,6 +144,7 @@ used when a feature is marked for removal but still works.
 
 ```markdown
 ### Security
+
 - **Voting weight**: `vote_on_proposal` no longer accepts self-reported
   `weight` parameter. Each address gets exactly 1 vote per proposal with
   double-vote prevention via persistent storage tracking
@@ -162,6 +167,7 @@ used when a feature is marked for removal but still works.
 
 ```markdown
 ### Deprecated
+
 - **`GET /api/legacy`**: deprecated in favor of `GET /api/v2/legacy`; will be
   removed in 1.0.0
 ```
@@ -225,11 +231,11 @@ Releases are cut by maintainers from `main`. The flow is:
 
 Pick the next version with Semantic Versioning:
 
-| Change type | Version bump (1.0.0+) | Version bump (pre-1.0) |
-|---|---|---|
-| Breaking change (contract interface, API, config) | **MAJOR** (`X.0.0`) | **MINOR** (`0.X.0`), called out explicitly |
-| Backward-compatible feature / behavior expansion | **MINOR** (`0.X.0`) | **MINOR** (`0.X.0`) |
-| Bug fix / documentation-only user-facing update | **PATCH** (`0.0.X`) | **PATCH** (`0.0.X`) |
+| Change type                                       | Version bump (1.0.0+) | Version bump (pre-1.0)                     |
+| ------------------------------------------------- | --------------------- | ------------------------------------------ |
+| Breaking change (contract interface, API, config) | **MAJOR** (`X.0.0`)   | **MINOR** (`0.X.0`), called out explicitly |
+| Backward-compatible feature / behavior expansion  | **MINOR** (`0.X.0`)   | **MINOR** (`0.X.0`)                        |
+| Bug fix / documentation-only user-facing update   | **PATCH** (`0.0.X`)   | **PATCH** (`0.0.X`)                        |
 
 Rules observed in this repo:
 
@@ -304,29 +310,29 @@ node scripts/generate-changelog.mjs --from v0.1.0 --to HEAD --dry-run
 
 ### CLI Options
 
-| Flag | Default | Description |
-|---|---|---|
-| `--from <ref>` | Latest git tag or `HEAD~30` | Starting commit or tag |
-| `--to <ref>` | `HEAD` | Target commit or branch |
-| `--version <v>` | `Unreleased` | Version title for the generated release section |
-| `--date <date>` | Current date (`YYYY-MM-DD`) | Release date in ISO 8601 format |
-| `--repo <owner/repo>` | `OphirPay/OphirPay` | Target GitHub repository for PR/issue links |
-| `--write`, `-w` | `false` | Prepends/updates `CHANGELOG.md` directly |
-| `--dry-run` | `false` | Prints generated Markdown to stdout without writing |
-| `--check` | `false` | Validates git commit log parsing without modifying files |
-| `--help`, `-h` | — | Displays command-line help |
+| Flag                  | Default                     | Description                                              |
+| --------------------- | --------------------------- | -------------------------------------------------------- |
+| `--from <ref>`        | Latest git tag or `HEAD~30` | Starting commit or tag                                   |
+| `--to <ref>`          | `HEAD`                      | Target commit or branch                                  |
+| `--version <v>`       | `Unreleased`                | Version title for the generated release section          |
+| `--date <date>`       | Current date (`YYYY-MM-DD`) | Release date in ISO 8601 format                          |
+| `--repo <owner/repo>` | `OphirPay/OphirPay`         | Target GitHub repository for PR/issue links              |
+| `--write`, `-w`       | `false`                     | Prepends/updates `CHANGELOG.md` directly                 |
+| `--dry-run`           | `false`                     | Prints generated Markdown to stdout without writing      |
+| `--check`             | `false`                     | Validates git commit log parsing without modifying files |
+| `--help`, `-h`        | —                           | Displays command-line help                               |
 
 ### Classification Rules
 
-| Commit Type / Pattern | Changelog Category | Example |
-|---|---|---|
-| `BREAKING CHANGE:` / `type!:` | `### Breaking Changes` | `feat(auth)!: switch to bearer tokens` |
-| `feat:` / `feat(scope):` | `### Added` | `feat(send): add live Horizon fee tiers (#1373)` |
-| `fix:` / `fix(scope):` | `### Fixed` | `fix(cache): invalidate subject sub-keys` |
-| `fix(security):` / `security:` | `### Security` | `fix(security): rate-limit API keys (#1370)` |
-| `perf:` / `perf(scope):` | `### Performance` | `perf(prisma): add indexes on relation fields` |
-| `docs:` / `docs(scope):` | `### Documentation` | `docs: update troubleshooting guide` |
-| `refactor:`, `chore:`, `ci:`, `build:` | `### Changed` | `chore: bump dependencies` |
+| Commit Type / Pattern                  | Changelog Category     | Example                                          |
+| -------------------------------------- | ---------------------- | ------------------------------------------------ |
+| `BREAKING CHANGE:` / `type!:`          | `### Breaking Changes` | `feat(auth)!: switch to bearer tokens`           |
+| `feat:` / `feat(scope):`               | `### Added`            | `feat(send): add live Horizon fee tiers (#1373)` |
+| `fix:` / `fix(scope):`                 | `### Fixed`            | `fix(cache): invalidate subject sub-keys`        |
+| `fix(security):` / `security:`         | `### Security`         | `fix(security): rate-limit API keys (#1370)`     |
+| `perf:` / `perf(scope):`               | `### Performance`      | `perf(prisma): add indexes on relation fields`   |
+| `docs:` / `docs(scope):`               | `### Documentation`    | `docs: update troubleshooting guide`             |
+| `refactor:`, `chore:`, `ci:`, `build:` | `### Changed`          | `chore: bump dependencies`                       |
 
 ## 9. Links
 

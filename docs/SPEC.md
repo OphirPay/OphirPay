@@ -26,6 +26,7 @@ contract is already initialized.
 ### INV-2: Two-Step Ownership Transfer with Timelock
 
 **Statement:** The contract owner CANNOT be changed without:
+
 1. The current owner proposing a new owner (`transfer_ownership`)
 2. A 24-hour timelock elapsing (86,400 ledger seconds)
 3. The proposed new owner accepting (`accept_ownership`)
@@ -34,12 +35,14 @@ A pending transfer can be cancelled by the current owner at any time before
 acceptance. After acceptance, the old owner has zero authority.
 
 **Code evidence:**
+
 - `transfer_ownership()` sets `PENDING_OWNER` and `OWNER_PROPOSED_AT` (timestamp)
 - `accept_ownership()` checks `caller == pending_owner` AND
   `now - proposed_at >= 86400`
 - `cancel_ownership_transfer()` clears both keys (current owner only)
 
 **Test:** `test_two_step_ownership` — verifies:
+
 - Non-owner cannot propose
 - New owner cannot accept before 24h
 - New owner can accept after 24h
@@ -61,6 +64,7 @@ and `create_stream`, minus funds released via `release_escrow`, `claim_escrow`,
 `claim_stream`, and `cancel_stream`.
 
 **Code evidence:**
+
 - `add_locked(env, amount)` is called after each `token_client.transfer()` that
   deposits funds into the contract (escrow creation, stream creation)
 - `add_locked(env, -amount)` is called before each `token_client.transfer()`
@@ -69,6 +73,7 @@ and `create_stream`, minus funds released via `release_escrow`, `claim_escrow`,
   `if amount > unlocked { return Err(NoTokensToWithdraw); }`
 
 **Test:** `test_emergency_withdraw_locked_funds` — verifies:
+
 - Owner CAN withdraw accidentally-sent (unlocked) funds
 - Owner CANNOT withdraw funds locked in an active escrow
 - After escrow released, locked balance decreases accordingly
@@ -83,6 +88,7 @@ or `arbiter_release_escrow()` MUST return an error (`EscrowAlreadyReleased` or
 `EscrowAlreadyReleased`).
 
 **Code evidence:**
+
 - `release_escrow()`: checks `escrow.released` before transferring
 - `claim_escrow()`: checks `escrow.released` before transferring
 - `arbiter_release_escrow()`: checks `escrow.released` before transferring
@@ -134,12 +140,14 @@ number of unique approvals meets or exceeds the configured threshold.
 Duplicate approvals from the same signer MUST be rejected.
 
 **Code evidence:**
+
 - `approve_payment()` checks `request.approvals.iter().any(|a| a == signer)`
   for duplicates, returning `AlreadyApproved`
 - `execute_approved_payment()` checks `request.approvals.len() >= config.threshold`,
   returning `ThresholdNotMet`
 
 **Test:** `test_multisig_threshold_enforcement` — verifies:
+
 - Below threshold → `ThresholdNotMet`
 - At threshold → executes successfully
 - Duplicate approval → `AlreadyApproved`
@@ -160,6 +168,7 @@ re-enable a write while the contract is globally paused.
 `Governance = 5`, `Hooks = 6`, `Batches = 7`.
 
 **Code evidence:**
+
 - `require_not_paused(env, scope)` starts every write function. It returns
   `ContractPaused` when the global `PAUSED` flag is set **or** when that
   operation's scope is paused; the global check runs first, so it overrides.
@@ -173,6 +182,7 @@ re-enable a write while the contract is globally paused.
   scope flags are preserved across an emergency unpause.
 
 **Test:**
+
 - `test_pause_blocks_record_payment`, `test_pause_blocks_create_escrow` and
   `test_pause_blocks_create_stream` — a global pause rejects writes while
   getters keep returning data.
@@ -225,6 +235,7 @@ SHALL grow monotonically (never shrink or be deleted) and SHALL be capped at
 100 entries in query results to prevent unbounded gas consumption.
 
 **Code evidence:**
+
 - `set_fee_config()` creates a new `FeeConfigVersion` with `ver_count += 1`
 - `set_multisig_config()` creates a new `MultisigVersion` similarly
 - `get_fee_config_history()` and `get_multisig_config_history()` compute
@@ -244,14 +255,14 @@ stored vector inside a single invocation.
 
 The bounded readers are:
 
-| Reader | Result type | Cap | Order | Truncation field |
-|---|---|---|---|---|
-| `get_audit_log_range(start_id, end_id)` | `Vec<AuditEntry>` | 100 | most recent first | *(inherent in the requested range)* |
-| `get_payments_range(start_id, end_id)` | `Vec<Payment>` | 100 | most recent first | *(inherent in the requested range)* |
-| `get_reason_code_analytics()` | `Vec<(u32, u64)>` | 100 most recent refunds | n/a | *(aggregate)* |
-| `get_fee_config_history()` / `get_multisig_config_history()` | `Vec<…Version>` | 100 | most recent first | *(inherent in the requested range)* |
-| `get_payments_by_batch(batch_id)` | `PaymentList` | 100 | most recent first | `truncated` |
-| `get_subscriber_hooks(subscriber)` | `HookList` | 100 | most recent first | `truncated` |
+| Reader                                                       | Result type       | Cap                     | Order             | Truncation field                    |
+| ------------------------------------------------------------ | ----------------- | ----------------------- | ----------------- | ----------------------------------- |
+| `get_audit_log_range(start_id, end_id)`                      | `Vec<AuditEntry>` | 100                     | most recent first | _(inherent in the requested range)_ |
+| `get_payments_range(start_id, end_id)`                       | `Vec<Payment>`    | 100                     | most recent first | _(inherent in the requested range)_ |
+| `get_reason_code_analytics()`                                | `Vec<(u32, u64)>` | 100 most recent refunds | n/a               | _(aggregate)_                       |
+| `get_fee_config_history()` / `get_multisig_config_history()` | `Vec<…Version>`   | 100                     | most recent first | _(inherent in the requested range)_ |
+| `get_payments_by_batch(batch_id)`                            | `PaymentList`     | 100                     | most recent first | `truncated`                         |
+| `get_subscriber_hooks(subscriber)`                           | `HookList`        | 100                     | most recent first | `truncated`                         |
 
 `PaymentList` and `HookList` carry `items`, `total` (how many entries the
 underlying collection actually holds) and `truncated` (true only when the
@@ -304,11 +315,13 @@ clean error.
 ## Testing Strategy
 
 Each invariant is verified by unit tests, property-based proptests, and integration harnesses:
+
 - **Unit Tests**: `contracts/ophirpay/src/lib.rs` (lines ~3840+)
 - **Proptest Suite**: `contracts/ophirpay/tests/proptest_token_moving.rs` (fuzzing token paths, reentrancy-shaped sequences, and `LOCKED_BALANCE` conservation)
 - **Integration Tests**: `contracts/ophirpay/tests/integration/` (end-to-end multi-contract flows)
 
 To run tests:
+
 ```bash
 cd contracts/ophirpay && cargo test                             # unit tests & in-crate property tests
 cd contracts/ophirpay && cargo test --test proptest_token_moving # dedicated proptest suite

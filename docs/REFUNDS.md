@@ -8,14 +8,14 @@ stable filtering and analytics.
 
 The contract assigns the following stable numeric codes:
 
-| Code | Variant | Meaning |
-| ---: | --- | --- |
-| 0 | `ProductDefect` | The delivered product or service was defective or materially did not match the agreement. |
-| 1 | `NonDelivery` | The product or service was not delivered. |
-| 2 | `DuplicateCharge` | The payer was charged more than once for the same payment. |
-| 3 | `Unauthorized` | The payment was not authorized by the payer. |
-| 4 | `CustomerRequest` | The customer requested a refund for another valid business reason. |
-| 5 | `Other` | A reason that does not fit the listed categories; explain it in `reason`. |
+| Code | Variant           | Meaning                                                                                   |
+| ---: | ----------------- | ----------------------------------------------------------------------------------------- |
+|    0 | `ProductDefect`   | The delivered product or service was defective or materially did not match the agreement. |
+|    1 | `NonDelivery`     | The product or service was not delivered.                                                 |
+|    2 | `DuplicateCharge` | The payer was charged more than once for the same payment.                                |
+|    3 | `Unauthorized`    | The payment was not authorized by the payer.                                              |
+|    4 | `CustomerRequest` | The customer requested a refund for another valid business reason.                        |
+|    5 | `Other`           | A reason that does not fit the listed categories; explain it in `reason`.                 |
 
 Reason codes are descriptive and do not themselves determine whether a refund
 is full or partial. `amount` is the authoritative refund amount and must be

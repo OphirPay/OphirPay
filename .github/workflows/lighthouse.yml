@@ -5,10 +5,10 @@ on:
     branches: [main]
   pull_request:
     paths:
-      - 'src/**'
-      - 'public/**'
-      - 'lighthouserc.json'
-      - '.github/workflows/lighthouse.yml'
+      - "src/**"
+      - "public/**"
+      - "lighthouserc.json"
+      - ".github/workflows/lighthouse.yml"
 
 jobs:
   lhci:

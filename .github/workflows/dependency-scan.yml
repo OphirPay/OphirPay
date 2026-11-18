@@ -18,7 +18,6 @@ on:
 permissions:
   contents: read
 
-
 # -- Global Concurrency � singleton group for scheduled runs --------
 concurrency:
   group: ${{ github.workflow }}
@@ -57,7 +56,7 @@ jobs:
         with:
           ref: ${{ matrix.ref }}
       - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
+        with: { node-version-file: ".nvmrc", cache: "npm" }
       - run: npm ci
       - name: Run dependency vulnerability scan
         run: node scripts/audit-dependencies.mjs

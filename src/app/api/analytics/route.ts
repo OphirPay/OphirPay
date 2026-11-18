@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
-import prisma from "@/lib/prisma";
 import { z } from "zod";
 import {
   successResponse,
@@ -14,6 +13,9 @@ import { getAuthContext } from "@/lib/auth-session";
 import { withRequestLogging } from "@/lib/request-logging";
 import { cachedRead, readCacheKey, READ_TTL_MS } from "@/lib/api-cache";
 import { readCacheHeaders } from "@/lib/cache";
+import { getAnalyticsMetrics } from "@/lib/db/analytics";
+import { isTimeoutError } from "@/lib/timeout";
+import { problemGatewayTimeout } from "@/lib/api-errors";
 
 const ISO_OR_DATE_STRING = z.string().refine((val) => !isNaN(Date.parse(val)), {
   message: "Invalid date format. Expected valid ISO-8601 or YYYY-MM-DD date string.",
@@ -79,55 +81,18 @@ export const GET = withMetrics("GET /api/analytics", withRequestLogging(async fu
 
     const { value: payload, status } = await cachedRead(
       readCacheKey("analytics", `${auth.userId}:${dateRangeCachePart}`),
-      async () => {
-        const [totalPayments, completedPayments, failedPayments, volumeResult] =
-          await Promise.all([
-            prisma.payment.count({ where: scope }),
-            prisma.payment.count({ where: { ...scope, status: "COMPLETED" } }),
-            prisma.payment.count({ where: { ...scope, status: "FAILED" } }),
-            prisma.payment.aggregate({
-              _sum: { amount: true },
-              _avg: { amount: true },
-              where: { ...scope, status: "COMPLETED" },
-            }),
-          ]);
-
-        const dailyPayments = await prisma.payment.groupBy({
-          by: ["createdAt"],
-          _count: { id: true },
-          _sum: { amount: true },
-          where: {
-            ...scope,
-            createdAt: { gte: fromDate, lte: toDate },
-            status: "COMPLETED",
-          },
-          orderBy: { createdAt: "asc" },
-        });
-
-        const volumeByDay = dailyPayments.map((d) => ({
-          date: d.createdAt.toISOString().split("T")[0],
-          volume: d._sum.amount ?? 0,
-          count: d._count.id,
-        }));
-
-        return {
-          totalPayments,
-          completedPayments,
-          failedPayments,
-          totalVolume: volumeResult._sum.amount ?? 0,
-          averageAmount: volumeResult._avg.amount ?? 0,
-          successRate:
-            totalPayments > 0
-              ? Math.round((completedPayments / totalPayments) * 100)
-              : 0,
-          volumeByDay,
-        };
-      },
+      async () => getAnalyticsMetrics(scope, fromDate, toDate),
       READ_TTL_MS.analytics
     );
 
     return successResponse(payload, undefined, 200, readCacheHeaders(status));
   } catch (err) {
+    if (isTimeoutError(err) || (err instanceof Error && /timeout/i.test(err.message))) {
+      return problemGatewayTimeout(
+        "Analytics aggregation query timed out after 5 seconds. Please narrow your date range and try again.",
+        { instance: "/api/analytics" }
+      );
+    }
     return handleApiError(err, "GET /api/analytics");
   }
 }));

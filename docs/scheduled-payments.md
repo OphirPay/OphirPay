@@ -29,20 +29,20 @@ marked EXECUTED (with tx hash) or FAILED (with the error message).
 
 `ScheduledPayment` (see `prisma/schema.prisma`):
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | cuid | |
-| `userId` | string | owning user |
-| `amount` | Decimal(18,7) | must be > 0 |
-| `assetCode` | string | defaults to `XLM` |
-| `assetIssuer` | string? | for non-native assets |
-| `destAddress` | string | Stellar recipient public key |
-| `memo` | string? | ≤ 28 chars |
-| `scheduledFor` | DateTime | must be in the future at creation |
-| `status` | enum | `SCHEDULED` → `PROCESSING` → `EXECUTED` / `FAILED`, or `CANCELLED` |
-| `transactionHash` | string? | set when executed |
-| `errorMessage` | string? | set when execution fails |
-| `executedAt` | DateTime? | when the payment was submitted |
+| Field             | Type          | Notes                                                              |
+| ----------------- | ------------- | ------------------------------------------------------------------ |
+| `id`              | cuid          |                                                                    |
+| `userId`          | string        | owning user                                                        |
+| `amount`          | Decimal(18,7) | must be > 0                                                        |
+| `assetCode`       | string        | defaults to `XLM`                                                  |
+| `assetIssuer`     | string?       | for non-native assets                                              |
+| `destAddress`     | string        | Stellar recipient public key                                       |
+| `memo`            | string?       | ≤ 28 chars                                                         |
+| `scheduledFor`    | DateTime      | must be in the future at creation                                  |
+| `status`          | enum          | `SCHEDULED` → `PROCESSING` → `EXECUTED` / `FAILED`, or `CANCELLED` |
+| `transactionHash` | string?       | set when executed                                                  |
+| `errorMessage`    | string?       | set when execution fails                                           |
+| `executedAt`      | DateTime?     | when the payment was submitted                                     |
 
 ## API
 
@@ -87,9 +87,9 @@ Executes all due payments. Protected by `CRON_SECRET`, sent as either
 
 ## Configuration
 
-| Env var | Purpose |
-| --- | --- |
-| `CRON_SECRET` | Shared secret that protects `/api/scheduled/run` |
+| Env var                            | Purpose                                                                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CRON_SECRET`                      | Shared secret that protects `/api/scheduled/run`                                                                                                  |
 | `SCHEDULED_PAYMENTS_SOURCE_SECRET` | Stellar secret key of the account that signs & submits scheduled payments. Must be funded and hold enough balance for every due payment in a run. |
 
 Cron schedule: `*/5 * * * *` (every 5 minutes) in `.github/workflows/scheduled-payments-cron.yml`, which pings `/api/cron` (see [Scheduled Payment Cron](scheduled-payment-cron.md)).

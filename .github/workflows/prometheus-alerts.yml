@@ -20,19 +20,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install promtool
         run: |
           PROMETHEUS_VERSION="2.45.0"
           curl -sL https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz | tar xz
           sudo mv prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool /usr/local/bin/
-          
+
       - name: Check alert rules syntax
         run: promtool check rules monitoring/prometheus-alerts.yml
 
       - name: Run synthetic alert rules tests
         run: promtool test rules monitoring/prometheus-alerts.test.yml
-        
+
       - name: Cross-check metrics against route.ts
         run: |
           MISSING=0

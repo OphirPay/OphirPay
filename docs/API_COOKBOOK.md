@@ -17,13 +17,15 @@ OphirPay supports two equivalent authentication headers for authenticated routes
    -H "X-API-Key: ophir_live_sk_8f7b2c9e4a1d0f"
    ```
 
-*Base URLs:*
-* **Local Development**: `http://localhost:3000`
-* **Production**: `https://api.ophirpay.com`
+_Base URLs:_
+
+- **Local Development**: `http://localhost:3000`
+- **Production**: `https://api.ophirpay.com`
 
 ---
 
 ## Table of Contents
+
 1. [Authentication & API Keys](#1-authentication--api-keys)
 2. [Payments](#2-payments)
 3. [Batch Payments](#3-batch-payments)
@@ -44,82 +46,83 @@ OphirPay supports two equivalent authentication headers for authenticated routes
 Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 `{id}` placeholders denote path parameters.
 
-| Endpoint | Methods |
-|---|---|
-| `/api/auth/challenge` | GET |
-| `/api/auth/session` | POST, DELETE |
-| `/api/csrf` | GET |
-| `/api/payments` | GET, POST |
-| `/api/payments/{id}` | GET, PATCH, DELETE |
-| `/api/payments/retry` | POST |
-| `/api/payments/cancel` | POST |
-| `/api/payments/export` | GET |
-| `/api/escrows` | GET, POST |
-| `/api/escrows/{id}` | GET |
-| `/api/streams` | GET, POST |
-| `/api/streams/{id}` | GET |
-| `/api/timelock` | GET |
-| `/api/rbac` | GET |
-| `/api/fee-config` | GET |
-| `/api/fee-config/collector` | GET |
-| `/api/fee-config/history` | GET |
-| `/api/policy-versions` | GET |
-| `/api/contracts` | GET |
-| `/api/stats` | GET |
-| `/api/assets/metadata` | GET |
-| `/api/batches` | GET, POST |
-| `/api/batches/{id}` | GET, POST |
-| `/api/batches/summary` | GET |
-| `/api/recurring` | GET, POST, PATCH |
-| `/api/recurring/{id}` | GET, PATCH |
-| `/api/scheduled` | GET, POST, DELETE |
-| `/api/scheduled/run` | GET, POST |
-| `/api/requests` | GET, POST |
-| `/api/requests/{id}/paid` | POST |
-| `/api/requests/{id}/remind` | POST |
-| `/api/requests/expire` | GET |
-| `/api/webhooks` | GET, POST, PATCH, DELETE |
-| `/api/webhooks/{id}` | GET |
-| `/api/webhooks/{id}/test` | POST |
-| `/api/webhooks/{id}/replay` | POST |
-| `/api/webhooks/{id}/deliveries` | GET |
-| `/api/webhooks/{id}/deliveries/{deliveryId}/redeliver` | POST |
-| `/api/webhooks/{id}/deliveries/requeue` | POST |
-| `/api/keys` | GET, POST, PATCH, DELETE |
-| `/api/keys/stats` | GET |
-| `/api/keys/{id}/rotate` | POST |
-| `/api/multisig` | GET, POST |
-| `/api/multisig/propose` | POST |
-| `/api/multisig/approve` | POST |
-| `/api/multisig/execute` | POST |
-| `/api/multisig/requests` | GET |
-| `/api/governance/proposals` | GET, POST |
-| `/api/governance/proposals/{id}` | GET |
-| `/api/governance/vote` | POST |
-| `/api/governance/execute` | POST |
-| `/api/analytics` | GET |
-| `/api/refunds` | GET, POST |
-| `/api/refunds/{id}` | PATCH |
-| `/api/hooks` | GET, POST |
-| `/api/hooks/{id}` | PATCH |
-| `/api/audit-log` | GET |
-| `/api/audit-log/sse` | GET |
-| `/api/audit-log/export` | GET |
-| `/api/events` | GET |
-| `/api/events/history` | GET |
-| `/api/health` | GET |
-| `/api/health/live` | GET |
-| `/api/metrics` | GET |
-| `/api/cron` | GET, POST |
-| `/api/jobs/process-due-recurring` | POST |
-| `/api/pause-state` | GET |
-| `/api/openapi.json` | GET |
+| Endpoint                                               | Methods                  |
+| ------------------------------------------------------ | ------------------------ |
+| `/api/auth/challenge`                                  | GET                      |
+| `/api/auth/session`                                    | POST, DELETE             |
+| `/api/csrf`                                            | GET                      |
+| `/api/payments`                                        | GET, POST                |
+| `/api/payments/{id}`                                   | GET, PATCH, DELETE       |
+| `/api/payments/retry`                                  | POST                     |
+| `/api/payments/cancel`                                 | POST                     |
+| `/api/payments/export`                                 | GET                      |
+| `/api/escrows`                                         | GET, POST                |
+| `/api/escrows/{id}`                                    | GET                      |
+| `/api/streams`                                         | GET, POST                |
+| `/api/streams/{id}`                                    | GET                      |
+| `/api/timelock`                                        | GET                      |
+| `/api/rbac`                                            | GET                      |
+| `/api/fee-config`                                      | GET                      |
+| `/api/fee-config/collector`                            | GET                      |
+| `/api/fee-config/history`                              | GET                      |
+| `/api/policy-versions`                                 | GET                      |
+| `/api/contracts`                                       | GET                      |
+| `/api/stats`                                           | GET                      |
+| `/api/assets/metadata`                                 | GET                      |
+| `/api/batches`                                         | GET, POST                |
+| `/api/batches/{id}`                                    | GET, POST                |
+| `/api/batches/summary`                                 | GET                      |
+| `/api/recurring`                                       | GET, POST, PATCH         |
+| `/api/recurring/{id}`                                  | GET, PATCH               |
+| `/api/scheduled`                                       | GET, POST, DELETE        |
+| `/api/scheduled/run`                                   | GET, POST                |
+| `/api/requests`                                        | GET, POST                |
+| `/api/requests/{id}/paid`                              | POST                     |
+| `/api/requests/{id}/remind`                            | POST                     |
+| `/api/requests/expire`                                 | GET                      |
+| `/api/webhooks`                                        | GET, POST, PATCH, DELETE |
+| `/api/webhooks/{id}`                                   | GET                      |
+| `/api/webhooks/{id}/test`                              | POST                     |
+| `/api/webhooks/{id}/replay`                            | POST                     |
+| `/api/webhooks/{id}/deliveries`                        | GET                      |
+| `/api/webhooks/{id}/deliveries/{deliveryId}/redeliver` | POST                     |
+| `/api/webhooks/{id}/deliveries/requeue`                | POST                     |
+| `/api/keys`                                            | GET, POST, PATCH, DELETE |
+| `/api/keys/stats`                                      | GET                      |
+| `/api/keys/{id}/rotate`                                | POST                     |
+| `/api/multisig`                                        | GET, POST                |
+| `/api/multisig/propose`                                | POST                     |
+| `/api/multisig/approve`                                | POST                     |
+| `/api/multisig/execute`                                | POST                     |
+| `/api/multisig/requests`                               | GET                      |
+| `/api/governance/proposals`                            | GET, POST                |
+| `/api/governance/proposals/{id}`                       | GET                      |
+| `/api/governance/vote`                                 | POST                     |
+| `/api/governance/execute`                              | POST                     |
+| `/api/analytics`                                       | GET                      |
+| `/api/refunds`                                         | GET, POST                |
+| `/api/refunds/{id}`                                    | PATCH                    |
+| `/api/hooks`                                           | GET, POST                |
+| `/api/hooks/{id}`                                      | PATCH                    |
+| `/api/audit-log`                                       | GET                      |
+| `/api/audit-log/sse`                                   | GET                      |
+| `/api/audit-log/export`                                | GET                      |
+| `/api/events`                                          | GET                      |
+| `/api/events/history`                                  | GET                      |
+| `/api/health`                                          | GET                      |
+| `/api/health/live`                                     | GET                      |
+| `/api/metrics`                                         | GET                      |
+| `/api/cron`                                            | GET, POST                |
+| `/api/jobs/process-due-recurring`                      | POST                     |
+| `/api/pause-state`                                     | GET                      |
+| `/api/openapi.json`                                    | GET                      |
 
 ---
 
 ## 1. Authentication & API Keys
 
 ### Generate a New API Key
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/keys" \
   -H "Authorization: Bearer <master-session-token>" \
@@ -130,7 +133,9 @@ curl -X POST "https://api.ophirpay.com/api/keys" \
     "scopes": ["payments:read", "payments:write", "webhooks:manage"]
   }'
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "id": "key_01hv89q7a4mpx3n",
@@ -142,14 +147,18 @@ curl -X POST "https://api.ophirpay.com/api/keys" \
   "createdAt": "2026-08-26T18:00:00.000Z"
 }
 ```
+
 > ⚠️ **Note:** The full secret key is returned **only once** upon generation.
 
 ### List Active API Keys
+
 ```bash
 curl -X GET "https://api.ophirpay.com/api/keys" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 [
   {
@@ -165,11 +174,14 @@ curl -X GET "https://api.ophirpay.com/api/keys" \
 ```
 
 ### Revoke an API Key
+
 ```bash
 curl -X DELETE "https://api.ophirpay.com/api/keys/key_01hv89q7a4mpx3n" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "success": true,
@@ -178,11 +190,14 @@ curl -X DELETE "https://api.ophirpay.com/api/keys/key_01hv89q7a4mpx3n" \
 ```
 
 ### Rotate an API Key (24-hour overlap)
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/keys/key_01hv89q7a4mpx3n/rotate" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "success": true,
@@ -198,6 +213,7 @@ curl -X POST "https://api.ophirpay.com/api/keys/key_01hv89q7a4mpx3n/rotate" \
   "meta": { "timestamp": "2026-09-26T18:00:00.000Z" }
 }
 ```
+
 > The previous key keeps authenticating until `previousKeyValidUntil` (24 hours, never past its own expiry), so you can deploy the replacement without an outage. Rotating an already-rotated, revoked, expired, or unknown key returns `400`.
 
 ---
@@ -205,6 +221,7 @@ curl -X POST "https://api.ophirpay.com/api/keys/key_01hv89q7a4mpx3n/rotate" \
 ## 2. Payments
 
 ### Create a Single Payment
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/payments" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -220,12 +237,14 @@ curl -X POST "https://api.ophirpay.com/api/payments" \
     "description": "Consulting invoice payout #0881"
   }'
 ```
+
 > `Idempotency-Key` is required on this route. Reuse the same value when
 > retrying: the first success is cached for 24 hours and a repeat returns
 > `409` with that original body (`Idempotency-Replay: true`) rather than
 > creating a second payment. See [API_GUIDE §6](./API_GUIDE.md#idempotent-mutations-idempotency-key-1440).
 
 **Response (`201 Created`):**
+
 ```json
 {
   "id": "pay_98234ab1c09d",
@@ -242,11 +261,14 @@ curl -X POST "https://api.ophirpay.com/api/payments" \
 ```
 
 ### List Payments (with Pagination & Filters)
+
 ```bash
 curl -X GET "https://api.ophirpay.com/api/payments?page=1&limit=20&status=COMPLETED&search=INV-2026" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "page": 1,
@@ -270,11 +292,14 @@ curl -X GET "https://api.ophirpay.com/api/payments?page=1&limit=20&status=COMPLE
 ```
 
 ### Retrieve Payment Details
+
 ```bash
 curl -X GET "https://api.ophirpay.com/api/payments/pay_98234ab1c09d" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "id": "pay_98234ab1c09d",
@@ -297,6 +322,7 @@ curl -X GET "https://api.ophirpay.com/api/payments/pay_98234ab1c09d" \
 ## 3. Batch Payments
 
 ### Create a Multi-Recipient Batch Payment
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/batches" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -318,7 +344,9 @@ curl -X POST "https://api.ophirpay.com/api/batches" \
     ]
   }'
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "id": "batch_7710a9c82e",
@@ -332,11 +360,14 @@ curl -X POST "https://api.ophirpay.com/api/batches" \
 ```
 
 ### Execute a Batch Payment
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/batches/batch_7710a9c82e/execute" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "id": "batch_7710a9c82e",
@@ -351,6 +382,7 @@ curl -X POST "https://api.ophirpay.com/api/batches/batch_7710a9c82e/execute" \
 ## 4. Recurring Payments & Subscriptions
 
 ### Create a Recurring Subscription Schedule
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/recurring" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -364,7 +396,9 @@ curl -X POST "https://api.ophirpay.com/api/recurring" \
     "description": "Pro Tier API SaaS Plan"
   }'
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "id": "rec_009941a8",
@@ -383,6 +417,7 @@ curl -X POST "https://api.ophirpay.com/api/recurring" \
 ## 5. Payment Requests & Invoicing
 
 ### Create a Payment Request Link
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/requests" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -397,7 +432,9 @@ curl -X POST "https://api.ophirpay.com/api/requests" \
     "dueDate": "2026-10-15T00:00:00.000Z"
   }'
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "id": "clx_request_01",
@@ -412,12 +449,16 @@ curl -X POST "https://api.ophirpay.com/api/requests" \
 ```
 
 ### Send a Payment Reminder
+
 Reminders require an outstanding request with a payer email address and are limited to one every 24 hours.
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/requests/clx_request_01/remind" \
   -H "Authorization: ******"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "sent": true,
@@ -426,7 +467,9 @@ curl -X POST "https://api.ophirpay.com/api/requests/clx_request_01/remind" \
 ```
 
 ### Confirm a Payment
+
 The transaction hash is verified on Stellar against the request recipient, amount, and asset before its status changes.
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/requests/clx_request_01/paid" \
   -H "Content-Type: application/json" \
@@ -434,7 +477,9 @@ curl -X POST "https://api.ophirpay.com/api/requests/clx_request_01/paid" \
     "transactionHash": "9b12a84efc713b194d3f5481d9f8e4c3a2105e6b7d8c9a0f1e2d3c4b5a6f7e8d"
   }'
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "status": "PAID"
@@ -442,12 +487,16 @@ curl -X POST "https://api.ophirpay.com/api/requests/clx_request_01/paid" \
 ```
 
 ### Expire Overdue Payment Requests
+
 The scheduled job calls this endpoint with the configured cron secret.
+
 ```bash
 curl "https://api.ophirpay.com/api/requests/expire" \
   -H "x-cron-secret: $CRON_SECRET"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "expired": 3
@@ -459,6 +508,7 @@ curl "https://api.ophirpay.com/api/requests/expire" \
 ## 6. On-Chain Escrows
 
 ### Create a Smart Contract Escrow
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/escrows" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -472,7 +522,9 @@ curl -X POST "https://api.ophirpay.com/api/escrows" \
     "conditions": "Completion of security audit milestone"
   }'
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "id": "escrow_019a48f2",
@@ -486,11 +538,14 @@ curl -X POST "https://api.ophirpay.com/api/escrows" \
 ```
 
 ### Release Escrow Funds to Beneficiary
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/escrows/escrow_019a48f2/release" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "id": "escrow_019a48f2",
@@ -505,6 +560,7 @@ curl -X POST "https://api.ophirpay.com/api/escrows/escrow_019a48f2/release" \
 ## 7. On-Chain Payment Streams
 
 ### Initialize a Continuous Payment Stream
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/streams" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -518,7 +574,9 @@ curl -X POST "https://api.ophirpay.com/api/streams" \
     "stopTime": "2026-10-01T00:00:00.000Z"
   }'
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "id": "stream_4418a99b",
@@ -536,11 +594,14 @@ curl -X POST "https://api.ophirpay.com/api/streams" \
 ## 8. Webhooks & Notification Hooks
 
 ### Rotate a Webhook Signing Secret
+
 ```bash
 curl -X PATCH "https://api.ophirpay.com/api/webhooks?id=wh_019a99824c" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "id": "wh_019a99824c",
@@ -550,6 +611,7 @@ curl -X PATCH "https://api.ophirpay.com/api/webhooks?id=wh_019a99824c" \
 ```
 
 ### Register an Outgoing Webhook Endpoint
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/webhooks" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -560,7 +622,9 @@ curl -X POST "https://api.ophirpay.com/api/webhooks" \
     "secret": "whsec_9941a8c0e21b74f39281a"
   }'
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "id": "wh_019a99824c",
@@ -572,6 +636,7 @@ curl -X POST "https://api.ophirpay.com/api/webhooks" \
 ```
 
 ### Requeue Dead-Lettered Webhook Deliveries
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/webhooks/{id}/deliveries/requeue" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -581,7 +646,9 @@ curl -X POST "https://api.ophirpay.com/api/webhooks/{id}/deliveries/requeue" \
     "olderThanMs": 60000
   }'
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "success": true,
@@ -595,6 +662,7 @@ curl -X POST "https://api.ophirpay.com/api/webhooks/{id}/deliveries/requeue" \
 ## 9. Multisig & Governance
 
 ### Propose a Multisig Transaction
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/multisig/propose" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -606,7 +674,9 @@ curl -X POST "https://api.ophirpay.com/api/multisig/propose" \
     "description": "Treasury Allocation for Q4 Liquidity Provision"
   }'
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "proposalId": "prop_ms_08819",
@@ -619,14 +689,23 @@ curl -X POST "https://api.ophirpay.com/api/multisig/propose" \
 ```
 
 ### Fetch a Governance Proposal
+
 ```bash
 curl -X GET "https://api.ophirpay.com/api/governance/proposals/12" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
-  "proposal": { "id": 12, "title": "Raise the protocol fee cap", "status": "ACTIVE", "yes_votes": 42, "no_votes": 7 },
+  "proposal": {
+    "id": 12,
+    "title": "Raise the protocol fee cap",
+    "status": "ACTIVE",
+    "yes_votes": 42,
+    "no_votes": 7
+  },
   "config": { "quorum": 10, "approval_threshold_bps": 6000 },
   "voteHistory": [
     {
@@ -644,11 +723,14 @@ curl -X GET "https://api.ophirpay.com/api/governance/proposals/12" \
 ## 10. Analytics & Refunds
 
 ### Query Aggregated Analytics
+
 ```bash
 curl -X GET "https://api.ophirpay.com/api/analytics?timeframe=30d" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "totalVolumeUsd": "1428500.00",
@@ -663,6 +745,7 @@ curl -X GET "https://api.ophirpay.com/api/analytics?timeframe=30d" \
 ```
 
 ### Issue a Payment Refund
+
 ```bash
 curl -X POST "https://api.ophirpay.com/api/refunds" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
@@ -673,7 +756,9 @@ curl -X POST "https://api.ophirpay.com/api/refunds" \
     "reason": "Customer cancellation within policy window"
   }'
 ```
+
 **Response (`201 Created`):**
+
 ```json
 {
   "refundId": "ref_001948ba",
@@ -687,10 +772,13 @@ curl -X POST "https://api.ophirpay.com/api/refunds" \
 ```
 
 ### Resolve a Custom Asset's Display Name
+
 ```bash
 curl -X GET "https://api.ophirpay.com/api/assets/metadata?code=USDC&issuer=GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "success": true,
@@ -704,6 +792,7 @@ curl -X GET "https://api.ophirpay.com/api/assets/metadata?code=USDC&issuer=GBBD4
   }
 }
 ```
+
 Metadata is read from the issuer's SEP-1 `stellar.toml`; an unknown or
 unreachable issuer returns `name: null` with `source: "fallback"` so callers
 render the raw code and issuer.
@@ -713,11 +802,14 @@ render the raw code and issuer.
 ## 11. Audit Logs & Real-Time Events
 
 ### Query Contract Audit Logs
+
 ```bash
 curl -X GET "https://api.ophirpay.com/api/audit-log?page=1&limit=10&action=ESCROW_RELEASED" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "page": 1,
@@ -737,12 +829,15 @@ curl -X GET "https://api.ophirpay.com/api/audit-log?page=1&limit=10&action=ESCRO
 ```
 
 ### Listen to Real-Time Payment Events (Server-Sent Events)
+
 ```bash
 curl -N -X GET "https://api.ophirpay.com/api/events" \
   -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f62b8e3c1a9" \
   -H "Accept: text/event-stream"
 ```
+
 **Response Stream:**
+
 ```text
 event: payment.created
 data: {"id":"pay_98234ab1c09d","amount":"250.00","asset":"USDC","status":"PENDING"}
@@ -767,16 +862,30 @@ curl -X GET "https://api.ophirpay.com/api/events/history?limit=50&cursor=<meta.n
 ```
 
 **Response (`200 OK`):**
+
 ```json
 {
   "success": true,
   "data": {
     "events": [
-      { "id": "evt_42", "type": "payment.created", "payer": "G...", "payee": "G...", "amount": 125000000, "txHash": "cafebabe", "timestamp": 1724000000 }
+      {
+        "id": "evt_42",
+        "type": "payment.created",
+        "payer": "G...",
+        "payee": "G...",
+        "amount": 125000000,
+        "txHash": "cafebabe",
+        "timestamp": 1724000000
+      }
     ],
     "total": 842
   },
-  "meta": { "limit": 50, "nextCursor": "eyJjcmVhdGVkQXQiOi...", "hasMore": true, "timestamp": "2026-08-29T09:00:00.000Z" }
+  "meta": {
+    "limit": 50,
+    "nextCursor": "eyJjcmVhdGVkQXQiOi...",
+    "hasMore": true,
+    "timestamp": "2026-08-29T09:00:00.000Z"
+  }
 }
 ```
 
@@ -788,10 +897,13 @@ is `null` on the last page; an invalid cursor returns `400`.
 ## 12. System Health & Metrics
 
 ### Check System Health
+
 ```bash
 curl -X GET "https://api.ophirpay.com/api/health"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "status": "healthy",
@@ -802,6 +914,7 @@ curl -X GET "https://api.ophirpay.com/api/health"
   "timestamp": "2026-08-26T19:10:00.000Z"
 }
 ```
+
 This detailed status endpoint includes the database, Soroban RPC, Horizon and
 Redis. For Kubernetes readiness, use the database-only endpoint instead; slow
 public services should not drain otherwise healthy application pods.
@@ -823,7 +936,9 @@ healthy container. It is exempt from the global rate limiter.
 ```bash
 curl -X GET "https://api.ophirpay.com/api/health/live"
 ```
+
 **Response (`200 OK`):**
+
 ```json
 {
   "success": true,
@@ -846,7 +961,9 @@ curl -X GET "https://api.ophirpay.com/api/health/live"
 curl -X GET -H "Authorization: Bearer $METRICS_TOKEN" \
   "https://api.ophirpay.com/api/metrics"
 ```
+
 **Response (`200 OK` - Text/Plain Prometheus format):**
+
 ```text
 # HELP ophirpay_http_requests_total Total number of HTTP requests
 # TYPE ophirpay_http_requests_total counter
@@ -920,6 +1037,7 @@ curl "https://api.ophirpay.com/api/openapi.json"
 ```
 
 **Response (`200 OK` - Application/JSON):**
+
 ```json
 {
   "openapi": "3.1.0",
@@ -930,4 +1048,3 @@ curl "https://api.ophirpay.com/api/openapi.json"
   "paths": { ... }
 }
 ```
-

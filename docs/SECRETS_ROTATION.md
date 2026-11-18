@@ -22,23 +22,23 @@
 
 ## 1. Secrets Inventory
 
-| # | Secret | Purpose | Sensitivity | Storage Location(s) |
-|---|--------|---------|-------------|---------------------|
-| 1 | `AUTH_SECRET` | HMAC-SHA256 key that signs wallet session cookies (`src/lib/auth-session.ts`). Forges the entire auth layer if exposed. | **Critical** | Vercel env / K8s Secret / Helm values |
-| 2 | `HOOK_SECRET` | HMAC-SHA256 key for webhook payload signing (`scripts/relayer.ts`). Exposure allows forging webhook deliveries. | **Critical** | K8s Secret / Helm values / `.env.local` |
-| 3 | `DATABASE_URL` | PostgreSQL connection string (contains password). Full database read/write access. | **Critical** | Vercel env / K8s Secret / Helm values / Docker env |
-| 4 | `DIRECT_DATABASE_URL` | Direct (non-pooled) PostgreSQL connection string for Prisma migrations. | **High** | Same as `DATABASE_URL` |
-| 5 | `REDIS_URL` | Redis connection URL for distributed rate limiting (`src/lib/rate-limit.ts`). | **High** | K8s Secret / Helm values / Docker env |
-| 6 | `DB_PASSWORD` | PostgreSQL password for the backup workflow (`db-backup.yml`). | **High** | GitHub Actions Secrets |
-| 7 | `DB_HOST` | PostgreSQL host for the backup workflow. | **Medium** | GitHub Actions Secrets |
-| 8 | `DB_USER` | PostgreSQL user for the backup workflow. | **Medium** | GitHub Actions Secrets |
-| 9 | `DB_NAME` | Database name for the backup workflow. | **Low** | GitHub Actions Secrets |
-| 10 | `AWS_ACCESS_KEY_ID` | AWS key for S3 backup uploads (`db-backup.yml`). | **High** | GitHub Actions Secrets |
-| 11 | `AWS_SECRET_ACCESS_KEY` | AWS secret for S3 backup uploads. | **Critical** | GitHub Actions Secrets |
-| 12 | `AWS_REGION` | AWS region for S3 operations. | **Low** | GitHub Actions Secrets |
-| 13 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry error-tracking DSN. Low risk (DSNs are public in client bundles). | **Low** | Vercel env |
-| 14 | `NEXT_PUBLIC_GA_ID` | Google Analytics measurement ID. Public by design. | **Info** | Vercel env |
-| 15 | `RESEND_API_KEY` | API key for the Resend HTTPS API used by `src/lib/email.ts` to deliver transactional email. Exposure lets anyone send mail from your verified domain. | **High** | Vercel env / K8s Secret / `.env.local` |
+| #   | Secret                   | Purpose                                                                                                                                               | Sensitivity  | Storage Location(s)                                |
+| --- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | -------------------------------------------------- |
+| 1   | `AUTH_SECRET`            | HMAC-SHA256 key that signs wallet session cookies (`src/lib/auth-session.ts`). Forges the entire auth layer if exposed.                               | **Critical** | Vercel env / K8s Secret / Helm values              |
+| 2   | `HOOK_SECRET`            | HMAC-SHA256 key for webhook payload signing (`scripts/relayer.ts`). Exposure allows forging webhook deliveries.                                       | **Critical** | K8s Secret / Helm values / `.env.local`            |
+| 3   | `DATABASE_URL`           | PostgreSQL connection string (contains password). Full database read/write access.                                                                    | **Critical** | Vercel env / K8s Secret / Helm values / Docker env |
+| 4   | `DIRECT_DATABASE_URL`    | Direct (non-pooled) PostgreSQL connection string for Prisma migrations.                                                                               | **High**     | Same as `DATABASE_URL`                             |
+| 5   | `REDIS_URL`              | Redis connection URL for distributed rate limiting (`src/lib/rate-limit.ts`).                                                                         | **High**     | K8s Secret / Helm values / Docker env              |
+| 6   | `DB_PASSWORD`            | PostgreSQL password for the backup workflow (`db-backup.yml`).                                                                                        | **High**     | GitHub Actions Secrets                             |
+| 7   | `DB_HOST`                | PostgreSQL host for the backup workflow.                                                                                                              | **Medium**   | GitHub Actions Secrets                             |
+| 8   | `DB_USER`                | PostgreSQL user for the backup workflow.                                                                                                              | **Medium**   | GitHub Actions Secrets                             |
+| 9   | `DB_NAME`                | Database name for the backup workflow.                                                                                                                | **Low**      | GitHub Actions Secrets                             |
+| 10  | `AWS_ACCESS_KEY_ID`      | AWS key for S3 backup uploads (`db-backup.yml`).                                                                                                      | **High**     | GitHub Actions Secrets                             |
+| 11  | `AWS_SECRET_ACCESS_KEY`  | AWS secret for S3 backup uploads.                                                                                                                     | **Critical** | GitHub Actions Secrets                             |
+| 12  | `AWS_REGION`             | AWS region for S3 operations.                                                                                                                         | **Low**      | GitHub Actions Secrets                             |
+| 13  | `NEXT_PUBLIC_SENTRY_DSN` | Sentry error-tracking DSN. Low risk (DSNs are public in client bundles).                                                                              | **Low**      | Vercel env                                         |
+| 14  | `NEXT_PUBLIC_GA_ID`      | Google Analytics measurement ID. Public by design.                                                                                                    | **Info**     | Vercel env                                         |
+| 15  | `RESEND_API_KEY`         | API key for the Resend HTTPS API used by `src/lib/email.ts` to deliver transactional email. Exposure lets anyone send mail from your verified domain. | **High**     | Vercel env / K8s Secret / `.env.local`             |
 
 > **Not secrets** (public by design, do not rotate):
 > `NEXT_PUBLIC_STELLAR_NETWORK`, `NEXT_PUBLIC_STELLAR_RPC_URL`,
@@ -57,13 +57,13 @@
 
 Set in **Vercel Dashboard → Settings → Environment Variables** (Production):
 
-| Variable | Notes |
-|----------|-------|
-| `AUTH_SECRET` | Generate with `openssl rand -hex 32` |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `DIRECT_DATABASE_URL` | For Prisma migrations (when using connection pooling) |
-| `RESEND_API_KEY` | Transactional email — create at <https://resend.com/api-keys> |
-| `NEXT_PUBLIC_SENTRY_DSN` | Optional — Sentry DSN |
+| Variable                 | Notes                                                         |
+| ------------------------ | ------------------------------------------------------------- |
+| `AUTH_SECRET`            | Generate with `openssl rand -hex 32`                          |
+| `DATABASE_URL`           | PostgreSQL connection string                                  |
+| `DIRECT_DATABASE_URL`    | For Prisma migrations (when using connection pooling)         |
+| `RESEND_API_KEY`         | Transactional email — create at <https://resend.com/api-keys> |
+| `NEXT_PUBLIC_SENTRY_DSN` | Optional — Sentry DSN                                         |
 
 ### 2.2 Kubernetes / Helm
 
@@ -81,6 +81,7 @@ kubectl create secret generic ophirpay-secrets \
 ```
 
 Referenced in:
+
 - `k8s/deployment.yaml` → `secretRef: ophirpay-secrets`
 - `helm/ophirpay/templates/config.yaml` → `kind: Secret` (skipped when
   `secrets.existingSecret` is set, so the Secret above can be managed outside
@@ -106,15 +107,15 @@ Set in `docker-compose.yml` or passed via `.env.local` (never committed).
 
 Managed in **GitHub → Settings → Secrets and variables → Actions**:
 
-| Secret | Used in |
-|--------|---------|
-| `DB_PASSWORD` | `db-backup.yml` |
-| `DB_HOST` | `db-backup.yml` |
-| `DB_USER` | `db-backup.yml` |
-| `DB_NAME` | `db-backup.yml` |
-| `AWS_ACCESS_KEY_ID` | `db-backup.yml` |
+| Secret                  | Used in         |
+| ----------------------- | --------------- |
+| `DB_PASSWORD`           | `db-backup.yml` |
+| `DB_HOST`               | `db-backup.yml` |
+| `DB_USER`               | `db-backup.yml` |
+| `DB_NAME`               | `db-backup.yml` |
+| `AWS_ACCESS_KEY_ID`     | `db-backup.yml` |
 | `AWS_SECRET_ACCESS_KEY` | `db-backup.yml` |
-| `AWS_REGION` | `db-backup.yml` |
+| `AWS_REGION`            | `db-backup.yml` |
 
 ### 2.5 Local Development
 
@@ -127,9 +128,9 @@ template — never commit `.env.local`.
 
 ### 3.1 Historical Findings (Verified Clean)
 
-| File | Commit | Content | Verdict |
-|------|--------|---------|---------|
-| `.env` | `5ed8d4a` | Dev defaults: SQLite DB, localhost URLs only. **No secrets.** | ✅ Safe |
+| File           | Commit    | Content                                                          | Verdict |
+| -------------- | --------- | ---------------------------------------------------------------- | ------- |
+| `.env`         | `5ed8d4a` | Dev defaults: SQLite DB, localhost URLs only. **No secrets.**    | ✅ Safe |
 | `.env.testnet` | `75834a4` | Testnet contract IDs + public Stellar endpoints. **No secrets.** | ✅ Safe |
 
 Both files were subsequently removed from tracking and added to `.gitignore`.
@@ -385,19 +386,19 @@ done
 
 ## 7. API Key Format & Rotation
 
-API keys are *not* environment secrets — they are minted per user via
+API keys are _not_ environment secrets — they are minted per user via
 `POST /api/keys` and stored only as a digest. They are covered here because
 their strength determines whether a leaked `ApiKey.keyHash` column is
 offline-brute-forceable (issue #701).
 
 ### 7.1 Required format
 
-| Property | Requirement |
-|----------|-------------|
-| Prefix | `oph_` |
-| Random material | **≥ 32 bytes from a CSPRNG** (256 bits of entropy) |
-| Encoding | lowercase hex |
-| Full key shape | `oph_` + 64 lowercase hex characters |
+| Property          | Requirement                                                        |
+| ----------------- | ------------------------------------------------------------------ |
+| Prefix            | `oph_`                                                             |
+| Random material   | **≥ 32 bytes from a CSPRNG** (256 bits of entropy)                 |
+| Encoding          | lowercase hex                                                      |
+| Full key shape    | `oph_` + 64 lowercase hex characters                               |
 | Canonical example | `oph_` followed by 64 hex chars (never shown again after creation) |
 
 Creation goes through `generateApiKey()` in `src/lib/api-auth.ts`, which mints
@@ -439,13 +440,13 @@ suspected compromise, revoke immediately instead of using the overlap period.
 
 ## Appendix: Secret Generation Commands
 
-| Secret | Command |
-|--------|---------|
-| `AUTH_SECRET` | `openssl rand -hex 32` |
-| `HOOK_SECRET` | `openssl rand -hex 32` |
-| `DB_PASSWORD` | `openssl rand -base64 24` |
-| `REDIS_PASSWORD` | `openssl rand -hex 16` |
-| AWS access key | Create via AWS IAM Console |
+| Secret           | Command                    |
+| ---------------- | -------------------------- |
+| `AUTH_SECRET`    | `openssl rand -hex 32`     |
+| `HOOK_SECRET`    | `openssl rand -hex 32`     |
+| `DB_PASSWORD`    | `openssl rand -base64 24`  |
+| `REDIS_PASSWORD` | `openssl rand -hex 16`     |
+| AWS access key   | Create via AWS IAM Console |
 
 > **Never** generate secrets with `Math.random()`, `Date.now()`, or other
 > non-cryptographic sources. Always use `openssl rand`, `crypto.randomBytes`,

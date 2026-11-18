@@ -42,24 +42,24 @@
 
 ほとんどのブロックチェーン決済ツールは、開発者向けSDKか複雑なエンタープライズダッシュボードです。**OphirPayはそのギャップを埋めます** — DAOトレジャリーにも十分な機能を持ち、初のクリプト決済を送信するフリーランサーにも直感的に使える、本格級のオープンソース決済プラットフォーム。
 
-| 機能 | OphirPay | 一般的なdApp |
-|---|---|---|
-| 個別決済 | ✅ | ✅ |
-| **バッチ決済**（1トランザクションで複数受取人） | ✅ | ❌ |
-| **定期決済スケジュール** | ✅ | ❌ |
-| **決済リクエスト**（請求書スタイル、QRコード） | ✅ | ❌ |
-| **リアルタイムイベントストリーミング**（SSE） | ✅ | ❌ |
-| **Webhook配信**（HMAC署名、リトライ） | ✅ | ❌ |
-| **クロスコントラクト通信** | ✅ | ❌ |
-| **マルチウォレット対応**（6つのウォレット） | ✅ | ❌ |
-| **マルチアセット対応**（USDC、カスタムトークン） | ✅ | ❌ |
-| **マルチシグ承認**（N-of-M署名者） | ✅ | ❌ |
-| **支出制限 + エスカレーション階層** | ✅ | ❌ |
-| **RBAC**（管理者/オペレーター/監査者ロール） | ✅ | ❌ |
-| **オンチェーン監査ログ**（不変の追跡） | ✅ | ❌ |
-| **手数料設定**（操作ごとのbps） | ✅ | ❌ |
-| **タイムロック管理アクション**（24時間遅延） | ✅ | ❌ |
-| **DAOガバナンス**（提案→投票→実行） | ✅ | ❌ |
+| 機能                                             | OphirPay | 一般的なdApp |
+| ------------------------------------------------ | -------- | ------------ |
+| 個別決済                                         | ✅       | ✅           |
+| **バッチ決済**（1トランザクションで複数受取人）  | ✅       | ❌           |
+| **定期決済スケジュール**                         | ✅       | ❌           |
+| **決済リクエスト**（請求書スタイル、QRコード）   | ✅       | ❌           |
+| **リアルタイムイベントストリーミング**（SSE）    | ✅       | ❌           |
+| **Webhook配信**（HMAC署名、リトライ）            | ✅       | ❌           |
+| **クロスコントラクト通信**                       | ✅       | ❌           |
+| **マルチウォレット対応**（6つのウォレット）      | ✅       | ❌           |
+| **マルチアセット対応**（USDC、カスタムトークン） | ✅       | ❌           |
+| **マルチシグ承認**（N-of-M署名者）               | ✅       | ❌           |
+| **支出制限 + エスカレーション階層**              | ✅       | ❌           |
+| **RBAC**（管理者/オペレーター/監査者ロール）     | ✅       | ❌           |
+| **オンチェーン監査ログ**（不変の追跡）           | ✅       | ❌           |
+| **手数料設定**（操作ごとのbps）                  | ✅       | ❌           |
+| **タイムロック管理アクション**（24時間遅延）     | ✅       | ❌           |
+| **DAOガバナンス**（提案→投票→実行）              | ✅       | ❌           |
 
 > 上記のすべての機能にはダッシュボードUIページがあります。詳細は[ロードマップ](README.md#-roadmap)を参照。
 
@@ -71,13 +71,13 @@
 
 ### 🔗 **[ophirpay.vercel.app](https://ophirpay.vercel.app)**
 
-*Vercelにデプロイ — すべてのプッシュで`main`から自動ビルド。PostgreSQL（Neon）、Sorobanテストネットコントラクト、ライブウォレットフローが接続済み。*
+_Vercelにデプロイ — すべてのプッシュで`main`から自動ビルド。PostgreSQL（Neon）、Sorobanテストネットコントラクト、ライブウォレットフローが接続済み。_
 
 ### 🎥 ピッチ動画（3分）
 
 **▶️ [Loomで視聴](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)** · [Vercelで視聴](https://ophirpay.vercel.app/demo.mp4)
 
-*11シーン：問題 → ライブダッシュボード → Vercelデプロイ → Sorobanコントラクト → 決済送信 → リアルタイムイベント → GitHub README → CIパイプライン → マルチシグセキュリティ → オープンソース → クレジット*
+_11シーン：問題 → ライブダッシュボード → Vercelデプロイ → Sorobanコントラクト → 決済送信 → リアルタイムイベント → GitHub README → CIパイプライン → マルチシグセキュリティ → オープンソース → クレジット_
 
 </div>
 
@@ -176,23 +176,23 @@ npm run dev
 
 OphirPayは、統合コネクターアブストラクションを通じて複数のStellarウォレットをサポートしています。`MultiWalletProvider`コンテキストがアプリケーション全体をラップし、以下を提供します：
 
-| 機能 | 実装 |
-|---|---|
+| 機能                 | 実装                                                                        |
+| -------------------- | --------------------------------------------------------------------------- |
 | **マルチウォレット** | Freighter、Albedo、xBull、Rabet、Lobstr、Ledgerのコネクターインターフェース |
-| **接続** | ウォレットセレクターモーダル → `connector.connect()` |
-| **切断** | 完全な状態リセット + コネクター固有のクリーンアップ |
-| **セッション永続化** | ページ読み込み時に既存の接続を自動検出 |
+| **接続**             | ウォレットセレクターモーダル → `connector.connect()`                        |
+| **切断**             | 完全な状態リセット + コネクター固有のクリーンアップ                         |
+| **セッション永続化** | ページ読み込み時に既存の接続を自動検出                                      |
 
 **サポートされているウォレット：**
 
-| ウォレット | タイプ | ステータス |
-|---|---|---|
-| Freighter | ブラウザ拡張機能 | ✅ サポート済み |
-| xBull | ブラウザ拡張機能 | ✅ サポート済み |
-| Rabet | ブラウザ拡張機能 | ✅ サポート済み |
-| Albedo | Webベース（拡張機能不要） | ✅ サポート済み |
-| Lobstr | Webベース（SEP-7） | ✅ サポート済み |
-| Ledger | ハードウェア（WebUSB/HID） | ✅ サポート済み |
+| ウォレット | タイプ                     | ステータス      |
+| ---------- | -------------------------- | --------------- |
+| Freighter  | ブラウザ拡張機能           | ✅ サポート済み |
+| xBull      | ブラウザ拡張機能           | ✅ サポート済み |
+| Rabet      | ブラウザ拡張機能           | ✅ サポート済み |
+| Albedo     | Webベース（拡張機能不要）  | ✅ サポート済み |
+| Lobstr     | Webベース（SEP-7）         | ✅ サポート済み |
+| Ledger     | ハードウェア（WebUSB/HID） | ✅ サポート済み |
 
 ---
 
@@ -209,10 +209,10 @@ OphirPayはServer-Sent Events (SSE) を通じて**ブロックチェーンのラ
 
 **発行されるイベント：**
 
-| イベント | トリガー |
-|---|---|
-| `connected` | ストリーム確立 |
-| `heartbeat` | 15秒ごと（キープアライブ） |
+| イベント          | トリガー                               |
+| ----------------- | -------------------------------------- |
+| `connected`       | ストリーム確立                         |
+| `heartbeat`       | 15秒ごと（キープアライブ）             |
 | `payment:created` | オンチェーンで新しい決済イベントを検出 |
 
 アプリの**`/events`**で、接続状態インジケーター、イベントタイプバッジ、タイムスタンプ、自動スクロール付きのライブフィードを確認できます。
@@ -251,18 +251,18 @@ npm run ci   # typecheck → lint → test → build
 
 ## 🛠 技術スタック
 
-| レイヤー | 技術 | 理由 |
-|---|---|---|
-| **フレームワーク** | [Next.js 16](https://nextjs.org) | App Router、SSR、APIルート、Vercelネイティブ |
-| **言語** | [TypeScript](https://www.typescriptlang.org) | 厳格モード、完全な型安全性 |
-| **スタイリング** | [Tailwind CSS v4](https://tailwindcss.com) | ユーティリティファースト、ダークモード、カスタムテーマ |
-| **ブロックチェーン** | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org) | Horizon、Soroban RPC、TXビルド |
-| **コントラクト** | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27 | WASMコンパイル、クロスコントラクト呼び出し |
-| **ウォレット** | Freighter · xBull · Rabet · Albedo · Lobstr · Ledger | 6コネクターの統合アブストラクション |
-| **データベース** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite | 型安全ORM、プロバイダー切り替え |
-| **テスト** | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | ユニット、統合、E2Eカバレッジ |
-| **CI/CD** | [GitHub Actions](https://github.com/features/actions) | push/PRごとに4ジョブのCI + スケジュール実行ワークフロー |
-| **ホスティング** | [Vercel](https://vercel.com) | `main`から自動デプロイ、エッジネットワーク |
+| レイヤー             | 技術                                                                                        | 理由                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **フレームワーク**   | [Next.js 16](https://nextjs.org)                                                            | App Router、SSR、APIルート、Vercelネイティブ            |
+| **言語**             | [TypeScript](https://www.typescriptlang.org)                                                | 厳格モード、完全な型安全性                              |
+| **スタイリング**     | [Tailwind CSS v4](https://tailwindcss.com)                                                  | ユーティリティファースト、ダークモード、カスタムテーマ  |
+| **ブロックチェーン** | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org)             | Horizon、Soroban RPC、TXビルド                          |
+| **コントラクト**     | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27                                        | WASMコンパイル、クロスコントラクト呼び出し              |
+| **ウォレット**       | Freighter · xBull · Rabet · Albedo · Lobstr · Ledger                                        | 6コネクターの統合アブストラクション                     |
+| **データベース**     | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite                                    | 型安全ORM、プロバイダー切り替え                         |
+| **テスト**           | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | ユニット、統合、E2Eカバレッジ                           |
+| **CI/CD**            | [GitHub Actions](https://github.com/features/actions)                                       | push/PRごとに4ジョブのCI + スケジュール実行ワークフロー |
+| **ホスティング**     | [Vercel](https://vercel.com)                                                                | `main`から自動デプロイ、エッジネットワーク              |
 
 ---
 
@@ -279,6 +279,7 @@ npm run ci   # typecheck → lint → test → build
 ### コミット規約
 
 [Conventional Commits](https://www.conventionalcommits.org)に従います：
+
 - `feat:` — 新機能
 - `fix:` — バグ修正
 - `docs:` — ドキュメント

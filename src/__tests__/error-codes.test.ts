@@ -165,6 +165,11 @@ describe("ERROR_CODES", () => {
     expect(ERROR_CODES.DATABASE_UNAVAILABLE).toBeDefined();
   });
 
+  it("504 gateway timeout codes are defined", () => {
+    expect(ERROR_CODES.GATEWAY_TIMEOUT).toBeDefined();
+    expect(ERROR_STATUS[ERROR_CODES.GATEWAY_TIMEOUT]).toBe(504);
+  });
+
   it("payment-specific codes are defined", () => {
     expect(ERROR_CODES.PAYMENT_FAILED).toBeDefined();
     expect(ERROR_CODES.INSUFFICIENT_FUNDS).toBeDefined();
@@ -216,7 +221,7 @@ describe("ERROR_CODES", () => {
   });
 
   it("every ERROR_STATUS has a valid HTTP code", () => {
-    const validHttpCodes = [400, 401, 402, 403, 404, 405, 406, 408, 409, 410, 413, 415, 422, 429, 451, 500, 503];
+    const validHttpCodes = [400, 401, 402, 403, 404, 405, 406, 408, 409, 410, 413, 415, 422, 429, 451, 500, 503, 504];
     for (const [, status] of Object.entries(ERROR_STATUS)) {
       expect(validHttpCodes).toContain(status);
     }

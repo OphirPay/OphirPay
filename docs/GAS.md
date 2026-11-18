@@ -150,13 +150,13 @@ Tx 1: [Envelope + Sig] -> [Base Fee + Sequence] -> [Auth + Loop(Transfer 1..N) +
 
 ### Empirical Cost Comparison (10 Transfers)
 
-| Metric | Sequential Payments (10 x `record_payment`) | Batch Payment (`create_batch` 10 items) | Savings (%) |
-|---|---|---|---|
-| **Stellar Inclusion Fee** | 1,000–10,000 stroops | 100–1,000 stroops | **-90%** |
-| **Transaction Envelopes** | 10 envelopes (~4 KB total) | 1 envelope (~1.2 KB) | **-70%** |
-| **Signature Verifications** | 10 Ed25519 verifications | 1 Ed25519 verification | **-90%** |
-| **Total Gas / Stroops** | ~697,150 stroops (~0.70 XLM) | ~450,000 stroops (~0.45 XLM) | **-35%** |
-| **Ledger Latency** | 10 ledgers (~50 seconds) | 1 ledger (~5 seconds) | **-90%** |
+| Metric                      | Sequential Payments (10 x `record_payment`) | Batch Payment (`create_batch` 10 items) | Savings (%) |
+| --------------------------- | ------------------------------------------- | --------------------------------------- | ----------- |
+| **Stellar Inclusion Fee**   | 1,000–10,000 stroops                        | 100–1,000 stroops                       | **-90%**    |
+| **Transaction Envelopes**   | 10 envelopes (~4 KB total)                  | 1 envelope (~1.2 KB)                    | **-70%**    |
+| **Signature Verifications** | 10 Ed25519 verifications                    | 1 Ed25519 verification                  | **-90%**    |
+| **Total Gas / Stroops**     | ~697,150 stroops (~0.70 XLM)                | ~450,000 stroops (~0.45 XLM)            | **-35%**    |
+| **Ledger Latency**          | 10 ledgers (~50 seconds)                    | 1 ledger (~5 seconds)                   | **-90%**    |
 
 ---
 
@@ -277,11 +277,11 @@ Soroban enforces a state-archival storage model where on-chain ledger entries co
 
 ### 1. Storage Tiers in Soroban
 
-| Storage Type | Durability | Rent Fee | Use Case in OphirPay |
-|---|---|---|---|
-| **Instance Storage** | Bound to contract instance | Moderate | Contract owner, global state flags, emergency pause, single counters |
-| **Persistent Storage** | Long-term independent entries | Highest | Payment records, escrow agreements, stream definitions, audit logs |
-| **Temporary Storage** | Transient, non-archivable | Lowest | Ephemeral challenge nonces, single-use auth proofs |
+| Storage Type           | Durability                    | Rent Fee | Use Case in OphirPay                                                 |
+| ---------------------- | ----------------------------- | -------- | -------------------------------------------------------------------- |
+| **Instance Storage**   | Bound to contract instance    | Moderate | Contract owner, global state flags, emergency pause, single counters |
+| **Persistent Storage** | Long-term independent entries | Highest  | Payment records, escrow agreements, stream definitions, audit logs   |
+| **Temporary Storage**  | Transient, non-archivable     | Lowest   | Ephemeral challenge nonces, single-use auth proofs                   |
 
 ### 2. Rent Calculation Formula
 

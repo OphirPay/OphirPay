@@ -82,6 +82,8 @@
 - [🚀 Deployment Guide](docs/DEPLOYMENT.md)
 - [📡 SSE Event Stream](docs/SSE.md)
 - [⚡ WebSocket Event Server](docs/WEBSOCKET.md)
+- [🧾 Contract Error Catalog](docs/ERRORS.md)
+- [🧪 Contract Test Guide](docs/TESTING.md)
 - [📖 SSE Integration & Architecture](docs/SSE_DOCUMENTATION.md)
 - [📜 Smart-contract SSE Reference](docs/CONTRACT_SSE_REFERENCE.md)
 - [🧪 Prisma CI & Testing](docs/PRISMA-CI.md)

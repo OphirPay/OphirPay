@@ -91,7 +91,7 @@ describe("automation platforms guide — event table (#817)", () => {
       expect(
         guide,
         `${eventType} must appear in a table row (| \`${eventType}\` | ...)`,
-      ).toMatch(new RegExp(`\\| \`${eventType}\` \\|`));
+      ).toMatch(new RegExp(`\\|\\s*\`${eventType}\`\\s*\\|`));
     }
   });
 

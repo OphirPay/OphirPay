@@ -23,10 +23,12 @@ This guide details OphirPay's Cross-Origin Resource Sharing (CORS) policy, prefl
 OphirPay enforces strict, dynamic CORS origin validation at the edge proxy layer ([`src/proxy.ts`](file:///C:/Users/USER/.gemini/antigravity/scratch/OphirPay/src/proxy.ts)) and through the shared CORS utility ([`src/lib/cors.ts`](file:///C:/Users/USER/.gemini/antigravity/scratch/OphirPay/src/lib/cors.ts)).
 
 The architecture balances two critical requirements:
+
 1. **Public Integration**: Permitting authorized external frontend dApps, wallets, and checkout widgets to query payment statuses and initiate payments from external web origins.
 2. **CSRF & Origin Isolation**: Preventing unauthorized third-party websites from executing state-changing mutations (`POST`, `PUT`, `DELETE`, `PATCH`) using a victim's active session cookie or credentials.
 
 In addition, [`next.config.ts`](file:///C:/Users/USER/.gemini/antigravity/scratch/OphirPay/next.config.ts) configures the static HTTP response headers for the API boundary:
+
 ```typescript
 {
   source: "/api/(.*)",
@@ -43,19 +45,23 @@ In addition, [`next.config.ts`](file:///C:/Users/USER/.gemini/antigravity/scratc
 
 Allowed origins are dynamically resolved at runtime using the following environment variables:
 
-| Variable | Description | Example |
-|---|---|---|
-| `ALLOWED_ORIGINS` | Comma-, semicolon-, or space-separated list of permitted external origins. | `https://dapp.example.com, https://checkout.partner.io` |
-| `NEXT_PUBLIC_APP_URL` | Base canonical application URL (automatically included in the allowlist). | `https://ophirpay.com` |
+| Variable              | Description                                                                | Example                                                 |
+| --------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `ALLOWED_ORIGINS`     | Comma-, semicolon-, or space-separated list of permitted external origins. | `https://dapp.example.com, https://checkout.partner.io` |
+| `NEXT_PUBLIC_APP_URL` | Base canonical application URL (automatically included in the allowlist).  | `https://ophirpay.com`                                  |
 
 ### Normalization Rules
+
 Origins are strictly normalized upon ingestion:
+
 - Protocol and hostname are converted to lowercase.
 - Trailing slashes are stripped (e.g., `https://example.com/` becomes `https://example.com`).
 - Ports are preserved if non-standard (e.g., `http://localhost:3000`).
 
 ### Local Development Fallbacks
+
 When running locally (`NODE_ENV !== "production"`) with no explicit `ALLOWED_ORIGINS` configured, the server automatically permits:
+
 - `http://localhost:3000`
 - `http://127.0.0.1:3000`
 - `http://localhost:3001`
@@ -69,10 +75,12 @@ Browsers automatically issue an HTTP `OPTIONS` preflight request when an externa
 ### Preflight Request (`OPTIONS`)
 
 When an incoming preflight request matches an authorized origin in `ALLOWED_ORIGINS`:
+
 - **Status Code**: `204 No Content`
 - **Correlation**: Returns `X-Request-Id` for tracing in server logs.
 
 If the origin is **not** authorized:
+
 - **Status Code**: `403 Forbidden`
 - **Response Body**:
   ```json
@@ -89,14 +97,14 @@ If the origin is **not** authorized:
 
 Authorized preflight responses emit the following standard headers:
 
-| Header | Configured Value | Purpose |
-|---|---|---|
-| `Access-Control-Allow-Origin` | Echoes the request's exact normalized origin (e.g., `https://dapp.example.com`). | Informs the browser that this specific origin is permitted. |
-| `Access-Control-Allow-Methods` | `GET, POST, PUT, DELETE, PATCH, OPTIONS` | Permitted HTTP verbs on the API. |
-| `Access-Control-Allow-Headers` | `Content-Type, Authorization, X-API-Key, X-Request-Id, X-CSRF-Token` | Permitted request headers. |
-| `Access-Control-Max-Age` | `86400` (24 hours) | Caches the preflight response in the browser, eliminating round-trips for subsequent requests. |
-| `Access-Control-Allow-Credentials` | `true` | Allows cookies and Authorization headers to accompany cross-origin calls. |
-| `Vary` | `Origin` | Informs intermediary caches that responses differ based on the incoming `Origin`. |
+| Header                             | Configured Value                                                                 | Purpose                                                                                        |
+| ---------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `Access-Control-Allow-Origin`      | Echoes the request's exact normalized origin (e.g., `https://dapp.example.com`). | Informs the browser that this specific origin is permitted.                                    |
+| `Access-Control-Allow-Methods`     | `GET, POST, PUT, DELETE, PATCH, OPTIONS`                                         | Permitted HTTP verbs on the API.                                                               |
+| `Access-Control-Allow-Headers`     | `Content-Type, Authorization, X-API-Key, X-Request-Id, X-CSRF-Token`             | Permitted request headers.                                                                     |
+| `Access-Control-Max-Age`           | `86400` (24 hours)                                                               | Caches the preflight response in the browser, eliminating round-trips for subsequent requests. |
+| `Access-Control-Allow-Credentials` | `true`                                                                           | Allows cookies and Authorization headers to accompany cross-origin calls.                      |
+| `Vary`                             | `Origin`                                                                         | Informs intermediary caches that responses differ based on the incoming `Origin`.              |
 
 ---
 
@@ -104,10 +112,11 @@ Authorized preflight responses emit the following standard headers:
 
 > [!CAUTION]
 > **Strict Wildcard Isolation (`#1393`)**
-> 
+>
 > Under the W3C CORS specification, an API must **never** return `Access-Control-Allow-Origin: *` alongside `Access-Control-Allow-Credentials: true`. Doing so allows arbitrary websites to read authenticated user data.
-> 
+>
 > In OphirPay:
+>
 > - If `ALLOWED_ORIGINS` contains `*` but the request requires credentials (`allowCredentials: true`), the request is **strictly rejected**.
 > - Legitimate cross-origin dApps must have their specific origin listed in `ALLOWED_ORIGINS`.
 
@@ -116,6 +125,7 @@ Authorized preflight responses emit the following standard headers:
 ## Cross-Origin Mutation Protection
 
 For state-changing HTTP mutation methods (`POST`, `PUT`, `DELETE`, `PATCH`):
+
 - If a request supplies an `Origin` header that is **not** present in `ALLOWED_ORIGINS`, OphirPay immediately intercepts the request before route execution.
 - Returns `HTTP 403 Forbidden`:
   ```json
@@ -174,7 +184,7 @@ export async function createPaymentCrossdomain(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "X-Request-Id": crypto.randomUUID(),
       },
       // Enables credentials if integrating with an authenticated session
@@ -202,13 +212,16 @@ export async function createPaymentCrossdomain(
 ## Troubleshooting & Common Errors
 
 ### 1. `CORS preflight origin not allowed (403)`
+
 - **Cause**: The domain hosting your frontend is not in the server's `ALLOWED_ORIGINS` environment variable.
 - **Fix**: Add your domain (e.g. `https://dapp.example.com`) to `ALLOWED_ORIGINS` in `.env.local` or Kubernetes ConfigMap, then restart the server.
 
 ### 2. Missing `Access-Control-Allow-Headers`
+
 - **Cause**: Sending a custom header that is not in `Content-Type, Authorization, X-API-Key, X-Request-Id, X-CSRF-Token`.
 - **Fix**: Only pass documented headers or configure upstream reverse proxy headers.
 
 ### 3. Trailing Slash Mismatch
+
 - **Cause**: Submitting an origin formatted as `https://example.com/` instead of `https://example.com`.
 - **Fix**: The server automatically normalizes origins, but ensure your reverse proxy or CDN does not inject trailing slashes into the `Origin` header.

@@ -74,10 +74,10 @@ describe("docs/PERFORMANCE.md", () => {
     expect(existsSync(docPath)).toBe(true);
     const doc = readFileSync(docPath, "utf8");
     expect(doc).toMatch(/## Baselines/);
-    expect(doc).toMatch(/\| Endpoint \| Connections \| Req\/s \| p50 \| p95 \| p99 \| Error % \| Non-2xx % \|/);
-    expect(doc).toMatch(/\| \/api\/health \|/);
-    expect(doc).toMatch(/\| \/api\/payments \|/);
-    expect(doc).toMatch(/\| \/api\/events \|/);
+    expect(doc).toMatch(/\|\s*Endpoint\s*\|\s*Connections\s*\|\s*Req\/s\s*\|\s*p50\s*\|\s*p95\s*\|\s*p99\s*\|\s*Error %\s*\|\s*Non-2xx %\s*\|/);
+    expect(doc).toMatch(/\|\s*\/api\/health\s*\|/);
+    expect(doc).toMatch(/\|\s*\/api\/payments\s*\|/);
+    expect(doc).toMatch(/\|\s*\/api\/events\s*\|/);
   });
 
   it("explains how to run the load test locally against a test DB", () => {

@@ -45,15 +45,15 @@ staging, CI, and production (`relationMode = "prisma"`).
 
 Prisma provides two primary commands for applying migrations: `prisma migrate dev` and `prisma migrate deploy`. Understanding the strict boundaries between these two commands is essential for avoiding catastrophic data loss in production.
 
-| Feature | `npx prisma migrate dev` | `npx prisma migrate deploy` |
-|---|---|---|
-| **Intended Environment** | **Local development only** | **CI/CD, Staging, Production** |
-| **Shadow Database** | Requires and uses shadow database to detect drift | Does **not** use a shadow database |
-| **Generates Migration Files** | Yes, creates timestamped SQL files in `prisma/migrations/` | No, only reads committed migration SQL files |
-| **Interactive Prompts** | Yes, prompts for migration name or schema reset | Strictly non-interactive (fails if human input needed) |
-| **Destructive Resets** | Can trigger `prisma migrate reset` (drops DB) if drifted | **Never resets or drops the database** |
-| **Client Generation** | Automatically runs `prisma generate` | Does not run `prisma generate` (must run separately) |
-| **Transaction Safety** | Executes migration inside transactions where supported | Executes each unapplied migration file in a transaction |
+| Feature                       | `npx prisma migrate dev`                                   | `npx prisma migrate deploy`                             |
+| ----------------------------- | ---------------------------------------------------------- | ------------------------------------------------------- |
+| **Intended Environment**      | **Local development only**                                 | **CI/CD, Staging, Production**                          |
+| **Shadow Database**           | Requires and uses shadow database to detect drift          | Does **not** use a shadow database                      |
+| **Generates Migration Files** | Yes, creates timestamped SQL files in `prisma/migrations/` | No, only reads committed migration SQL files            |
+| **Interactive Prompts**       | Yes, prompts for migration name or schema reset            | Strictly non-interactive (fails if human input needed)  |
+| **Destructive Resets**        | Can trigger `prisma migrate reset` (drops DB) if drifted   | **Never resets or drops the database**                  |
+| **Client Generation**         | Automatically runs `prisma generate`                       | Does not run `prisma generate` (must run separately)    |
+| **Transaction Safety**        | Executes migration inside transactions where supported     | Executes each unapplied migration file in a transaction |
 
 ### 1. Local Development: `npx prisma migrate dev`
 
@@ -66,6 +66,7 @@ npx prisma migrate dev --name add_payment_metadata
 ```
 
 What `prisma migrate dev` does:
+
 1. Replays the existing migration history on a temporary shadow database.
 2. Compares the state of the shadow database against `prisma/schema.prisma`.
 3. Creates a new migration folder under `prisma/migrations/<timestamp>_<name>/migration.sql`.
@@ -76,11 +77,13 @@ What `prisma migrate dev` does:
 > [!CAUTION]
 > **Never run `npx prisma migrate dev` in Staging or Production.**
 > If `migrate dev` detects that the database schema has diverged from migration history (e.g., if hotfixes or manual DDL were applied), it will prompt to reset the database:
+>
 > ```text
 > ⚠️ We found changes that cannot be applied:
 > The database will be reset.
 > Do you want to continue? All data will be lost. [y/N]
 > ```
+>
 > In automated environments, this can lead to unrecoverable data loss.
 
 ### 2. Staging & Production: `npx prisma migrate deploy`
@@ -93,6 +96,7 @@ npx prisma migrate deploy
 ```
 
 What `prisma migrate deploy` does:
+
 1. Queries the `_prisma_migrations` table in the target database to determine which migrations have already been applied.
 2. Compares the recorded checksums of applied migrations against the local `migration.sql` files in the deployed bundle.
 3. If any applied migration file has been edited or tampered with, it aborts immediately with a checksum mismatch error.
@@ -120,6 +124,7 @@ npm run db:seed
 ```
 
 Available seed profiles:
+
 - `npm run db:seed`: Standard development seed.
 - `npm run db:seed:staging`: Staging dataset with synthetic merchant accounts.
 - `npm run db:seed:minimal`: Minimal baseline seed (system configurations only).
@@ -176,15 +181,21 @@ If a migration fails midway during `npx prisma migrate deploy` (e.g., due to a s
 To diagnose and resolve a failed migration:
 
 #### Step 1: Diagnose the Failure
+
 Run `prisma migrate status` to identify the failing migration:
+
 ```bash
 npx prisma migrate status
 ```
+
 Output will indicate:
+
 ```text
 The `20261015120000_add_payment_metadata` migration started at ... failed.
 ```
+
 You can also inspect the internal table:
+
 ```sql
 SELECT id, migration_name, started_at, finished_at, rolled_back_at, applied_steps_count
 FROM "_prisma_migrations"
@@ -194,6 +205,7 @@ ORDER BY started_at DESC LIMIT 5;
 #### Step 2: Choose the Resolution Path
 
 **Path A: Roll Back Failed State and Re-apply (Most Common)**
+
 1. Connect to PostgreSQL via `psql` and manually revert any partial DDL changes applied by the failed migration script.
 2. Tell Prisma that the failed migration was rolled back:
    ```bash
@@ -206,6 +218,7 @@ ORDER BY started_at DESC LIMIT 5;
    ```
 
 **Path B: Manually Complete the Migration (Hotfix)**
+
 1. Connect to PostgreSQL via `psql` and manually complete the remaining SQL statements that failed.
 2. Tell Prisma that the migration has been successfully applied:
    ```bash
@@ -242,6 +255,7 @@ To prevent downtime for active clients and in-flight API transactions during con
 Never add a `NOT NULL` column without a default value to a table containing existing data in a single migration. Doing so locks the table and fails with `column contains null values`.
 
 **Correct 3-Step Procedure:**
+
 1. **Phase 1 (Expand):** Add the column as nullable or provide a database-level `DEFAULT`:
    ```sql
    ALTER TABLE "Payment" ADD COLUMN "idempotencyKey" TEXT;
@@ -257,6 +271,7 @@ Never add a `NOT NULL` column without a default value to a table containing exis
 Directly renaming a column (`ALTER TABLE "Payment" RENAME COLUMN "amt" TO "amount"`) breaks any running application pods that are executing queries during a rolling update.
 
 **Correct 4-Step Procedure:**
+
 1. **Expand:** Add the new column `amount`.
 2. **Dual-Write:** Deploy application code that reads from `amt` and writes to both `amt` and `amount`.
 3. **Backfill & Switch Read:** Backfill `amount` from `amt` across historical records; deploy code reading from `amount`.

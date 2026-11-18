@@ -162,8 +162,38 @@ export function AddressAutocomplete({
         aria-controls={id ? `${id}-listbox` : undefined}
         aria-autocomplete="list"
         aria-label="Recipient address with address book autocomplete"
-        className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full pl-4 pr-10 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
       />
+
+      {value && !disabled && (
+        <button
+          type="button"
+          onClick={() => {
+            onChange("");
+            setJustSaved(false);
+            setOpen(false);
+            inputRef.current?.focus();
+          }}
+          aria-label="Clear address search"
+          data-testid="clear-address-search"
+          className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      )}
 
       {showDropdown && (
         <ul

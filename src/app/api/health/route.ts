@@ -188,9 +188,14 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
       rpcStatus = "error";
     }
 
-    // Check Horizon reachability
+    // Check Horizon reachability and ledger sync status (issue #1950)
     let horizonStatus: "ok" | "error" | "unchecked" = "unchecked";
     let horizonLatency: number | null = null;
+    let horizonSync: {
+      coreLatestLedger?: number;
+      historyLatestLedger?: number;
+      synced?: boolean;
+    } | undefined = undefined;
     try {
       const start = Date.now();
       const controller = new AbortController();
@@ -198,7 +203,38 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
       const res = await fetch(HORIZON_URL, { signal: controller.signal });
       clearTimeout(timeout);
       horizonLatency = Date.now() - start;
-      horizonStatus = res.ok ? "ok" : "error";
+      if (res.ok) {
+        horizonStatus = "ok";
+        try {
+          if (typeof res.json === "function") {
+            const data = (await res.json()) as Record<string, unknown>;
+            if (data && typeof data === "object") {
+              const core =
+                typeof data.core_latest_ledger === "number"
+                  ? data.core_latest_ledger
+                  : undefined;
+              const history =
+                typeof data.history_latest_ledger === "number"
+                  ? data.history_latest_ledger
+                  : undefined;
+              if (core !== undefined || history !== undefined) {
+                horizonSync = {
+                  coreLatestLedger: core,
+                  historyLatestLedger: history,
+                  synced:
+                    core !== undefined && history !== undefined
+                      ? Math.abs(core - history) <= 1
+                      : true,
+                };
+              }
+            }
+          }
+        } catch {
+          // If body parsing fails, reachability status is still ok
+        }
+      } else {
+        horizonStatus = "error";
+      }
     } catch {
       horizonStatus = "error";
     }
@@ -233,7 +269,8 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     const optionalChecks = [rpcStatus, horizonStatus, contractStatus, redisStatus].filter(
       (s: string) => s !== "disabled" && s !== "unchecked"
     );
-    const hasOptionalError = optionalChecks.includes("error");
+    const hasOptionalError =
+      optionalChecks.includes("error") || horizonSync?.synced === false;
     const isDegraded =
       dbStatus === "ok" &&
       (hasOptionalError || failoverDegraded || circuitBreaker.state !== "CLOSED");
@@ -253,7 +290,11 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
             rpcUrl: SOROBAN_RPC_URL,
             horizonUrl: HORIZON_URL,
             rpc: { status: rpcStatus, latencyMs: rpcLatency },
-            horizon: { status: horizonStatus, latencyMs: horizonLatency },
+            horizon: {
+              status: horizonStatus,
+              latencyMs: horizonLatency,
+              ...(horizonSync ? { sync: horizonSync } : {}),
+            },
           },
           contract: {
             id: OPHIRPAY_CONTRACT_ID || null,

@@ -2164,6 +2164,49 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_spending_limit_exceeded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // Configure 1,000 stroop spending limit
+        client.set_spending_limit(&owner, &payer, &1000i128, &5000i128, &0u64, &true);
+
+        // Execute payment of 600 stroops (succeeds)
+        client.atomic_spend(
+            &payer,
+            &payee,
+            &600i128,
+            &sac,
+            &String::from_str(&env, "tx_1"),
+            &String::from_str(&env, "first payment"),
+        );
+
+        let limit = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit.current_daily_spend, 600);
+
+        // Execute payment of 500 stroops (cumulative 1,100 exceeds 1,000 limit) and assert SpendingLimitExceeded
+        let result = client.try_atomic_spend(
+            &payer,
+            &payee,
+            &500i128,
+            &sac,
+            &String::from_str(&env, "tx_2"),
+            &String::from_str(&env, "second payment"),
+        );
+        assert_eq!(result, Err(Ok(PaymentError::SpendingLimitExceeded)));
+    }
+
     // ── New Error Path Tests (governance + reentrancy) ──
 
     /// GOV-1: Double-voting is rejected with AlreadyVoted error

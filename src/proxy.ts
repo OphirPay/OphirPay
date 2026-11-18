@@ -48,7 +48,12 @@ const rateLimitStore = getRateLimitStore();
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const requestId = generateRequestId();
+  // Extract existing X-Request-ID if provided, or generate a new one (issue #1951)
+  const incomingRequestId = request.headers.get("x-request-id");
+  const requestId =
+    incomingRequestId && incomingRequestId.trim().length > 0
+      ? incomingRequestId.trim()
+      : generateRequestId();
   const startedAt = performance.now();
 
   // ── API routes: rate limiting + CORS + API key edge validation ─

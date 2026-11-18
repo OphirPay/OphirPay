@@ -110,6 +110,10 @@ export function successResponse<T>(
       response.headers.set(key, value);
     }
   }
+  const requestId = getCurrentRequestId();
+  if (requestId) {
+    response.headers.set("X-Request-Id", requestId);
+  }
   return response;
 }
 
@@ -119,7 +123,7 @@ export function errorResponse(
   status = 400,
   details?: unknown
 ) {
-  return NextResponse.json(
+  const response = NextResponse.json(
     {
       success: false,
       error: { code, message, details: details ? jsonSafe(details) : undefined },
@@ -127,6 +131,11 @@ export function errorResponse(
     } satisfies ApiError,
     { status }
   );
+  const requestId = getCurrentRequestId();
+  if (requestId) {
+    response.headers.set("X-Request-Id", requestId);
+  }
+  return response;
 }
 
 export function validationError(err: z.ZodError) {
@@ -161,6 +170,10 @@ export function rateLimitError(
   if (retryAfterSeconds !== undefined) {
     headers["Retry-After"] = String(Math.max(0, Math.floor(retryAfterSeconds)));
   }
+  const requestId = getCurrentRequestId();
+  if (requestId && !headers["X-Request-Id"]) {
+    headers["X-Request-Id"] = requestId;
+  }
   return NextResponse.json(
     {
       success: false,
@@ -194,13 +207,18 @@ export function conflictError(
   headers?: Record<string, string>,
   code: string = ERROR_CODES.CONFLICT
 ) {
+  const resHeaders: Record<string, string> = { ...(headers ?? {}) };
+  const requestId = getCurrentRequestId();
+  if (requestId && !resHeaders["X-Request-Id"]) {
+    resHeaders["X-Request-Id"] = requestId;
+  }
   return NextResponse.json(
     {
       success: false,
       error: { code, message },
       timestamp: new Date().toISOString(),
     } satisfies ApiError,
-    { status: 409, headers: headers ?? {} }
+    { status: 409, headers: resHeaders }
   );
 }
 

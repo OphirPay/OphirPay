@@ -41,6 +41,68 @@ curl -N https://ophirpay.com/api/events
 #   data: {"timestamp": 1724000000000}
 ```
 
+## Architecture flow
+
+The stream is **pull-through-poll**: nothing pushes from Stellar into the
+route. The route holds the HTTP connection open, and a shared
+`createLiveEventSource` polls the emitter contract every 10 s. Both the SSE
+route and the WebSocket server consume that one source, so the two transports
+can never disagree about an event.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Browser / EventSource client
+    participant S as SSE route (GET /api/events)
+    participant L as LiveEventSource
+    participant R as Stellar RPC
+    participant E as PaymentEventEmitter (Soroban)
+
+    C->>S: GET /api/events
+    S->>S: attach bounded buffer, start heartbeat + ping timers
+    S-->>C: event: connected
+    S->>L: createLiveEventSource().start()
+    L->>R: simulate get_event_count()
+    R->>E: read event count
+    E-->>R: count
+    R-->>L: count — seeds lastKnownCount
+    loop every 10 s (pollIntervalMs)
+        L->>R: simulate get_event_count()
+        R-->>L: count
+        alt count > lastKnownCount
+            loop id = lastKnownCount + 1 … count
+                L->>R: simulate get_event(id)
+                R->>E: read PaymentEvent
+                E-->>R: PaymentEvent
+                R-->>L: PaymentEvent
+                L->>S: push("payment:created", LiveEvent)
+                S-->>C: event: payment:created
+            end
+        end
+    end
+    loop every 15 s / 20 s
+        S-->>C: event: heartbeat / ": ping" comment
+    end
+    Note over C,S: Connection drops → EventSource reconnects on its own
+    C->>S: GET /api/events (reconnect)
+    S-->>C: event: connected
+    Note over C: duplicate ids are dropped by the client-side seen-set
+```
+
+Read the diagram with these invariants in mind:
+
+- **One poll loop per connection.** The interval is per subscribed client, not
+  a shared broadcast; 100 clients means 100 poll loops (see
+  [Load testing](#load-testing-issue-391)).
+- **The poll is a simulation.** `get_event_count` / `get_event` are read-only
+  contract simulations signed by `NEXT_PUBLIC_CHAIN_READ_SOURCE` — nothing is
+  submitted, so polling costs no fees.
+- **Failures are silent.** A failed simulation is caught and retried on the
+  next 10 s cycle; the stream is never closed because RPC blipped.
+- **The route owns the connection.** `teardown()` (client abort, stream cancel,
+  or slow-consumer disconnect) clears the timers, stops the poll loop, and
+  releases the connection gauges exactly once.
+
 ## Wire format
 
 Standard SSE framing: `event:` name line, `data:` JSON line, blank line
@@ -127,6 +189,29 @@ shape — identical across SSE and WebSocket transports.
 > **Integrator rule:** deduplicate by `id`, not by `txHash` or `paymentId` —
 > `id` is the only field guaranteed stable across reconnects.
 
+### Settled payments and batches
+
+Two names show up in design discussions that are **not** SSE frame names. This
+is the mapping to what the server actually sends:
+
+| Concept | What `/api/events` emits | Notes |
+|---|---|---|
+| `payment_confirmed` | `payment:created` with `status: "COMPLETED"` | There is no separate confirmation frame. A payment is only ever streamed once it is recorded on-chain, so every `payment:created` is a confirmed payment. |
+| `batch_completed` | N × `payment:created` | `PaymentEventEmitter` stores one `PaymentEvent` per transfer; it has no batch-level event. A batch of 24 recipients produces 24 frames that share a `txHash`. |
+
+The in-app notification pipeline does model batch completion as
+`payment.batch_completed` (`src/lib/notifications.ts`), but that is a
+notification-centre payload, not part of this stream. **Do not wait for a
+`batch_completed` SSE frame** — if you need batch-level UI, correlate
+`payment:created` frames by `txHash` and deduplicate by `id`.
+
+The on-chain `PaymentEvent` fields (`version`, `id`, `source`, `payer`,
+`payee`, `amount`, `tx_hash`, `timestamp`) are normalized into the `LiveEvent`
+shape above: `source` becomes `emitter`, `tx_hash` becomes `txHash`, and
+`amount` is serialized as a decimal string. The on-chain `timestamp`
+(ledger seconds) is **not** forwarded — the stream's `timestamp` is delivery
+time.
+
 ### Client protocol event names
 
 The official client listens for exactly these names: `connected`,
@@ -162,6 +247,35 @@ The official client (`connectLiveEvents`) negotiates transports:
    (`250ms × 2^attempt`) capped at `maxBackoffMs` (default **10 s**), up to
    `maxReconnectAttempts` (default **3**) attempts, then falls back to SSE.
 4. **Malformed frames** (bad JSON) are ignored on both transports.
+
+With the defaults that ladder is short and predictable:
+
+| Event | Delay before the next attempt | Attempt counter |
+|---|---|---|
+| Initial connect fails | none — straight to SSE | `0` |
+| 1st drop after opening | **250 ms** (`250 × 2^0`) | `1` |
+| 2nd drop | **500 ms** (`250 × 2^1`) | `2` |
+| 3rd drop | **1000 ms** (`250 × 2^2`) | `3` |
+| Next drop | none — budget exhausted, switch to SSE | `3 >= maxReconnectAttempts` |
+
+The cap (`maxBackoffMs`, default 10 s) only applies if you raise
+`maxReconnectAttempts`; at `250 ms × 2^n` the delay reaches 10 s at attempt 6.
+Every delay is reset per connection — a long-lived stream that drops once
+always retries after 250 ms first, not after the previous session's delay.
+
+### SSE reconnect specifics
+
+- The route does **not** send an `id:` line or a `retry:` field, so the browser
+  uses its own default retry interval (typically ~3 s) and `Last-Event-ID` is
+  never populated. Replay protection is the client-side seen-set keyed on the
+  payload `id`, not SSE-level resume.
+- A reconnect gets a fresh `connected` frame and a fresh poll loop seeded from
+  the current `get_event_count()`. Events recorded while the client was away are
+  therefore **not replayed** — read them from the emitter contract or the
+  payments API if you need the gap filled.
+- Backpressure is per connection: if the browser stops reading, the bounded
+  buffer sheds the oldest frames instead of growing without bound (see
+  [Backpressure & slow consumers](#backpressure--slow-consumers-issue-744)).
 
 ### Connection status
 

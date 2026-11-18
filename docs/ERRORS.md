@@ -1,0 +1,605 @@
+# Contract error catalog (`PaymentError`)
+
+> Every typed Soroban error the OphirPay contract can return, with the
+> cause and the recommended action. Generated from
+> [`contracts/ophirpay/src/errors.rs`](../contracts/ophirpay/src/errors.rs),
+> the same source that produces the TypeScript catalogs.
+
+This page answers one question: **a contract call reverted with
+`Error(Contract, #N)` — what happened and what do I do about it?**
+
+For HTTP-level failures (`401`, `403`, `429`, validation envelopes,
+RFC 7807 problem details) see [API_ERRORS.md](./API_ERRORS.md) instead —
+those are *API* codes, not contract codes. The two are unrelated
+namespaces and a `code` field from one is never valid in the other.
+
+## How a contract error reaches you
+
+1. **Soroban host.** The contract returns `PaymentError::Variant`. The host
+   serialises it as a contract error with the variant's discriminant.
+2. **RPC / simulation.** You see it in a `HostError` wrapper:
+   `HostError: Error(Contract, #18)` — here `18` is
+   [`ContractPaused`](#err-18).
+3. **OphirPay app.** `decodeContractError()` turns that string into the
+   human-readable message from `CONTRACT_ERROR_MAP`.
+
+```ts
+import { decodeContractError } from "@/lib/contract-errors";
+
+decodeContractError("Error(Contract, #18)");
+// → "Contract paused: operations are temporarily disabled"
+decodeContractError("5");
+// → "Invalid amount: must be greater than zero"
+```
+
+The same numbers are available as a typed enum in
+[`src/types/errors.ts`](../src/types/errors.ts) (`PaymentError`, plus
+`PAYMENT_ERROR_NAMES` / `ERROR_MESSAGES` lookup tables) and as
+`CONTRACT_ERROR_MAP` in [`src/lib/contract-errors.ts`](../src/lib/contract-errors.ts).
+In the UI these failures are classified into `NETWORK` / `CONTRACT` /
+`USER_REJECTION` tiers before they are shown to a user.
+
+## Reading the tables
+
+- **Code** — the `u32` discriminant, i.e. the `#N` in
+  `Error(Contract, #N)`. Codes are wire format: new variants are
+  **appended**, existing numbers are never reused or renumbered.
+- **Name** — the Rust variant (`PaymentError::Name`), also the
+  TypeScript enum member. The name links to a stable anchor for that code.
+- **Cause** — the condition the contract rejects, taken from the variant's
+  doc comment.
+- **Solution** — the recommended action for the caller (client, operator or
+  integrator).
+
+Of the 318 variants, **67 can be returned by the
+current contract build**; the rest are reserved for feature families that
+are declared in the enum but have no entry point yet. Those rows are
+marked *Reserved* so you do not chase a code this deployment cannot
+produce.
+
+## Quick troubleshooting
+
+| What you see | Code | Likely fix |
+|---|---|---|
+| Every call reverts right after deploy | [1](#err-1) | Run `init(owner)` once. |
+| Second deploy script run fails on `init` | [2](#err-2) | Skip `init` if `get_version()` already answers. |
+| Payment/escrow/stream/recurring id not found | [3](#err-3), [8](#err-8), [11](#err-11), [30](#err-30) | Ids are contract-assigned and grow from 1 — use the id the create call returned. |
+| `Unauthorized` or `NotARoleHolder` | [4](#err-4), [27](#err-27) | Call from the owner/payer/arbiter the entry point expects, or grant the role. |
+| Amount rejected | [5](#err-5) | Amount must be > 0 in base units and fit `i128`. |
+| Everything reverts at once during an incident | [18](#err-18) | Contract is paused — unwinding is `emergency_unpause_all` (owner). |
+| Multisig execution blocked | [22](#err-22), [23](#err-23), [24](#err-24), [25](#err-25) | Configure signers, approve from distinct signers, reach the threshold. |
+| Upgrade cannot execute | [20](#err-20), [21](#err-21) | `propose_upgrade` first, then wait out the timelock. |
+| Vote rejected | [41](#err-41), [43](#err-43), [44](#err-44), [51](#err-51) | Voting window closed, quorum/yes-vote threshold not met, or address already voted. |
+| `StreamDurationTooShort` / `TooLong` | [310](#err-310), [311](#err-311) | Duration must be within 60 s – 5 years. |
+| `MemoTooLong` | [313](#err-313) | Memo ≤ 64 bytes and no control characters. |
+| `InvalidDecimalPrecision` | [312](#err-312) | Quantise the amount to the token's `10^-decimals` step (max 18 decimals). |
+| `PaymentIdempotencyConflict` | [309](#err-309) | The idempotency key was reused with a different payload — use a new key. |
+| `StreamInvariantViolated` | [307](#err-307) | Not a client error: capture the stream id and report it; the contract refused an inconsistent payout. |
+
+## Catalog
+
+Codes are grouped exactly as they are laid out in `errors.rs`.
+
+### Core Errors
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-1"></a>1 | [`NotInitialized`](#err-1) | Contract not initialized: call init() first | Call `init(owner)` once from the deployer, before any other entry point. Getters fail too until the contract is initialised. |
+| <a id="err-2"></a>2 | [`AlreadyInitialized`](#err-2) | Contract already initialized | Do not call `init` twice. To hand over control use `transfer_ownership` and have the new owner call `accept_ownership`. |
+| <a id="err-3"></a>3 | [`PaymentNotFound`](#err-3) | Payment not found | Pass an existing `payment_id` — ids come from `record_payment` and grow from 1 (`get_payments_range` lists them). |
+| <a id="err-4"></a>4 | [`Unauthorized`](#err-4) | Unauthorized: caller does not have permission | Call from the address the entry point expects (owner, payer, arbiter) or grant the required RBAC role with `grant_role`. |
+| <a id="err-5"></a>5 | [`InvalidAmount`](#err-5) | Invalid amount: must be greater than zero | Send an amount greater than zero in the token's base units, and reject values that would overflow `i128`. |
+| <a id="err-6"></a>6 | [`EscrowNotDue`](#err-6) | Escrow not yet due: deadline has not passed | Wait until ledger time is at or past the escrow deadline, then call `release_escrow` / `claim_escrow`. |
+| <a id="err-7"></a>7 | [`EscrowAlreadyReleased`](#err-7) | Escrow already released | The escrow is terminal. Treat a repeat call as success and read `get_escrow` for the final state. |
+| <a id="err-8"></a>8 | [`EscrowNotFound`](#err-8) | Escrow not found | Use an `escrow_id` returned by `create_escrow`; ids grow from 1. |
+| <a id="err-9"></a>9 | [`StreamNotStarted`](#err-9) | Stream not started: start time is in the future | Wait until ledger time reaches the stream start, then call `claim_stream`. |
+| <a id="err-10"></a>10 | [`StreamAlreadyCancelled`](#err-10) | Stream already cancelled | The stream is terminal. Read `get_stream` for the claimed and refunded amounts instead of retrying. |
+
+### Stream + Batch Errors
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-11"></a>11 | [`StreamNotFound`](#err-11) | Stream not found | Use a `stream_id` returned by `create_stream`. |
+| <a id="err-12"></a>12 | [`StreamFullyClaimed`](#err-12) | Stream fully claimed: no remaining balance | Nothing is left to claim. Treat the call as success and read `get_stream` for the totals. |
+| <a id="err-13"></a>13 | [`BatchTooLarge`](#err-13) | Batch too large: exceeds maximum recipients | Split the recipients across several `create_batch` calls and submit the remainder as a second batch. |
+| <a id="err-14"></a>14 | [`BatchEmpty`](#err-14) | Batch empty: no recipients provided | Send at least one recipient. Reject empty arrays in the client before submitting. |
+| <a id="err-15"></a>15 | [`TokenTransferFailed`](#err-15) | Token transfer failed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-16"></a>16 | [`InsufficientBalance`](#err-16) | Insufficient balance to cover payment | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-17"></a>17 | [`PaymentAlreadyCancelled`](#err-17) | Payment already cancelled | The payment is terminal (cancelled). Do not retry cancel or refund; read `get_payment` for its state. |
+| <a id="err-18"></a>18 | [`ContractPaused`](#err-18) | Contract paused: operations are temporarily disabled | An owner-initiated pause is active. Read `is_paused` / `get_paused_scopes`, then call `emergency_unpause_all` or clear the scope with `set_scope_paused` once the incident is over. |
+| <a id="err-19"></a>19 | [`NoTokensToWithdraw`](#err-19) | No tokens available to withdraw | The withdrawable balance is zero or everything is locked. Check `get_locked_balance` / `get_token_locked_balance` first. |
+| <a id="err-20"></a>20 | [`UpgradeNotProposed`](#err-20) | Upgrade not proposed: call propose_upgrade() first | Call `propose_upgrade` (owner) before `execute_upgrade`. |
+
+### Upgrade + Multisig Errors
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-21"></a>21 | [`UpgradeTimelockActive`](#err-21) | Upgrade timelock active: 24-hour delay has not elapsed | Wait out the upgrade timelock, then call `execute_upgrade`; `cancel_upgrade` aborts the proposal. |
+| <a id="err-22"></a>22 | [`MultisigNotConfigured`](#err-22) | Multisig not configured: call set_multisig_config() first | Call `set_multisig_config` before using `propose_payment` / `approve_payment` in multisig mode. |
+| <a id="err-23"></a>23 | [`NotASigner`](#err-23) | Not a signer: you are not in the multisig signer list | Approve from an address in the multisig signer list; the caller is not a configured signer. |
+| <a id="err-24"></a>24 | [`AlreadyApproved`](#err-24) | Already approved: duplicate approval detected | This signer already approved `request_id`. Reuse that approval or collect the next signature from a different signer. |
+| <a id="err-25"></a>25 | [`ThresholdNotMet`](#err-25) | Threshold not met: insufficient approvals | Collect at least `threshold` approvals before `execute_approved_payment`; read `get_approval_request` to see the current count. |
+| <a id="err-26"></a>26 | [`AlreadyExecuted`](#err-26) | Already executed: this action has already been processed | The action already ran. Treat a replay as success and read the resulting state instead of resubmitting. |
+| <a id="err-27"></a>27 | [`NotARoleHolder`](#err-27) | Not a role holder: insufficient RBAC permissions | The caller lacks the required RBAC role. The owner can grant it with `grant_role`, or call from an address that already holds it. |
+| <a id="err-28"></a>28 | [`AuditLogEmpty`](#err-28) | Audit log empty: no entries recorded | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-29"></a>29 | [`AuditEntryNotFound`](#err-29) | Audit entry not found | Read an id between 1 and `get_audit_log_count()`; use `get_audit_log_range` to page through entries. |
+| <a id="err-30"></a>30 | [`RecurringNotFound`](#err-30) | Recurring payment not found | Use a `recurring_id` returned by `create_recurring`. |
+
+### Recurring + Fee Errors
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-31"></a>31 | [`RecurringNotDue`](#err-31) | Recurring payment not yet due | The next execution time has not arrived. Wait for the schedule's due timestamp, then call `execute_recurring`. |
+| <a id="err-32"></a>32 | [`RecurringAlreadyCancelled`](#err-32) | Recurring payment already cancelled | The schedule is terminal; do not execute or cancel it again. |
+| <a id="err-33"></a>33 | [`RecurringExpired`](#err-33) | Recurring payment expired: all payments completed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-34"></a>34 | [`FeeConfigNotFound`](#err-34) | Fee configuration not found | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-35"></a>35 | [`FeeTooHigh`](#err-35) | Fee too high: exceeds maximum 1000 bps (10%) | `fee_bps` is above the protocol maximum of 1000 bps (10%). Lower it in `set_fee_config`. |
+| <a id="err-36"></a>36 | [`TimelockNotFound`](#err-36) | Timelocked action not found | Use an `action_id` returned by `propose_timelocked_action`. |
+| <a id="err-37"></a>37 | [`TimelockNotDue`](#err-37) | Timelocked action not yet due: 24-hour delay has not elapsed | Wait until the timelock has elapsed (24 h by default), then call `execute_timelocked_action`. |
+| <a id="err-38"></a>38 | [`TimelockAlreadyExecuted`](#err-38) | Timelocked action already executed | The timelocked action already executed; no further call is needed. |
+| <a id="err-39"></a>39 | [`GovernanceNotConfigured`](#err-39) | Governance not configured: call configure_governance() first | The owner must call `configure_governance` before proposals or votes are accepted. |
+| <a id="err-40"></a>40 | [`ProposalNotFound`](#err-40) | Proposal not found | Use a `proposal_id` returned by `create_proposal` (`get_proposal_count` gives the range). |
+
+### Governance + Spend Errors
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-41"></a>41 | [`VotingPeriodEnded`](#err-41) | Voting period ended: proposal is closed | Voting is closed. Read `get_proposal` for the outcome; no further votes are accepted. |
+| <a id="err-42"></a>42 | [`ProposalAlreadyExecuted`](#err-42) | Proposal already executed | The proposal already executed. Read `get_proposal` for the result instead of executing again. |
+| <a id="err-43"></a>43 | [`QuorumNotMet`](#err-43) | Quorum not met: insufficient votes cast | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-44"></a>44 | [`ProposalDefeated`](#err-44) | Proposal defeated: no votes exceeded yes votes | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-45"></a>45 | [`DepositTooLow`](#err-45) | Deposit too low: must meet minimum proposal deposit | The proposal deposit is below the configured minimum. Raise it in `create_proposal`. |
+| <a id="err-46"></a>46 | [`SpendingLimitExpired`](#err-46) | Spending limit expired: limit has been deactivated or expired | The spending limit is expired or deactivated. The owner must issue a fresh `set_spending_limit`. |
+| <a id="err-47"></a>47 | [`RefundNotFound`](#err-47) | Refund not found | Use a `refund_id` returned by `request_refund`. |
+| <a id="err-48"></a>48 | [`RefundAlreadyProcessed`](#err-48) | Refund already processed | The refund is already approved or processed. Read `get_refund` for its status. |
+| <a id="err-49"></a>49 | [`PaymentAlreadyRefunded`](#err-49) | Payment already refunded | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-50"></a>50 | [`RefundWindowExpired`](#err-50) | Refund window expired | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-51"></a>51 | [`AlreadyVoted`](#err-51) | Already voted: each address may vote only once per proposal | Each address may vote once per proposal. Read `get_proposal` for the tallies; a delegate can vote on behalf of others where delegation is configured. |
+| <a id="err-52"></a>52 | [`ReentrantCall`](#err-52) | Reentrant call detected: cross-contract reentry blocked | A token or hook callback re-entered a guarded entry point. Do not call back into OphirPay from inside a transfer/hook; restructure the flow. |
+
+### Spend + Dispute Errors
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-53"></a>53 | [`SpendCapExceeded`](#err-53) | Spending cap exceeded: total spend exceeds authorization | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-54"></a>54 | [`DisputeAlreadyFiled`](#err-54) | Dispute already filed: a dispute exists for this transaction | This escrow already has an active dispute. Continue with `resolve_dispute` rather than filing again. |
+| <a id="err-55"></a>55 | [`DisputeNotFound`](#err-55) | Dispute not found | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-56"></a>56 | [`DisputeWindowExpired`](#err-56) | Dispute window expired: too late to file a dispute | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-57"></a>57 | [`RefundRejected`](#err-57) | Refund rejected: refund request was denied | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-58"></a>58 | [`InsufficientLiquidity`](#err-58) | Insufficient liquidity: pool cannot fulfill the order | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-59"></a>59 | [`AssetDepegged`](#err-59) | Asset depegged: stablecoin is off its target peg | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Extended Errors
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-60"></a>60 | [`ProposalNotPassed`](#err-60) | Proposal not passed: insufficient yes votes | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-61"></a>61 | [`InvalidSignature`](#err-61) | Invalid signature: recovered signer does not match | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-62"></a>62 | [`HookNotFound`](#err-62) | Hook not found | The hook id does not exist or was unregistered. List hooks with `get_subscriber_hooks` / `get_hooks_by_event`. |
+| <a id="err-63"></a>63 | [`HookAlreadyExists`](#err-63) | Hook already exists: duplicate hook registration | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-64"></a>64 | [`RateLimitExceeded`](#err-64) | Rate limit exceeded: too many requests | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-65"></a>65 | [`AssetNotSupported`](#err-65) | Asset not supported by this contract | The asset is not accepted by this contract. Use a Stellar asset contract (SAC) address the deployment supports. |
+| <a id="err-66"></a>66 | [`InvalidMetadataLength`](#err-66) | Invalid metadata length: exceeds maximum allowed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-67"></a>67 | [`MaxRecipientsExceeded`](#err-67) | Maximum recipients exceeded | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-68"></a>68 | [`DuplicateRecipient`](#err-68) | Duplicate recipient in batch | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-69"></a>69 | [`StreamEndBeforeStart`](#err-69) | Stream end time must be after start time | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-70"></a>70 | [`EscrowDeadlineInPast`](#err-70) | Escrow deadline must be in the future | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-71"></a>71 | [`PendingOwnershipTransfer`](#err-71) | Pending ownership transfer: accept or cancel first | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-72"></a>72 | [`OwnershipTransferExpired`](#err-72) | Ownership transfer expired: timelock elapsed without acceptance | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-73"></a>73 | [`InvalidAddressFormat`](#err-73) | Invalid address format | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-74"></a>74 | [`BatchItemFailed`](#err-74) | Batch item failed: individual payment in batch error | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-75"></a>75 | [`RecurringScheduleInvalid`](#err-75) | Invalid recurring schedule type | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-76"></a>76 | [`FeeCollectorNotSet`](#err-76) | Fee collector address not set | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-77"></a>77 | [`EmitterNotLinked`](#err-77) | Emitter contract not linked: call set_emitter() first | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-78"></a>78 | [`ProposalDepositLocked`](#err-78) | Proposal deposit is locked: cannot withdraw while voting | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-79"></a>79 | [`MultisigSignerLimit`](#err-79) | Multisig signer limit exceeded | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-80"></a>80 | [`InvalidTokenContract`](#err-80) | Invalid token contract address | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-81"></a>81 | [`StorageLimitExceeded`](#err-81) | Storage limit exceeded: contract storage is full | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-82"></a>82 | [`ContractMigrationRequired`](#err-82) | Contract migration required: upgrade to continue | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-83"></a>83 | [`InvalidEventType`](#err-83) | Invalid event type for notification hook | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-84"></a>84 | [`WebhookUrlTooLong`](#err-84) | Webhook URL too long: exceeds maximum length | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-85"></a>85 | [`MaxHooksExceeded`](#err-85) | Maximum notification hooks exceeded | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-86"></a>86 | [`HookNotActive`](#err-86) | Notification hook is not active | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-87"></a>87 | [`CrossContractCallFailed`](#err-87) | Cross-contract call failed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-88"></a>88 | [`InvalidScValEncoding`](#err-88) | Invalid ScVal encoding in parameters | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-89"></a>89 | [`UnsupportedOperation`](#err-89) | Unsupported operation: not available in this version | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-90"></a>90 | [`ContractNotLinked`](#err-90) | Contract not linked: configure linked contract first | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-91"></a>91 | [`MaxSignersExceeded`](#err-91) | Maximum signers exceeded for multisig | The signer list is larger than a multisig config allows. Trim it to the supported maximum. |
+| <a id="err-92"></a>92 | [`ZeroAddressNotAllowed`](#err-92) | Zero address not allowed for this operation | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-93"></a>93 | [`InvalidNetwork`](#err-93) | Invalid network: wrong Stellar network configured | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Staking & Rewards
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-94"></a>94 | [`StakingNotConfigured`](#err-94) | Staking not configured: call configure_staking() first | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-95"></a>95 | [`StakingAlreadyActive`](#err-95) | Staking already active: cannot modify while staking | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-96"></a>96 | [`RewardsPoolEmpty`](#err-96) | Rewards pool empty: no rewards available for distribution | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-97"></a>97 | [`UnstakingPeriodActive`](#err-97) | Unstaking period active: funds are still in cooldown | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-98"></a>98 | [`MinimumStakeNotMet`](#err-98) | Minimum stake not met: stake must exceed the minimum | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-99"></a>99 | [`MaximumStakeExceeded`](#err-99) | Maximum stake exceeded: stake cannot exceed the cap | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-100"></a>100 | [`RewardsAlreadyClaimed`](#err-100) | Rewards already claimed for this epoch | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-101"></a>101 | [`DelegationNotAllowed`](#err-101) | Delegation not allowed: delegator is not authorized | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-102"></a>102 | [`ValidatorNotActive`](#err-102) | Validator not active: selected validator is offline | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-103"></a>103 | [`SlashingConditionMet`](#err-103) | Slashing condition met: stake is subject to penalty | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-104"></a>104 | [`StakingPaused`](#err-104) | Staking is currently paused | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-105"></a>105 | [`CompoundRewardsFailed`](#err-105) | Compound rewards failed: auto-compound error | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-106"></a>106 | [`YieldTooLow`](#err-106) | Yield too low: below minimum acceptable rate | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-107"></a>107 | [`StakingPeriodNotEnded`](#err-107) | Staking period not ended: cannot unstake yet | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-108"></a>108 | [`RewardDistributionFailed`](#err-108) | Reward distribution failed: transfer error | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-109"></a>109 | [`UnauthorizedDelegator`](#err-109) | Delegator not authorized for this validator | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Cross-Chain & Bridge
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-110"></a>110 | [`BridgeNotConfigured`](#err-110) | Bridge not configured: call configure_bridge() first | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-111"></a>111 | [`BridgePaused`](#err-111) | Bridge is currently paused | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-112"></a>112 | [`InvalidSourceChain`](#err-112) | Invalid source chain identifier | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-113"></a>113 | [`InvalidDestinationChain`](#err-113) | Invalid destination chain identifier | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-114"></a>114 | [`CrossChainProofInvalid`](#err-114) | Cross-chain proof invalid: verification failed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-115"></a>115 | [`BridgeRelayerNotSet`](#err-115) | Bridge relayer not set: configure relayer address | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-116"></a>116 | [`BridgeAmountTooLow`](#err-116) | Bridge amount too low: below minimum transfer | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-117"></a>117 | [`BridgeAmountTooHigh`](#err-117) | Bridge amount too high: exceeds maximum transfer | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-118"></a>118 | [`BridgeTransactionExpired`](#err-118) | Bridge transaction expired: timeout reached | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-119"></a>119 | [`UnsupportedTokenPair`](#err-119) | Unsupported token pair for bridge transfer | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Insurance & Risk
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-120"></a>120 | [`InsuranceFundNotConfigured`](#err-120) | Insurance fund not configured | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-121"></a>121 | [`InsuranceFundEmpty`](#err-121) | Insurance fund empty: no funds available for claims | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-122"></a>122 | [`InsuranceClaimAlreadyFiled`](#err-122) | Insurance claim already filed for this event | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-123"></a>123 | [`InsuranceClaimRejected`](#err-123) | Insurance claim rejected: does not meet criteria | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-124"></a>124 | [`InsuranceClaimWindowExpired`](#err-124) | Insurance claim window expired | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-125"></a>125 | [`CoverageLimitExceeded`](#err-125) | Coverage limit exceeded: claim exceeds policy cap | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-126"></a>126 | [`PremiumNotPaid`](#err-126) | Premium not paid: insurance coverage is inactive | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-127"></a>127 | [`RiskScoreTooHigh`](#err-127) | Risk score too high: coverage denied | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-128"></a>128 | [`UnderwritingFailed`](#err-128) | Underwriting failed: risk assessment error | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-129"></a>129 | [`InsurancePaused`](#err-129) | Insurance operations are currently paused | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Identity & Compliance
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-130"></a>130 | [`KYCNotCompleted`](#err-130) | KYC not completed: identity verification required | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-131"></a>131 | [`KYCTierTooLow`](#err-131) | KYC tier too low: upgrade verification level | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-132"></a>132 | [`AMLFlagRaised`](#err-132) | AML flag raised: transaction blocked for review | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-133"></a>133 | [`SanctionsListMatch`](#err-133) | Sanctions list match: address is restricted | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-134"></a>134 | [`IdentityVerificationFailed`](#err-134) | Identity verification failed: documents invalid | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-135"></a>135 | [`TravelRuleViolation`](#err-135) | Travel rule violation: beneficiary info required | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-136"></a>136 | [`JurisdictionNotSupported`](#err-136) | Jurisdiction not supported for this operation | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-137"></a>137 | [`ResidencyCheckFailed`](#err-137) | Residency check failed: proof of residency required | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-138"></a>138 | [`AccreditationRequired`](#err-138) | Accreditation required: investor status not verified | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-139"></a>139 | [`AgeVerificationFailed`](#err-139) | Age verification failed: minimum age not met | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Payment Routing & Splitting
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-140"></a>140 | [`PaymentRouteNotFound`](#err-140) | Payment route not found: no valid path | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-141"></a>141 | [`PaymentSplitFailed`](#err-141) | Payment split failed: distribution error | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-142"></a>142 | [`SplitPercentageInvalid`](#err-142) | Split percentage invalid: must sum to 100% | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-143"></a>143 | [`RouteHopLimitExceeded`](#err-143) | Route hop limit exceeded: path too long | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-144"></a>144 | [`PathPaymentTooExpensive`](#err-144) | Path payment too expensive: exceeds max fee | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-145"></a>145 | [`LiquidityPoolNotFound`](#err-145) | Liquidity pool not found for asset pair | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-146"></a>146 | [`SlippageExceeded`](#err-146) | Slippage exceeded: price moved beyond tolerance | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-147"></a>147 | [`DeadlineExceeded`](#err-147) | Deadline exceeded: transaction too old | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-148"></a>148 | [`PriceOracleStale`](#err-148) | Price oracle stale: last update too old | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-149"></a>149 | [`FlashLoanNotRepaid`](#err-149) | Flash loan not repaid in same transaction | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Gas & Resource Management
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-150"></a>150 | [`OutOfGas`](#err-150) | Out of gas: computation budget exhausted | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-151"></a>151 | [`GasPriceTooLow`](#err-151) | Gas price too low: below network minimum | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-152"></a>152 | [`GasRefundFailed`](#err-152) | Gas refund failed: refund transfer error | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-153"></a>153 | [`MemoryLimitExceeded`](#err-153) | Memory limit exceeded: allocation too large | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-154"></a>154 | [`StackDepthExceeded`](#err-154) | Stack depth exceeded: too many nested calls | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-155"></a>155 | [`InstructionBudgetExceeded`](#err-155) | Instruction budget exceeded: too many operations | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-156"></a>156 | [`ReadBudgetExceeded`](#err-156) | Read budget exceeded: too many storage reads | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-157"></a>157 | [`WriteBudgetExceeded`](#err-157) | Write budget exceeded: too many storage writes | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-158"></a>158 | [`TTLTooLow`](#err-158) | TTL too low: entry would expire too soon | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-159"></a>159 | [`LedgerEntryLimitReached`](#err-159) | Ledger entry limit reached: cannot create more | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Oracle & Data Feeds
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-160"></a>160 | [`OracleNotConfigured`](#err-160) | Oracle not configured: call set_oracle() first | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-161"></a>161 | [`OracleTimeout`](#err-161) | Oracle timeout: response took too long | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-162"></a>162 | [`OraclePriceDeviation`](#err-162) | Oracle price deviation: outlier detected | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-163"></a>163 | [`DataFeedUnavailable`](#err-163) | Data feed unavailable: source is offline | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-164"></a>164 | [`DataFeedTampered`](#err-164) | Data feed tampered: integrity check failed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-165"></a>165 | [`OracleAlreadyActive`](#err-165) | Oracle already active: duplicate registration | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-166"></a>166 | [`PriceFeedStale`](#err-166) | Price feed stale: last update exceeds threshold | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-167"></a>167 | [`ConfidenceIntervalTooWide`](#err-167) | Confidence interval too wide: price uncertain | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-168"></a>168 | [`OracleSignatureInvalid`](#err-168) | Oracle signature invalid: attestation failed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-169"></a>169 | [`MaxPriceAgeExceeded`](#err-169) | Maximum price age exceeded: feed too old | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Batch & Streaming Advanced
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-170"></a>170 | [`BatchExecutionTimeout`](#err-170) | Batch execution timeout: not all items finished | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-171"></a>171 | [`BatchPartialFailure`](#err-171) | Batch partial failure: some items failed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-172"></a>172 | [`StreamRateInvalid`](#err-172) | Stream rate invalid: must be positive non-zero | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-173"></a>173 | [`StreamTooLong`](#err-173) | Stream duration too long: exceeds maximum | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-174"></a>174 | [`StreamClaimTooEarly`](#err-174) | Stream claim too early: minimum interval not met | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-175"></a>175 | [`BatchAuthorizationFailed`](#err-175) | Batch authorization failed: signer rejected | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-176"></a>176 | [`BatchDuplicateId`](#err-176) | Batch duplicate ID: transaction already processed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-177"></a>177 | [`StreamBeneficiaryUnchanged`](#err-177) | Stream beneficiary unchanged: same as current | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-178"></a>178 | [`StreamTransferNotAllowed`](#err-178) | Stream transfer not allowed: stream is non-transferable | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-179"></a>179 | [`BatchCleanupFailed`](#err-179) | Batch cleanup failed: stale state removal error | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Dispute Resolution
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-180"></a>180 | [`DisputeNotOpen`](#err-180) | Dispute not open: no active dispute found | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-181"></a>181 | [`DisputeArbiterNotSet`](#err-181) | Dispute arbiter not set: configure arbiter first | No arbiter is configured for the escrow. The owner must set one before `initiate_dispute`. |
+| <a id="err-182"></a>182 | [`DisputeEvidenceRequired`](#err-182) | Dispute evidence required: must submit proof | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-183"></a>183 | [`DisputeAlreadyResolved`](#err-183) | Dispute already resolved: final decision made | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-184"></a>184 | [`DisputeResolutionTimedOut`](#err-184) | Dispute resolution timed out: arbiter did not respond | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-185"></a>185 | [`ArbiterNotAuthorized`](#err-185) | Arbiter not authorized: not in approved list | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-186"></a>186 | [`MediationFailed`](#err-186) | Mediation failed: parties could not agree | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-187"></a>187 | [`AppealWindowClosed`](#err-187) | Appeal window closed: too late to appeal | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-188"></a>188 | [`DisputeBondInsufficient`](#err-188) | Dispute bond insufficient: must stake more | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-189"></a>189 | [`DisputeEscalationFailed`](#err-189) | Dispute escalation failed: higher authority error | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Miscellaneous Guards
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-190"></a>190 | [`MaxStorageEntriesReached`](#err-190) | Maximum storage entries reached: ledger full | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-191"></a>191 | [`StorageFeeNotPaid`](#err-191) | Storage fee not paid: rent payment required | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-192"></a>192 | [`ArchiveEntryNotFound`](#err-192) | Archive entry not found: record already pruned | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-193"></a>193 | [`StateSyncMismatch`](#err-193) | State sync mismatch: ledger state inconsistent | Contract state disagrees with the ledger. Re-read the affected entries; if the mismatch persists the build needs a migration. |
+| <a id="err-194"></a>194 | [`MigrationInProgress`](#err-194) | Migration in progress: try again later | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-195"></a>195 | [`RollbackDetected`](#err-195) | Rollback detected: chain reorganization | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-196"></a>196 | [`SnapshotVerificationFailed`](#err-196) | Snapshot verification failed: hash mismatch | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-197"></a>197 | [`ContractDeprecated`](#err-197) | Contract deprecated: use the new version | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-198"></a>198 | [`EmergencyShutdownActive`](#err-198) | Emergency shutdown active: all operations blocked | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-199"></a>199 | [`SystemOverloaded`](#err-199) | System overloaded: too many concurrent requests | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Advanced Governance
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-200"></a>200 | [`DelegateNotActive`](#err-200) | Delegate not active: delegator is offline or disabled | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-201"></a>201 | [`DelegationExpired`](#err-201) | Delegation expired: delegation period has ended | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-202"></a>202 | [`VoteDelegationMismatch`](#err-202) | Vote delegation mismatch: delegate does not match voter | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-203"></a>203 | [`ProposalCancelled`](#err-203) | Proposal cancelled: proposal was withdrawn by creator | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-204"></a>204 | [`ProposalQuorumChanged`](#err-204) | Proposal quorum changed: quorum was modified mid-vote | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-205"></a>205 | [`EmergencyGovernancePaused`](#err-205) | Emergency governance paused: voting is temporarily suspended | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-206"></a>206 | [`GovernanceTokenLocked`](#err-206) | Governance token locked: tokens are in a lockup period | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-207"></a>207 | [`VotingPowerFrozen`](#err-207) | Voting power frozen: votes are immobilized by a freeze | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-208"></a>208 | [`ProposalExecutionFailed`](#err-208) | Proposal execution failed: on-chain execution reverted | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-209"></a>209 | [`GovernanceUpgradePending`](#err-209) | Governance upgrade pending: upgrade has not been finalized | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Treasury & Reserves
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-210"></a>210 | [`TreasuryNotConfigured`](#err-210) | Treasury not configured: call configure_treasury() first | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-211"></a>211 | [`TreasuryWithdrawalPending`](#err-211) | Treasury withdrawal pending: timelock has not elapsed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-212"></a>212 | [`ReserveRequirementNotMet`](#err-212) | Reserve requirement not met: minimum reserve ratio breached | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-213"></a>213 | [`TreasuryMultisigRequired`](#err-213) | Treasury multisig required: threshold signatures missing | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-214"></a>214 | [`ReserveAssetUnavailable`](#err-214) | Reserve asset unavailable: asset cannot be used as reserve | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-215"></a>215 | [`TreasuryReportMismatch`](#err-215) | Treasury report mismatch: balance does not match ledger | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-216"></a>216 | [`ReserveRatioBreached`](#err-216) | Reserve ratio breached: reserves fell below the minimum | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-217"></a>217 | [`TreasuryAuditFailed`](#err-217) | Treasury audit failed: reconciliation check did not pass | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-218"></a>218 | [`ReserveRebalanceFailed`](#err-218) | Reserve rebalance failed: allocation update reverted | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-219"></a>219 | [`TreasuryAccessRevoked`](#err-219) | Treasury access revoked: caller permissions were removed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Token & Asset Management
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-220"></a>220 | [`TokenAlreadyListed`](#err-220) | Token already listed: asset is already supported | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-221"></a>221 | [`TokenDelistingPending`](#err-221) | Token delisting pending: removal is awaiting timelock | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-222"></a>222 | [`AssetPairNotFound`](#err-222) | Asset pair not found: no market exists for the pair | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-223"></a>223 | [`TokenSupplyCapExceeded`](#err-223) | Token supply cap exceeded: mint would exceed the cap | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-224"></a>224 | [`MintingPaused`](#err-224) | Minting paused: new issuance is temporarily disabled | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-225"></a>225 | [`BurningPaused`](#err-225) | Burning paused: token destruction is temporarily disabled | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-226"></a>226 | [`TokenFrozen`](#err-226) | Token frozen: asset transfers are blocked | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-227"></a>227 | [`AssetTrustlineMissing`](#err-227) | Asset trustline missing: trustline must be established | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-228"></a>228 | [`TokenMetadataInvalid`](#err-228) | Token metadata invalid: name, symbol, or decimals malformed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-229"></a>229 | [`AssetMigrationPending`](#err-229) | Asset migration pending: upgrade to new contract incomplete | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Lending & Credit
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-230"></a>230 | [`LendingPoolNotConfigured`](#err-230) | Lending pool not configured: call configure_lending() first | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-231"></a>231 | [`LoanNotFound`](#err-231) | Loan not found | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-232"></a>232 | [`LoanAlreadyRepaid`](#err-232) | Loan already repaid: no outstanding balance | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-233"></a>233 | [`CollateralInsufficient`](#err-233) | Collateral insufficient: below required ratio | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-234"></a>234 | [`LiquidationPending`](#err-234) | Liquidation pending: position is in the process of liquidation | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-235"></a>235 | [`InterestRateInvalid`](#err-235) | Interest rate invalid: outside allowed bounds | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-236"></a>236 | [`CreditLimitExceeded`](#err-236) | Credit limit exceeded: borrow would exceed the limit | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-237"></a>237 | [`LoanMaturityReached`](#err-237) | Loan maturity reached: repayment is now due | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-238"></a>238 | [`CollateralFrozen`](#err-238) | Collateral frozen: collateral cannot be moved | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-239"></a>239 | [`LendingPaused`](#err-239) | Lending paused: borrow and lend operations are suspended | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Recurring & Subscriptions
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-240"></a>240 | [`SubscriptionNotFound`](#err-240) | Subscription not found | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-241"></a>241 | [`SubscriptionAlreadyCancelled`](#err-241) | Subscription already cancelled | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-242"></a>242 | [`SubscriptionRenewalFailed`](#err-242) | Subscription renewal failed: payment did not settle | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-243"></a>243 | [`BillingCycleInvalid`](#err-243) | Billing cycle invalid: interval is not supported | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-244"></a>244 | [`SubscriptionPaused`](#err-244) | Subscription paused: renewals are temporarily halted | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-245"></a>245 | [`TrialPeriodExpired`](#err-245) | Trial period expired: paid plan is now required | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-246"></a>246 | [`PaymentMethodInvalid`](#err-246) | Payment method invalid: token or method not accepted | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-247"></a>247 | [`SubscriptionTierNotAllowed`](#err-247) | Subscription tier not allowed: upgrade is restricted | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-248"></a>248 | [`UsageQuotaExceeded`](#err-248) | Usage quota exceeded: plan allowance has been reached | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-249"></a>249 | [`SubscriptionUpgradePending`](#err-249) | Subscription upgrade pending: change has not been applied | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Privacy & Zero-Knowledge
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-250"></a>250 | [`ZkProofInvalid`](#err-250) | Zero-knowledge proof invalid: verification failed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-251"></a>251 | [`PrivacyPoolNotConfigured`](#err-251) | Privacy pool not configured: call configure_privacy() first | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-252"></a>252 | [`CommitmentAlreadySpent`](#err-252) | Commitment already spent: double-spend detected | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-253"></a>253 | [`NullifierAlreadyUsed`](#err-253) | Nullifier already used: proof was previously consumed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-254"></a>254 | [`MerklePathInvalid`](#err-254) | Merkle path invalid: membership proof is malformed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-255"></a>255 | [`PrivacyDepositTooLow`](#err-255) | Privacy deposit too low: below the minimum amount | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-256"></a>256 | [`PrivacyWithdrawalPending`](#err-256) | Privacy withdrawal pending: timelock has not elapsed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-257"></a>257 | [`StealthAddressInvalid`](#err-257) | Stealth address invalid: cannot derive recipient | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-258"></a>258 | [`ConfidentialTransferFailed`](#err-258) | Confidential transfer failed: shielded amount mismatch | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-259"></a>259 | [`PrivacyPaused`](#err-259) | Privacy paused: shielded operations are suspended | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Messaging & Notifications
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-260"></a>260 | [`NotificationServiceDown`](#err-260) | Notification service down: delivery backend unavailable | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-261"></a>261 | [`MessageTooLong`](#err-261) | Message too long: exceeds maximum length | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-262"></a>262 | [`RecipientUnsubscribed`](#err-262) | Recipient unsubscribed: target has opted out | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-263"></a>263 | [`NotificationDeliveryFailed`](#err-263) | Notification delivery failed: could not reach recipient | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-264"></a>264 | [`NotificationRateLimited`](#err-264) | Notification rate limited: too many messages sent | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-265"></a>265 | [`MessageSignatureInvalid`](#err-265) | Message signature invalid: sender could not be verified | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-266"></a>266 | [`InboxFull`](#err-266) | Inbox full: recipient storage limit reached | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-267"></a>267 | [`NotificationTemplateInvalid`](#err-267) | Notification template invalid: malformed payload | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-268"></a>268 | [`MessageExpired`](#err-268) | Message expired: delivery window has passed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-269"></a>269 | [`NotificationChannelClosed`](#err-269) | Notification channel closed: channel is no longer active | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Analytics & Reporting
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-270"></a>270 | [`ReportGenerationFailed`](#err-270) | Report generation failed: aggregation error | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-271"></a>271 | [`AnalyticsDataMissing`](#err-271) | Analytics data missing: required metrics unavailable | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-272"></a>272 | [`MetricOutOfRange`](#err-272) | Metric out of range: value exceeds allowed bounds | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-273"></a>273 | [`ReportTooLarge`](#err-273) | Report too large: exceeds maximum output size | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-274"></a>274 | [`SnapshotNotFound`](#err-274) | Snapshot not found: requested point-in-time state missing | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-275"></a>275 | [`AggregationWindowInvalid`](#err-275) | Aggregation window invalid: time range is malformed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-276"></a>276 | [`DataRetentionExpired`](#err-276) | Data retention expired: historical data was pruned | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-277"></a>277 | [`ReportAccessDenied`](#err-277) | Report access denied: insufficient permissions | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-278"></a>278 | [`AnalyticsQuotaExceeded`](#err-278) | Analytics quota exceeded: too many report requests | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-279"></a>279 | [`ExportFormatUnsupported`](#err-279) | Export format unsupported: requested format is not available | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Interoperability & Standards
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-280"></a>280 | [`SepProtocolViolation`](#err-280) | SEP protocol violation: interface contract was not honored | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-281"></a>281 | [`AssetNotSepCompliant`](#err-281) | Asset not SEP-compliant: missing required SEP behavior | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-282"></a>282 | [`CrossContractVersionMismatch`](#err-282) | Cross-contract version mismatch: incompatible API versions | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-283"></a>283 | [`InterfaceNotImplemented`](#err-283) | Interface not implemented: required method is missing | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-284"></a>284 | [`StandardsComplianceFailed`](#err-284) | Standards compliance failed: validation did not pass | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-285"></a>285 | [`ProtocolUpgradeRequired`](#err-285) | Protocol upgrade required: dependency is out of date | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-286"></a>286 | [`InteropHandshakeFailed`](#err-286) | Interop handshake failed: connection could not be established | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-287"></a>287 | [`NamespaceCollision`](#err-287) | Namespace collision: identifier is already registered | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-288"></a>288 | [`ExternalSystemUnavailable`](#err-288) | External system unavailable: dependency is offline | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-289"></a>289 | [`InteropRateLimitExceeded`](#err-289) | Interop rate limit exceeded: too many cross-system calls | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### System & Protocol Guards
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-290"></a>290 | [`ContractUpgradeScheduled`](#err-290) | Contract upgrade scheduled: upgrade is pending execution | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-291"></a>291 | [`MaintenanceModeActive`](#err-291) | Maintenance mode active: operations temporarily disabled | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-292"></a>292 | [`CircuitBreakerTripped`](#err-292) | Circuit breaker tripped: safety threshold was exceeded | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-293"></a>293 | [`EmergencyFreezeActive`](#err-293) | Emergency freeze active: all state changes are blocked | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-294"></a>294 | [`SystemClockDriftDetected`](#err-294) | System clock drift detected: ledger time is inconsistent | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-295"></a>295 | [`LedgerVersionUnsupported`](#err-295) | Ledger version unsupported: network upgrade required | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-296"></a>296 | [`NetworkPartitionDetected`](#err-296) | Network partition detected: consensus is unavailable | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-297"></a>297 | [`ResourceExhaustionWarning`](#err-297) | Resource exhaustion warning: limits are near capacity | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-298"></a>298 | [`GracePeriodActive`](#err-298) | Grace period active: transitional restrictions in effect | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-299"></a>299 | [`ConfigurationInvalid`](#err-299) | Configuration invalid: stored configuration is malformed | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+| <a id="err-300"></a>300 | [`SystemFatalError`](#err-300) | System fatal error: unrecoverable internal failure | Reserved in this build — no entry point currently returns this code. If you see it, the caller is hitting a contract build that does; compare `get_version()` with the deployment you expect. |
+
+### Two-Step Revocation
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-301"></a>301 | [`RevocationNotFound`](#err-301) | Revocation not found | There is no pending revocation for the target. Call `propose_revoke_role` first, or read `get_pending_revocation`. |
+| <a id="err-302"></a>302 | [`RevocationNotDue`](#err-302) | Revocation not due | The revocation timelock has not elapsed. Wait, then call `execute_revoke_role`. |
+| <a id="err-303"></a>303 | [`RevocationAlreadyExecuted`](#err-303) | Revocation already executed | The pending revocation already executed; no further call is needed. |
+| <a id="err-304"></a>304 | [`CannotRevokeSelf`](#err-304) | Cannot revoke self | A caller cannot revoke their own role. Another admin must call `propose_revoke_role` for this address. |
+| <a id="err-305"></a>305 | [`NoPendingOwner`](#err-305) | No pending ownership transfer | There is no pending ownership transfer. Call `transfer_ownership` first; `accept_ownership` and `cancel_ownership_transfer` return this when nothing is pending. |
+| <a id="err-306"></a>306 | [`ArithmeticOverflow`](#err-306) | Arithmetic overflow (checked arithmetic exceeded the i128/u64 range) | An amount or timestamp escaped the `i128` / `u64` range. Validate bounds before submitting and split oversized batches. |
+
+### Stream Accounting Guards
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-307"></a>307 | [`StreamInvariantViolated`](#err-307) | Stream accounting invariant violated: refused to pay an inconsistent amount | The contract refused to pay an internally inconsistent amount. Do not retry blindly — read `get_stream` and report the stream id, because this signals a bug rather than a bad request. |
+
+### Scoped Pause
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-308"></a>308 | [`InvalidPauseScope`](#err-308) | Pause scope not recognized: unknown scope identifier | The scope id is not a recognised pause scope. Use one of the documented scope constants accepted by `set_scope_paused`. |
+| <a id="err-309"></a>309 | [`PaymentIdempotencyConflict`](#err-309) | Idempotency key was reused for a different payment payload | An idempotency key was reused with a different payload. Reuse a key only for the identical request, or generate a new one. |
+
+### Stream Duration Bounds
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-310"></a>310 | [`StreamDurationTooShort`](#err-310) | Stream duration is too short: minimum duration is 60 seconds | The duration is below `MIN_STREAM_DURATION` (60 seconds). Lengthen the stream. |
+| <a id="err-311"></a>311 | [`StreamDurationTooLong`](#err-311) | Stream duration is too long: maximum duration is 5 years | The duration exceeds `MAX_STREAM_DURATION` (5 years). Shorten the stream. |
+
+### Token Decimal Precision
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-312"></a>312 | [`InvalidDecimalPrecision`](#err-312) | Payment amount violates token decimal precision constraints | The amount is not a whole multiple of the token's smallest unit, or the token declares more than 18 decimals. Quantise client-side using `get_token_decimals`. |
+
+### Payment Memo Validation
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-313"></a>313 | [`MemoTooLong`](#err-313) | Payment memo exceeds maximum length or contains invalid control characters | The memo exceeds `MAX_MEMO_BYTES` (64) or contains control characters. Truncate and strip control characters before submitting. |
+
+### Multisig Configuration Guards
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-314"></a>314 | [`InvalidThreshold`](#err-314) | Threshold cannot be zero or exceed signer count | The threshold must be greater than zero and no larger than the signer count. Fix both values together in `set_multisig_config`. |
+| <a id="err-315"></a>315 | [`EmptySignersList`](#err-315) | Signers list cannot be empty | Provide at least one signer in the multisig config; an empty list is rejected. |
+
+### Dispute Resolution Guards
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-316"></a>316 | [`DisputeCoolingOffActive`](#err-316) | Dispute cooling-off period is still active | A cooling-off period after dispute resolution is still running. Wait it out before releasing, claiming, or disputing again. |
+
+### Spending Window Guards
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-317"></a>317 | [`SpendingLimitExceeded`](#err-317) | Requested spend exceeds the remaining daily/monthly limit | The requested spend exceeds the remaining daily/monthly allowance. Lower the amount, wait for the window to reset, or raise the limit with `set_spending_limit`. |
+
+### Multisig Signer Deduplication
+
+| Code | Name | Cause | Solution |
+|---:|---|---|---|
+| <a id="err-318"></a>318 | [`DuplicateSigner`](#err-318) | Duplicate signer address in multisig config | Each signer may appear once in `set_multisig_config`. De-duplicate the list before submitting. |
+
+## Keeping this page accurate
+
+The enum is the source of truth. `npm run generate-errors` rewrites
+`src/lib/contract-errors.ts` and `src/types/errors.ts` from it, and
+`npm run typecheck` runs the generator with `--check`, so a mismatch
+between the Rust enum and the TypeScript catalogs fails CI. When you add a
+variant:
+
+1. Append it with the next free discriminant and a `///` doc comment.
+2. Run `npm run generate-errors` and commit the regenerated files.
+3. Add the row here — this page is prose (not generated), so the cause and
+   the recommended action get a human edit.
+
+---
+
+<div align="center">
+
+**[← Back to OphirPay README](../README.md)**
+
+</div>

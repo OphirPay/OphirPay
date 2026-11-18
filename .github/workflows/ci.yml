@@ -59,7 +59,7 @@ jobs:
       - run: npm run lint -- --max-warnings 0
 
   # ══════════════════════════════════════════════════════════════
-  # 2. TYPECHECK — TypeScript strict type-checking
+  # 2. TYPECHECK — TypeScript strict type-checking (issue #1979)
   # ══════════════════════════════════════════════════════════════
   typecheck:
     name: "2️⃣ Frontend — TypeCheck (tsc)"
@@ -68,7 +68,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
-      - run: npx tsc --noEmit
+      - name: Verify TypeScript types without emitting JS
+        run: npm run typecheck
       - name: Verify generated SDK matches docs/openapi.yaml (issues #822, #1439)
         # Regenerates from the committed spec and fails if ANY artefact is
         # stale: the operation catalogue (operations.generated.*) and the typed
@@ -114,6 +115,7 @@ jobs:
   # ══════════════════════════════════════════════════════════════
   build:
     name: "9️⃣ Frontend — Build (Next.js)"
+    needs: [lint, typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

@@ -1,7 +1,6 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-
 import { useState, useEffect } from "react";
 import { WalletButton } from "./WalletButton";
 import { NotificationCenter } from "./NotificationCenter";
@@ -20,7 +19,7 @@ export function Header() {
   const isDark = mounted ? resolved === "dark" : false;
 
   return (
-    <header aria-label="Application header" className="sticky top-0 z-30 h-16 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
+    <header aria-label="Application header" className="sticky top-0 z-30 h-16 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 transition-colors duration-200">
       <div className="flex items-center justify-between h-full px-4 md:px-6">
         {/* Left: Page title / breadcrumb area */}
         <div className="flex items-center gap-4">

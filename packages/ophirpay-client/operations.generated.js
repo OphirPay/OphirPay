@@ -222,7 +222,7 @@ export const API_OPERATIONS = [
     "name": "getApiEvents",
     "method": "GET",
     "path": "/api/events",
-    "summary": "Subscribe to real-time payment events",
+    "summary": "Subscribe to real-time payment events (Server-Sent Events)",
     "tags": [
       "Events"
     ],

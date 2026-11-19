@@ -62,6 +62,95 @@ cargo build --release --target wasm32v1-none
 `wasm32v1-none` is the Soroban target for protocol 25+; the legacy
 `wasm32-unknown-unknown` target is rejected by soroban-sdk 27.
 
+## Property-based tests (proptest)
+
+Two external-crate suites fuzz the contract with generated inputs and shrink
+any failure to a minimal counterexample:
+
+| Suite (`contracts/ophirpay/tests/`) | What it generates                                                                                                              | Invariants it asserts                                                                                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `proptest_token_moving.rs`          | Escrow deposits, deadlines, stream amounts/durations/elapsed points, arbiter decisions, concurrent escrow+stream+proposal sets | `LOCKED_BALANCE` conservation, exact token movements, vesting monotonicity, reentrancy rejection                                                                                 |
+| `proptest_payment_amounts.rs`       | Batch sizes `0..=105`, mixed negative/zero/positive `i128` amounts, `i128::MIN`/`i128::MAX`, ledger timestamps `0..=u64::MAX`  | Successful/failed counts reconcile with the request count, `total_amount` is the exact sum of positive entries, batches never lock funds, extreme inputs never panic or overflow |
+
+Run one suite at a time while iterating — running the whole manifest also runs
+the unit and integration suites:
+
+```bash
+# Token movement / LOCKED_BALANCE properties
+cargo test --manifest-path contracts/ophirpay/Cargo.toml --test proptest_token_moving
+
+# Batch amount, size and timestamp properties
+cargo test --manifest-path contracts/ophirpay/Cargo.toml --test proptest_payment_amounts
+
+# Both suites (and everything else in the crate)
+cargo test --manifest-path contracts/ophirpay/Cargo.toml
+```
+
+### Tuning the case count
+
+`PROPTEST_CASES` controls how many random inputs each property runs. The
+payment-amounts suite reads it on every run and falls back to **64**; CI sets
+`PROPTEST_CASES=64` for the whole crate. The token-moving suite currently pins
+`const PROPTEST_CASES: u32 = 64` inside the file, so the environment variable
+does **not** change it — edit the constant when you need longer local runs
+there.
+
+```bash
+# 1 000 generated batches instead of 64
+PROPTEST_CASES=1000 cargo test \
+  --manifest-path contracts/ophirpay/Cargo.toml \
+  --test proptest_payment_amounts
+
+# Show the generated cases and any panic output
+PROPTEST_CASES=256 cargo test \
+  --manifest-path contracts/ophirpay/Cargo.toml \
+  --test proptest_payment_amounts -- --nocapture
+```
+
+### How batches are generated
+
+The amount suite picks a batch size `n in 0..=96`, generates a vector of up
+to 96 amounts from `-1_000_000i128..=1_000_000i128` and slices it to `n`,
+creates `n` fresh payees with `Address::generate(&env)`, and calls
+`try_create_batch`. A pure-Rust
+model in the test (`expected_accounting`) counts entries with `amount > 0` and
+sums them with `saturating_add`; the property then compares the contract's
+`BatchCreateResult` and the persisted batch against that model. The `96` cap
+is deliberate: each successful payee emits a contract event, and a single
+Soroban invocation has a 16 KiB contract-events budget, so 97+ fully valid
+entries would be rejected by the host for reasons unrelated to the property.
+Batches of `101..=105` are fuzzed separately to assert the `BatchTooLarge`
+guard, and boundary values (`i128::MIN`, `-1`, `0`, `i128::MAX`) plus
+timestamps up to `u64::MAX` are sampled explicitly.
+
+The token-moving suite uses ranges rather than free-form bytes: deposit and
+stream amounts are bounded positive `i128`s, durations respect
+`MIN_STREAM_DURATION`, and elapsed-time points are generated independently of
+duration so cancellation math is exercised before, during, and after vesting.
+
+### Reading the output
+
+A passing run looks like this (truncated):
+
+```
+running 6 tests
+test prop_batch_amount_accounting_is_exact ... ok
+test prop_batch_size_max_success_accounting ... ok
+test prop_batch_size_overflow_is_rejected ... ok
+test prop_batch_timestamp_edges_are_recorded_exactly ... ok
+test prop_single_batch_boundary_amounts_no_overflow ... ok
+test prop_single_batch_max_i128_succeeds_without_overflow ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+On failure, proptest prints the shrunk counterexample under
+`minimal failing input:` and a `Test failed:` line that includes the case
+seed. Reproduce the failure deterministically by turning that exact input
+into a regular `#[test]` (the `tests/issue*.rs` files are the pattern to
+follow) before changing the contract — a green property run after a code
+change is only meaningful if the previously failing input is covered.
+
 ## The test environment
 
 Every test starts from `Env::default()`, which is an in-memory ledger plus host

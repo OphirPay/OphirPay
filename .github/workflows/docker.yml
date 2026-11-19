@@ -1,0 +1,87 @@
+name: "🐳 Docker Security Scan"
+
+# Issue #1981: Automated Trivy container security scanning
+# Runs Aquasecurity Trivy on Dockerfile changes to detect CVEs in base images
+# and dependencies, uploads SARIF results to the GitHub Security tab, and
+# enforces CRITICAL/HIGH severity gates.
+
+on:
+  push:
+    branches: [main, integration/staging]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".trivyignore"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/docker.yml"
+  pull_request:
+    branches: [main, integration/staging]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".trivyignore"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/docker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: docker-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy-scan:
+    name: "🛡️ Trivy Container Vulnerability Scan"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ophirpay:production
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner (SARIF output)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "ophirpay:production"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+          vuln-type: "os,library"
+          ignore-unfixed: true
+          trivyignores: ".trivyignore"
+
+      - name: Upload SARIF report to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      - name: Run Trivy vulnerability scanner (Table output & gate)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "ophirpay:production"
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          vuln-type: "os,library"
+          ignore-unfixed: true
+          trivyignores: ".trivyignore"

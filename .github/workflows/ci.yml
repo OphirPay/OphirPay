@@ -57,6 +57,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npm run lint -- --max-warnings 0
+      - name: Check open-source license compliance (issue #1992)
+        run: npm run check:licenses
 
   # ══════════════════════════════════════════════════════════════
   # 2. TYPECHECK — TypeScript strict type-checking (issue #1979)
@@ -206,15 +208,17 @@ jobs:
       - name: Install Soroban SDK deps & WASM optimization tools
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen wabt
-      - name: Cache Cargo
+      - name: Cache Cargo & Contract Target
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            contracts/target
             contracts/ophirpay/target
             contracts/emitter/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.toml') }}
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.lock', 'contracts/**/Cargo.toml') }}
           restore-keys: cargo-${{ runner.os }}-
       - name: Build OphirPay contract
         env:

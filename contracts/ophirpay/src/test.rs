@@ -5,6 +5,7 @@ use crate::*;
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
     use soroban_sdk::testutils::{Address as _, Ledger as _};
     use soroban_sdk::{vec, String};
@@ -326,6 +327,77 @@ mod tests {
         assert!(!escrow_after.claimed);
         assert_eq!(escrow_after.amount, 1000i128);
         assert_eq!(token_client.balance(&contract_id), 1000i128);
+    }
+
+    #[test]
+    fn test_dispute_cooling_off_period_enforcement() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(100_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        let token_client = token::Client::new(&env, &sac);
+        sac_client.mint(&depositor, &10_000i128);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Set cooling-off period to 3600 seconds (1 hour)
+        client.set_min_dispute_period(&owner, &3600u64);
+        assert_eq!(client.get_min_dispute_period(), 3600u64);
+
+        let escrow_id = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Option::<Address>::Some(arbiter.clone()),
+            &1000i128,
+            &sac,
+            &(env.ledger().timestamp() + 86400),
+            &String::from_str(&env, "cooling-off test"),
+        );
+
+        // 2. Initiate dispute
+        client.initiate_dispute(&depositor, &escrow_id);
+        let dispute_time = env.ledger().timestamp();
+
+        // 3. Attempt resolution before cooling-off period elapses (mutual_agreement = false)
+        // Advance only 1800s (30 mins < 1 hour)
+        env.ledger().set_timestamp(dispute_time + 1800);
+        let early_res = client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+        assert_eq!(early_res, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+
+        // 4. Mutual agreement bypasses cooling-off period
+        let escrow_id_mutual = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Option::<Address>::Some(arbiter.clone()),
+            &500i128,
+            &sac,
+            &(env.ledger().timestamp() + 86400),
+            &String::from_str(&env, "mutual agreement test"),
+        );
+        client.initiate_dispute(&depositor, &escrow_id_mutual);
+        let mutual_res = client.resolve_dispute(&arbiter, &escrow_id_mutual, &true, &true);
+        assert_eq!(mutual_res, ());
+        let escrow_mutual = client.get_escrow(&escrow_id_mutual);
+        assert!(escrow_mutual.released);
+        assert_eq!(token_client.balance(&beneficiary), 500i128);
+
+        // 5. Advance timestamp past cooling-off period for the first disputed escrow
+        env.ledger().set_timestamp(dispute_time + 3601);
+        let res = client.resolve_dispute(&arbiter, &escrow_id, &true, &false);
+        assert_eq!(res, ());
+
+        let escrow_final = client.get_escrow(&escrow_id);
+        assert!(escrow_final.released);
+        assert_eq!(token_client.balance(&beneficiary), 1500i128);
     }
 
     #[test]
@@ -690,6 +762,97 @@ mod tests {
     }
 
     #[test]
+    fn test_batch_payment_gas_benchmark() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Measure gas consumption for a single payment
+        let single_payee = Address::generate(&env);
+        let cpu_before_single = env.budget().cpu_instruction_cost();
+        let mem_before_single = env.budget().memory_bytes_cost();
+
+        let single_id = client.record_payment(
+            &creator,
+            &single_payee,
+            &100i128,
+            &sac,
+            &String::from_str(&env, "tx_single"),
+            &String::from_str(&env, "gas benchmark single"),
+        );
+        assert_eq!(single_id, 1);
+
+        let cpu_after_single = env.budget().cpu_instruction_cost();
+        let mem_after_single = env.budget().memory_bytes_cost();
+        let single_cpu = cpu_after_single - cpu_before_single;
+        let single_mem = mem_after_single - mem_before_single;
+
+        // 2. Measure gas consumption for 10 payments in a single batch
+        let mut payees = Vec::new(&env);
+        let mut amounts = Vec::new(&env);
+        for _ in 0..10 {
+            payees.push_back(Address::generate(&env));
+            amounts.push_back(100i128);
+        }
+
+        let cpu_before_batch = env.budget().cpu_instruction_cost();
+        let mem_before_batch = env.budget().memory_bytes_cost();
+
+        let batch_result = client.create_batch(
+            &creator,
+            &payees,
+            &amounts,
+            &sac,
+            &String::from_str(&env, "tx_batch_10"),
+        );
+        assert_eq!(batch_result.successful, 10);
+
+        let cpu_after_batch = env.budget().cpu_instruction_cost();
+        let mem_after_batch = env.budget().memory_bytes_cost();
+        let batch_cpu = cpu_after_batch - cpu_before_batch;
+        let batch_mem = mem_after_batch - mem_before_batch;
+
+        let per_recipient_batch_cpu = batch_cpu / 10;
+        let per_recipient_batch_mem = batch_mem / 10;
+
+        // 3. Print per-recipient gas savings comparison
+        std::println!("\n================ Gas Benchmark: Single vs 10-Recipient Batch ================");
+        std::println!("Single payment CPU instructions:        {}", single_cpu);
+        std::println!("Single payment Memory bytes:            {}", single_mem);
+        std::println!("10-recipient Batch CPU instructions:    {}", batch_cpu);
+        std::println!("10-recipient Batch Memory bytes:        {}", batch_mem);
+        std::println!("Per-recipient Batch CPU instructions:   {}", per_recipient_batch_cpu);
+        std::println!("Per-recipient Batch Memory bytes:       {}", per_recipient_batch_mem);
+        if single_cpu > per_recipient_batch_cpu {
+            let cpu_savings = (single_cpu - per_recipient_batch_cpu) * 100 / single_cpu;
+            std::println!("CPU Instruction savings per recipient:  {}%", cpu_savings);
+        }
+        std::println!("=============================================================================\n");
+
+        // 4. Assert batching confirms per-payment gas reduction
+        assert!(
+            per_recipient_batch_cpu < single_cpu,
+            "Per-recipient batch CPU ({}) should be less than single payment CPU ({})",
+            per_recipient_batch_cpu,
+            single_cpu
+        );
+        assert!(
+            batch_cpu < single_cpu * 10,
+            "Total 10-recipient batch CPU ({}) should be less than 10x single payment CPU ({})",
+            batch_cpu,
+            single_cpu * 10
+        );
+    }
+
+    #[test]
     #[should_panic]
     fn test_empty_batch_fails() {
         let env = Env::default();
@@ -716,6 +879,43 @@ mod tests {
     }
 
     // ── Pause Tests ────────────────────────────────────────
+
+    #[test]
+    fn test_unauthorized_caller_cannot_pause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let non_admin = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        let subsystem = 1u32;
+        assert!(!client.is_subsystem_paused(&subsystem));
+
+        // 1. Invoke set_subsystem_pause with non-admin caller: fails with PaymentError::Unauthorized
+        let unauthorized_res = client.try_set_subsystem_pause(&non_admin, &subsystem, &true);
+        assert_eq!(unauthorized_res, Err(Ok(PaymentError::Unauthorized)));
+        assert!(!client.is_subsystem_paused(&subsystem));
+
+        // Also test set_scope_paused with non-admin caller: fails with PaymentError::Unauthorized
+        let unauth_scope_res = client.try_set_scope_paused(&non_admin, &0u32, &true);
+        assert_eq!(unauth_scope_res, Err(Ok(PaymentError::Unauthorized)));
+
+        // 2. Invoke with admin caller: succeeds
+        let admin_res = client.set_subsystem_pause(&owner, &subsystem, &true);
+        assert_eq!(admin_res, ());
+
+        // 3. Assert state updates to paused
+        assert!(client.is_subsystem_paused(&subsystem));
+
+        // Unpause with admin caller
+        client.set_subsystem_pause(&owner, &subsystem, &false);
+        assert!(!client.is_subsystem_paused(&subsystem));
+    }
 
     #[test]
     fn test_pause_blocks_record_payment() {
@@ -3176,5 +3376,114 @@ mod tests {
             update_event_found,
             "Updated FeeConfigUpdated event not found"
         );
+    }
+
+    #[test]
+    fn test_token_decimal_precision_conversion() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let non_owner = Address::generate(&env);
+        let token_asset = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Test conversion of 1 token with 7 decimals to 10,000,000 stroops
+        // Base unit (0 decimals) -> 7 decimals: 1 whole token becomes 10,000,000 stroops
+        let stroops = client.convert_token_decimals(&1i128, &0u32, &7u32);
+        assert_eq!(stroops, 10_000_000i128);
+
+        // Direct helper invocation
+        assert_eq!(convert_token_decimals(1, 0, 7), Ok(10_000_000i128));
+
+        // Downscale: 10,000,000 stroops (7 decimals) -> base token (0 decimals)
+        let whole_tokens = client.convert_token_decimals(&10_000_000i128, &7u32, &0u32);
+        assert_eq!(whole_tokens, 1i128);
+
+        // Identity: same decimals return identical amount
+        assert_eq!(client.convert_token_decimals(&10_000_000i128, &7u32, &7u32), 10_000_000i128);
+
+        // Zero amount converts to zero
+        assert_eq!(client.convert_token_decimals(&0i128, &7u32, &18u32), 0i128);
+
+        // 2. Test conversion with 18-decimal custom token
+        // 1 whole 18-decimal token = 10^18 base units (e.g. wei)
+        let one_18_dec_token: i128 = 1_000_000_000_000_000_000;
+
+        // Convert 1 18-decimal token to Stellar 7-decimal stroops -> 10,000,000 stroops
+        let converted_to_stroops = client.convert_token_decimals(&one_18_dec_token, &18u32, &7u32);
+        assert_eq!(converted_to_stroops, 10_000_000i128);
+
+        // Convert 10,000,000 stroops (7 decimals) to 18 decimals -> 10^18 units
+        let converted_to_18 = client.convert_token_decimals(&10_000_000i128, &7u32, &18u32);
+        assert_eq!(converted_to_18, one_18_dec_token);
+
+        // Convert 1 base token (0 decimals) to 18 decimals -> 10^18 units
+        assert_eq!(client.convert_token_decimals(&1i128, &0u32, &18u32), one_18_dec_token);
+
+        // Fractional conversion: 0.5 tokens (5,000,000 stroops) <-> 500,000,000,000,000,000 in 18 decimals
+        assert_eq!(
+            client.convert_token_decimals(&5_000_000i128, &7u32, &18u32),
+            500_000_000_000_000_000i128
+        );
+        assert_eq!(
+            client.convert_token_decimals(&500_000_000_000_000_000i128, &18u32, &7u32),
+            5_000_000i128
+        );
+
+        // Test standard 6-decimal token (USDC) to 7-decimal stroops: 1 USDC (1,000,000) -> 10,000,000 stroops
+        assert_eq!(client.convert_token_decimals(&1_000_000i128, &6u32, &7u32), 10_000_000i128);
+        assert_eq!(client.convert_token_decimals(&10_000_000i128, &7u32, &6u32), 1_000_000i128);
+
+        // Truncation on lossy downscale
+        assert_eq!(
+            client.convert_token_decimals(&1_000_000_000_000_000_050i128, &18u32, &7u32),
+            10_000_000i128
+        );
+
+        // 3. Verify error returned if decimal precision exceeds supported limits (> 18)
+        let err_from_exceeds = client.try_convert_token_decimals(&1000i128, &19u32, &7u32);
+        assert_eq!(err_from_exceeds, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+        let err_to_exceeds = client.try_convert_token_decimals(&1000i128, &7u32, &25u32);
+        assert_eq!(err_to_exceeds, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+        let err_both_exceed = client.try_convert_token_decimals(&1000i128, &20u32, &22u32);
+        assert_eq!(err_both_exceed, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+        // Direct helper error asserts
+        assert_eq!(
+            convert_token_decimals(100, 19, 7),
+            Err(PaymentError::InvalidDecimalPrecision)
+        );
+        assert_eq!(
+            convert_token_decimals(100, 7, 20),
+            Err(PaymentError::InvalidDecimalPrecision)
+        );
+
+        // Overflow on extreme scale up
+        assert_eq!(
+            convert_token_decimals(i128::MAX, 0, 18),
+            Err(PaymentError::ArithmeticOverflow)
+        );
+
+        // 4. Verify token decimal configuration on contract
+        // Default decimal precision is 7
+        assert_eq!(client.get_token_decimals(&token_asset), 7u32);
+
+        // Owner can configure custom decimals up to 18
+        client.set_token_decimals(&owner, &token_asset, &18u32);
+        assert_eq!(client.get_token_decimals(&token_asset), 18u32);
+
+        // Setting precision > 18 fails
+        let err_set_invalid = client.try_set_token_decimals(&owner, &token_asset, &19u32);
+        assert_eq!(err_set_invalid, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+        // Non-owner cannot configure token decimals
+        let err_unauth = client.try_set_token_decimals(&non_owner, &token_asset, &6u32);
+        assert_eq!(err_unauth, Err(Ok(PaymentError::Unauthorized)));
     }
 }

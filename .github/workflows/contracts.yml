@@ -1,0 +1,54 @@
+name: Soroban Contracts Build & Test
+
+on:
+  push:
+    branches: [main, integration/staging]
+    paths:
+      - "contracts/**"
+      - ".github/workflows/contracts.yml"
+  pull_request:
+    branches: [main, integration/staging]
+    paths:
+      - "contracts/**"
+      - ".github/workflows/contracts.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  contracts-build:
+    name: Build & Test Soroban Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          targets: wasm32v1-none
+          components: rustfmt, clippy
+      - name: Install Soroban SDK deps & WASM tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen wabt
+      - name: Cache Cargo & Contract Target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+            contracts/ophirpay/target
+            contracts/emitter/target
+            target
+          key: cargo-contracts-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.lock') }}
+          restore-keys: |
+            cargo-contracts-${{ runner.os }}-
+      - name: Build OphirPay contract
+        run: cargo build --manifest-path contracts/ophirpay/Cargo.toml --target wasm32v1-none --release
+      - name: Build Emitter contract
+        run: cargo build --manifest-path contracts/emitter/Cargo.toml --target wasm32v1-none --release
+      - name: Test Contracts
+        run: |
+          cargo test --manifest-path contracts/ophirpay/Cargo.toml
+          cargo test --manifest-path contracts/emitter/Cargo.toml

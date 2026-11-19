@@ -1,3 +1,24 @@
+//! OphirPay Smart Contract on Soroban (Stellar)
+//!
+//! Production-grade open-source payment platform for Stellar & Soroban, featuring:
+//! - Direct & off-chain payment records with idempotency deduplication
+//! - Batch payments with atomic quota checks and partial failure handling
+//! - Linear payment streaming with monotonic vesting and locked balance invariants
+//! - Time-locked escrow with dispute arbitration
+//! - Multi-signature transaction approval workflows
+//! - On-chain governance with proposal creation, voting, and timelocked execution
+//! - Daily/monthly calendar-aligned spending limits with atomic debits
+//!
+//! # Core Contract Interface
+//!
+//! See [`OphirPayContract`] for all public entrypoints, including:
+//! - [`OphirPayContract::init`]: Contract initialization and ownership setup
+//! - [`OphirPayContract::record_payment`]: Off-chain payment recording with deduplication
+//! - [`OphirPayContract::create_batch`]: Multi-recipient batch payments
+//! - [`OphirPayContract::create_stream`]: Linear payment vesting stream creation
+//!
+//! All errors returned by contract methods are enumerated in [`PaymentError`].
+
 #![no_std]
 #![allow(deprecated)]
 #![allow(clippy::too_many_arguments)]
@@ -12,6 +33,8 @@ mod spending_limit;
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod test_proptest;
 
 // The module split moved every item out of this file, so re-export them all at
 // the crate root. This preserves both the pre-split public paths

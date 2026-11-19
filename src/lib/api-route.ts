@@ -102,6 +102,7 @@ export async function withIdempotency(
       status: 409,
       headers: {
         "Idempotency-Replay": "true",
+        "Idempotent-Replay": "true",
         "X-Original-Status": String(claim.response.status),
       },
     });

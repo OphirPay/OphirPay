@@ -328,6 +328,7 @@ export const CONTRACT_ERROR_MAP: Record<string, string> = {
   "317": "Requested spend exceeds the remaining daily/monthly limit",
   "318": "Duplicate signer address in multisig config",
   "319": "Escrow is in dispute: release is blocked until dispute is resolved",
+  "320": "Transfer or payment amount cannot be zero: must be strictly positive",
 };
 
 /**

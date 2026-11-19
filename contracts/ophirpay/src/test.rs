@@ -189,6 +189,17 @@ mod tests {
                 &String::from_str(&env, "tx"),
                 &String::from_str(&env, ""),
             ),
+            Err(Ok(PaymentError::ZeroAmountNotAllowed))
+        );
+        assert_eq!(
+            client.try_record_payment(
+                &payer,
+                &payee,
+                &-100i128,
+                &sac,
+                &String::from_str(&env, "tx_neg"),
+                &String::from_str(&env, ""),
+            ),
             Err(Ok(PaymentError::InvalidAmount))
         );
     }
@@ -268,6 +279,7 @@ mod tests {
     fn test_disputed_escrow_blocks_release() {
         let env = Env::default();
         env.mock_all_auths();
+        env.ledger().set_timestamp(100_000);
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
 
@@ -282,6 +294,7 @@ mod tests {
 
         let _ = client.init(&owner);
         client.set_timelock_enabled(&owner, &false);
+        env.ledger().set_timestamp(1000);
 
         let escrow_id = client.create_escrow(
             &depositor,
@@ -918,6 +931,41 @@ mod tests {
         assert_eq!(client.get_payment_count(), 1);
     }
 
+    #[test]
+    fn test_multisig_threshold_cannot_exceed_signer_count() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let signer1 = Address::generate(&env);
+        let signer2 = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        let signers = vec![&env, signer1.clone(), signer2.clone()];
+
+        // 1. Attempt threshold of 3 with only 2 signers: must return PaymentError::InvalidThreshold
+        let invalid_res = client.try_set_multisig_config(&owner, &3u32, &signers, &true);
+        assert_eq!(invalid_res, Err(Ok(PaymentError::InvalidThreshold)));
+
+        // 2. Also assert threshold of 0 returns PaymentError::InvalidThreshold
+        let zero_res = client.try_set_multisig_config(&owner, &0u32, &signers, &true);
+        assert_eq!(zero_res, Err(Ok(PaymentError::InvalidThreshold)));
+
+        // 3. Test valid threshold equal to signer count (2 of 2) succeeds
+        let valid_res = client.try_set_multisig_config(&owner, &2u32, &signers, &true);
+        assert!(valid_res.is_ok());
+
+        let config = client.get_multisig_config();
+        assert!(config.is_some());
+        let cfg = config.unwrap();
+        assert_eq!(cfg.threshold, 2);
+        assert_eq!(cfg.signers.len(), 2);
+        assert!(cfg.enabled);
+    }
+
     // ── Spending Limit Tests ───────────────────────────────
 
     #[test]
@@ -959,6 +1007,54 @@ mod tests {
 
         let result = client.check_spending(&user, &500i128);
         assert!(matches!(result, SpendCheckResult::Rejected));
+    }
+
+    #[test]
+    fn test_spending_limit_exceeded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Configure 1,000 stroop spending limit
+        client.set_spending_limit(&owner, &payer, &1000i128, &5000i128, &0u64, &true);
+
+        // 2. Execute first payment of 600 stroops (succeeds within limit)
+        let pid1 = client.atomic_spend(
+            &payer,
+            &payee,
+            &600i128,
+            &sac,
+            &String::from_str(&env, "tx_spend_1"),
+            &String::from_str(&env, "payment 1"),
+        );
+        assert_eq!(pid1, 1);
+
+        let limit = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit.current_daily_spend, 600);
+
+        // 3. Execute second payment of 500 stroops (600 + 500 = 1,100 > 1,000 daily limit -> fails)
+        let result = client.try_atomic_spend(
+            &payer,
+            &payee,
+            &500i128,
+            &sac,
+            &String::from_str(&env, "tx_spend_2"),
+            &String::from_str(&env, "payment 2"),
+        );
+        assert_eq!(result, Err(Ok(PaymentError::SpendingLimitExceeded)));
+
+        // Verify daily spend remains 600 and was not modified by the failed spend
+        let limit_after = client.get_spending_limit(&payer).unwrap();
+        assert_eq!(limit_after.current_daily_spend, 600);
     }
 
     #[test]
@@ -2903,5 +2999,182 @@ mod tests {
         assert_eq!(missing.items.len(), 0);
         assert_eq!(missing.total, 0);
         assert!(!missing.truncated);
+    }
+
+    // ── Issues #1967, #1968, #1971 Tests ─────────────────────────────
+
+    #[test]
+    fn test_reinitialize_fails_preserves_contract_state() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let attacker = Address::generate(&env);
+
+        // 1. Initial valid initialization
+        let version = client.init(&owner);
+        assert_eq!(version, CONTRACT_VERSION);
+        assert_eq!(client.get_owner(), owner);
+        assert_eq!(client.get_version(), CONTRACT_VERSION);
+        assert_eq!(client.get_payment_count(), 0);
+
+        // 2. Attacker attempts to re-initialize with their address
+        assert_eq!(
+            client.try_init(&attacker),
+            Err(Ok(PaymentError::AlreadyInitialized))
+        );
+
+        // 3. Original owner attempts to re-initialize
+        assert_eq!(
+            client.try_init(&owner),
+            Err(Ok(PaymentError::AlreadyInitialized))
+        );
+
+        // 4. Verify existing contract state and owner are strictly unchanged
+        assert_eq!(client.get_owner(), owner);
+        assert_ne!(client.get_owner(), attacker);
+        assert_eq!(client.get_version(), CONTRACT_VERSION);
+        assert_eq!(client.get_payment_count(), 0);
+    }
+
+    #[test]
+    fn test_timelocked_action_delay_expiration_boundary() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        let now = 1_000_000u64;
+        env.ledger().set_timestamp(now);
+
+        // Queue a timelocked administrative action with 24-hour delay
+        let _ = client.set_fee_config(&owner, &100u32, &200u32, &300u32, &20i128, &2i128, &true);
+        let action = client.get_timelocked_action(&1);
+        assert_eq!(action.id, 1);
+        assert_eq!(action.unlocks_at, now + TMLOCK_DELAY);
+        assert!(!action.executed);
+
+        // Boundary - 1 second: execution must fail with TimelockNotDue
+        env.ledger().set_timestamp(action.unlocks_at - 1);
+        assert_eq!(
+            client.try_execute_timelocked_action(&1),
+            Err(Ok(PaymentError::TimelockNotDue))
+        );
+        let action_pre = client.get_timelocked_action(&1);
+        assert!(!action_pre.executed);
+        // State change must NOT have taken effect yet
+        assert!(client.get_fee_config().is_none());
+
+        // Exact boundary (timestamp == action.unlocks_at): execution must succeed
+        env.ledger().set_timestamp(action.unlocks_at);
+        client.execute_timelocked_action(&1);
+
+        let action_post = client.get_timelocked_action(&1);
+        assert!(action_post.executed);
+
+        // Verify that the queued state change was successfully applied
+        let applied_config = client.get_fee_config().expect("Fee config should be set");
+        assert_eq!(applied_config.payment_fee_bps, 100);
+        assert_eq!(applied_config.escrow_fee_bps, 200);
+        assert_eq!(applied_config.stream_fee_bps, 300);
+
+        // Cannot replay executed action
+        assert_eq!(
+            client.try_execute_timelocked_action(&1),
+            Err(Ok(PaymentError::TimelockAlreadyExecuted))
+        );
+    }
+
+    #[test]
+    fn test_set_fee_config_emits_fee_config_updated_event() {
+        use soroban_sdk::testutils::Events as _;
+        use soroban_sdk::xdr::{ContractEventBody, ScVal};
+        use soroban_sdk::TryFromVal;
+
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Initial fee configuration
+        let timestamp_1 = 1_000_000u64;
+        env.ledger().set_timestamp(timestamp_1);
+        client.set_fee_config(&owner, &50u32, &100u32, &150u32, &10i128, &1i128, &true);
+
+        let events = env.events().all();
+        let mut initial_event_found = false;
+        for event in events.events() {
+            let ContractEventBody::V0(ref v0) = event.body;
+            if v0.topics.len() >= 2 {
+                if let (ScVal::Symbol(s0), ScVal::Symbol(s1)) = (&v0.topics[0], &v0.topics[1]) {
+                    if s0.0.as_slice() == b"fee_config" && s1.0.as_slice() == b"updated" {
+                        let val = soroban_sdk::Val::try_from_val(&env, &v0.data).unwrap();
+                        let fee_event = FeeConfigUpdated::try_from_val(&env, &val).unwrap();
+                        assert_eq!(fee_event.previous_collector, None);
+                        assert_eq!(fee_event.new_collector, None);
+                        assert_eq!(fee_event.previous_payment_fee_bps, 0);
+                        assert_eq!(fee_event.new_payment_fee_bps, 50);
+                        assert_eq!(fee_event.previous_escrow_fee_bps, 0);
+                        assert_eq!(fee_event.new_escrow_fee_bps, 100);
+                        assert_eq!(fee_event.previous_stream_fee_bps, 0);
+                        assert_eq!(fee_event.new_stream_fee_bps, 150);
+                        assert!(fee_event.enabled);
+                        assert_eq!(fee_event.updated_by, owner);
+                        assert_eq!(fee_event.timestamp, timestamp_1);
+                        initial_event_found = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            initial_event_found,
+            "Initial FeeConfigUpdated event not found"
+        );
+
+        // 2. Set collector and update fee rates again
+        let collector = Address::generate(&env);
+        client.set_fee_collector(&owner, &collector);
+
+        let timestamp_2 = 1_005_000u64;
+        env.ledger().set_timestamp(timestamp_2);
+        client.set_fee_config(&owner, &80u32, &180u32, &280u32, &25i128, &2i128, &true);
+
+        let events_after_update = env.events().all();
+        let mut update_event_found = false;
+        for event in events_after_update.events() {
+            let ContractEventBody::V0(ref v0) = event.body;
+            if v0.topics.len() >= 2 {
+                if let (ScVal::Symbol(s0), ScVal::Symbol(s1)) = (&v0.topics[0], &v0.topics[1]) {
+                    if s0.0.as_slice() == b"fee_config" && s1.0.as_slice() == b"updated" {
+                        let val = soroban_sdk::Val::try_from_val(&env, &v0.data).unwrap();
+                        let fee_event = FeeConfigUpdated::try_from_val(&env, &val).unwrap();
+                        if fee_event.timestamp == timestamp_2 {
+                            assert_eq!(fee_event.previous_collector, Some(collector.clone()));
+                            assert_eq!(fee_event.new_collector, Some(collector.clone()));
+                            assert_eq!(fee_event.previous_payment_fee_bps, 50);
+                            assert_eq!(fee_event.new_payment_fee_bps, 80);
+                            assert_eq!(fee_event.previous_escrow_fee_bps, 100);
+                            assert_eq!(fee_event.new_escrow_fee_bps, 180);
+                            assert_eq!(fee_event.previous_stream_fee_bps, 150);
+                            assert_eq!(fee_event.new_stream_fee_bps, 280);
+                            assert!(fee_event.enabled);
+                            assert_eq!(fee_event.updated_by, owner);
+                            update_event_found = true;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            update_event_found,
+            "Updated FeeConfigUpdated event not found"
+        );
     }
 }

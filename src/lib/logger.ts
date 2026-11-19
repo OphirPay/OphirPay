@@ -19,6 +19,17 @@ const SENSITIVE_FIELDS = new Set([
   "token",
   "secret",
   "password",
+  "cookie",
+  "cookies",
+  "set-cookie",
+  "x-api-key",
+  "auth",
+  "bearer",
+  "privatekey",
+  "private_key",
+  "seed",
+  "secretkey",
+  "secret_key",
 ]);
 
 function redactValue(value: unknown): unknown {
@@ -145,4 +156,82 @@ export const logger = {
   timing: (label: string, durationMs: number) => {
     log("debug", `timing:${label}`, { label, durationMs });
   },
+
+  /** Log structured unhandled route errors */
+  logError: (
+    err: unknown,
+    requestOrContext?: Request | { method?: string; path?: string; url?: string } | string,
+    extraContext?: Record<string, unknown>
+  ) => logError(err, requestOrContext, extraContext),
 };
+
+export interface ErrorLogContext extends Record<string, unknown> {
+  method?: string;
+  path?: string;
+  requestId?: string;
+  error?: string;
+  stack?: string;
+}
+
+/**
+ * Centralized error logging utility that outputs structured JSON logs (issue #1955).
+ * Formats unhandled API route errors with timestamp, method, path, request ID,
+ * and stack trace while redacting sensitive fields and secrets.
+ */
+export function logError(
+  err: unknown,
+  requestOrContext?: Request | { method?: string; path?: string; url?: string } | string,
+  extraContext?: Record<string, unknown>
+): void {
+  let method: string | undefined;
+  let path: string | undefined;
+  let customContext: Record<string, unknown> = {};
+
+  if (typeof Request !== "undefined" && requestOrContext instanceof Request) {
+    method = requestOrContext.method;
+    try {
+      path = new URL(requestOrContext.url).pathname;
+    } catch {
+      path = requestOrContext.url;
+    }
+  } else if (typeof requestOrContext === "object" && requestOrContext !== null) {
+    if ("method" in requestOrContext && typeof requestOrContext.method === "string") {
+      method = requestOrContext.method;
+    }
+    if ("path" in requestOrContext && typeof requestOrContext.path === "string") {
+      path = requestOrContext.path;
+    } else if ("url" in requestOrContext && typeof requestOrContext.url === "string") {
+      try {
+        path = new URL(requestOrContext.url).pathname;
+      } catch {
+        path = requestOrContext.url;
+      }
+    }
+    customContext = { ...requestOrContext };
+    delete customContext.method;
+    delete customContext.path;
+    delete customContext.url;
+  } else if (typeof requestOrContext === "string") {
+    path = requestOrContext;
+  }
+
+  if (extraContext) {
+    customContext = { ...customContext, ...extraContext };
+  }
+
+  const errorMessage = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  const requestId = currentRequestId() || (customContext.requestId as string | undefined);
+
+  const context: ErrorLogContext = {
+    ...(method ? { method } : {}),
+    ...(path ? { path } : {}),
+    ...(requestId ? { requestId } : {}),
+    error: errorMessage,
+    ...(stack ? { stack } : {}),
+    ...customContext,
+  };
+
+  const logMessage = typeof requestOrContext === "string" ? requestOrContext : (errorMessage || "Unhandled error");
+  logger.error(logMessage, context);
+}

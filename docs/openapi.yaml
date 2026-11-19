@@ -2525,21 +2525,84 @@ paths:
   /api/events:
     get:
       tags: [Events]
-      summary: Subscribe to real-time payment events
+      summary: Subscribe to real-time payment events (Server-Sent Events)
       description: |
-        Server-Sent Events stream. Polls the Stellar emitter contract every 10 seconds.
+        Opens a long-lived `text/event-stream` response. The endpoint is public
+        (no API key) and the same events are also available over the optional
+        WebSocket channel.
 
-        Events:
-        - `connected` — stream established
-        - `heartbeat` — keep-alive every 15s
-        - `payment:created` — new payment detected from emitter contract
+        Each frame is an `event:` name followed by one JSON `data:` object,
+        terminated by a blank line:
+
+        | `event:` | `data:` schema | When |
+        | --- | --- | --- |
+        | `connected` | `SseConnectedEvent` | Once, immediately after the stream opens |
+        | `heartbeat` | `SseHeartbeatEvent` | Every 15 seconds |
+        | `payment:created` | `LivePaymentEvent` | As the emitter contract records payments (polled every 10 seconds) |
+        | `error` | `SseErrorEvent` | Terminal frame; the server closes the stream after writing it |
+
+        A `: ping` SSE comment is written every 20 seconds so reverse proxies
+        and CDNs do not close an idle connection. Comments (lines beginning
+        with `:`) carry no `data:` line and are ignored by `EventSource`.
+
+        **Backpressure.** Each connection buffers at most 100 frames and
+        256 KiB. A consumer that falls behind has its oldest queued frames
+        dropped; a `: dropped N slow-consumer event(s)` comment is written
+        ahead of the next data frame. If the backlog has not drained for 60
+        seconds, or a single frame cannot fit in the budget, the server writes
+        a terminal `error` frame with `code: "SLOW_CONSUMER"` and closes the
+        stream. Reconnect using `GET /api/events/history` to backfill events
+        missed while disconnected; see docs/SSE.md for the full contract.
+      security: []
       responses:
         "200":
-          description: SSE stream
+          description: |
+            SSE stream. The connection stays open until the client disconnects
+            or the server terminates it with an `error` frame.
+          headers:
+            Cache-Control:
+              description: Always `no-cache, no-transform`.
+              schema: { type: string }
+            Connection:
+              description: Always `keep-alive`.
+              schema: { type: string }
+            X-Accel-Buffering:
+              description: Always `no`; disables nginx response buffering for the stream.
+              schema: { type: string }
           content:
             text/event-stream:
               schema:
                 type: string
+                description: |
+                  UTF-8 SSE frames (`event: <name>` + `data: <json>` + blank
+                  line) and `: ` comment keep-alives. Not a single JSON body —
+                  the block examples show the raw wire format.
+              examples:
+                connected:
+                  summary: First frame after the stream opens
+                  value: |
+                    event: connected
+                    data: {"message":"SSE stream connected to emitter contract"}
+
+                heartbeat:
+                  summary: Keep-alive frame emitted every 15 seconds
+                  value: |
+                    event: heartbeat
+                    data: {"timestamp":1735689600000}
+
+                paymentCreated:
+                  summary: New payment detected from the emitter contract
+                  value: |
+                    event: payment:created
+                    data: {"id":42,"event":"payment:created","timestamp":"2025-01-01T00:00:00.000Z","paymentId":"evt_42","status":"COMPLETED","emitter":"OphirPay","payer":"GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI","payee":"GDQJUTQYK2MQX2VGDR2FYWLIYAQIEGXTQVTFEMGH2BEWFG4BRUY4CSC","amount":"10000000","txHash":"3389e9f0f1a65f19736cacf544c2e825313e8447f569233bb8db39aa607c8889"}
+
+                slowConsumerDisconnect:
+                  summary: Terminal frame written before a slow-consumer disconnect
+                  value: |
+                    event: error
+                    data: {"code":"SLOW_CONSUMER","reason":"idle-timeout","message":"The event stream was closed because this client could not keep up with the event rate."}
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /api/events/history:
     get:
@@ -2552,7 +2615,9 @@ paths:
         `meta.nextCursor` value from the previous response as `cursor`. The
         response envelope carries `meta.nextCursor` (null on the last page) and
         `meta.hasMore`, so clients catching up after a disconnect can walk the
-        history without re-reading or skipping records.
+        history without re-reading or skipping records. This endpoint is public
+        (no API key) and is cached for 60 seconds.
+      security: []
       parameters:
         - name: limit
           in: query
@@ -2568,12 +2633,38 @@ paths:
       responses:
         "200":
           description: Event history page with cursor meta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventHistoryResponse"
+              examples:
+                firstPage:
+                  summary: First page of a two-event history
+                  value:
+                    success: true
+                    data:
+                      events:
+                        - id: evt_42
+                          type: payment.created
+                          payer: GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI
+                          payee: GDQJUTQYK2MQX2VGDR2FYWLIYAQIEGXTQVTFEMGH2BEWFG4BRUY4CSC
+                          amount: 10000000
+                          txHash: 3389e9f0f1a65f19736cacf544c2e825313e8447f569233bb8db39aa607c8889
+                          timestamp: 1735689600
+                      total: 2
+                    meta:
+                      timestamp: "2025-01-01T00:00:00.000Z"
+                      limit: 50
+                      nextCursor: null
+                      hasMore: false
         "400":
           description: Invalid cursor or limit
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   # ── Health ────────────────────────────────────────────────
   /api/health:
@@ -3452,6 +3543,160 @@ components:
           description: Per-field validation failures, when the request had a body.
           items:
             $ref: "#/components/schemas/ProblemFieldError"
+
+    # ── Server-Sent Events ────────────────────────────────────
+    SseConnectedEvent:
+      type: object
+      description: "`data:` payload of the first frame on a new SSE connection."
+      required: [message]
+      properties:
+        message:
+          type: string
+          const: SSE stream connected to emitter contract
+
+    SseHeartbeatEvent:
+      type: object
+      description: >-
+        Keep-alive frame emitted every 15 seconds. Proxies see traffic and the
+        client can distinguish an idle stream from a dead one.
+      required: [timestamp]
+      properties:
+        timestamp:
+          type: integer
+          description: Server clock at emission, in Unix epoch milliseconds.
+
+    LivePaymentEvent:
+      type: object
+      description: |
+        `data:` payload of a `payment:created` frame. Produced by
+        `normalizeEvent()` in `src/lib/events/event-source.ts` and shared
+        verbatim with the optional WebSocket transport.
+      required: [id, event, timestamp, paymentId, status]
+      properties:
+        id:
+          type: integer
+          description: Emitter-contract event id; stable dedup key across reconnects.
+        event:
+          type: string
+          const: "payment:created"
+        timestamp:
+          type: string
+          format: date-time
+          description: Delivery time (ISO 8601), not the on-chain ledger time.
+        paymentId:
+          type: string
+          description: "`evt_<id>` where `<id>` is the emitter-contract event id."
+        status:
+          type: string
+          const: COMPLETED
+        emitter:
+          type: string
+          description: Emitter label; defaults to `OphirPay`.
+        payer:
+          type: string
+          description: Payer Stellar address, empty when the contract event omits it.
+        payee:
+          type: string
+          description: Payee Stellar address, empty when the contract event omits it.
+        amount:
+          type: string
+          description: Amount in stroops as a decimal string; `"0"` when omitted.
+        txHash:
+          type: string
+          description: Stellar transaction hash, empty when the contract event omits it.
+
+    SseErrorEvent:
+      type: object
+      description: |
+        Terminal frame written immediately before the server closes a
+        slow-consumer connection. No further frames follow.
+      required: [code, reason, message]
+      properties:
+        code:
+          type: string
+          const: SLOW_CONSUMER
+        reason:
+          type: string
+          enum: [buffer-overflow, idle-timeout, slow-consumer]
+          description: >-
+            `buffer-overflow` when a frame cannot fit in the 100-event /
+            256 KiB budget, `idle-timeout` when queued data did not drain for
+            60 seconds, and `slow-consumer` when the disconnect policy fired
+            without a more specific cause.
+        message:
+          type: string
+          description: Human-readable explanation, safe to log.
+
+    EventHistoryItem:
+      type: object
+      description: One on-chain payment event, normalized for the history API.
+      required: [id, type, payer, payee, amount, txHash]
+      properties:
+        id:
+          type: string
+          description: "`evt_<on-chain payment id>`."
+        type:
+          type: string
+          const: payment.created
+        payer:
+          type: string
+          description: Payer Stellar address.
+        payee:
+          type: string
+          description: Payee Stellar address.
+        amount:
+          type: integer
+          description: Amount in stroops.
+        txHash:
+          type: string
+          description: Stellar transaction hash.
+        timestamp:
+          type: integer
+          description: >-
+            Ledger timestamp in Unix seconds. Omitted when the on-chain record
+            carries no timestamp.
+        metadata:
+          type: string
+          description: Free-form memo/metadata attached to the on-chain record.
+
+    EventHistoryResponse:
+      type: object
+      description: Standard success envelope around one event-history page.
+      required: [success, data, meta]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          type: object
+          required: [events, total]
+          properties:
+            events:
+              type: array
+              items:
+                $ref: "#/components/schemas/EventHistoryItem"
+            total:
+              type: integer
+              description: >-
+                Total on-chain payments matching the query, not just this page.
+                Each payment corresponds to one `payment.created` event.
+        meta:
+          type: object
+          required: [timestamp, limit, nextCursor, hasMore]
+          properties:
+            timestamp:
+              type: string
+              format: date-time
+            limit:
+              type: integer
+              description: Page size actually applied (1–100).
+            nextCursor:
+              type: [string, "null"]
+              description: >-
+                Opaque cursor for the next page, or `null` when this is the
+                last page.
+            hasMore:
+              type: boolean
 
   responses:
     ValidationError:

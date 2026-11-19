@@ -362,8 +362,8 @@ export const createScheduledPaymentSchema = z
         "Scheduled date must be a valid date"
       )
       .refine(
-        (value) => new Date(value).getTime() > Date.now(),
-        "Scheduled date must be in the future"
+        (value) => new Date(value).getTime() > Date.now() + 60_000,
+        "Scheduled date must be in the future (at least 60 seconds)"
       ),
   })
   .superRefine(refineMemo);

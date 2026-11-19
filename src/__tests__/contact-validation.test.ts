@@ -13,6 +13,10 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(),
 }));
 
+vi.mock("@/lib/csrf", () => ({
+  verifyCsrf: vi.fn().mockReturnValue(null),
+}));
+
 import { getAuthContext, type AuthContext } from "@/lib/auth-session";
 
 const VALID_STELLAR = "GDV4VOJNQL7UAPHPOH7BLFOG3CJZ2A65FCHTYWPHZVMQ3OQG5W757FCE";

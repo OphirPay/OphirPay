@@ -232,5 +232,6 @@ export function logError(
     ...customContext,
   };
 
-  logger.error(errorMessage || "Unhandled error", context);
+  const logMessage = typeof requestOrContext === "string" ? requestOrContext : (errorMessage || "Unhandled error");
+  logger.error(logMessage, context);
 }

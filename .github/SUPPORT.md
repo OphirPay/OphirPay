@@ -34,5 +34,5 @@ OphirPay is open-source and community-funded. If it saves you time or powers you
 ## 📧 Contact
 
 - **General inquiries**: hello@ophirpay.dev
-- **Security**: security@ophirpay.dev
+- **Security**: use the private advisory flow in **[SECURITY.md](../SECURITY.md)** — report by email is unavailable while no monitored mailbox is provisioned (issue #1280)
 - **Conduct issues**: conduct@ophirpay.dev

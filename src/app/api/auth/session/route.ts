@@ -11,18 +11,31 @@ import { withMetrics } from "@/lib/metrics-middleware";
  * holds the wallet's private key by signing a short-lived challenge (see
  * lib/challenge.ts and GET /api/auth/challenge). Callers that already hold a
  * valid session cookie may renew it without re-prompting the wallet. The
- * cookie is HttpOnly + SameSite=Lax + signed with AUTH_SECRET, and all
- * data-bearing routes resolve the user from it via getAuthContext().
+ * cookie is HttpOnly + SameSite=Strict (+ Secure in production) and signed with
+ * AUTH_SECRET, and all data-bearing routes resolve the user from it via
+ * getAuthContext().
+ *
+ * Rolling renewal (issue #1399): a session with less than half its TTL left is
+ * reissued on the next POST so an active user is never logged out
+ * mid-operation. Logout (DELETE) revokes the wallet's outstanding tokens in
+ * addition to clearing the cookie, so every tab and device is invalidated at
+ * once.
  */
 
 import {
   buildSessionCookie,
   buildLogoutCookie,
   readSessionCookie,
+  sessionNeedsRenewal,
 } from "@/lib/auth-session";
+import { revokeWalletSessions } from "@/lib/session-revocation";
 import { verifyChallengeToken, challengeMessage, verifyWalletSignature } from "@/lib/challenge";
 import { isValidStellarAddress } from "@/lib/stellar";
-import { successResponse, badRequestError, unauthorizedError } from "@/lib/api-response";
+import {
+  badRequestError,
+  unauthorizedError,
+  sensitiveSuccessResponse,
+} from "@/lib/api-response";
 import { verifyCsrf } from "@/lib/csrf";
 import { withRequestLogging } from "@/lib/request-logging";
 import { enforceAuthRateLimit } from "@/lib/auth-rate-limit";
@@ -85,9 +98,28 @@ export const POST = withMetrics("POST /api/auth/session", withRequestLogging(asy
     }
   }
 
-  const response = successResponse({ authenticated: true, publicKey, network });
-  response.headers.set("Set-Cookie", buildSessionCookie(publicKey, network));
+  const response = sensitiveSuccessResponse({ authenticated: true, publicKey, network });
+
+  // Issue (or roll) the cookie: a fresh login always reissues, and an existing
+  // session is reissued once it has less than half its TTL left so it never
+  // expires out from under an active user.
+  const renew = existingSession ? sessionNeedsRenewal(existingSession) : true;
+  if (hasProof || renew) {
+    response.headers.set("Set-Cookie", buildSessionCookie(publicKey, network));
+  }
   return response;
+}));
+
+export const GET = withMetrics("GET /api/auth/session", withRequestLogging(async function GET(request: Request) {
+  const session = readSessionCookie(request);
+  if (!session) {
+    return sensitiveSuccessResponse({ authenticated: false, session: null });
+  }
+  return sensitiveSuccessResponse({
+    authenticated: true,
+    publicKey: session.pk,
+    network: session.nw,
+  });
 }));
 
 export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging(async function DELETE(request: Request) {
@@ -98,7 +130,16 @@ export const DELETE = withMetrics("DELETE /api/auth/session", withRequestLogging
   const rateLimited = await enforceAuthRateLimit(request);
   if (rateLimited) return rateLimited;
 
-  const response = successResponse({ authenticated: false });
+  // Record the wallet's outstanding tokens as revoked so a cookie copied
+  // before logout (another tab, a saved request, an attacker) stops
+  // authenticating immediately — clearing the cookie alone only helps the
+  // browser that performs the logout (issue #1399).
+  const session = readSessionCookie(request);
+  if (session) {
+    await revokeWalletSessions(session.pk);
+  }
+
+  const response = sensitiveSuccessResponse({ authenticated: false });
   response.headers.set("Set-Cookie", buildLogoutCookie());
   return response;
 }));

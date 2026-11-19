@@ -6,10 +6,30 @@ import { Contract, TransactionBuilder, scValToNative, nativeToScVal } from "@ste
 import { getSorobanServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
 import { DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { withRequestLogging } from "@/lib/request-logging";
+import {
+  createBoundedSseBuffer,
+  type BoundedSseBuffer,
+} from "@/lib/events/sse-buffer";
+import {
+  incMetric,
+  incSseActiveConnection,
+  recordSseConnectionDuration,
+} from "@/lib/metrics-counters";
 
-/** Map of connected SSE clients */
-const clients = new Map<string, ReadableStreamDefaultController>();
+/** Map of connected SSE clients (used for the safety-timeout sweep). */
+const clients = new Map<string, ReadableStreamDefaultController<Uint8Array>>();
 let clientCounter = 0;
+
+/** Maximum buffered events per connection before the policy applies. */
+export const AUDIT_SSE_MAX_BUFFERED_EVENTS = 100;
+/** Maximum buffered bytes per connection before the policy applies. */
+export const AUDIT_SSE_MAX_BUFFERED_BYTES = 256 * 1024;
+/** Close a backlogged connection that hasn't drained within this budget. */
+export const AUDIT_SSE_IDLE_TIMEOUT_MS = 60_000;
+/** Keep-alive comment cadence (proxy/CDN idle timeout is typically 30–60 s). */
+export const AUDIT_SSE_PING_INTERVAL_MS = 20_000;
+
+type AuditController = ReadableStreamDefaultController<Uint8Array>;
 
 /**
  * Poll the Soroban OphirPayContract for new audit log entries.
@@ -84,42 +104,71 @@ async function pollContractForAuditEntries(
 export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(async function GET() {
   const clientId = ++clientCounter;
   const contractId = process.env.NEXT_PUBLIC_CONTRACT_ID || DEFAULT_CONTRACT_ID;
+  const startTime = Date.now();
 
-  const stream = new ReadableStream({
-    async start(controller) {
+  let closed = false;
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let pingInterval: ReturnType<typeof setInterval> | null = null;
+  let safetyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Cleanup on stream cancel / client disconnect / slow-consumer disconnect.
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    if (pollInterval) clearInterval(pollInterval);
+    if (pingInterval) clearInterval(pingInterval);
+    if (safetyTimeout) clearTimeout(safetyTimeout);
+    clients.delete(String(clientId));
+    // Release the connection from the shared and route gauges, and record duration into histogram.
+    incMetric("sse_open_connections", -1);
+    incSseActiveConnection("audit-log", -1);
+    recordSseConnectionDuration(
+      "audit-log",
+      Math.max(0, (Date.now() - startTime) / 1000)
+    );
+  };
+
+  let lastDropped = 0;
+  const buffer: BoundedSseBuffer = createBoundedSseBuffer({
+    policy: "drop-oldest",
+    maxEvents: AUDIT_SSE_MAX_BUFFERED_EVENTS,
+    maxBytes: AUDIT_SSE_MAX_BUFFERED_BYTES,
+    idleTimeoutMs: AUDIT_SSE_IDLE_TIMEOUT_MS,
+    onOverflow: (info) => {
+      const delta = info.droppedEvents - lastDropped;
+      if (delta > 0) incMetric("sse_dropped_events_total", delta);
+      lastDropped = info.droppedEvents;
+    },
+    onDisconnect: cleanup,
+  });
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller: AuditController) {
+      buffer.attach(controller);
       clients.set(String(clientId), controller);
+      incMetric("sse_open_connections");
+      incSseActiveConnection("audit-log", 1);
       let lastSeenId = 0;
 
-      // Send connected event immediately
-      controller.enqueue(
-        new TextEncoder().encode(
-          `event: connected\ndata: ${JSON.stringify({ clientId, contractId, message: "Audit log SSE stream connected" })}\n\n`
-        )
-      );
+      // Send connected event immediately.
+      buffer.push("connected", {
+        clientId,
+        contractId,
+        message: "Audit log SSE stream connected",
+      });
 
-      let closed = false;
-      let pollInterval: ReturnType<typeof setInterval> | null = null;
-      let safetyTimeout: ReturnType<typeof setTimeout> | null = null;
-      const encoder = new TextEncoder();
-
-      // Cleanup on stream cancel / client disconnect
-      const cleanup = () => {
-        if (closed) return;
-        closed = true;
-        if (pollInterval) clearInterval(pollInterval);
-        if (safetyTimeout) clearTimeout(safetyTimeout);
-        clients.delete(String(clientId));
-      };
-
-      // Typed cancel hook — runs when the client disconnects.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (controller as any).signal?.addEventListener("abort", cleanup);
-
-      // Safety: auto-cleanup after 10 minutes even without an explicit
-      // disconnect (e.g. runtimes that never surface the abort signal).
+      // Safety: auto-cleanup after 10 minutes even if the stream is abandoned
+      // without a cancellation signal.
       safetyTimeout = setTimeout(cleanup, 10 * 60 * 1000);
 
-      // Poll contract every 15 seconds for new entries
+      // Keep-alive comment every 20 s so proxies don't silently drop an idle
+      // stream between (possibly slow) contract polls.
+      pingInterval = setInterval(() => {
+        if (closed) return;
+        buffer.pushComment("ping");
+      }, AUDIT_SSE_PING_INTERVAL_MS);
+
+      // Poll contract every 15 seconds for new entries.
       pollInterval = setInterval(async () => {
         if (closed) return;
         try {
@@ -131,35 +180,30 @@ export const GET = withMetrics("GET /api/audit-log/sse", withRequestLogging(asyn
 
           for (const entry of entries) {
             if (closed) break;
-            try {
-              controller.enqueue(
-                encoder.encode(
-                  `event: audit:entry\ndata: ${JSON.stringify(entry)}\n\n`
-                )
-              );
-            } catch {
-              closed = true;
-              break;
-            }
+            buffer.push("audit:entry", entry);
           }
         } catch {
           // Poll failed silently — retry next interval
         }
       }, 15_000);
 
-      // Initial poll
+      // Initial poll.
       try {
         const { entries, newLastSeenId } = await pollContractForAuditEntries(0, CHAIN_READ_SOURCE);
         lastSeenId = newLastSeenId;
         for (const entry of entries) {
           if (closed) break;
-          controller.enqueue(
-            encoder.encode(
-              `event: audit:entry\ndata: ${JSON.stringify(entry)}\n\n`
-            )
-          );
+          buffer.push("audit:entry", entry);
         }
-      } catch { /* silent */ }
+      } catch {
+        /* silent */
+      }
+    },
+    pull(controller: AuditController) {
+      buffer.pull(controller);
+    },
+    cancel() {
+      cleanup();
     },
   });
 

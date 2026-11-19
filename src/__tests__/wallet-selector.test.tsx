@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { useState } from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { WalletSelector } from "@/components/WalletSelector";
 
 const WALLET_IDS = ["freighter", "albedo", "xbull"] as const;
@@ -33,6 +33,26 @@ describe("WalletSelector", () => {
     expect(screen.getByText("Installed")).toBeInTheDocument();
     // Albedo/xBull are not available in this render
     expect(screen.getAllByText("Not found").length).toBeGreaterThan(0);
+  });
+
+  it("shows Ledger as unavailable when WebUSB is not available", () => {
+    const onSelect = vi.fn();
+    renderSelector({ availableWallets: [...WALLET_IDS], onSelect });
+    const ledger = screen.getByRole("button", { name: /ledger/i });
+    expect(ledger).toBeDisabled();
+    expect(within(ledger).getByText("Not found")).toBeInTheDocument();
+    fireEvent.click(ledger);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("allows Ledger selection when the WebUSB connector is available", () => {
+    const onSelect = vi.fn();
+    renderSelector({ availableWallets: [...WALLET_IDS, "ledger"], onSelect });
+    const ledger = screen.getByRole("button", { name: /ledger/i });
+    expect(ledger).toBeEnabled();
+    expect(within(ledger).getByText("Available")).toBeInTheDocument();
+    fireEvent.click(ledger);
+    expect(onSelect).toHaveBeenCalledWith("ledger");
   });
 
   it("calls onSelect when an available wallet is clicked", () => {

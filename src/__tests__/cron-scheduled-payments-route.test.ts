@@ -20,12 +20,21 @@ const {
   mockPublicKeyFromSecret: vi.fn(),
 }));
 
+const { mockRetryFindMany, mockRetryUpdate } = vi.hoisted(() => ({
+  mockRetryFindMany: vi.fn(),
+  mockRetryUpdate: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   default: {
     scheduledPayment: {
       findMany: mockFindMany,
       updateMany: mockUpdateMany,
       update: mockUpdate,
+    },
+    webhookDelivery: {
+      findMany: mockRetryFindMany,
+      update: mockRetryUpdate,
     },
   },
 }));
@@ -101,6 +110,7 @@ beforeEach(() => {
 
   mockPublicKeyFromSecret.mockReturnValue(SOURCE_PUBLIC);
   mockFindMany.mockResolvedValue([]);
+  mockRetryFindMany.mockResolvedValue([]);
   // Default: the claim succeeds — this run owns the row.
   mockUpdateMany.mockResolvedValue({ count: 1 });
   mockUpdate.mockImplementation(async ({ where }) => ({ id: where.id }));
@@ -467,5 +477,39 @@ describe("GET /api/cron — failure handling", () => {
     const response = await GET(cronRequest());
 
     expect(response.status).toBe(500);
+  });
+});
+
+describe("GET /api/cron — webhook retry queue", () => {
+  it("drains only the retry queue when task=webhook-retries", async () => {
+    mockRetryFindMany.mockResolvedValue([]);
+
+    const response = await GET(
+      new Request("https://ophirpay.test/api/cron?task=webhook-retries", {
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const summary = await summaryOf(response);
+    expect(summary.webhookRetries).toEqual({
+      scanned: 0,
+      delivered: 0,
+      rescheduled: 0,
+      deadLettered: 0,
+      errors: 0,
+    });
+    // The scheduled-payment query is not touched for this task.
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  it("drains the retry queue alongside scheduled payments by default", async () => {
+    mockRetryFindMany.mockResolvedValue([]);
+
+    const summary = await summaryOf(await GET(cronRequest()));
+
+    expect(mockRetryFindMany).toHaveBeenCalled();
+    expect(summary.webhookRetries).toMatchObject({ scanned: 0 });
+    expect(summary.picked).toBe(0);
   });
 });

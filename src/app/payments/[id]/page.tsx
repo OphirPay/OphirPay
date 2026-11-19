@@ -156,7 +156,7 @@ export default function PaymentDetailPage() {
   const steps = useMemo(() => derivePaymentLifecycle(lifecycleInput), [lifecycleInput]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="payment-print-page space-y-6 animate-fade-in">
       <Breadcrumb
         items={[
           { label: "Payments", href: "/payments" },
@@ -228,9 +228,16 @@ export default function PaymentDetailPage() {
             </div>
             <div className="flex items-center gap-3">
               {status && <StatusBadge status={status} />}
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="print:hidden text-sm text-gray-500 dark:text-gray-400 hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors"
+              >
+                Print
+              </button>
               <Link
                 href="/payments"
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors"
+                className="print:hidden text-sm text-gray-500 dark:text-gray-400 hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors"
               >
                 ← All payments
               </Link>

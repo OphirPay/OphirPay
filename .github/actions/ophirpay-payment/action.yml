@@ -1,0 +1,50 @@
+name: OphirPay Batch Payment
+description: >-
+  Submit an OphirPay batch payment from a CSV file. The job fails when any
+  payment is rejected, so a CI payout can never silently drop recipients.
+
+inputs:
+  api-key:
+    description: OphirPay API key (pass a repository secret).
+    required: true
+  csv-file:
+    description: Path to the CSV to submit (header `address,amount[,memo]`, or headerless).
+    required: true
+  base-url:
+    description: OphirPay API origin.
+    required: false
+    default: https://api.ophirpay.com
+  name:
+    description: Label applied to the created batch.
+    required: false
+    default: ci-payout
+  node-version:
+    description: Node.js version used to run the CLI.
+    required: false
+    default: "20"
+
+outputs:
+  batch-id:
+    description: Id of the created batch.
+    value: ${{ steps.submit.outputs.batch-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Submit batch
+      id: submit
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      env:
+        OPHIRPAY_API_KEY: ${{ inputs.api-key }}
+        OPHIRPAY_BASE_URL: ${{ inputs.base-url }}
+      run: |
+        set -o pipefail
+        node scripts/ophirpay-cli.mjs batch:submit \
+          --file "${{ inputs.csv-file }}" \
+          --name "${{ inputs.name }}"

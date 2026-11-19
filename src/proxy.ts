@@ -2,99 +2,107 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { InMemoryRateLimitStore } from "@/lib/rate-limit";
+import { getRateLimitStore } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import {
+  buildCsp,
+  CSP_POLICY,
+  generateNonce,
+  generateRequestId,
+  getClientIp,
+  getRateLimitMax,
+  RATE_LIMIT_WINDOW_MS,
+} from "@/lib/proxy-config";
 
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-// Configurable via RATE_LIMIT_RPM env (defaults to 120 requests/min/IP)
-const RATE_LIMIT_MAX = Math.max(
-  1,
-  parseInt(process.env.RATE_LIMIT_RPM || "120", 10) || 120
-);
+import {
+  handleCorsPreflight,
+  resolveCorsOrigin,
+  CORS_ALLOWED_METHODS,
+  CORS_ALLOWED_HEADERS,
+} from "@/lib/cors";
+import {
+  extractApiKey,
+  validateKeyFormat,
+  API_KEY_LOOKUP_PATTERN,
+} from "@/lib/api-key-format";
+import { hasSessionCookie, verifyCsrfForRequest } from "@/lib/csrf-token";
+import { applySecurityHeaders } from "@/lib/security-headers";
+import {
+  getRateLimitHeaders,
+  getRateLimitExceededHeaders,
+  rateLimitInfoFromResult,
+  getRetryAfterHeaderValue,
+} from "@/lib/rate-limit-headers";
 
-// Single shared in-memory rate limit store (Edge Runtime safe)
-// NOTE: per-instance by design. For multi-instance production rate
-// limiting, terminate TLS at a load balancer / gateway that enforces
-// limits, or route through a Redis-backed limiter at the platform layer.
-const rateLimitStore = new InMemoryRateLimitStore();
+const RATE_LIMIT_MAX = getRateLimitMax();
 
-const isProd = process.env.NODE_ENV === "production";
-
-function getClientIp(request: NextRequest): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown"
-  );
-}
-
-function generateRequestId(): string {
-  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/**
- * Content-Security-Policy for HTML pages.
- *
- * Next.js (App Router) injects inline streaming/hydration scripts, and this
- * Next 16 build does not propagate a per-request nonce (via x-nonce or a
- * request-header CSP) to the app renderer, so a script-src without
- * 'unsafe-inline' blocks them and the app never hydrates. We therefore keep
- * 'unsafe-inline' in script-src while every other directive stays strict
- * (default-src 'self', connect-src whitelisted to Stellar endpoints only,
- * frame-src limited to wallet extensions, object-src 'none', ...).
- * Development additionally needs 'unsafe-eval' for HMR / Fast Refresh.
- */
-function buildCsp(): string {
-  const scriptSrc = isProd
-    ? "'self' 'unsafe-inline' 'wasm-unsafe-eval'"
-    : "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'";
-  return [
-    "default-src 'self'",
-    `script-src ${scriptSrc}`,
-    "style-src 'self' 'unsafe-inline'",
-    // Horizon + Soroban RPC + Stellar Expert
-    "connect-src 'self' https://horizon-testnet.stellar.org https://horizon.stellar.org https://soroban-testnet.stellar.org https://soroban.stellar.org https://rpc-futurenet.stellar.org https://mainnet.soroban.rpc.pulse.so",
-    "img-src 'self' data: https://stellar.expert https://raw.githubusercontent.com",
-    "font-src 'self'",
-    "frame-src 'self' https://*.freighter.app chrome-extension: moz-extension:",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-  ].join("; ");
-}
+// Global rate-limit store, resolved once per instance.
+//
+// This file runs on the Edge runtime, where `ioredis` cannot run. The store
+// therefore selects its backend from the *shape* of REDIS_URL: an `https://`
+// endpoint (Upstash-compatible REST) is shared across every replica, while a
+// `redis://` URL falls back to in-memory here (the Node runtime uses ioredis
+// for route-level buckets — see src/lib/rate-limit.ts). With no Redis
+// configured the limit is per-instance, exactly as before.
+const rateLimitStore = getRateLimitStore();
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const requestId = generateRequestId();
+  // Extract existing X-Request-ID if provided, or generate a new one (issue #1951)
+  const incomingRequestId = request.headers.get("x-request-id");
+  const requestId =
+    incomingRequestId && incomingRequestId.trim().length > 0
+      ? incomingRequestId.trim()
+      : generateRequestId();
   const startedAt = performance.now();
 
-  // ── API routes: rate limiting + API headers ─────────────────
+  // ── API routes: rate limiting + CORS + API key edge validation ─
   if (pathname.startsWith("/api/")) {
-    // Skip rate limiting for health checks and metrics (monitoring endpoints
-    // are hit frequently by orchestrators and should never be throttled)
-    const skipRateLimit =
-      pathname === "/api/health" || pathname === "/api/metrics";
+    // 1. Strict CORS preflight handling (#1393)
+    if (request.method === "OPTIONS") {
+      const preflight = handleCorsPreflight(request, { allowCredentials: true });
+      // Every API response — including preflight — carries the correlation id
+      // so browser-side CORS failures can be traced to a server log line.
+      preflight.headers.set("X-Request-Id", requestId);
+      return preflight;
+    }
 
-    let remaining = RATE_LIMIT_MAX;
-    let resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;
+    // 2. Rate limiting (#1958): execute rate limiting upfront so telemetry
+    // headers (X-RateLimit-*) can be stamped across ALL outgoing API responses,
+    // and malicious callers cannot bypass rate limit counters via malformed auth/CSRF.
+    // Skip rate limiting for health checks and metrics (monitoring endpoints
+    // are hit frequently by orchestrators and should never be throttled).
+    const skipRateLimit =
+      pathname === "/api/health" ||
+      pathname.startsWith("/api/health/") ||
+      pathname === "/api/metrics";
+
+    // Defaults for exempt endpoints (health/metrics), which still advertise
+    // the window even though they are never throttled.
+    let rateLimitHeaders = getRateLimitHeaders({
+      limit: RATE_LIMIT_MAX,
+      remaining: RATE_LIMIT_MAX,
+      reset: Math.ceil((Date.now() + RATE_LIMIT_WINDOW_MS) / 1000),
+    });
 
     if (!skipRateLimit) {
-      const ip = getClientIp(request);
+      const ip = getClientIp(request.headers);
       const result = await rateLimitStore.increment(
         ip,
         RATE_LIMIT_WINDOW_MS,
         RATE_LIMIT_MAX
       );
-      remaining = result.remaining;
-      resetAt = result.resetAt;
+      const info = rateLimitInfoFromResult(result);
+      rateLimitHeaders = result.allowed
+        ? getRateLimitHeaders(info)
+        : getRateLimitExceededHeaders(info);
 
       // Rate limit exceeded
       if (!result.allowed) {
-        const retryAfter = Math.ceil((resetAt - Date.now()) / 1000);
         // Rejected before any route handler runs, so log here (with the same
         // request id returned in the response header below).
         logger.request(request.method, pathname, 429, performance.now() - startedAt, requestId);
-        return NextResponse.json(
+        const rateLimited = NextResponse.json(
           {
             success: false,
             error: {
@@ -104,12 +112,86 @@ export async function proxy(request: NextRequest) {
           },
           {
             status: 429,
+            // Limit / Remaining / Reset / Retry-After — a 429 without these
+            // forces SDKs to guess the backoff window.
             headers: {
-              "Retry-After": String(retryAfter),
+              ...rateLimitHeaders,
               "X-Request-Id": requestId,
             },
           }
         );
+        const retryAfter = getRetryAfterHeaderValue(info);
+        rateLimited.headers.set("Retry-After", String(retryAfter));
+        rateLimited.headers.set("X-Request-Id", requestId);
+        applySecurityHeaders(rateLimited.headers);
+        return rateLimited;
+      }
+    }
+
+    // 3. CSRF defense-in-depth for cookie-authenticated browser sessions.
+    //
+    // Route handlers already call verifyCsrf(), but a single central check
+    // closes the gap for any future mutating route that forgets to. It applies
+    // only when a session cookie is present: login has no session yet, and
+    // API-key/cron callers bypass the double-submit check in
+    // verifyCsrfForRequest(). Reads and preflights are untouched.
+    if (
+      hasSessionCookie(request.headers.get("cookie")) &&
+      !verifyCsrfForRequest(request)
+    ) {
+      logger.request(
+        request.method,
+        pathname,
+        403,
+        performance.now() - startedAt,
+        requestId
+      );
+      const csrfForbidden = NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "CSRF_INVALID",
+            message:
+              "Invalid or missing CSRF token. Refresh the page and try again.",
+          },
+        },
+        {
+          status: 403,
+          headers: {
+            ...rateLimitHeaders,
+            "X-Request-Id": requestId,
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+      applySecurityHeaders(csrfForbidden.headers);
+      return csrfForbidden;
+    }
+
+    // 4. Edge API key validation (#1397): reject malformed keys before DB lookup
+    const rawApiKey = extractApiKey(request);
+    if (rawApiKey && pathname !== "/api/metrics") {
+      const keyValidation = validateKeyFormat(rawApiKey);
+      const isLegacy = API_KEY_LOOKUP_PATTERN.test(rawApiKey);
+      if (!keyValidation.valid && !isLegacy) {
+        const unauthorized = NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "UNAUTHORIZED",
+              message: "Invalid API key format",
+            },
+          },
+          {
+            status: 401,
+            headers: {
+              ...rateLimitHeaders,
+              "X-Request-Id": requestId,
+            },
+          }
+        );
+        applySecurityHeaders(unauthorized.headers);
+        return unauthorized;
       }
     }
 
@@ -123,47 +205,99 @@ export async function proxy(request: NextRequest) {
 
     const response = NextResponse.next({ request: { headers: requestHeaders } });
 
-    // Security, CORS, and observability headers
+    // Security, CORS, observability, and rate-limit telemetry headers
     response.headers.set("X-Request-Id", requestId);
     response.headers.set("X-Api-Version", "1.0.0");
-    response.headers.set("X-Content-Type-Options", "nosniff");
-    response.headers.set("X-Frame-Options", "DENY");
-    response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    response.headers.set("X-RateLimit-Limit", String(RATE_LIMIT_MAX));
-    response.headers.set("X-RateLimit-Remaining", String(remaining));
-    response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetAt / 1000)));
-
-    // Production CORS — restrict origins in production
-    const origin = request.headers.get("origin") || "";
-    const allowedOrigins = [
-      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-    ].filter(Boolean);
-    if (
-      allowedOrigins.includes(origin) ||
-      process.env.NODE_ENV !== "production"
-    ) {
-      response.headers.set("Access-Control-Allow-Origin", origin || "*");
+    applySecurityHeaders(response.headers);
+    for (const [name, value] of Object.entries(rateLimitHeaders)) {
+      response.headers.set(name, value);
     }
-    response.headers.set(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS"
-    );
-    response.headers.set(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-API-Key"
-    );
+
+    // Sensitive auth and API key endpoints: prevent intermediary caching (#1956)
+    if (pathname.startsWith("/api/auth/") || pathname.startsWith("/api/keys")) {
+      response.headers.set("Cache-Control", "no-store, private");
+    }
+
+    // Strict CORS resolution (#1393)
+    const origin = request.headers.get("origin");
+    if (origin) {
+      const resolution = resolveCorsOrigin(origin, true);
+      const method = request.method.toUpperCase();
+
+      // For mutation endpoints, reject disallowed cross-origin requests
+      if (!resolution.allowed && ["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+        const forbidden = NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: "FORBIDDEN",
+              message: "Cross-origin request blocked: origin not allowed",
+            },
+          },
+          {
+            status: 403,
+            headers: {
+              ...rateLimitHeaders,
+              "X-Request-Id": requestId,
+            },
+          }
+        );
+        applySecurityHeaders(forbidden.headers);
+        return forbidden;
+      }
+
+      if (resolution.allowed && resolution.originHeader) {
+        response.headers.set("Access-Control-Allow-Origin", resolution.originHeader);
+        response.headers.set("Access-Control-Allow-Methods", CORS_ALLOWED_METHODS);
+        response.headers.set("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
+        response.headers.set("Vary", "Origin");
+        if (resolution.allowCredentials && resolution.originHeader !== "*") {
+          response.headers.set("Access-Control-Allow-Credentials", "true");
+        }
+      }
+    }
 
     return response;
   }
 
   // ── HTML pages: CSP + security headers ──────────────────────
-  const response = NextResponse.next();
-  response.headers.set("Content-Security-Policy", buildCsp());
+  // The CSP has to reach the App Router renderer on the *request* headers, not
+  // just the response: `getScriptNonceFromHeader` reads
+  // `content-security-policy` from the incoming request and stamps `nonce="…"`
+  // on every framework `<script>` it emits. Setting it on the response alone
+  // was the real cause of the "nonce does not propagate" behaviour in #697.
+  // `x-nonce` carries the same value to src/app/layout.tsx for our own inline
+  // scripts (theme bootstrap, service-worker registration).
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce);
+  const pageRequestHeaders = new Headers(request.headers);
+  pageRequestHeaders.set("x-nonce", nonce);
+  pageRequestHeaders.set("Content-Security-Policy", csp);
+  pageRequestHeaders.set("x-request-id", requestId);
+
+  const response = NextResponse.next({ request: { headers: pageRequestHeaders } });
+  response.headers.set("Content-Security-Policy", csp);
   response.headers.set("X-Request-Id", requestId);
   response.headers.set("X-Api-Version", "1.0.0");
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  applySecurityHeaders(response.headers);
+
+  // Reporting API (issue #698) — tells the browser where to POST violation
+  // reports.  `Report-To` is the older format (Chrome 70+ / Edge 79+);
+  // `Reporting-Endpoints` is the newer NEL-aligned format (Chrome 96+).
+  // We set both so all Chromium-based browsers are covered.
+  const cspReportEndpoint = CSP_POLICY.reportUri;
+  const reportToValue = JSON.stringify({
+    group: CSP_POLICY.reportingGroup,
+    max_age: 10886400, // 126 days
+    endpoints: [{ url: cspReportEndpoint }],
+    include_subdomains: false,
+  });
+  response.headers.set("Report-To", reportToValue);
+  // The modern Reporting-Endpoints header (a simple name=url pair).
+  response.headers.set(
+    "Reporting-Endpoints",
+    `${CSP_POLICY.reportingGroup}="${cspReportEndpoint}"`
+  );
 
   return response;
 }
@@ -182,3 +316,5 @@ export const config = {
     },
   ],
 };
+
+export default proxy;

@@ -20,10 +20,20 @@ series instead of one series per concrete id.
 
 ## Exposed metrics (Prometheus text format at `/api/metrics`)
 
-| Metric | Type | Labels | Description |
-| --- | --- | --- | --- |
-| `ophirpay_endpoint_request_duration_seconds` | histogram | `method`, `endpoint`, `status_class`, `le` | Request latency per endpoint + status class |
-| `ophirpay_endpoint_errors_total` | counter | `method`, `endpoint`, `status_class` | Error counts per endpoint + status class |
+| Metric                                       | Type      | Labels                                     | Description                                                                               |
+| -------------------------------------------- | --------- | ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `ophirpay_endpoint_request_duration_seconds` | histogram | `method`, `endpoint`, `status_class`, `le` | Request latency per endpoint + status class                                               |
+| `ophirpay_endpoint_errors_total`             | counter   | `method`, `endpoint`, `status_class`       | Error counts per endpoint + status class                                                  |
+| `ophirpay_rpc_request_duration_seconds`      | histogram | `le`                                       | Soroban RPC invocation latency histogram                                                  |
+| `ophirpay_rpc_requests_total`                | counter   | `status_class`                             | Total Soroban RPC requests served by status class (`2xx`, `5xx`)                          |
+| `ophirpay_database_pool_wait_seconds`        | gauge     | —                                          | Prisma connection pool queue wait duration in seconds                                     |
+| `ophirpay_sse_open_connections`              | gauge     | —                                          | Currently open SSE event-stream connections (both `/api/events` and `/api/audit-log/sse`) |
+| `ophirpay_sse_dropped_events_total`          | counter   | —                                          | SSE events shed by the bounded slow-consumer buffer (issue #744)                          |
+
+> **Slow consumers (issue #744).** A rising `ophirpay_sse_dropped_events_total`
+> with a flat `ophirpay_sse_open_connections` means connected clients cannot keep
+> up with the stream and their bounded buffers are shedding data. See
+> `docs/SSE.md` for the drop-oldest policy and the per-connection ceilings.
 
 Example scrape output:
 
@@ -36,6 +46,47 @@ ophirpay_endpoint_request_duration_seconds_sum{method="GET",endpoint="/api/payme
 ophirpay_endpoint_request_duration_seconds_count{method="GET",endpoint="/api/payments",status_class="2xx"} 12
 ophirpay_endpoint_errors_total{method="POST",endpoint="/api/payments",status_class="5xx"} 3
 ```
+
+## Authentication (required)
+
+`/api/metrics` exposes process memory, per-endpoint error rates and the live
+SSE connection count, so it is **no longer public**. Every scrape must present a
+credential; an unauthenticated request now returns `401` with **no metric body**:
+
+| Credential   | Header                                              | Notes                                                                    |
+| ------------ | --------------------------------------------------- | ------------------------------------------------------------------------ |
+| Scrape token | `Authorization: Bearer <METRICS_TOKEN>`             | Preferred. Constant-time comparison against the `METRICS_TOKEN` env var. |
+| API key      | `Authorization: Bearer <key>` or `X-API-Key: <key>` | Must carry the `admin` scope (which implies every capability).           |
+
+The endpoint **fails closed**: if `METRICS_TOKEN` is unset and the request
+carries no admin API key, the scrape gets `401`. Generate the token with
+`openssl rand -hex 32` and set it wherever the app runs. The response format is
+unchanged, so an existing scraper only needs the header:
+
+```bash
+curl -sS -H "Authorization: Bearer $METRICS_TOKEN" https://ophirpay.com/api/metrics
+```
+
+### Prometheus scrape config
+
+The Helm chart renders `METRICS_TOKEN` from `helm/ophirpay/values.yaml`
+(`secrets.METRICS_TOKEN`) into the `ophirpay-secrets` Secret. The
+`prometheus.io/*` pod annotations still advertise the path, but annotations
+cannot attach a header, so the scrape job must add the token itself:
+
+```yaml
+scrape_configs:
+  - job_name: ophirpay
+    metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/metrics-token # value of METRICS_TOKEN
+    static_configs:
+      - targets: ["ophirpay.ophirpay.svc.cluster.local:80"]
+```
+
+For the Prometheus Operator, attach an `authorization` block (or a
+`secret`/`credentials` reference) to the `ServiceMonitor`/`PodMonitor` instead.
 
 ## Usage
 
@@ -51,3 +102,18 @@ series can be used for latency SLOs and error-rate alerting per route.
   wrapped handler.
 - `src/lib/metrics-counters.ts` holds the storage and serialization helpers
   (`recordEndpointLatency`, `getEndpointMetrics`, `LATENCY_BUCKET_BOUNDS`).
+
+## Application SLI/SLO Alert Rules (issue #1412)
+
+Prometheus alert definitions in `monitoring/prometheus-alerts.yml` cover critical operational SLIs:
+
+| Alert                            | Severity   | Threshold                                            | Runbook                                                                      |
+| -------------------------------- | ---------- | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `OphirPayWebhookHighFailureRate` | `warning`  | Webhook delivery failure rate > 5% over 5m           | [TROUBLESHOOTING.md](TROUBLESHOOTING.md#webhook-high-failure-rate)           |
+| `OphirPayRpcProviderDegraded`    | `critical` | Soroban RPC p95 latency > 2.5s or 5xx returns for 3m | [TROUBLESHOOTING.md](TROUBLESHOOTING.md#soroban-rpc-provider-degraded)       |
+| `OphirPayDatabasePoolExhaustion` | `critical` | Prisma connection pool queue wait > 500ms for 1m     | [TROUBLESHOOTING.md](TROUBLESHOOTING.md#database-connection-pool-exhaustion) |
+| `WebhookDeliveryFailureRateHigh` | `warning`  | Terminal webhook failures > 25% over 15m for 10m     | [TROUBLESHOOTING.md](TROUBLESHOOTING.md#webhook-high-failure-rate)           |
+| `RpcFailoverDegraded`            | `warning`  | Active fallback RPC endpoint for > 2m                | [TROUBLESHOOTING.md](TROUBLESHOOTING.md#soroban-rpc-provider-degraded)       |
+| `RpcFailoverFrequent`            | `warning`  | >= 3 RPC failovers in 30m sustained for 5m           | [TROUBLESHOOTING.md](TROUBLESHOOTING.md#soroban-rpc-provider-degraded)       |
+| `ApiHighErrorRate`               | `critical` | Overall endpoint error rate > 5% over 5m             | [TROUBLESHOOTING.md](TROUBLESHOOTING.md#-app-runtime)                        |
+| `ApiDown`                        | `critical` | Scrape target down for 2m                            | [TROUBLESHOOTING.md](TROUBLESHOOTING.md#-app-runtime)                        |

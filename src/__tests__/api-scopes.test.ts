@@ -3,14 +3,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  findFirst: vi.fn(),
+  findMany: vi.fn(),
   update: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     apiKey: {
-      findFirst: mocks.findFirst,
+      findFirst: mocks.findMany,
+      findMany: mocks.findMany,
       update: mocks.update,
     },
     apiKeyRequestLog: {
@@ -23,8 +24,13 @@ import {
   hasScope,
   requireScopes,
   withApiAuth,
+  hashApiKeyV1,
   type ApiScope,
 } from "@/lib/api-auth";
+
+// A valid-format key (32 CSPRNG bytes as hex) so the request reaches the
+// mocked lookup — malformed material is rejected before the DB (issue #701).
+const VALID_LOOKUP_KEY = `oph_${"a".repeat(64)}`;
 
 function makeKey(scopes: string[]) {
   return {
@@ -33,12 +39,13 @@ function makeKey(scopes: string[]) {
     name: "test-key",
     expiresAt: null,
     scopes,
+    keyHash: hashApiKeyV1(VALID_LOOKUP_KEY),
   };
 }
 
 function makeRequest() {
   return new Request("http://localhost/api/test", {
-    headers: { "x-api-key": "oph_testkey" },
+    headers: { "x-api-key": VALID_LOOKUP_KEY },
   });
 }
 
@@ -89,7 +96,7 @@ describe("hasScope", () => {
 
 describe("requireScopes", () => {
   beforeEach(() => {
-    mocks.findFirst.mockReset();
+    mocks.findMany.mockReset();
     mocks.update.mockReset();
     mocks.update.mockResolvedValue(undefined);
   });
@@ -103,7 +110,7 @@ describe("requireScopes", () => {
 
   for (const scope of scopes) {
     it(`grants a request whose key has the "${scope}" scope`, async () => {
-      mocks.findFirst.mockResolvedValue(makeKey([scope]));
+      mocks.findMany.mockResolvedValue([makeKey([scope])]);
       const result = await requireScopes(makeRequest(), scope);
       expect("userId" in result).toBe(true);
       if ("userId" in result) {
@@ -114,7 +121,7 @@ describe("requireScopes", () => {
     it(`denies (403) a request whose key lacks the "${scope}" scope`, async () => {
       // A key that has every scope EXCEPT the one required.
       const keyScopes = scopes.filter((s) => s !== scope && s !== "admin");
-      mocks.findFirst.mockResolvedValue(makeKey(keyScopes));
+      mocks.findMany.mockResolvedValue([makeKey(keyScopes)]);
       const result = await requireScopes(makeRequest(), scope);
       expect("userId" in result).toBe(false);
       if (!("userId" in result)) {
@@ -126,13 +133,13 @@ describe("requireScopes", () => {
   }
 
   it("admin scope satisfies a read:payments requirement (granted)", async () => {
-    mocks.findFirst.mockResolvedValue(makeKey(["admin"]));
+    mocks.findMany.mockResolvedValue([makeKey(["admin"])]);
     const result = await requireScopes(makeRequest(), "read:payments");
     expect("userId" in result).toBe(true);
   });
 
   it("returns 401 when no API key is present", async () => {
-    mocks.findFirst.mockResolvedValue(null);
+    mocks.findMany.mockResolvedValue([]);
     const req = new Request("http://localhost/api/test");
     const result = await requireScopes(req, "read:payments");
     expect("userId" in result).toBe(false);
@@ -144,13 +151,13 @@ describe("requireScopes", () => {
 
 describe("withApiAuth scope enforcement", () => {
   beforeEach(() => {
-    mocks.findFirst.mockReset();
+    mocks.findMany.mockReset();
     mocks.update.mockReset();
     mocks.update.mockResolvedValue(undefined);
   });
 
   it("blocks handlers when the key lacks the required scope (403)", async () => {
-    mocks.findFirst.mockResolvedValue(makeKey(["read:payments"]));
+    mocks.findMany.mockResolvedValue([makeKey(["read:payments"])]);
     const handler = vi.fn(async () => new Response("ok"));
     const wrapped = withApiAuth(handler, "write:payments");
     const res = await wrapped(makeRequest());
@@ -159,7 +166,7 @@ describe("withApiAuth scope enforcement", () => {
   });
 
   it("invokes the handler when the key has the required scope", async () => {
-    mocks.findFirst.mockResolvedValue(makeKey(["write:payments", "admin"]));
+    mocks.findMany.mockResolvedValue([makeKey(["write:payments", "admin"])]);
     const handler = vi.fn(async () => new Response("ok"));
     const wrapped = withApiAuth(handler, "write:payments");
     const res = await wrapped(makeRequest());

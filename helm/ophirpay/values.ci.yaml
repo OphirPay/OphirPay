@@ -1,0 +1,82 @@
+# CI-only overrides for helm lint / helm template / kubeconform validation.
+#
+# This file is NEVER installed in a real cluster. It exists so CI can render
+# the chart with every required value populated (the production
+# `values.yaml` intentionally ships empty secrets) and with feature flags
+# exercised, without touching production defaults.
+#
+# Usage:
+#   helm lint   helm/ophirpay --strict -f helm/ophirpay/values.ci.yaml
+#   helm template ophirpay helm/ophirpay -f helm/ophirpay/values.ci.yaml
+#
+# Keep this file free of real credentials. The values below are obviously
+# fake placeholders; secret scanners allowlist this path by name.
+
+replicaCount: 1
+
+image:
+  tag: ci
+  pullPolicy: IfNotPresent
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  metrics:
+    enabled: true
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    podSelector: {}
+  redis:
+    enabled: true
+    port: 6379
+    namespaceSelector: {}
+    podSelector: {}
+  egress:
+    extraPorts: []
+
+serviceAccount:
+  create: true
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  hosts:
+    - host: ophirpay.ci.invalid
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ophirpay-ci-tls
+      hosts:
+        - ophirpay.ci.invalid
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Required runtime configuration for the render. Values are fake; never reuse
+# them outside CI.
+secrets:
+  DATABASE_URL: "postgresql://ci:ci@postgres:5432/ophirpay_ci"
+  NEXT_PUBLIC_CONTRACT_ID: "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET"
+  NEXT_PUBLIC_EMITTER_CONTRACT_ID: "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN"
+  AUTH_SECRET: "ci-only-not-a-real-auth-secret"

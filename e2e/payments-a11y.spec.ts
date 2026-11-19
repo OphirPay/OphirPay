@@ -37,6 +37,88 @@ test.describe("Payments table accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
+  // Issue #1383 — the base Modal is used by every dialog in the app, so the
+  // focus-trap contract is exercised here through the shortcuts dialog that is
+  // reachable from the payments header.
+  test("modal dialog traps Tab focus, passes axe and restores focus on Escape", async ({
+    page,
+  }) => {
+    await page.goto("/payments");
+    await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
+
+    const trigger = page.getByRole("button", { name: "Keyboard shortcuts" });
+    await trigger.click();
+
+    const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+    await expect(dialog).toBeVisible();
+
+    const focusIsInsideDialog = () =>
+      dialog.evaluate((el) => el.contains(document.activeElement));
+
+    // Focus starts inside the dialog...
+    await expect.poll(focusIsInsideDialog).toBe(true);
+
+    // ...and Tab / Shift+Tab can never escape it in either direction.
+    for (let i = 0; i < 10; i += 1) {
+      await page.keyboard.press("Tab");
+      await expect.poll(focusIsInsideDialog).toBe(true);
+    }
+    for (let i = 0; i < 3; i += 1) {
+      await page.keyboard.press("Shift+Tab");
+      await expect.poll(focusIsInsideDialog).toBe(true);
+    }
+
+    const results = await new AxeBuilder({ page })
+      .include('[role="dialog"]')
+      .analyze();
+    expect(results.violations).toEqual([]);
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
+  test("Enter opens the detail view for the focused row", async ({ page }) => {
+    await page.goto("/payments");
+    await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(TABLE_SELECTOR)).toBeVisible({ timeout: 15000 });
+
+    await waitForTableData(page);
+
+    const rows = page.locator(`${TABLE_SELECTOR} tbody tr[data-row-index]`);
+    test.skip((await rows.count()) === 0, "requires an on-chain payment row");
+
+    await rows.first().focus();
+    await page.keyboard.press("Enter");
+
+    await expect(page).toHaveURL(/\/payments\/\d+/);
+  });
+
+  test("pagination Previous/Next controls are keyboard reachable", async ({
+    page,
+  }) => {
+    await page.goto("/payments");
+    await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
+
+    const pagination = page.getByRole("navigation", { name: "Pagination" });
+    test.skip(
+      (await pagination.count()) === 0,
+      "requires more than one page of payments"
+    );
+
+    const previous = pagination.getByRole("button", { name: "Previous page" });
+    const next = pagination.getByRole("button", { name: "Next page" });
+
+    // Native buttons are in the Tab order (no tabindex=-1) and receive focus.
+    await expect(previous).not.toHaveAttribute("tabindex", "-1");
+    await expect(next).not.toHaveAttribute("tabindex", "-1");
+
+    await previous.focus();
+    await expect(previous).toBeFocused();
+    await next.focus();
+    await expect(next).toBeFocused();
+  });
+
   test("arrow keys navigate between payment rows", async ({ page }) => {
     await page.goto("/payments");
     await expect(page.locator("main")).toBeVisible({ timeout: 15000 });

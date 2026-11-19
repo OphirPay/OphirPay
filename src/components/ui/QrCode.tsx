@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
+import { CopyButton } from "@/components/ui/CopyButton";
 
 interface QrCodeProps {
   /** The payload to encode. The QR regenerates whenever this changes. */
@@ -13,6 +14,21 @@ interface QrCodeProps {
   className?: string;
   /** Accessible label; also used as the image alt text. */
   title?: string;
+  /**
+   * Render "Download PNG" and "Copy URI" actions below the code.
+   *
+   * Used by the payment-request modal (#1375), where a merchant needs to save
+   * a print-quality code or paste the SEP-7 URI into another channel.
+   */
+  showActions?: boolean;
+  /** Filename for the downloaded PNG. Defaults to `qr-code.png`. */
+  downloadFileName?: string;
+  /**
+   * Width of the downloaded PNG, in pixels. The on-screen code stays at
+   * `size`; the file is rendered separately at this resolution so it remains
+   * sharp when printed, without inflating the display payload.
+   */
+  downloadSize?: number;
 }
 
 /**
@@ -23,9 +39,18 @@ interface QrCodeProps {
  * changes. Shows a small loading placeholder and a graceful error state
  * instead of breaking the layout.
  */
-export function QrCode({ value, size = 220, className, title = "QR code" }: QrCodeProps) {
+export function QrCode({
+  value,
+  size = 220,
+  className,
+  title = "QR code",
+  showActions = false,
+  downloadFileName = "qr-code.png",
+  downloadSize = 1024,
+}: QrCodeProps) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +73,37 @@ export function QrCode({ value, size = 220, className, title = "QR code" }: QrCo
       cancelled = true;
     };
   }, [value, size]);
+
+  const handleDownload = useCallback(async () => {
+    if (!dataUrl || downloading) return;
+    setDownloading(true);
+
+    let href = dataUrl;
+    try {
+      // Re-render at print resolution rather than scaling the display PNG,
+      // which would hand the user a blurry 220px square.
+      href = await QRCode.toDataURL(value, {
+        width: downloadSize,
+        margin: 2,
+        errorCorrectionLevel: "M",
+      });
+    } catch {
+      // Fall back to the already-rendered code — a smaller file is better
+      // than a failed download.
+    }
+
+    try {
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = downloadFileName;
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      setDownloading(false);
+    }
+  }, [dataUrl, value, downloadSize, downloadFileName, downloading]);
 
   if (failed) {
     return (
@@ -90,13 +146,49 @@ export function QrCode({ value, size = 220, className, title = "QR code" }: QrCo
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- QR data URLs are not optimizable via next/image
-    <img
-      src={dataUrl}
-      alt={title}
-      width={size}
-      height={size}
-      className={cn("rounded-xl", className)}
-    />
+    <div className="inline-flex flex-col items-center gap-3">
+      {/* eslint-disable-next-line @next/next/no-img-element -- QR data URLs are not optimizable via next/image */}
+      <img
+        src={dataUrl}
+        alt={title}
+        width={size}
+        height={size}
+        className={cn("rounded-xl", className)}
+      />
+
+      {showActions && (
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleDownload()}
+            disabled={downloading}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium",
+              "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200",
+              "hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            )}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-3.5 h-3.5"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+            {downloading ? "Preparing…" : "Download PNG"}
+          </button>
+          <CopyButton value={value} label="Copy URI" title="Copy payment URI" />
+        </div>
+      )}
+    </div>
   );
 }

@@ -13,6 +13,8 @@ import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import { useAdminSudo } from "@/hooks/useAdminSudo";
+import { authorizeAdminAction, SudoDeclinedError } from "@/lib/sudo-client";
 import { grantRole, revokeRole, Role, type RoleValue } from "@/lib/contract-advanced";
 
 interface RoleAssignment {
@@ -32,6 +34,9 @@ export default function RBACPage() {
   const toast = useToast();
   const { wallet } = useWallet();
   const queryClient = useQueryClient();
+  // Sudo mode (issue #1389): role changes must be backed by a wallet
+  // verification newer than 15 minutes. The modal renders at the end of the page.
+  const sudo = useAdminSudo();
   const [showGrant, setShowGrant] = useState(false);
   const [showRevoke, setShowRevoke] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -77,6 +82,13 @@ export default function RBACPage() {
     }
     setSubmitting(true);
     try {
+      // Sudo step-up: authorize the action server-side (re-signing the wallet
+      // challenge if the session verification is stale) before the on-chain write.
+      await authorizeAdminAction(
+        "/api/rbac",
+        { action: "grant", address: grantAddress, role: grantRoleVal },
+        { signMessage: sudo.signMessage, requestReauth: sudo.requestReauth },
+      );
       const result = await grantRole(wallet.publicKey, grantAddress, grantRoleVal);
       if (result.success) {
         toast.success(`Role granted on-chain`);
@@ -90,8 +102,14 @@ export default function RBACPage() {
       } else {
         toast.error(result.error || "Grant failed — are you an Admin?");
       }
-    } catch {
-      toast.error("Network error");
+    } catch (err) {
+      toast.error(
+        err instanceof SudoDeclinedError
+          ? "Re-authentication cancelled — role was not changed."
+          : err instanceof Error
+            ? err.message
+            : "Network error"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -105,6 +123,11 @@ export default function RBACPage() {
     }
     setSubmitting(true);
     try {
+      await authorizeAdminAction(
+        "/api/rbac",
+        { action: "revoke", address: revokeAddress },
+        { signMessage: sudo.signMessage, requestReauth: sudo.requestReauth },
+      );
       const result = await revokeRole(wallet.publicKey, revokeAddress);
       if (result.success) {
         toast.success("Role revoked on-chain");
@@ -115,8 +138,14 @@ export default function RBACPage() {
       } else {
         toast.error(result.error || "Revoke failed — are you an Admin?");
       }
-    } catch {
-      toast.error("Network error");
+    } catch (err) {
+      toast.error(
+        err instanceof SudoDeclinedError
+          ? "Re-authentication cancelled — role was not changed."
+          : err instanceof Error
+            ? err.message
+            : "Network error"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -280,6 +309,9 @@ export default function RBACPage() {
           </Button>
         </div>
       </Modal>
+
+      {/* Sudo-mode re-authentication prompt (issue #1389) */}
+      {sudo.modal}
     </div>
   );
 }

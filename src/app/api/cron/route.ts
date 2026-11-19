@@ -22,6 +22,154 @@ import {
   selectDuePayments,
 } from "@/lib/scheduler";
 import { publicKeyFromSecret, submitPaymentFromSecret } from "@/lib/stellar";
+import {
+  processWebhookRetryQueue,
+  type WebhookRetryQueueSummary,
+} from "@/lib/webhook-delivery-service";
+import { incCronLogsPruned, incApiKeyLogsPruned } from "@/lib/metrics-counters";
+import { cleanupExpiredIdempotencyKeys } from "@/lib/db/cleanup";
+
+export const CRON_LOG_RETENTION_DAYS = 90;
+export const CRON_LOG_PRUNE_BATCH_SIZE = 1000;
+
+export const API_KEY_LOG_RETENTION_DAYS = 90;
+export const API_KEY_LOG_PRUNE_BATCH_SIZE = 1000;
+
+export interface PruneCronLogsResult {
+  prunedCount: number;
+  batches: number;
+  cutoffDate: Date;
+}
+
+export interface PruneApiKeyRequestLogsResult {
+  prunedCount: number;
+  batches: number;
+  cutoffDate: Date;
+}
+
+/**
+ * Prunes cron execution logs older than retention window (90 days) in batches of 1,000 (issue #1420).
+ *
+ * Operation executes inside transactions in small batches to avoid table locking on PostgreSQL.
+ * Active and failed recurring payment schedules (Recurrence, ScheduledPayment) are never deleted,
+ * only ephemeral run-logs are pruned.
+ */
+export async function pruneCronExecutionLogs(
+  options: {
+    retentionDays?: number;
+    batchSize?: number;
+    now?: Date;
+  } = {}
+): Promise<PruneCronLogsResult> {
+  const retentionDays = options.retentionDays ?? CRON_LOG_RETENTION_DAYS;
+  const batchSize = options.batchSize ?? CRON_LOG_PRUNE_BATCH_SIZE;
+  const now = options.now ?? new Date();
+  const cutoffDate = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+
+  let totalPruned = 0;
+  let batches = 0;
+
+  while (true) {
+    const oldLogs = await prisma.cronExecutionLog.findMany({
+      where: {
+        createdAt: { lt: cutoffDate },
+      },
+      select: { id: true },
+      take: batchSize,
+    });
+
+    if (oldLogs.length === 0) break;
+
+    const ids = oldLogs.map((log) => log.id);
+
+    const deleteResult = await prisma.$transaction(async (tx) => {
+      return tx.cronExecutionLog.deleteMany({
+        where: {
+          id: { in: ids },
+        },
+      });
+    });
+
+    totalPruned += deleteResult.count;
+    batches += 1;
+    incCronLogsPruned(deleteResult.count);
+
+    if (oldLogs.length < batchSize) break;
+  }
+
+  logger.info("Cron execution logs pruned", {
+    prunedCount: totalPruned,
+    batches,
+    cutoffDate: cutoffDate.toISOString(),
+  });
+
+  return {
+    prunedCount: totalPruned,
+    batches,
+    cutoffDate,
+  };
+}
+
+/**
+ * Prunes API key request logs older than retention window (90 days) in batches of 1,000 (issue #1830).
+ *
+ * Deletions execute in bounded batches to avoid table locks and memory spikes on high-traffic databases.
+ */
+export async function pruneApiKeyRequestLogs(
+  options: {
+    retentionDays?: number;
+    batchSize?: number;
+    now?: Date;
+  } = {}
+): Promise<PruneApiKeyRequestLogsResult> {
+  const retentionDays = options.retentionDays ?? API_KEY_LOG_RETENTION_DAYS;
+  const batchSize = options.batchSize ?? API_KEY_LOG_PRUNE_BATCH_SIZE;
+  const now = options.now ?? new Date();
+  const cutoffDate = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+
+  let totalPruned = 0;
+  let batches = 0;
+
+  while (true) {
+    const oldLogs = await prisma.apiKeyRequestLog.findMany({
+      where: {
+        createdAt: { lt: cutoffDate },
+      },
+      select: { id: true },
+      take: batchSize,
+    });
+
+    if (oldLogs.length === 0) break;
+
+    const ids = oldLogs.map((log) => log.id);
+
+    const deleteResult = await prisma.$transaction(async (tx) => {
+      return tx.apiKeyRequestLog.deleteMany({
+        where: {
+          id: { in: ids },
+        },
+      });
+    });
+
+    totalPruned += deleteResult.count;
+    batches += 1;
+    incApiKeyLogsPruned(deleteResult.count);
+
+    if (oldLogs.length < batchSize) break;
+  }
+
+  logger.info("API key request logs pruned", {
+    prunedCount: totalPruned,
+    batches,
+    cutoffDate: cutoffDate.toISOString(),
+  });
+
+  return {
+    prunedCount: totalPruned,
+    batches,
+    cutoffDate,
+  };
+}
 
 /**
  * Scheduled payment execution (issue #175).
@@ -69,6 +217,32 @@ interface RunSummary {
   skipped: number;
   sourcePublicKey: string;
   results: ExecutionResult[];
+  /** Webhook retries drained by the same run. */
+  webhookRetries: WebhookRetryQueueSummary;
+  /** Number of expired cron logs pruned during this run (issue #1420). */
+  prunedLogs?: number;
+  /** Number of expired API key request logs pruned during this run (issue #1830). */
+  prunedApiKeyLogs?: number;
+  /** Number of expired idempotency keys pruned during this run (issue #2025). */
+  prunedIdempotencyKeys?: number;
+}
+
+/**
+ * Which queue this invocation should drain or task to execute.
+ *
+ * `all` (the default) keeps the existing scheduled-payment behaviour,
+ * drains the webhook retry queue, records the run, and prunes expired logs.
+ * `webhook-retries` allows the retry processor to be triggered on its own.
+ * `cleanup` runs only the log retention pruning sweep (issue #1420).
+ */
+type CronTask = "all" | "webhook-retries" | "cleanup";
+
+function resolveCronTask(request: Request): CronTask {
+  const { searchParams } = new URL(request.url);
+  const task = searchParams.get("task");
+  if (task === "webhook-retries") return "webhook-retries";
+  if (task === "cleanup") return "cleanup";
+  return "all";
 }
 
 async function runScheduledPayments(request: Request) {
@@ -89,6 +263,31 @@ async function runScheduledPayments(request: Request) {
         );
       }
       return unauthorizedError("Invalid or missing cron secret.");
+    }
+
+    const task = resolveCronTask(request);
+
+    if (task === "cleanup") {
+      const pruneResult = await pruneCronExecutionLogs();
+      const apiKeyPruneResult = await pruneApiKeyRequestLogs();
+      const idempotencyResult = await cleanupExpiredIdempotencyKeys();
+      return successResponse({
+        prunedCount: pruneResult.prunedCount,
+        batches: pruneResult.batches,
+        cutoffDate: pruneResult.cutoffDate.toISOString(),
+        apiKeyLogsPruned: apiKeyPruneResult.prunedCount,
+        apiKeyBatches: apiKeyPruneResult.batches,
+        idempotencyKeysPruned: idempotencyResult.deletedCount,
+      });
+    }
+
+    // Always drain due webhook retries first. A failing retry batch is
+    // isolated inside `processWebhookRetryQueue`, so it can never block the
+    // payment scheduler below.
+    const webhookRetries = await processWebhookRetryQueue();
+
+    if (task === "webhook-retries") {
+      return successResponse({ webhookRetries });
     }
 
     // Checked before any row is touched: without a signing account the run
@@ -150,6 +349,7 @@ async function runScheduledPayments(request: Request) {
       skipped: 0,
       sourcePublicKey,
       results: [],
+      webhookRetries,
     };
 
     // Sequential on purpose: every submission loads the operator account and
@@ -243,12 +443,68 @@ async function runScheduledPayments(request: Request) {
       }
     }
 
+    // 1. Record execution cycle in database (issue #1420)
+    try {
+      await prisma.cronExecutionLog.create({
+        data: {
+          runId,
+          task,
+          picked: summary.picked,
+          executed: summary.executed,
+          failed: summary.failed,
+          skipped: summary.skipped,
+          status:
+            summary.failed > 0 && summary.executed > 0
+              ? "PARTIAL"
+              : summary.failed > 0
+              ? "FAILED"
+              : "SUCCESS",
+          completedAt: new Date(),
+        },
+      });
+    } catch (logErr) {
+      logger.warn("Failed to record cron execution log", { error: logErr, runId });
+    }
+
+    // 2. Prune ephemeral cron logs older than retention window (90 days) in batches of 1,000 (issue #1420)
+    try {
+      const pruneResult = await pruneCronExecutionLogs();
+      if (pruneResult.prunedCount > 0) {
+        summary.prunedLogs = pruneResult.prunedCount;
+      }
+    } catch (pruneErr) {
+      logger.warn("Failed to prune expired cron logs", { error: pruneErr });
+    }
+
+    // 3. Prune ephemeral API key request logs older than retention window (90 days) in batches of 1,000 (issue #1830)
+    try {
+      const apiKeyPruneResult = await pruneApiKeyRequestLogs();
+      if (apiKeyPruneResult.prunedCount > 0) {
+        summary.prunedApiKeyLogs = apiKeyPruneResult.prunedCount;
+      }
+    } catch (pruneErr) {
+      logger.warn("Failed to prune expired API key request logs", { error: pruneErr });
+    }
+
+    // 4. Prune expired idempotency keys (issue #2025)
+    try {
+      const idempotencyResult = await cleanupExpiredIdempotencyKeys();
+      if (idempotencyResult.deletedCount > 0) {
+        summary.prunedIdempotencyKeys = idempotencyResult.deletedCount;
+      }
+    } catch (idempotencyErr) {
+      logger.warn("Failed to prune expired idempotency keys", { error: idempotencyErr });
+    }
+
     logger.info("Scheduled payment run complete", {
       runId,
       picked: summary.picked,
       executed: summary.executed,
       failed: summary.failed,
       skipped: summary.skipped,
+      prunedLogs: summary.prunedLogs,
+      prunedApiKeyLogs: summary.prunedApiKeyLogs,
+      prunedIdempotencyKeys: summary.prunedIdempotencyKeys,
     });
 
     return successResponse(summary);

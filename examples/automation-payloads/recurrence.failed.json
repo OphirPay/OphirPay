@@ -1,0 +1,13 @@
+{
+  "event": "recurrence.failed",
+  "timestamp": "2026-09-01T08:00:07.000Z",
+  "data": {
+    "recurrenceId": "r_5d31ee77b2c9",
+    "paymentId": "p_7a11cc02f9e8",
+    "amount": "10.00",
+    "assetCode": "XLM",
+    "errorMessage": "Source account balance below scheduled amount",
+    "failedAt": "2026-09-01T08:00:07.000Z"
+  },
+  "signature": "3e39fe8fe6f37c09a44ea70c25db588020bb979a1b890705cd043a0e92a30805"
+}

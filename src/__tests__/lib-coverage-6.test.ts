@@ -6,7 +6,7 @@ import { renderHook, act } from '@testing-library/react';
 // ── Low-coverage lib modules ──
 import { useFormSubmit, useFormReset } from '@/lib/form-helpers';
 import { computePagination, prismaPagination } from '@/lib/pagination-utils';
-import { getRateLimitHeaders, isRateLimited } from '@/lib/rate-limit-headers';
+import { getRateLimitHeaders, getRateLimitExceededHeaders, isRateLimited } from '@/lib/rate-limit-headers';
 import { sendNotification, isPermissionRequested, requestNotificationPermission, NOTIFY } from '@/lib/notifications';
 import { logger } from '@/lib/logger';
 import { generateRandomHex, generateId, timingSafeEqual } from '@/lib/crypto';
@@ -71,6 +71,24 @@ describe('form-helpers', () => {
       // Resolve the promise to clean up
       resolvePromise!();
       await p1;
+    });
+
+    it('blocks repeated submissions in the same synchronous tick', async () => {
+      let resolvePromise: (() => void) | undefined;
+      const handler = vi.fn().mockImplementation(
+        () => new Promise<void>((resolve) => {
+          resolvePromise = resolve;
+        })
+      );
+      const { result } = renderHook(() => useFormSubmit(handler));
+
+      await act(async () => {
+        result.current.submit();
+        result.current.submit();
+      });
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      resolvePromise?.();
     });
 
     it('resets isSubmitting after completion', async () => {
@@ -176,18 +194,19 @@ describe('pagination-utils', () => {
 // ═══════════════════════════════════════════════════════════════
 describe('rate-limit-headers', () => {
   describe('getRateLimitHeaders', () => {
-    it('returns headers with remaining capacity', () => {
+    it('returns the quota headers with remaining capacity', () => {
       const headers = getRateLimitHeaders({ limit: 100, remaining: 50, reset: 2000000000 });
       expect(headers['X-RateLimit-Limit']).toBe('100');
       expect(headers['X-RateLimit-Remaining']).toBe('50');
       expect(headers['X-RateLimit-Reset']).toBe('2000000000');
-      expect(headers['Retry-After']).toBe('0');
+      expect(headers['Retry-After']).toBeUndefined();
     });
 
-    it('returns Retry-After when depleted', () => {
+    it('returns Retry-After only on a throttled response', () => {
       const future = Math.floor(Date.now() / 1000) + 60;
-      const headers = getRateLimitHeaders({ limit: 100, remaining: 0, reset: future });
+      const headers = getRateLimitExceededHeaders({ limit: 100, remaining: 0, reset: future });
       expect(Number(headers['Retry-After'])).toBeGreaterThan(0);
+      expect(headers['X-RateLimit-Reset']).toBe(String(future));
     });
   });
 
@@ -348,9 +367,14 @@ describe('crypto', () => {
 // ═══════════════════════════════════════════════════════════════
 describe('email', () => {
   describe('sendEmail', () => {
-    it('returns a boolean in dev mode', async () => {
-      const result = await sendEmail({ to: 't@t.com', subject: 'S', html: '<p>B</p>' });
-      expect(typeof result).toBe('boolean');
+    it('fails loudly when RESEND_API_KEY is not configured', async () => {
+      vi.stubEnv('RESEND_API_KEY', '');
+      try {
+        await expect(sendEmail({ to: 't@t.com', subject: 'S', html: '<p>B</p>' }))
+          .rejects.toThrow(/RESEND_API_KEY/);
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
   });
 
@@ -407,8 +431,16 @@ describe('env', () => {
 
   describe('validateEnv', () => {
     it('throws when DATABASE_URL is missing', () => {
-      // DATABASE_URL is not set in test env — validateEnv should throw
-      expect(() => validateEnv()).toThrow();
+      // Don't assume the ambient environment: a dev container may export
+      // DATABASE_URL, which would let the assertion pass for the wrong
+      // reason. Remove it for the call and restore it afterwards.
+      const previous = process.env.DATABASE_URL;
+      delete process.env.DATABASE_URL;
+      try {
+        expect(() => validateEnv()).toThrow();
+      } finally {
+        if (previous !== undefined) process.env.DATABASE_URL = previous;
+      }
     });
   });
 });

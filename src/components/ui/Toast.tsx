@@ -36,7 +36,7 @@ interface ToastContextValue {
 
 // ── Context ────────────────────────────────────────────────────
 
-const ToastContext = createContext<ToastContextValue | null>(null);
+export const ToastContext = createContext<ToastContextValue | null>(null);
 
 const variantStyles: Record<ToastVariant, { icon: string; ring: string }> = {
   success: {

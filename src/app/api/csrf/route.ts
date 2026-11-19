@@ -14,7 +14,7 @@ import { withRequestLogging } from "@/lib/request-logging";
  * 
  * Security:
  * - Token is cryptographically random (256 bits)
- * - Cookie is HttpOnly, Secure (prod), SameSite=Strict
+ * - Cookie is HttpOnly, Secure (prod), SameSite=Lax
  * - Cookie uses __Host- prefix in production (host-only)
  * - Token rotates on each mint (invalidates previous token)
  */

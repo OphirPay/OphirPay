@@ -11,6 +11,13 @@
  * Usage:
  *   node scripts/load-test.js                 # run against localhost:3000
  *   node scripts/load-test.js --write-docs    # also regenerate docs/PERFORMANCE.md baselines
+ *   node scripts/load-test.js --json[=path]   # write machine-readable results (no docs edit)
+ *
+ * `--json` exists for the scheduled baseline gate (issue #735): the workflow
+ * runs this script unmodified and feeds the JSON to
+ * `scripts/check-load-baselines.mjs`, which compares it with the deliberate
+ * thresholds in `tests/load/baselines.json`. Default behaviour (no flag) is
+ * unchanged.
  *
  * Environment:
  *   LOAD_TEST_BASE_URL      base URL (default http://localhost:3000)
@@ -46,7 +53,30 @@ const CONNECTIONS = (process.env.LOAD_TEST_CONNECTIONS || "1,5,10,25,50")
   .map((s) => Number(s.trim()))
   .filter((n) => Number.isInteger(n) && n >= 1);
 const OUTPUT_DIR = process.env.LOAD_TEST_OUTPUT_DIR || path.join("tests", "load", "results");
-const WRITE_DOCS = process.argv.includes("--write-docs");
+const CLI = parseCliArgs(process.argv.slice(2));
+const WRITE_DOCS = CLI.writeDocs;
+// `--json` → results file under OUTPUT_DIR; `--json=<path>` → that exact path.
+const JSON_PATH = CLI.jsonPath === true ? null : CLI.jsonPath;
+
+/**
+ * Parse the CLI flags. Exported so the flags (and their defaults) are unit
+ * tested instead of documented by hope.
+ *
+ *   --write-docs        regenerate the docs/PERFORMANCE.md baseline table
+ *   --json              write raw results to OUTPUT_DIR/<timestamp>.json
+ *   --json=<path>       write raw results to <path>
+ */
+function parseCliArgs(argv) {
+  const jsonArg = argv.find((a) => a === "--json" || a.startsWith("--json="));
+  return {
+    writeDocs: argv.includes("--write-docs"),
+    jsonPath: jsonArg
+      ? jsonArg === "--json"
+        ? true
+        : jsonArg.slice("--json=".length)
+      : null,
+  };
+}
 
 if (!CONNECTIONS.length) {
   console.error("LOAD_TEST_CONNECTIONS must contain at least one positive integer.");
@@ -272,9 +302,16 @@ async function main() {
   printTable(results.map(summaryRow));
   console.log("");
 
-  if (WRITE_DOCS) {
+  if (WRITE_DOCS || JSON_PATH || CLI.jsonPath === true) {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-    const file = path.join(OUTPUT_DIR, `load-results-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+    const file =
+      typeof JSON_PATH === "string" && JSON_PATH
+        ? JSON_PATH
+        : path.join(
+            OUTPUT_DIR,
+            `load-results-${new Date().toISOString().replace(/[:.]/g, "-")}.json`
+          );
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(
       file,
       JSON.stringify(
@@ -282,6 +319,7 @@ async function main() {
           generatedAt: new Date().toISOString(),
           baseUrl: BASE_URL,
           durationSeconds: DURATION,
+          connections: CONNECTIONS,
           results,
         },
         null,
@@ -289,7 +327,9 @@ async function main() {
       )
     );
     console.log(`Wrote raw results → ${file}`);
-    updateDocs(results);
+    // Only --write-docs rewrites the documented baseline table; --json is
+    // deliberately side-effect free apart from the results file.
+    if (WRITE_DOCS) updateDocs(results);
   }
 }
 
@@ -302,4 +342,11 @@ if (require.main === module) {
 }
 
 // Re-exported for tests.
-module.exports = { ENDPOINTS, runPass, summaryRow, buildBaselinesSection, updateDocs };
+module.exports = {
+  ENDPOINTS,
+  runPass,
+  summaryRow,
+  buildBaselinesSection,
+  updateDocs,
+  parseCliArgs,
+};

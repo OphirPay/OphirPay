@@ -1,0 +1,13 @@
+{
+  "event": "request.expired",
+  "timestamp": "2026-09-08T12:00:00.000Z",
+  "data": {
+    "requestId": "q_2b7d9c4f11aa",
+    "amount": "100.00",
+    "assetCode": "USDC",
+    "description": "Invoice #402 — September retainer",
+    "status": "EXPIRED",
+    "expiredAt": "2026-09-08T12:00:00.000Z"
+  },
+  "signature": "925fcceba33b3e0047d64187e6487c311140639332fbe921489bd1ebe92b9c3e"
+}

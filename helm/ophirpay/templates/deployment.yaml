@@ -6,7 +6,15 @@ metadata:
   labels:
     {{- include "ophirpay.labels" . | nindent 4 }}
 spec:
+  {{- /*
+    Issue #1331 — never render spec.replicas while the HPA owns the replica
+    count. `helm upgrade` would otherwise reset the Deployment to
+    `.Values.replicaCount` on every release, undoing whatever the autoscaler had
+    scaled to and dropping pods mid-deploy.
+  */}}
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -18,7 +26,19 @@ spec:
   template:
     metadata:
       annotations:
-        {{- toYaml .Values.podAnnotations | nindent 8 }}
+        {{- /*
+          Issue #1332 — the containers read config and secrets through envFrom,
+          which copies the values into the pod at start time. Without a
+          checksum of the rendered config.yaml a `helm upgrade` that only
+          changes a config or secret value updates the ConfigMap/Secret but
+          leaves every running pod on the old environment. Hashing the template
+          output changes the pod template on any config/secret edit and the
+          RollingUpdate strategy then rolls the pods.
+        */}}
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         {{- include "ophirpay.selectorLabels" . | nindent 8 }}
     spec:
@@ -27,7 +47,8 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          {{- /* Issue #1333 — immutable reference: digest > tag > Chart.appVersion. */}}
+          image: {{ include "ophirpay.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.service.targetPort }}
@@ -35,8 +56,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "ophirpay.fullname" . }}-config
+            {{- /* Issue #1334 — existingSecret keeps credentials out of values.yaml. */}}
             - secretRef:
-                name: {{ include "ophirpay.fullname" . }}-secrets
+                name: {{ include "ophirpay.secretName" . }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:
@@ -45,3 +67,13 @@ spec:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: next-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

@@ -1,12 +1,19 @@
 import { defineConfig, devices } from "@playwright/test";
 
+/**
+ * Offline mode (`npm run test:e2e:offline`) runs only `@offline`-tagged specs
+ * whose network boundaries are mocked. It never needs a running app or an
+ * external Stellar endpoint, so a single browser project is enough.
+ */
+const OFFLINE = process.env.E2E_OFFLINE === "1";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
-  reporter: [["html", { open: "never" }], ["list"]],
+  retries: OFFLINE ? 0 : process.env.CI ? 1 : 0,
+  workers: OFFLINE ? 1 : process.env.CI ? 2 : undefined,
+  reporter: process.env.CI ? "blob" : [["html", { open: "never" }], ["list"]],
   use: {
     baseURL: process.env.E2E_BASE_URL || "http://localhost:3000",
     trace: "on-first-retry",
@@ -17,21 +24,38 @@ export default defineConfig({
     // the request. Block it for E2E so network interception is deterministic.
     serviceWorkers: "block",
   },
-  projects: [
+  projects: OFFLINE
+    ? [
+        {
+          name: "offline-chromium",
+          use: { ...devices["Desktop Chrome"] },
+        },
+      ]
+    : [
     {
       name: "chromium",
+      testIgnore: /.*service-worker\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "firefox",
+      testIgnore: /.*service-worker\.spec\.ts/,
       use: { ...devices["Desktop Firefox"] },
     },
     {
       name: "mobile-chrome",
+      testIgnore: /.*service-worker\.spec\.ts/,
       use: { ...devices["Pixel 5"] },
     },
+    {
+      name: "service-worker",
+      testMatch: /.*service-worker\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        serviceWorkers: "allow",
+      },
+    },
   ],
-  // Note: playwright.config.ts intentionally has no webServer block.
-  // Therefore, `npm run test:e2e` requires a server already listening on E2E_BASE_URL.
-  // Set E2E_BASE_URL env var to override (default: localhost:3000 for local dev).
+  // No webServer block: start and prepare the app before running E2E.
+  // See docs/E2E_TESTING.md for database, contract, and mocking requirements.
 });

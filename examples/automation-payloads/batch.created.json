@@ -1,0 +1,13 @@
+{
+  "event": "batch.created",
+  "timestamp": "2026-09-01T09:30:00.000Z",
+  "data": {
+    "batchId": "b_71c0aa9e55d2",
+    "itemCount": 25,
+    "totalAmount": "612.25",
+    "assetCode": "USDC",
+    "status": "PROCESSING",
+    "createdAt": "2026-09-01T09:30:00.000Z"
+  },
+  "signature": "7573b188224e8bf331050ce1e332ec97821484fb2b770583cdd95920f2795baf"
+}

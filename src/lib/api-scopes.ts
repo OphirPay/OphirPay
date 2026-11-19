@@ -11,10 +11,22 @@
  * API key scopes. Each key carries a set of these; routes declare the scope(s)
  * they require and requests are denied (403) when the key lacks them.
  * The `admin` scope implicitly grants every other scope.
+ *
+ * `read:payments` / `write:payments` / `read:analytics` are the original
+ * coarse scopes and remain valid for existing keys. The granular scopes below
+ * let an integration be delegated the narrowest permission it needs:
+ * `payments:write` for payment mutations, `batches:create` for batch creation,
+ * `escrow:write` / `escrow:release` for escrow mutations, and
+ * `webhooks:write` for webhook configuration.
  */
 export const API_SCOPES = [
   "read:payments",
   "write:payments",
+  "payments:write",
+  "batches:create",
+  "escrow:write",
+  "escrow:release",
+  "webhooks:write",
   "read:analytics",
   "admin",
 ] as const;
@@ -36,4 +48,18 @@ export function hasScope(
   const scopes = new Set(keyScopes ?? []);
   if (scopes.has(ADMIN_SCOPE)) return true;
   return required.every((s) => scopes.has(s));
+}
+
+/**
+ * Scopes a key is missing from `required`, in declaration order. Used to name
+ * the exact permission in an INSUFFICIENT_SCOPE response instead of echoing a
+ * generic "forbidden".
+ */
+export function missingScopes(
+  keyScopes: string[] | null | undefined,
+  required: ApiScope[]
+): ApiScope[] {
+  const scopes = new Set(keyScopes ?? []);
+  if (scopes.has(ADMIN_SCOPE)) return [];
+  return required.filter((s) => !scopes.has(s));
 }

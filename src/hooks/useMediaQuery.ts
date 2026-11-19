@@ -26,6 +26,13 @@ export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(false);
 
   useEffect(() => {
+    // SSR/`jsdom` environments may not implement `matchMedia` at all. Treat
+    // "no media query engine" as "no match" rather than throwing: a component
+    // that merely *prefers* a mobile layout must still render on the server.
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
     const mql = window.matchMedia(query);
     setMatches(mql.matches);
 

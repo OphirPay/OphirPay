@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "@/components/ui/Toast";
 import AddressBookPage from "@/app/address-book/page";
 import { saveAddress, getAddressBook } from "@/lib/address-book";
+import { exportToCsv } from "@/lib/csv";
+
+vi.mock("@/lib/csv", () => ({ exportToCsv: vi.fn() }));
 
 const ADDR_A = "G" + "A".repeat(55);
 const ADDR_B = "G" + "B".repeat(55);
@@ -124,5 +127,42 @@ describe("AddressBookPage", () => {
 
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+  });
+
+  it("imports a CSV and displays row-level rejections", async () => {
+    setup();
+    const input = screen.getByTestId("address-book-csv-input");
+    const file = new File(
+      [`label,address,memo\n"Alice, work",${ADDR_A},Invoice\nBad,invalid,\n`],
+      "contacts.csv",
+      { type: "text/csv" }
+    );
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByText("Alice, work")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Import complete: 1 added, 0 updated, 1 rejected."
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Row 3: Invalid Stellar address.");
+    expect(getAddressBook()).toMatchObject([
+      { publicKey: ADDR_A, label: "Alice, work", memo: "Invoice" },
+    ]);
+  });
+
+  it("exports all contacts as label, publicKey, and memo CSV columns", () => {
+    saveAddress({ publicKey: ADDR_A, label: "Alice", memo: "Invoice" });
+    setup();
+
+    fireEvent.click(screen.getByRole("button", { name: /export csv/i }));
+
+    expect(exportToCsv).toHaveBeenCalledWith(
+      [{ label: "Alice", publicKey: ADDR_A, memo: "Invoice" }],
+      [
+        { key: "label", header: "label" },
+        { key: "publicKey", header: "publicKey" },
+        { key: "memo", header: "memo" },
+      ],
+      { filename: "ophirpay-address-book.csv" }
+    );
   });
 });

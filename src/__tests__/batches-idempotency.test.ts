@@ -30,6 +30,14 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: mockGetAuthContext,
 }));
 
+// The Redis lease added for issue #1366 is covered end-to-end in
+// `batches-redis-idempotency.test.ts`. Stub it to "no broker" here so this
+// suite isolates the durable database guarantee — and stays hermetic when a
+// developer has REDIS_URL set locally.
+vi.mock("@/lib/idempotency", () => ({
+  claimIdempotencyKey: vi.fn().mockResolvedValue({ status: "unavailable" }),
+}));
+
 import { generateCsrfToken } from "@/lib/csrf";
 import { POST } from "@/app/api/batches/route";
 
@@ -130,7 +138,9 @@ describe("POST /api/batches — idempotent re-submission", () => {
   });
 
   it("creates a batch on first submission with the supplied key (201)", async () => {
-    const res = await POST(makeRequest(makeBody({ idempotencyKey: KEY_BODY })));
+    const res = await POST(
+      makeRequest(makeBody(), { "Idempotency-Key": KEY_BODY })
+    );
 
     expect(res.status).toBe(201);
     const body = await res.json();
@@ -150,14 +160,15 @@ describe("POST /api/batches — idempotent re-submission", () => {
     });
   });
 
-  it("generates a server-side key when the client sends none", async () => {
-    const res = await POST(makeRequest(makeBody()));
+  it("rejects a submission with no key instead of generating one (issue #1440)", async () => {
+    // A server-generated key makes every retry a fresh batch, which is the
+    // duplicate this guard exists to prevent. The optional body field is not a
+    // substitute for the header either.
+    const res = await POST(makeRequest(makeBody({ idempotencyKey: KEY_BODY })));
 
-    expect(res.status).toBe(201);
-    const [createArgs] = mockBatchCreate.mock.calls[0];
-    expect(createArgs.data.idempotencyKey).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-    );
+    expect(res.status).toBe(400);
+    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockBatchCreate).not.toHaveBeenCalled();
   });
 
   it("returns the original batch on a full retry with the same key (no duplicates)", async () => {
@@ -256,12 +267,12 @@ describe("POST /api/batches — idempotent re-submission", () => {
     expect(mockFindFirst).not.toHaveBeenCalled();
   });
 
-  it("trims and validates the body key before deduplicating", async () => {
+  it("trims and validates the header key before deduplicating", async () => {
     const original = makeBatch({ idempotencyKey: KEY_BODY });
     mockFindFirst.mockResolvedValue(original);
 
     const res = await POST(
-      makeRequest(makeBody({ idempotencyKey: `  ${KEY_BODY}  ` }))
+      makeRequest(makeBody(), { "Idempotency-Key": `  ${KEY_BODY}  ` })
     );
 
     expect(res.status).toBe(200);
@@ -273,8 +284,10 @@ describe("POST /api/batches — idempotent re-submission", () => {
     });
   });
 
-  it("rejects a body key that is short after trimming", async () => {
-    const res = await POST(makeRequest(makeBody({ idempotencyKey: "  short  " })));
+  it("rejects a header key that is short after trimming", async () => {
+    const res = await POST(
+      makeRequest(makeBody(), { "Idempotency-Key": "  short  " })
+    );
 
     expect(res.status).toBe(400);
     expect(mockFindFirst).not.toHaveBeenCalled();

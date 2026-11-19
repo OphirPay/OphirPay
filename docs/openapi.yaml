@@ -9,12 +9,15 @@ info:
     **Authentication** — two modes:
     - `Authorization: Bearer <api-key>` (recommended)
     - `X-API-Key: <api-key>`
-    
+
     API keys are generated at `POST /api/keys` and shown only once.
 
     **Conventions** — see [docs/API_GUIDE.md](./API_GUIDE.md) for the
     endpoint conventions: file structure, Zod validation, error handling,
     auth usage, the response envelope, and rate limiting.
+
+    **Error codes** — see [docs/API_ERRORS.md](./API_ERRORS.md) for the
+    declared status and typical condition for each catalog code.
   version: 0.1.0
   contact:
     name: OphirPay Team
@@ -27,12 +30,18 @@ servers:
     description: Local development
   - url: https://api.ophirpay.com
     description: Production
+  - url: https://soroban-testnet.stellar.org
+    description: Stellar Soroban Testnet RPC
+  - url: https://horizon-testnet.stellar.org
+    description: Stellar Horizon Testnet
 
 security:
   - ApiKeyAuth: []
   - BearerAuth: []
 
 tags:
+  - name: Documentation
+    description: OpenAPI specification and interactive documentation
   - name: Payments
     description: Individual payment operations
   - name: Batches
@@ -79,6 +88,8 @@ tags:
     description: Contract deployment info and version
   - name: Stats
     description: Aggregate on-chain contract statistics
+  - name: Assets
+    description: Asset metadata resolved from the issuer's SEP-1 TOML
   - name: Session
     description: Wallet session issuance and revocation
 
@@ -141,29 +152,108 @@ paths:
               schema:
                 $ref: "#/components/schemas/PaginatedPayments"
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: >-
+            RFC 7807 problem details — a filter or cursor failed validation.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
     post:
       tags: [Payments]
       summary: Create a payment
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 255 }
+          description: >-
+            Required. A unique value per logical payment; reuse the same key
+            when retrying after a network error. The first successful request
+            stores the response for 24 hours, and a repeat with the same key
+            answers 409 with that exact body (plus `Idempotency-Replay: true`)
+            instead of creating a second payment.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CreatePaymentRequest"
+            examples:
+              validPayment:
+                summary: Create a 125 XLM payment
+                value:
+                  amount: 125
+                  sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                  destAddress: GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU
+                  assetCode: XLM
+                  description: September invoice 1042
+                  memo: INV-1042
       responses:
         "201":
           description: Payment created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaymentResponse"
+                $ref: "#/components/schemas/PaymentEnvelopeResponse"
+              examples:
+                createdPayment:
+                  summary: Payment created and awaiting submission
+                  value:
+                    success: true
+                    data:
+                      id: cmf4k2q8p0001x9a2b3c4d5e6
+                      amount: 125
+                      assetCode: XLM
+                      assetIssuer: null
+                      description: September invoice 1042
+                      memo: INV-1042
+                      status: CREATED
+                      transactionHash: null
+                      idempotencyKey: 42ce12b8-4d15-4a34-8f52-7b2136a84462
+                      sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                      userId: seed-user-1
+                      batchId: null
+                      createdAt: "2026-09-29T10:00:00.000Z"
+                      completedAt: null
+                      errorMessage: null
+                    meta:
+                      timestamp: "2026-09-29T10:00:00.000Z"
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: >-
+            RFC 7807 problem details. Zod rejections carry one `errors[]` entry
+            per invalid field (including an oversized or badly encoded memo).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
+          description: >-
+            This Idempotency-Key was already used. The body is the original
+            response; `Idempotency-Replay: true` and `X-Original-Status` identify
+            it as a replay. If the first request is still in flight, the body is
+            an error with code `OPERATION_IN_PROGRESS` and a `Retry-After` header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentEnvelopeResponse"
         "500":
-          $ref: "#/components/responses/ServerError"
+          description: RFC 7807 problem details — an unexpected server failure.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
 
   /api/payments/{id}:
     get:
@@ -181,7 +271,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaymentResponse"
+                $ref: "#/components/schemas/PaymentEnvelopeResponse"
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
@@ -256,17 +346,33 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PaymentResponse"
+                $ref: "#/components/schemas/PaymentEnvelopeResponse"
         "400":
-          $ref: "#/components/responses/ValidationError"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          description: Payment is not in a retryable (FAILED) state
+          description: RFC 7807 problem details — the body failed validation.
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "404":
+          description: RFC 7807 problem details — no such payment for this caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
+          description: >-
+            RFC 7807 problem details — the payment is not in a retryable
+            (FAILED) state. `code` is `STATE_CONFLICT`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
 
   /api/payments/cancel:
     post:
@@ -292,23 +398,43 @@ paths:
         "200":
           description: Payment cancelled
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: RFC 7807 problem details — `txHash` is missing or invalid.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: RFC 7807 problem details — no such payment for this caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
 
   /api/payments/export:
     get:
       tags: [Payments]
-      summary: Export payments as CSV
+      summary: Export payments as CSV or JSON
       description: |
-        Server-side CSV export of the CURRENT filter results — every row
-        matching `status` / `search` (the same filters as GET /api/payments),
-        not just the page loaded in the browser. Returns a dated CSV
-        attachment that includes all key fields plus memo and transaction hash.
-        The response includes an `X-Export-Truncated` header set to `true`
-        when the result set exceeds the export row cap.
+        Server-side export of the CURRENT filter results — every row matching
+        `status` / `search` / `dateFrom` / `dateTo` / `asset`, not just the page
+        loaded in the browser. Returns a dated attachment in `format=csv`
+        (default) or `format=json` with timestamp, transaction hash, sender,
+        recipient, asset, amount, fee, memo and status.
+
+        The response is **streamed**: the header is sent immediately, then
+        rows are flushed in 250-row chunks as they are pulled from the database
+        with a Prisma cursor (`Transfer-Encoding: chunked`). Memory use is flat
+        regardless of how many rows match, and there is no row cap — the export
+        never silently omits rows. If the database fails after the headers are
+        sent, the stream is errored so the download fails instead of producing
+        a truncated file that looks complete. Exports are rate-limited per
+        authenticated account; a 429 carries `Retry-After`.
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       parameters:
         - name: status
@@ -323,23 +449,68 @@ paths:
           schema:
             type: string
           description: Only export payments matching this search term
+        - name: dateFrom
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Inclusive UTC start date (`YYYY-MM-DD`)
+        - name: dateTo
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Inclusive UTC end date (`YYYY-MM-DD`)
+        - name: asset
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Only export payments in this asset code
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [csv, json]
+            default: csv
+          description: Download format
       responses:
         "200":
-          description: CSV attachment with the matching payment rows
-          headers:
-            X-Export-Truncated:
-              description: true when the result set was truncated to the export cap
-              schema:
-                type: string
-                enum: ["true", "false"]
+          description: >-
+            Streamed attachment with the matching payment rows
+            (`Transfer-Encoding: chunked`).
           content:
             text/csv:
               schema:
                 type: string
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties:
+                    type: string
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: RFC 7807 problem details — an unknown filter or format.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: RFC 7807 problem details — no authenticated caller.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "429":
+          description: RFC 7807 problem details — the per-account export quota is exhausted (`Retry-After` is set).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
 
   # ── Escrows ───────────────────────────────────────────────
   /api/escrows:
@@ -361,6 +532,15 @@ paths:
       tags: [Escrows]
       summary: Create an on-chain escrow
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 255 }
+          description: >-
+            Required. Reuse the same key when retrying; a repeat returns 409
+            with the original response body instead of a second set of
+            parameters to sign.
       requestBody:
         required: true
         content:
@@ -382,6 +562,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/escrows/{id}:
     get:
@@ -419,6 +601,15 @@ paths:
       tags: [Streams]
       summary: Create an on-chain payment stream
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 255 }
+          description: >-
+            Required. Reuse the same key when retrying; a repeat returns 409
+            with the original response body instead of a second set of
+            parameters to sign.
       requestBody:
         required: true
         content:
@@ -440,6 +631,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/streams/{id}:
     get:
@@ -492,6 +685,49 @@ paths:
           description: Role assignment(s)
         "401":
           $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [RBAC]
+      summary: Authorize a role change (sudo step-up)
+      description: >
+        Server-side step-up gate for role grants and revocations (issue #1389).
+        The on-chain write is performed by the connected wallet, but it must be
+        authorized here first. Returns 403 SUDO_REQUIRED with a wallet challenge
+        when the session's last cryptographic verification is older than 15
+        minutes; retry with the signed challenge to authorize the mutation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, address]
+              properties:
+                action: { type: string, enum: [grant, revoke] }
+                address:
+                  { type: string, description: "Stellar account address (G…, 56 characters)" }
+                role:
+                  {
+                    type: integer,
+                    minimum: 0,
+                    maximum: 2,
+                    description: "0 Admin, 1 Operator, 2 Auditor; required for grant",
+                  }
+                challenge:
+                  { type: string, description: "Step-up challenge, present only on the retry" }
+                signature:
+                  {
+                    type: string,
+                    description: "Wallet signature over the challenge message, present only on the retry",
+                  }
+      responses:
+        "200":
+          description: Action authorized
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   # ── Fee Config ────────────────────────────────────────────
   /api/fee-config:
@@ -504,6 +740,51 @@ paths:
           description: Fee configuration
         "401":
           $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Fee Config]
+      summary: Authorize a fee-configuration change (sudo step-up)
+      description: >
+        Server-side step-up gate for fee-config changes (issue #1389). The
+        on-chain write is performed by the connected wallet, but it must be
+        authorized here first. Returns 403 SUDO_REQUIRED with a wallet challenge
+        when the session's last cryptographic verification is older than 15
+        minutes; retry with the signed challenge to authorize the mutation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [set_fee_config, set_fee_collector] }
+                paymentFeeBps: { type: integer, minimum: 0, maximum: 1000 }
+                escrowFeeBps: { type: integer, minimum: 0, maximum: 1000 }
+                streamFeeBps: { type: integer, minimum: 0, maximum: 1000 }
+                batchBaseFee: { type: integer, minimum: 0 }
+                batchPerItemFee: { type: integer, minimum: 0 }
+                enabled: { type: boolean }
+                collector:
+                  {
+                    type: string,
+                    description: "Fee collector address; required for set_fee_collector",
+                  }
+                challenge:
+                  { type: string, description: "Step-up challenge, present only on the retry" }
+                signature:
+                  {
+                    type: string,
+                    description: "Wallet signature over the challenge message, present only on the retry",
+                  }
+      responses:
+        "200":
+          description: Action authorized
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/fee-config/collector:
     get:
@@ -563,6 +844,45 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  # ── Assets ────────────────────────────────────────────────
+  /api/assets/metadata:
+    get:
+      tags: [Assets]
+      summary: Resolve asset metadata from the issuer's SEP-1 TOML
+      description: |
+        Looks up the issuer account's `home_domain` on Horizon, fetches and
+        validates that domain's `stellar.toml` (shared timeout + 100 KiB size
+        limit, DNS/URL safety guard), and returns the matching `[[CURRENCIES]]`
+        entry so custom assets can display a ticker and issuer name.
+
+        Results are cached per issuer domain for `ASSET_METADATA_TTL_MS`.
+        Unknown or unreachable metadata degrades to `code` plus `issuer` with
+        `name: null` and `source: fallback` — never an error (issue #824).
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string, maxLength: 12 }
+          description: Asset code (e.g. USDC)
+        - name: issuer
+          in: query
+          required: true
+          schema: { type: string, pattern: "^G[A-Z0-9]{55}$" }
+          description: Stellar account that issues the asset
+      responses:
+        "200":
+          description: Resolved asset metadata (or a fallback code + issuer)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    $ref: "#/components/schemas/AssetMetadata"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
   # ── Batches ────────────────────────────────────────────────
   /api/batches:
     get:
@@ -606,21 +926,37 @@ paths:
       parameters:
         - name: Idempotency-Key
           in: header
-          required: false
+          required: true
           schema: { type: string, minLength: 8, maxLength: 255 }
           description: >-
-            Per-user key that makes submission idempotent. Re-sending the same
-            key returns the already-created batch (200) instead of double
-            sending; if the first attempt crashed before inserting child
-            payments, a retry resumes only the missing ones. An equivalent
-            `idempotencyKey` body field is accepted when no header is sent, but
-            the header takes precedence.
+            Required. Per-user key that makes submission idempotent. Re-sending
+            the same key returns 409 with the original response body instead of
+            double sending; if the first attempt crashed before inserting child
+            payments, a retry resumes only the missing ones. The deprecated
+            `idempotencyKey` body field is still accepted but ignored.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateBatchRequest"
+            examples:
+              validBatch:
+                summary: Two-recipient XLM payroll batch
+                value:
+                  name: September payroll
+                  description: September payroll payouts
+                  sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                  idempotencyKey: september-payroll-2026
+                  recipients:
+                    - address: GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU
+                      amount: 3200
+                      assetCode: XLM
+                      memo: PAYROLL-001
+                    - address: GA5AZNWWOW5PXPNHBVRJOB2ZPZO3PXN5VTXTXOIJTACZZHE5ZA7CAH7H
+                      amount: 2850
+                      assetCode: XLM
+                      memo: PAYROLL-002
       responses:
         "200":
           description: Already-processed batch returned for a replayed idempotency key (meta.deduplicated is true)
@@ -634,6 +970,56 @@ paths:
                   success: { type: boolean, const: true }
                   data:
                     $ref: "#/components/schemas/BatchResponse"
+                  meta:
+                    type: object
+                    properties:
+                      timestamp: { type: string, format: date-time }
+              examples:
+                createdBatch:
+                  summary: Batch created with two child payments
+                  value:
+                    success: true
+                    data:
+                      id: cmf4k2q8p0002x9a2b3c4d5e7
+                      userId: seed-user-1
+                      name: September payroll
+                      description: September payroll payouts
+                      status: CREATED
+                      createdAt: "2026-09-29T10:00:00.000Z"
+                      updatedAt: "2026-09-29T10:00:00.000Z"
+                      payments:
+                        - id: cmf4k2q8p0003x9a2b3c4d5e8
+                          amount: 3200
+                          assetCode: XLM
+                          assetIssuer: null
+                          description: null
+                          memo: PAYROLL-001
+                          status: CREATED
+                          transactionHash: null
+                          idempotencyKey: 756580f6-82db-4a72-bbd8-0a12792f11a9
+                          sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                          userId: seed-user-1
+                          batchId: cmf4k2q8p0002x9a2b3c4d5e7
+                          createdAt: "2026-09-29T10:00:00.000Z"
+                          completedAt: null
+                          errorMessage: null
+                        - id: cmf4k2q8p0004x9a2b3c4d5e9
+                          amount: 2850
+                          assetCode: XLM
+                          assetIssuer: null
+                          description: null
+                          memo: PAYROLL-002
+                          status: CREATED
+                          transactionHash: null
+                          idempotencyKey: 07682f53-1b06-4eb0-9c8f-6a8c5b4e4d9a
+                          sourceAccountId: GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U
+                          userId: seed-user-1
+                          batchId: cmf4k2q8p0002x9a2b3c4d5e7
+                          createdAt: "2026-09-29T10:00:00.000Z"
+                          completedAt: null
+                          errorMessage: null
+                    meta:
+                      timestamp: "2026-09-29T10:00:00.000Z"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -913,6 +1299,62 @@ paths:
           description: Payment request created
         "400":
           $ref: "#/components/responses/ValidationError"
+  /api/requests/{id}/paid:
+    post:
+      tags: [Payment Requests]
+      summary: Confirm payment for a payment request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transactionHash]
+              properties:
+                transactionHash: { type: string }
+      responses:
+        "200":
+          description: Payment request marked as paid
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/requests/{id}/remind:
+    post:
+      tags: [Payment Requests]
+      summary: Email a reminder for a payment request
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Reminder email sent
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/requests/expire:
+    get:
+      tags: [Payment Requests]
+      summary: Expire overdue payment requests
+      description: Invoked by the scheduled job with the configured cron secret.
+      responses:
+        "200":
+          description: Number of payment requests expired
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Expiry scheduler is not configured
 
   # ── Webhooks ──────────────────────────────────────────────
   /api/webhooks:
@@ -998,6 +1440,30 @@ paths:
           $ref: "#/components/responses/NotFound"
 
   /api/webhooks/{id}/test:
+    get:
+      tags: [Webhooks]
+      summary: Preview a signed webhook test request
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: event
+          in: query
+          schema: { type: string }
+        - name: timestamp
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Exact canonical body, wire body, headers, and validated target URL
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     post:
       tags: [Webhooks]
       summary: Send a test webhook delivery
@@ -1077,6 +1543,28 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/webhooks/{id}/deliveries/{deliveryId}:
+    get:
+      tags: [Webhooks]
+      summary: Get a webhook delivery record
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: deliveryId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Full webhook delivery record, including request preview and response body
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/webhooks/{id}/deliveries/{deliveryId}/redeliver:
     post:
       tags: [Webhooks]
@@ -1105,6 +1593,46 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/webhooks/{id}/deliveries/requeue:
+    post:
+      tags: [Webhooks]
+      summary: Requeue dead-lettered webhook deliveries for retry
+      description: |
+        Filters and bulk-requeues dead-lettered or failed webhook deliveries.
+        Resets delivery attempts to 0 and transitions status to PENDING for
+        worker redelivery.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                statusCodes:
+                  type: array
+                  items: { type: integer }
+                onlyTimeouts:
+                  type: boolean
+                limit:
+                  type: integer
+                deliveryIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: Requeue operation summary
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   # ── API Keys ──────────────────────────────────────────────
   /api/keys:
     get:
@@ -1119,6 +1647,14 @@ paths:
     post:
       tags: [API Keys]
       summary: Generate a new API key (raw key shown once)
+      description: |
+        Creates a key for the authenticated account and returns the raw value
+        exactly once. The account may hold at most five active keys; creation
+        is refused with 409 once the cap is reached.
+
+        Create and rotate share a sliding quota of 10 operations per account
+        per hour, beyond which the endpoint returns 429. Successful creation is
+        recorded in the audit log as `api_key:create`.
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       requestBody:
         required: true
@@ -1135,13 +1671,20 @@ paths:
                   type: array
                   description: >
                     Permitted scopes for the key. Allowed values:
-                    read:payments, write:payments, read:analytics, admin.
+                    read:payments, write:payments, payments:write,
+                    batches:create, escrow:write, escrow:release,
+                    webhooks:write, read:analytics, admin.
                     The admin scope grants all scopes. Empty means no access.
                   items:
                     type: string
                     enum:
                       - read:payments
                       - write:payments
+                      - payments:write
+                      - batches:create
+                      - escrow:write
+                      - escrow:release
+                      - webhooks:write
                       - read:analytics
                       - admin
       responses:
@@ -1167,6 +1710,28 @@ paths:
                         description: Raw API key — shown only once
         "400":
           $ref: "#/components/responses/ValidationError"
+        "409":
+          description: >
+            The account already holds the maximum number of active API keys
+            (5). Revoke or rotate an existing key before creating another.
+        "429":
+          description: >
+            Hourly API-key create/rotate quota exhausted (10 operations per
+            account per hour). `Retry-After` and `error.details.resetAt` carry
+            the reset time.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+            X-RateLimit-Limit:
+              schema: { type: integer }
+            X-RateLimit-Remaining:
+              schema: { type: integer }
+            X-RateLimit-Reset:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     patch:
       tags: [API Keys]
       summary: Update the scopes of an existing API key
@@ -1189,6 +1754,11 @@ paths:
                     enum:
                       - read:payments
                       - write:payments
+                      - payments:write
+                      - batches:create
+                      - escrow:write
+                      - escrow:release
+                      - webhooks:write
                       - read:analytics
                       - admin
       responses:
@@ -1210,6 +1780,87 @@ paths:
           description: Key revoked
         "400":
           description: Missing key ID
+
+  /api/keys/{id}/rotate:
+    post:
+      tags: [API Keys]
+      summary: Rotate an API key with a 24-hour overlap
+      description: |
+        Atomically issues a replacement key for `id` and gives the previous key
+        a 24-hour overlap (never extending its own expiry), so consumers can
+        deploy the new credential without an authentication outage.
+
+        The previous key keeps working until `previousKeyValidUntil`; after
+        that it is rejected. Rotating an already-rotated, revoked, expired, or
+        unknown key returns 400 rather than minting a second replacement, and
+        the rotation is recorded in the audit log as `api_key:rotate`,
+        including `details.initiatedBy` (the wallet or API key that requested
+        it).
+
+        Rotation shares the create quota: 10 create/rotate operations per
+        account per hour, after which the endpoint returns 429.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: API key ID to rotate
+          schema: { type: string }
+      responses:
+        "201":
+          description: Replacement key issued — store its raw `key` immediately
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        description: ID of the replacement key
+                      name: { type: string }
+                      prefix: { type: string }
+                      scopes:
+                        type: array
+                        items: { type: string }
+                      key:
+                        type: string
+                        description: Raw replacement API key — shown only once
+                      previousPrefix: { type: string }
+                      previousKeyValidUntil:
+                        type: string
+                        format: date-time
+                        description: >
+                          End of the overlap window, after which the previous
+                          key stops authenticating
+        "400":
+          description: Key not found, expired, or already rotated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          description: >
+            Hourly API-key create/rotate quota exhausted. `Retry-After` and
+            `error.details.resetAt` carry the reset time.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+            X-RateLimit-Limit:
+              schema: { type: integer }
+            X-RateLimit-Remaining:
+              schema: { type: integer }
+            X-RateLimit-Reset:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ServerError"
 
   /api/keys/stats:
     get:
@@ -1448,11 +2099,12 @@ paths:
                             action_type: { type: string }
                             yes_votes: { type: integer }
                             no_votes: { type: integer }
-                            voting_ends_at: { type: [integer, 'null'] }
+                            voting_ends_at: { type: [integer, "null"] }
                             executed: { type: boolean }
                             proposer: { type: string }
                       total: { type: integer, description: "Total proposal count on-chain" }
-                      truncated: { type: boolean, description: "True when older proposals were dropped" }
+                      truncated:
+                        { type: boolean, description: "True when older proposals were dropped" }
     post:
       tags: [Governance]
       summary: Create a governance proposal (on-chain)
@@ -1470,10 +2122,58 @@ paths:
                 target: { type: string }
                 data: { type: string }
                 depositAsset: { type: string, description: "Stellar asset address for deposit" }
-                depositAmount: { type: integer, description: "Deposit amount (must be >= min_proposal_deposit)" }
+                depositAmount:
+                  { type: integer, description: "Deposit amount (must be >= min_proposal_deposit)" }
       responses:
         "201":
           description: Proposal created
+
+  /api/governance/proposals/{id}:
+    get:
+      tags: [Governance]
+      summary: Fetch one governance proposal with its vote history
+      description: |
+        Reads a single proposal from the chain together with the governance
+        config and the recorded vote events, so the proposal detail page can
+        render in one round trip.
+      security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+          description: On-chain proposal id
+      responses:
+        "200":
+          description: Proposal detail with config and vote history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: object
+                    properties:
+                      proposal:
+                        description: Raw return value of the contract's get_proposal
+                      config:
+                        description: Governance config, null when its simulation failed
+                      voteHistory:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            voter: { type: [string, "null"] }
+                            support: { type: [boolean, "null"] }
+                            transactionHash: { type: [string, "null"] }
+                            recordedAt: { type: string, format: date-time }
+        "400":
+          description: Proposal id is not a positive integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/governance/vote:
     post:
@@ -1584,7 +2284,8 @@ paths:
                 asset: { type: string, default: native }
                 reason: { type: string, maxLength: 500 }
                 reasonCode: { type: integer, minimum: 0, maximum: 5 }
-                onChainId: { type: integer, description: "Contract refund id from the tx return value" }
+                onChainId:
+                  { type: integer, description: "Contract refund id from the tx return value" }
       responses:
         "201":
           description: Refund ledger row created
@@ -1655,7 +2356,8 @@ paths:
               properties:
                 eventType: { type: string, maxLength: 100 }
                 webhookUrl: { type: string, format: uri }
-                onChainId: { type: integer, description: "Contract hook id from the tx return value" }
+                onChainId:
+                  { type: integer, description: "Contract hook id from the tx return value" }
       responses:
         "201":
           description: Hook ledger row created
@@ -1809,7 +2511,7 @@ paths:
       summary: Subscribe to real-time payment events
       description: |
         Server-Sent Events stream. Polls the Stellar emitter contract every 10 seconds.
-        
+
         Events:
         - `connected` — stream established
         - `heartbeat` — keep-alive every 15s
@@ -1825,15 +2527,36 @@ paths:
   /api/events/history:
     get:
       tags: [Events]
-      summary: Fetch on-chain payment event history
+      summary: Fetch on-chain payment event history (cursor paginated)
+      description: |
+        Returns on-chain `payment.created` events newest-first by on-chain id
+        (`id DESC`). Pagination follows the same opaque keyset-cursor convention
+        as `GET /api/payments`: pass `limit` (1–100, default 50) and the
+        `meta.nextCursor` value from the previous response as `cursor`. The
+        response envelope carries `meta.nextCursor` (null on the last page) and
+        `meta.hasMore`, so clients catching up after a disconnect can walk the
+        history without re-reading or skipping records.
       parameters:
         - name: limit
           in: query
-          schema: { type: integer, default: 50, maximum: 200 }
-          description: Number of recent events to return
+          schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
+          description: Number of events to return (maximum 100)
+        - name: cursor
+          in: query
+          schema: { type: string }
+          description: >-
+            Opaque keyset cursor from a previous response's `meta.nextCursor`.
+            Paginates strictly below the last event id of that page. An invalid
+            cursor returns 400.
       responses:
         "200":
-          description: Recent event history
+          description: Event history page with cursor meta
+        "400":
+          description: Invalid cursor or limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ── Health ────────────────────────────────────────────────
   /api/health:
@@ -1859,11 +2582,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
 
+  /api/health/live:
+    get:
+      tags: [Health]
+      summary: Liveness probe (process only)
+      description: >-
+        Lightweight liveness signal (issue #738): proves the Node process is up
+        and serving HTTP, with no database, Soroban RPC, Horizon or Redis I/O.
+        Orchestrators should wire this to `livenessProbe` / container
+        healthchecks so a transient dependency outage cannot restart-loop a
+        healthy container. Readiness uses `GET /api/health/ready` (database
+        only, 503 while unavailable). Both paths are exempt from the global
+        rate limiter.
+      responses:
+        "200":
+          description: Process is alive and serving
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: object
+                    required: [status, probe, version]
+                    properties:
+                      status: { type: string, enum: [ok] }
+                      probe: { type: string, enum: [liveness] }
+                      version: { type: string }
+                      uptime:
+                        type: number
+                        description: Seconds since the process started
+                  meta:
+                    type: object
+                    properties:
+                      timestamp: { type: string, format: date-time }
+
+  /api/health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe (database only)
+      description: >-
+        Checks PostgreSQL with `SELECT 1` and performs no external network
+        checks. Orchestrators should wire this endpoint to readiness probes so
+        slow Stellar RPC, Horizon, or Redis services do not drain healthy pods.
+      responses:
+        "200":
+          description: Database is reachable and the pod can receive traffic
+        "503":
+          description: Database is unavailable; the pod should receive no traffic
+
   # ── Metrics ───────────────────────────────────────────────
   /api/metrics:
     get:
       tags: [Metrics]
       summary: Prometheus metrics endpoint
+      description: |
+        Prometheus text exposition. Now authenticated: send
+        `Authorization: Bearer $METRICS_TOKEN`, or an API key carrying the
+        `admin` scope via `Authorization: Bearer` / `X-API-Key`. Unauthenticated
+        requests receive `401` with no metric body. See
+        `docs/metrics-endpoints.md` for the scrape configuration.
+      security: [{ BearerAuth: [] }, { ApiKeyAuth: [] }]
       responses:
         "200":
           description: Prometheus text format metrics
@@ -1871,6 +2652,8 @@ paths:
             text/plain:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ── Jobs & Cron ──────────────────────────────────────────
   /api/cron:
@@ -1933,13 +2716,78 @@ paths:
       summary: Contract pause state
       description: |
         Reads the on-chain `is_paused` flag from the payment contract via a
-        simulated contract call.
+        simulated contract call. `scopes` lists the ids returned by
+        `get_paused_scopes` for the per-feature pause flags (0 Payments,
+        1 Escrows, 2 Streams, 3 Recurring, 4 Refunds, 5 Governance, 6 Hooks,
+        7 Batches).
       security: [{ ApiKeyAuth: [] }, { BearerAuth: [] }]
       responses:
         "200":
-          description: Pause state ({ paused, available })
+          description: Pause state ({ paused, available, scopes })
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /api/csp-report:
+    post:
+      tags: [Security]
+      summary: CSP violation report collector
+      description: |
+        Receives Content-Security-Policy violation reports from browsers.
+        Accepts both the legacy `application/csp-report` envelope format and
+        the modern Reporting API `application/reports+json` array format.
+
+        This endpoint is invoked by the browser itself (not by page JavaScript)
+        when a resource violates the CSP set by `src/proxy.ts`. It is
+        intentionally CSRF-exempt: browser-generated reports carry no session
+        cookie and cannot include a CSRF token. The endpoint is size-capped
+        at 16 KiB, never mutates application state, logs a redacted structured
+        line via `logger.ts`, and increments the `csp_violation_reports_total`
+        metric.
+
+        References: issue #698, RFC 7469 (Report-URI), W3C Reporting API.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/csp-report:
+            schema:
+              type: object
+              properties:
+                csp-report:
+                  type: object
+                  description: CSP violation payload from the browser.
+          application/reports+json:
+            schema:
+              type: array
+              items:
+                type: object
+                description: Reporting API violation entry.
+      responses:
+        "204":
+          description: Report accepted (no body returned)
+        "400":
+          description: Malformed or unrecognised report body
+        "413":
+          description: Body exceeds the 16 KiB size limit
+
+  # ── Documentation ─────────────────────────────────────────
+  /api/openapi.json:
+    get:
+      tags: [Documentation]
+      summary: OpenAPI specification in JSON format
+      description: |
+        Returns the parsed OpenAPI 3.1.0 specification for OphirPay in JSON
+        format. Used by internal interactive documentation at `/docs/api`,
+        developer SDK generators, Postman/Insomnia imports, and external tooling.
+      security: []
+      responses:
+        "200":
+          description: Parsed OpenAPI specification document
+          content:
+            application/json:
+              schema:
+                type: object
+                description: OpenAPI 3.1.0 specification object
 
 # ── Components ────────────────────────────────────────────────
 components:
@@ -1956,24 +2804,57 @@ components:
       description: Same API key, passed as Bearer token
 
   schemas:
+    AssetMetadata:
+      type: object
+      description: Display metadata resolved from the issuer's SEP-1 stellar.toml
+      properties:
+        code: { type: string }
+        issuer: { type: string }
+        name:
+          {
+            type: [string, "null"],
+            description: "Human display name from the [[CURRENCIES]] table",
+          }
+        description: { type: [string, "null"] }
+        image: { type: [string, "null"] }
+        decimals: { type: [integer, "null"] }
+        orgName: { type: [string, "null"] }
+        homeDomain: { type: [string, "null"], description: Issuer's home domain, when resolved }
+        source:
+          type: string
+          enum: [toml, cache, fallback]
+        fetchedAt: { type: string, format: date-time }
+
     PaymentResponse:
       type: object
       properties:
         id: { type: string }
         amount: { type: number }
         assetCode: { type: string }
-        assetIssuer: { type: [string, 'null'] }
-        description: { type: [string, 'null'] }
-        memo: { type: [string, 'null'] }
+        assetIssuer: { type: [string, "null"] }
+        description: { type: [string, "null"] }
+        memo: { type: [string, "null"] }
         status: { type: string }
-        transactionHash: { type: [string, 'null'] }
-        idempotencyKey: { type: [string, 'null'], description: 'Per-attempt key; regenerated on every retry' }
+        transactionHash: { type: [string, "null"] }
+        idempotencyKey:
+          { type: [string, "null"], description: "Per-attempt key; regenerated on every retry" }
         sourceAccountId: { type: string }
         userId: { type: string }
-        batchId: { type: [string, 'null'] }
+        batchId: { type: [string, "null"] }
         createdAt: { type: string, format: date-time }
-        completedAt: { type: [string, 'null'], format: date-time }
-        errorMessage: { type: [string, 'null'] }
+        completedAt: { type: [string, "null"], format: date-time }
+        errorMessage: { type: [string, "null"] }
+
+    PaymentEnvelopeResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data:
+          $ref: "#/components/schemas/PaymentResponse"
+        meta:
+          type: object
+          properties:
+            timestamp: { type: string, format: date-time }
 
     PaginatedPayments:
       type: object
@@ -1993,7 +2874,7 @@ components:
             page: { type: integer }
             limit: { type: integer }
             total: { type: integer }
-            nextCursor: { type: [string, 'null'] }
+            nextCursor: { type: [string, "null"] }
             hasMore: { type: boolean }
 
     BatchResponse:
@@ -2002,7 +2883,7 @@ components:
         id: { type: string }
         userId: { type: string }
         name: { type: string }
-        description: { type: [string, 'null'] }
+        description: { type: [string, "null"] }
         status:
           type: string
           enum: [CREATED, PROCESSING, COMPLETED, PARTIALLY_COMPLETED, FAILED]
@@ -2049,7 +2930,7 @@ components:
             page: { type: integer }
             limit: { type: integer }
             total: { type: integer }
-            nextCursor: { type: [string, 'null'] }
+            nextCursor: { type: [string, "null"] }
             hasMore: { type: boolean }
 
     CreatePaymentRequestSchema:
@@ -2095,7 +2976,20 @@ components:
           maxLength: 200
         memo:
           type: string
-          maxLength: 28
+          description: >-
+            Stellar memo to attach. For `MEMO_TEXT` (the default) the limit is
+            28 **UTF-8 bytes**, not characters — `"🚀".repeat(8)` is 8
+            characters but 32 bytes and is rejected. `MEMO_HASH`/
+            `MEMO_RETURN` carry exactly 64 hex characters and `MEMO_ID` an
+            unsigned 64-bit decimal integer.
+        memoType:
+          type: string
+          enum: [MEMO_TEXT, MEMO_ID, MEMO_HASH, MEMO_RETURN]
+          default: MEMO_TEXT
+          description: >-
+            Encoding of `memo`. Omitted means `MEMO_TEXT`, so text-only clients
+            are unaffected. Lowercase aliases (`text`, `id`, `hash`, `return`)
+            are accepted and normalized.
         sourceAccountId:
           type: string
           description: Source Stellar account
@@ -2242,12 +3136,12 @@ components:
                   type: object
                   properties:
                     status: { type: string, enum: [ok, error] }
-                    latencyMs: { type: [integer, 'null'] }
+                    latencyMs: { type: [integer, "null"] }
                 redis:
                   type: object
                   properties:
                     status: { type: string, enum: [ok, error, disabled] }
-                    latencyMs: { type: [integer, 'null'] }
+                    latencyMs: { type: [integer, "null"] }
                 stellar:
                   type: object
                   properties:
@@ -2258,12 +3152,12 @@ components:
                       type: object
                       properties:
                         status: { type: string, enum: [ok, error, unchecked] }
-                        latencyMs: { type: [integer, 'null'] }
+                        latencyMs: { type: [integer, "null"] }
                     horizon:
                       type: object
                       properties:
                         status: { type: string, enum: [ok, error, unchecked] }
-                        latencyMs: { type: [integer, 'null'] }
+                        latencyMs: { type: [integer, "null"] }
                     contracts:
                       type: object
                       properties:
@@ -2271,17 +3165,17 @@ components:
                         ophirpay:
                           type: object
                           properties:
-                            id: { type: [string, 'null'] }
+                            id: { type: [string, "null"] }
                             status: { type: string, enum: [ok, error, not_configured] }
                         emitter:
                           type: object
                           properties:
-                            id: { type: [string, 'null'] }
+                            id: { type: [string, "null"] }
                             status: { type: string, enum: [ok, error, not_configured] }
                         chainReadSource:
                           type: object
                           properties:
-                            id: { type: [string, 'null'] }
+                            id: { type: [string, "null"] }
                             status: { type: string, enum: [ok, error, not_configured] }
             uptime: { type: number }
         meta:
@@ -2291,6 +3185,10 @@ components:
 
     ErrorResponse:
       type: object
+      description: >-
+        Legacy error envelope still used by most routes. The payment mutation
+        routes (`POST /api/payments`, `/cancel`, `/retry`) answer with
+        `ProblemDetails` instead.
       properties:
         success: { type: boolean, const: false }
         error:
@@ -2298,6 +3196,64 @@ components:
           properties:
             code: { type: string }
             message: { type: string }
+
+    ProblemFieldError:
+      type: object
+      description: One invalid request field.
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: Dotted path of the field, e.g. `memo` or `recipients.0.address`.
+        message:
+          type: string
+          description: User-facing explanation, safe to display next to the input.
+        code:
+          type: string
+          description: Machine-readable reason (e.g. the underlying Zod issue code).
+
+    ProblemDetails:
+      type: object
+      description: |
+        RFC 7807 / RFC 9457 problem details, served as
+        `application/problem+json`.
+
+        `type` identifies the problem *class* (a stable documentation URI),
+        `title` names it, and `detail` explains this particular occurrence.
+        `code` and `errors` are extension members carrying the OphirPay error
+        code from the catalog and the per-field validation failures.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: >-
+            Stable URI for the problem class, e.g.
+            `https://ophirpay.dev/problems/memo-too-long`. `about:blank` when no
+            specific type applies.
+        title:
+          type: string
+          description: Short, human-readable summary of the problem class.
+        status:
+          type: integer
+          description: HTTP status code, repeated here for log-only consumers.
+        detail:
+          type: string
+          description: Request-specific explanation, safe to display.
+        instance:
+          type: string
+          description: Path of the request that produced the problem.
+        code:
+          type: string
+          description: OphirPay error code (`VALIDATION_ERROR`, `MEMO_TOO_LONG`, …).
+        requestId:
+          type: string
+          description: Mirrors the `X-Request-Id` response header.
+        errors:
+          type: array
+          description: Per-field validation failures, when the request had a body.
+          items:
+            $ref: "#/components/schemas/ProblemFieldError"
 
   responses:
     ValidationError:

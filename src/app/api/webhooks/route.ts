@@ -2,7 +2,10 @@
 import { withMetrics } from "@/lib/metrics-middleware";
 
 import prisma from "@/lib/prisma";
-import { createWebhookSchema } from "@/lib/validation-schemas";
+import {
+  createWebhookSchema,
+  isAllowedWebhookProtocol,
+} from "@/lib/validation/webhook";
 import {
   successResponse,
   badRequestError,
@@ -11,6 +14,7 @@ import {
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
+import { requireScope } from "@/lib/api-route";
 import { isSafeWebhookUrl } from "@/lib/webhook-url-guard";
 import { verifyCsrf } from "@/lib/csrf";
 import crypto from "crypto";
@@ -44,12 +48,23 @@ export const POST = withMetrics("POST /api/webhooks", withRequestLogging(async f
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
 
+    const scopeError = await requireScope(request, "webhooks:write", auth);
+    if (scopeError) return scopeError;
+
     const body = await request.json();
     const parsed = createWebhookSchema.safeParse(body);
-    if (!parsed.success) return badRequestError("Invalid webhook data");
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return badRequestError(issue?.message || "Invalid webhook data");
+    }
 
     // SSRF guard — reject URLs targeting internal/private networks
-    if (!isSafeWebhookUrl(parsed.data.url)) {
+    // (Allow localhost only in development mode when explicitly permitted by schema)
+    const isDevLocalhost =
+      process.env.NODE_ENV === "development" &&
+      isAllowedWebhookProtocol(parsed.data.url, "development");
+
+    if (!isSafeWebhookUrl(parsed.data.url) && !isDevLocalhost) {
       return badRequestError(
         "Webhook URL must be a public http(s) endpoint — internal and private addresses are not allowed."
       );
@@ -85,6 +100,9 @@ export async function PATCH(request: Request) {
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
 
+    const scopeError = await requireScope(request, "webhooks:write", auth);
+    if (scopeError) return scopeError;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) return badRequestError("Webhook ID is required");
@@ -117,6 +135,9 @@ export const DELETE = withMetrics("DELETE /api/webhooks", withRequestLogging(asy
 
     const auth = await getAuthContext(request);
     if (!auth) return unauthorizedError("Authentication required.");
+
+    const scopeError = await requireScope(request, "webhooks:write", auth);
+    if (scopeError) return scopeError;
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");

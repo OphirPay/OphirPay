@@ -1,26 +1,69 @@
-version: "3.8"
-
+# No `platform:` directive anywhere in this file, on purpose (issue #1438).
+# The published image is a multi-arch manifest (linux/amd64 + linux/arm64 — see
+# docs/DEPLOYMENT.md → "Multi-architecture images"), so Compose resolves the
+# image matching the host: native on Apple Silicon (M1–M4) and on ARM cloud
+# hosts (Graviton/Ampere), x86-64 elsewhere. Pinning `platform: linux/amd64`
+# here would force emulation on every non-x86 machine and make `docker compose
+# up` several times slower for those developers.
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+    image: ophirpay:latest
     ports:
       - "3000:3000"
     environment:
       - DATABASE_URL=postgresql://ophirpay:ophirpay@db:5432/ophirpay
-      - NODE_ENV=development
-      # Redis-backed rate limiting (shared across instances)
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      # Redis-backed rate limiting over TCP (Node runtime).
+      # NOTE: the global limiter in src/proxy.ts runs on the Edge runtime and
+      # cannot use this TCP client, so in a multi-replica deployment it stays
+      # per-instance. For a *globally* shared limit, point REDIS_URL at an
+      # Upstash-compatible https:// REST endpoint instead (see .env.example).
+      # With a single app container (as here) the redis:// form is sufficient.
       - REDIS_URL=redis://redis:6379
+      - AUTH_SECRET=dev-local-secret-32-chars-long-abc1234567890
+      - NEXT_PUBLIC_CONTRACT_ID=CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET
+      - NEXT_PUBLIC_EMITTER_CONTRACT_ID=CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
+    # ── Liveness (issue #738) ──────────────────────────────────
+    # The image already ships a HEALTHCHECK (see Dockerfile) that probes
+    # GET /api/health/live — no shell, no curl, just the bundled `node`. It is
+    # restated here so `docker compose up` shows the app becoming healthy, and
+    # so the timings are visible/tunable next to the db + redis healthchecks.
+    #
+    # Liveness only asks "is the process serving?". Kubernetes readiness uses
+    # GET /api/health/ready to check the database without contacting public
+    # services; Docker's healthcheck remains process-only.
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.js", "/api/health/live"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  migrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+    image: ophirpay-migrator:local
+    profiles: [migrations]
+    environment:
+      - DATABASE_URL=postgresql://ophirpay:ophirpay@db:5432/ophirpay
+    depends_on:
+      db:
+        condition: service_healthy
 
   db:
     image: postgres:16-alpine

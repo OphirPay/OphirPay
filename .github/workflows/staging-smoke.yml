@@ -1,0 +1,62 @@
+name: Staging Playwright Smoke Tests
+
+on:
+  push:
+    branches:
+      - staging
+      - integration/staging
+  workflow_dispatch:
+    inputs:
+      staging_url:
+        description: "Target staging URL to execute smoke tests against"
+        required: false
+        default: "https://staging.ophirpay.com"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-tests:
+    name: "Playwright Smoke Tests (Staging)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Execute Playwright Smoke Tests
+        env:
+          E2E_BASE_URL: ${{ inputs.staging_url || 'https://staging.ophirpay.com' }}
+          CI: true
+        run: npx playwright test e2e/smoke.spec.ts --project=chromium
+
+      - name: Upload Playwright Artifacts on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-smoke-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Notify on Smoke Test Failure
+        if: failure()
+        run: |
+          echo "::error title=Staging Smoke Test Failure::Critical Playwright smoke tests failed against ${{ inputs.staging_url || 'https://staging.ophirpay.com' }}! Check uploaded artifacts." >> $GITHUB_STEP_SUMMARY

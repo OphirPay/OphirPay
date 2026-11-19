@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+import { NextResponse } from "next/server";
 import { withApiAuth } from "@/lib/api-auth";
-import { successResponse, handleApiError, validationError } from "@/lib/api-response";
+import { handleApiError, validationError } from "@/lib/api-response";
 import prisma from "@/lib/prisma";
 import { withRequestLogging } from "@/lib/request-logging";
 import {
@@ -16,20 +17,16 @@ import {
  * GET /api/audit-log
  *
  * Returns audit log entries. Requires API-key authentication with the
- * `admin` scope. Supports offset pagination (`page` / `limit`) and combined
- * filters: `actor` (substring, case-insensitive), `action` (exact), a
- * `since` / `until` timestamp range (Unix seconds or ISO 8601), and `order`
- * (asc | desc).
+ * `admin` scope. Supports keyset cursor pagination (`cursor`, `limit`) as well
+ * as backwards-compatible offset pagination (`page`), directional sorting (`order`),
+ * and combined filters.
  *
  * `source` selects the backing store:
  *   - `db`       → persisted audit entries (refund lifecycle history, issue
- *                  #365), queryable by action/target;
+ *                  #365), queryable by action/target with cursor pagination (#1361);
  *   - `contract` → the on-chain immutable audit ledger (default), filtered
  *                  server-side with offset pagination;
  *   - `all`      → DB entries plus matching on-chain entries.
- *
- * For the on-chain sources, filtering is applied across the full ledger, so
- * `meta.total` reflects the filtered set, not the raw contract count.
  */
 
 type DbAuditRow = {
@@ -100,6 +97,7 @@ async function _GET(request: Request) {
     const parsed = auditLogQuerySchema.safeParse({
       page: param("page"),
       limit: param("limit"),
+      cursor: param("cursor"),
       actor: param("actor"),
       action: param("action"),
       resource: param("resource"),
@@ -110,7 +108,7 @@ async function _GET(request: Request) {
     });
     if (!parsed.success) return validationError(parsed.error);
 
-    const { page, limit, source } = parsed.data;
+    const { page, limit, cursor, source, order } = parsed.data;
     const hasFilters = Boolean(
       parsed.data.actor ||
         parsed.data.action ||
@@ -142,32 +140,73 @@ async function _GET(request: Request) {
         : {}),
     };
 
-    // Persisted (DB) audit entries — refund lifecycle history with record
-    // ids (issue #365).
-    const dbRows =
-      source === "db" || source === "all"
-        ? (
-            await prisma.auditLog.findMany({
-              where: dbWhere,
-              orderBy: { createdAt: "desc" },
-              skip: (page - 1) * limit,
-              take: limit,
-            })
-          ).map(mapDbRow)
-        : [];
+    // Keyset cursor pagination for DB audit entries (issue #1361)
+    const sortDir = order === "asc" ? "asc" : "desc";
+    let dbRows: DbAuditRow[] = [];
+    let nextCursor: string | null = null;
+    let hasMore = false;
+
+    if (source === "db" || source === "all") {
+      const takeCount = limit + 1;
+      const rawRows = await prisma.auditLog.findMany({
+        where: dbWhere,
+        orderBy: [
+          { createdAt: sortDir },
+          { id: sortDir },
+        ],
+        take: takeCount,
+        ...(cursor
+          ? {
+              cursor: { id: cursor },
+              skip: 1,
+            }
+          : (page > 1 && !cursor
+              ? { skip: (page - 1) * limit }
+              : {})),
+      });
+
+      if (rawRows.length > limit) {
+        hasMore = true;
+        nextCursor = rawRows[limit - 1].id;
+        dbRows = rawRows.slice(0, limit).map(mapDbRow);
+      } else {
+        hasMore = false;
+        nextCursor = null;
+        dbRows = rawRows.map(mapDbRow);
+      }
+    }
+
     const dbTotal =
       source === "db" || source === "all"
         ? await prisma.auditLog.count({ where: dbWhere })
         : 0;
 
     if (source === "db") {
-      return successResponse(dbRows, { page, limit, total: dbTotal });
+      return NextResponse.json({
+        success: true,
+        data: dbRows,
+        nextCursor,
+        hasMore,
+        meta: {
+          page,
+          limit,
+          total: dbTotal,
+          nextCursor,
+          hasMore,
+        },
+      });
     }
 
     // ── On-chain ledger (source=contract | all) ────────────────
     const totalCount = await readAuditLogTotalCount();
     if (totalCount === 0) {
-      return successResponse(dbRows, { page, limit, total: dbTotal });
+      return NextResponse.json({
+        success: true,
+        data: dbRows,
+        nextCursor,
+        hasMore,
+        meta: { page, limit, total: dbTotal, nextCursor, hasMore },
+      });
     }
 
     // Which ids to read (ids are 1-indexed, newest = highest id):
@@ -204,7 +243,14 @@ async function _GET(request: Request) {
 
     if (!hasFilters) {
       // Unfiltered page window — total is the ledger size.
-      return successResponse(entries, { page, limit, total: totalCount });
+      const hasMorePages = page * limit < totalCount;
+      return NextResponse.json({
+        success: true,
+        data: entries,
+        nextCursor: null,
+        hasMore: hasMorePages,
+        meta: { page, limit, total: totalCount, nextCursor: null, hasMore: hasMorePages },
+      });
     }
 
     // Filtered — slice the page from the matching set (kept in id order).
@@ -215,7 +261,20 @@ async function _GET(request: Request) {
       source === "all"
         ? [...pageItems, ...dbRows]
         : pageItems;
-    return successResponse(data, { page, limit, total });
+    const hasMoreFiltered = source === "all" ? (hasMore || start + limit < entries.length) : (start + limit < entries.length);
+    return NextResponse.json({
+      success: true,
+      data,
+      nextCursor: source === "all" ? nextCursor : null,
+      hasMore: hasMoreFiltered,
+      meta: {
+        page,
+        limit,
+        total,
+        nextCursor: source === "all" ? nextCursor : null,
+        hasMore: hasMoreFiltered,
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

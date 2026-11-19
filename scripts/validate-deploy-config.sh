@@ -48,6 +48,36 @@ check_grep 'FRIENDBOT_ENABLED=false' 'friendbot disabled in PUBLIC mode'
 check_grep 'DRY_RUN' 'dry-run flag present'
 check_grep 'refusing to submit any transaction to PUBLIC network' 'dry-run refuses PUBLIC submissions'
 
+# 4. AUTH_SECRET guard (issue #705)
+#    Mirrors src/lib/env.ts: a deployment must never ship with the
+#    .env.example placeholder or a value shorter than 32 bytes. Only checked
+#    when AUTH_SECRET is present in the environment, so local runs and the
+#    CI deploy-config job (which sets no secrets) still pass.
+echo ""
+echo "── Validating AUTH_SECRET ──"
+if [ -z "${AUTH_SECRET:-}" ]; then
+  echo "  ℹ️  AUTH_SECRET not set in this environment — skipping length/placeholder check"
+else
+  AUTH_SECRET_LEN=$(printf '%s' "$AUTH_SECRET" | wc -c | tr -d ' ')
+  if [ "$AUTH_SECRET_LEN" -lt 32 ]; then
+    echo "  ❌ AUTH_SECRET is shorter than 32 bytes (got ${AUTH_SECRET_LEN})"
+    FAIL=1
+  else
+    echo "  ✅ AUTH_SECRET length OK (${AUTH_SECRET_LEN} bytes)"
+  fi
+
+  AUTH_SECRET_LOWER=$(printf '%s' "$AUTH_SECRET" | tr '[:upper:]' '[:lower:]')
+  case "$AUTH_SECRET_LOWER" in
+    *replace-with*|*replace_with*|*changeme*|*change-me*|*change_me*|*placeholder*|*your-secret*|*your_secret*|*example-secret*|*example_secret*|*insecure*|*not-a-real*|*dummy-secret*)
+      echo "  ❌ AUTH_SECRET looks like a placeholder — generate one with: openssl rand -hex 32"
+      FAIL=1
+      ;;
+    *)
+      echo "  ✅ AUTH_SECRET is not a known placeholder"
+      ;;
+  esac
+fi
+
 echo ""
 if [ "$FAIL" -eq 1 ]; then
   echo "❌ Deploy script PUBLIC config validation FAILED"

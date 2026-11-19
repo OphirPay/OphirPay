@@ -1,0 +1,68 @@
+# Development compose configuration for hot reloading with `next dev`.
+# Run with:
+#   docker compose -f docker-compose.dev.yml up
+services:
+  app:
+    image: node:24-slim
+    working_dir: /app
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://ophirpay:ophirpay@db:5432/ophirpay
+      - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379
+      - AUTH_SECRET=dev-local-secret-32-chars-long-abc1234567890
+      - NEXT_PUBLIC_CONTRACT_ID=CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET
+      - NEXT_PUBLIC_EMITTER_CONTRACT_ID=CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash scripts/container-healthcheck.sh /api/health/live || node scripts/healthcheck.js /api/health/live",
+        ]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ophirpay
+      POSTGRES_PASSWORD: ophirpay
+      POSTGRES_DB: ophirpay
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ophirpay"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata-dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata-dev:
+  redisdata-dev:

@@ -1,0 +1,49 @@
+name: Documentation Lint
+
+on:
+  pull_request:
+    branches: [main, integration/staging]
+    paths:
+      - "**/*.md"
+      - "**/*.mdx"
+      - "scripts/check-markdown-links.mjs"
+      - ".github/workflows/docs-lint.yml"
+  push:
+    branches: [main, integration/staging]
+    paths:
+      - "**/*.md"
+      - "**/*.mdx"
+      - "scripts/check-markdown-links.mjs"
+      - ".github/workflows/docs-lint.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  markdown-link-check:
+    name: "Documentation — Markdown Link Integrity"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Run Markdown link integrity check
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "${{ github.base_ref }}" ]; then
+            npm run check:docs-links -- --changed "origin/${{ github.base_ref }}"
+          else
+            npm run check:docs-links
+          fi

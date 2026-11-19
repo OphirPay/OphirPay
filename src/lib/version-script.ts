@@ -6,7 +6,9 @@
  * For a CI script, use the scripts/ directory or `git describe`.
  */
 
-const VERSION = "0.1.0";
+import { getAppVersion } from "./app-version";
+
+const VERSION = getAppVersion();
 
 /** Get the current version from git or package.json. */
 export function getVersion(): string {

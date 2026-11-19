@@ -1,26 +1,58 @@
 name: Prisma schema and migration checks
 
+# Uses a `changes` job plus a final gate job instead of workflow-level
+# `paths:` filters. A path-filtered workflow never reports a check when it is
+# skipped, so marking `prisma` as required in branch protection left every
+# unrelated PR on "Expected — waiting for status". The gate reports on every
+# PR and passes when the Prisma job was legitimately skipped.
 on:
   pull_request:
-    paths:
-      - "prisma/**"
-      - "scripts/validate-prisma-migrations.sh"
-      - "src/__tests__/prisma-schema-ci.test.ts"
-      - ".github/workflows/prisma-ci.yml"
   push:
     branches: [main]
-    paths:
-      - "prisma/**"
-      - "scripts/validate-prisma-migrations.sh"
-      - "src/__tests__/prisma-schema-ci.test.ts"
-      - ".github/workflows/prisma-ci.yml"
 
 permissions:
   contents: read
 
+# -- Global Concurrency — cancel stale runs on same PR --------
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    name: Detect Prisma-related changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      prisma: ${{ steps.filter.outputs.prisma }}
+    steps:
+      # Checkout is only needed for the push trigger, where paths-filter uses
+      # git instead of the REST API. Full history keeps the previous main tip
+      # available for multi-commit pushes.
+      - name: Check out the pushed branch
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        id: filter
+        with:
+          # Same branch on push compares against the previous commit.
+          base: ${{ github.ref }}
+          filters: |
+            prisma:
+              - "prisma/**"
+              - "scripts/validate-prisma-migrations.sh"
+              - "src/__tests__/prisma-schema-ci.test.ts"
+              - ".github/workflows/prisma-ci.yml"
+
   prisma:
     name: Validate schema, replay migrations, and test invariants
+    needs: changes
+    if: needs.changes.outputs.prisma == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -50,11 +82,82 @@ jobs:
       - run: npx prisma validate
       - run: npx prisma generate
       - run: bash scripts/validate-prisma-migrations.sh
-      - name: Check schema and migration drift
-        run: >-
-          npx prisma migrate diff
-          --from-migrations prisma/migrations
-          --to-schema-datamodel prisma/schema.prisma
-          --shadow-database-url "postgresql://prisma:prisma@localhost:5432/postgres"
+      - name: Static schema ⇄ migration drift check (no database required)
+        # Replays every committed migration.sql and diffs the resulting tables,
+        # columns and enums against schema.prisma. Fails with the exact drifted
+        # model/field names, so a forgotten migration is obvious in the log.
+        run: node scripts/verify-prisma-drift.mjs
+      - name: Database-level drift check (shadow DB)
+        # `prisma migrate diff` exits 0 even when it prints differences unless
+        # --exit-code is passed — without it a drifted PR merged green while the
+        # next `prisma migrate deploy` failed in staging. Exit code 2 means the
+        # schema contains changes that no migration produces.
+        run: |
+          set +e
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "postgresql://prisma:prisma@localhost:5432/postgres" \
+            --exit-code > /tmp/prisma-drift.sql 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "✅ schema.prisma matches the committed migrations"
+            exit 0
+          fi
+          set +e
+          node scripts/check-shadow-drift.mjs /tmp/prisma-drift.sql
+          filtered_status=$?
+          set -e
+          if [ "$filtered_status" -eq 0 ]; then
+            echo "✅ schema.prisma matches the committed migrations (excluding DB-native extensions)"
+            exit 0
+          fi
+          echo "::error title=Prisma schema drift::schema.prisma has changes that prisma/migrations does not produce. Run: npx prisma migrate dev --name <name>"
+          echo "### Prisma schema drift detected" >> "$GITHUB_STEP_SUMMARY"
+          echo '```sql' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/prisma-drift.sql >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/prisma-drift.sql
+          exit "$filtered_status"
       - run: npx prisma migrate deploy
       - run: npx vitest run src/__tests__/prisma-schema-ci.test.ts
+
+  # The only required status check for this workflow. It always runs, so a
+  # docs-only PR gets a green `prisma-gate` instead of a check that never
+  # reports. Never mark `prisma` or `changes` as required — they can be skipped.
+  prisma-gate:
+    name: prisma-gate
+    needs: [changes, prisma]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Confirm the Prisma checks passed or were not needed
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          JOB_RESULT: ${{ needs.prisma.result }}
+          PRISMA_NEEDED: ${{ needs.changes.outputs.prisma }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::Change detection failed (${CHANGES_RESULT}), so the Prisma checks cannot be certified."
+            exit 1
+          fi
+
+          case "$JOB_RESULT" in
+            success)
+              echo "✅ Prisma schema and migration checks passed."
+              ;;
+            skipped)
+              if [ "$PRISMA_NEEDED" = "true" ]; then
+                echo "::error::Prisma-related files changed but the Prisma job was skipped."
+                exit 1
+              fi
+              echo "✅ No Prisma-related files changed; the Prisma job was skipped."
+              ;;
+            *)
+              echo "::error::Prisma schema and migration checks did not pass (${JOB_RESULT})."
+              exit 1
+              ;;
+          esac

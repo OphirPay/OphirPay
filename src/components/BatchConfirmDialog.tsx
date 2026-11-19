@@ -15,6 +15,14 @@ interface BatchConfirmDialogProps {
   recipients: BatchRecipient[];
   totalAmount: number;
   estimatedFee: string;
+  /**
+   * Why the quoted fee is what it is (e.g. "p90 of recently charged fees ·
+   * ledger 62% full (medium congestion)"). Comes from Horizon fee statistics
+   * (issue #825); omitted when no recommendation was fetched.
+   */
+  feeBasis?: string;
+  /** True when the quoted fee is cached/fallback rather than freshly fetched. */
+  feeStale?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -26,6 +34,8 @@ export function BatchConfirmDialog({
   recipients,
   totalAmount,
   estimatedFee,
+  feeBasis,
+  feeStale = false,
   onConfirm,
   onCancel,
 }: BatchConfirmDialogProps) {
@@ -50,6 +60,15 @@ export function BatchConfirmDialog({
             <span className="text-gray-500 dark:text-gray-400">Estimated Fee</span>
             <span className="font-medium text-gray-900 dark:text-white">{feeXlm}</span>
           </div>
+          {feeBasis && (
+            <p
+              data-testid="batch-fee-basis"
+              className="text-xs text-gray-500 dark:text-gray-400 pt-1"
+            >
+              {feeStale ? "⚠ " : ""}Fee based on {feeBasis}
+              {feeStale ? " (may be stale)" : ""}
+            </p>
+          )}
         </div>
 
         {/* Recipient list */}

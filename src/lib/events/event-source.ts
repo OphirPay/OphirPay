@@ -17,6 +17,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { EMITTER_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { SOROBAN_RPC_URL, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import { getSorobanTimeoutMs } from "@/lib/timeout";
 
 export interface LiveEvent {
   /** Emitter contract event id — stable dedup key across reconnects. */
@@ -201,7 +202,12 @@ export function createLiveEventSource(
   return {
     start(onEvent) {
       if (stopped) return;
-      const server = new rpc.Server(rpcUrl, { allowHttp: false });
+      // Explicit, configurable timeout on every poll against the emitter
+      // contract so a slow RPC never wedges the stream (issue #747).
+      const server = new rpc.Server(rpcUrl, {
+        allowHttp: false,
+        timeout: getSorobanTimeoutMs(),
+      });
 
       // Seed the starting count, then poll immediately and on an interval.
       readEmitterU64(

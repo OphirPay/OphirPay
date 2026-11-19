@@ -68,6 +68,12 @@ export async function recordWebhookDelivery(
     errorMessage?: string;
     isReplay?: boolean;
     replayBatchId?: string;
+    /** Scheduled retry cycles already consumed (default 0). */
+    retryCount?: number;
+    /** When the retry queue should next attempt this delivery. */
+    nextAttemptAt?: Date | null;
+    /** Timestamp of the most recent attempt. */
+    lastAttemptAt?: Date | null;
   },
 ): Promise<string> {
   const row = await prisma.webhookDelivery.create({
@@ -81,6 +87,9 @@ export async function recordWebhookDelivery(
       errorMessage: options?.errorMessage,
       isReplay: options?.isReplay ?? false,
       replayBatchId: options?.replayBatchId,
+      retryCount: options?.retryCount ?? 0,
+      nextAttemptAt: options?.nextAttemptAt ?? null,
+      lastAttemptAt: options?.lastAttemptAt ?? null,
     },
   });
   return row.id;

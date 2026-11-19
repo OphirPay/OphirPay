@@ -53,21 +53,48 @@ function resolveTheme(theme: Theme): "light" | "dark" {
     : "light";
 }
 
+export function getStoredTheme(): Theme {
+  if (typeof window === "undefined") return "system";
+  try {
+    const stored = (localStorage.getItem("theme") ||
+      localStorage.getItem("ophirpay-theme")) as Theme | null;
+    if (stored === "light" || stored === "dark" || stored === "system") {
+      return stored;
+    }
+  } catch {}
+  return "system";
+}
+
+export function getPrehydratedResolvedTheme(fallbackTheme: Theme): "light" | "dark" {
+  if (typeof document !== "undefined") {
+    if (document.documentElement.classList.contains("dark")) return "dark";
+    const dataTheme = document.documentElement.getAttribute("data-theme");
+    if (dataTheme === "light" || dataTheme === "dark") return dataTheme;
+  }
+  return resolveTheme(fallbackTheme);
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("system");
-  const [resolved, setResolved] = useState<"light" | "dark">("dark");
+  const [theme, setThemeState] = useState<Theme>(getStoredTheme);
+  const [resolved, setResolved] = useState<"light" | "dark">(() =>
+    getPrehydratedResolvedTheme(getStoredTheme())
+  );
 
   const applyTheme = useCallback((t: Theme) => {
     const r = resolveTheme(t);
     document.documentElement.classList.toggle("dark", r === "dark");
     document.documentElement.setAttribute("data-theme", r);
+    document.documentElement.style.colorScheme = r;
     setResolved(r);
   }, []);
 
   const setTheme = useCallback(
     (t: Theme) => {
       setThemeState(t);
-      localStorage.setItem("ophirpay-theme", t);
+      try {
+        localStorage.setItem("theme", t);
+        localStorage.setItem("ophirpay-theme", t);
+      } catch {}
       applyTheme(t);
     },
     [applyTheme]
@@ -78,10 +105,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [resolved, setTheme]);
 
   useEffect(() => {
-    const stored = localStorage.getItem("ophirpay-theme") as Theme | null;
-    const initial = stored ?? "system";
-    setThemeState(initial);
-    applyTheme(initial);
+    const stored = getStoredTheme();
+    setThemeState(stored);
+    applyTheme(stored);
   }, [applyTheme]);
 
   useEffect(() => {

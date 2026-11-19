@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-/**
- * Error tracking integration point.
- * In production, replace with a real Sentry/DataDog/LogRocket integration.
- */
+import * as Sentry from "@sentry/nextjs";
 
 interface ErrorContext {
   component?: string;
@@ -13,10 +10,26 @@ interface ErrorContext {
   extra?: Record<string, unknown>;
 }
 
+export function initializeSentry(): void {
+  const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
+  if (!dsn) return;
+
+  Sentry.init({
+    dsn,
+    environment: process.env.NODE_ENV,
+  });
+}
+
 export function captureError(error: Error, context?: ErrorContext): void {
-  if (process.env.NODE_ENV === "production") {
-    // Production: send to error tracking service
-    // Sentry.captureException(error, { tags: context?.tags, extra: context?.extra });
+  if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+    Sentry.captureException(error, {
+      tags: {
+        ...context?.tags,
+        ...(context?.component ? { component: context.component } : {}),
+      },
+      extra: context?.extra,
+    });
+  } else if (process.env.NODE_ENV === "production") {
     console.error("[OphirPay]", {
       name: error.name,
       message: error.message,
@@ -29,8 +42,9 @@ export function captureError(error: Error, context?: ErrorContext): void {
 }
 
 export function captureMessage(message: string, level: "info" | "warning" | "error" = "info"): void {
-  if (process.env.NODE_ENV === "production") {
-    // Sentry.captureMessage(message, level);
+  if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+    Sentry.captureMessage(message, { level });
+  } else if (process.env.NODE_ENV === "production") {
     console.log(`[OphirPay ${level}]`, message);
   }
 }
@@ -40,7 +54,9 @@ export function captureMessage(message: string, level: "info" | "warning" | "err
  */
 export function setUserContext(publicKey: string): void {
   try {
-    // Sentry.setUser({ id: publicKey });
+    if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+      Sentry.setUser({ id: publicKey });
+    }
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem("ophir-user-id", publicKey);
     }

@@ -47,7 +47,13 @@ export function Pagination({
       aria-label="Pagination"
       className={cn("flex items-center justify-between gap-4", className)}
     >
-      <Button variant="outline" size="sm" onClick={onPrev} disabled={!hasPrev}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onPrev}
+        disabled={!hasPrev}
+        aria-label="Previous page"
+      >
         ← Previous
       </Button>
 
@@ -60,9 +66,13 @@ export function Pagination({
           ) : (
             <button
               key={p}
+              type="button"
               onClick={() => onPage?.(p)}
+              aria-label={`Page ${p}`}
+              aria-current={p === page ? "page" : undefined}
               className={cn(
                 "w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ophir-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900",
                 p === page
                   ? "bg-ophir-600 text-white"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -74,7 +84,13 @@ export function Pagination({
         )}
       </div>
 
-      <Button variant="outline" size="sm" onClick={onNext} disabled={!hasNext}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onNext}
+        disabled={!hasNext}
+        aria-label="Next page"
+      >
         Next →
       </Button>
     </nav>

@@ -6,7 +6,7 @@ import {
   challengeMessage,
 } from "@/lib/challenge";
 import { isValidStellarAddress } from "@/lib/stellar";
-import { successResponse, badRequestError } from "@/lib/api-response";
+import { badRequestError, sensitiveSuccessResponse } from "@/lib/api-response";
 import { withRequestLogging } from "@/lib/request-logging";
 import { enforceAuthRateLimit } from "@/lib/auth-rate-limit";
 
@@ -34,7 +34,7 @@ export const GET = withMetrics("GET /api/auth/challenge", withRequestLogging(asy
   if (rateLimited) return rateLimited;
 
   const challenge = createChallengeToken(publicKey);
-  return successResponse({
+  return sensitiveSuccessResponse({
     challenge,
     // The message embeds the challenge token so the signature is single-use.
     message: challengeMessage(publicKey, challenge),

@@ -7,15 +7,53 @@ import { createPortal } from "react-dom";
 import { useWallet } from "@/hooks/useMultiWallet";
 import { shortenAddress, formatAmount } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WalletSelector } from "@/components/WalletSelector";
 import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
+import { usePendingWork } from "@/hooks/usePendingWork";
+import {
+  hasPendingWork,
+  type PendingWork,
+} from "@/lib/session-lifecycle";
+
+/** Human summary of what a disconnect would discard (issue #1379). */
+function describePendingWork(work: PendingWork): string {
+  const parts: string[] = [];
+  if (work.unsavedDrafts > 0) {
+    parts.push(
+      `${work.unsavedDrafts} unsaved draft${work.unsavedDrafts === 1 ? "" : "s"}`
+    );
+  }
+  if (work.inFlightTransactions > 0) {
+    parts.push(
+      `${work.inFlightTransactions} transaction${work.inFlightTransactions === 1 ? "" : "s"} still in flight`
+    );
+  }
+  return `You have ${parts.join(" and ")}. Disconnecting now will lose this work.`;
+}
 
 export function WalletButton() {
   const { wallet, connect, disconnect, fetchBalance, isConnecting, error, availableWallets } =
     useWallet();
   const [showSelector, setShowSelector] = useState(false);
   const [connectingWallet, setConnectingWallet] = useState<WalletId | null>(null);
+  // Issue #1379: warn before discarding unsaved drafts / in-flight payments.
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const pendingWork = usePendingWork();
+
+  const requestDisconnect = () => {
+    if (hasPendingWork()) {
+      setShowDisconnectConfirm(true);
+      return;
+    }
+    void disconnect();
+  };
+
+  const confirmDisconnect = () => {
+    setShowDisconnectConfirm(false);
+    void disconnect();
+  };
 
   const handleSelectWallet = async (walletId: WalletId) => {
     setConnectingWallet(walletId);
@@ -35,6 +73,7 @@ export function WalletButton() {
 
   if (wallet.connected && wallet.publicKey) {
     return (
+      <>
       <div className="flex items-center gap-3">
         {/* Balance */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
@@ -99,7 +138,7 @@ export function WalletButton() {
 
         {/* Disconnect */}
         <button
-          onClick={disconnect}
+          onClick={requestDisconnect}
           aria-label="Disconnect wallet"
           className="text-sm text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 transition-colors duration-200"
           title="Disconnect wallet"
@@ -120,6 +159,33 @@ export function WalletButton() {
           </svg>
         </button>
       </div>
+
+      <Modal
+        open={showDisconnectConfirm}
+        onClose={() => setShowDisconnectConfirm(false)}
+        title="Disconnect wallet?"
+        description="This ends your OphirPay session and clears cached account data."
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-800 dark:text-amber-200">
+            {describePendingWork(pendingWork)}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setShowDisconnectConfirm(false)}
+            >
+              Keep working
+            </Button>
+            <Button variant="danger" className="flex-1" onClick={confirmDisconnect}>
+              Disconnect anyway
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      </>
     );
   }
 

@@ -4,11 +4,17 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 
 ## Getting Started
 
-1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/OphirPay.git`
-3. Install dependencies: `npm install`
-4. Set up the database: `npx prisma db push && npx prisma generate`
-5. Start the dev server: `npm run dev`
+> **Fastest path:** Open this repository in a **Devcontainer** (GitHub Codespaces or VS Code). It automatically provisions Node 24, the pinned Rust toolchain + WASM targets, Postgres, and Redis. Just copy `.env.example` to `.env.local` and run `npm run dev`.
+
+1. Ensure you have **Node.js 24** installed (see `.nvmrc`) — `npm install`
+   runs a preflight (`scripts/check-node.mjs`) and aborts with an actionable
+   message on any other major, so there is no ambiguity about the supported
+   runtime
+2. Fork the repository
+3. Clone your fork: `git clone https://github.com/YOUR_USERNAME/OphirPay.git`
+4. Install dependencies: `npm install`
+5. Set up the database: `npx prisma db push && npx prisma generate`
+6. Start the dev server: `npm run dev`
 
 > 🛠️ **Setup trouble?** See the
 > [Troubleshooting Guide](docs/TROUBLESHOOTING.md) — it covers Freighter
@@ -21,11 +27,145 @@ Thank you for your interest in contributing! OphirPay is an open-source payment 
 > WASM, Freighter, memo, trustline, path payments, sponsored reserves, and
 > more).
 
+### Supported toolchain
+
+| Tool    | Supported | Declared in                                                                                                  |
+| ------- | --------- | ------------------------------------------------------------------------------------------------------------ |
+| Node.js | **24.x**  | `.nvmrc` (`24`), `package.json` → `engines.node` (`24.x`), and `node-version-file: .nvmrc` in every workflow |
+| npm     | **10.x**  | `package.json` → `packageManager` (`npm@10.8.2`)                                                             |
+
+`.nvmrc` is the single source of truth. `npm install` / `npm ci` run the
+`preinstall` hook first, so an unsupported Node major stops immediately with:
+
+```
+[ERROR] Unsupported Node.js version.
+  required : Node 24.x (.nvmrc → "24", package.json engines.node → "24.x", packageManager → "npm@10.8.2")
+  running  : Node 24.14.0
+
+Switch to the supported version and re-run the install:
+  nvm install && nvm use        # reads .nvmrc
+```
+
+A running npm major that differs from `packageManager` is reported as a
+warning rather than an error (a newer npm on Node 24 still installs the same
+lockfile), but please install with the pinned manager to avoid lockfile churn.
+
+**Bumping the version** — change `.nvmrc` and `engines.node` together, then run
+`npm test -- node-preflight`. `src/__tests__/node-preflight.test.ts` fails if
+`.nvmrc`, `engines.node`, `packageManager` or any workflow's
+`node-version-file` disagree, so a half-finished bump cannot merge.
+
 ## Development Workflow
 
 - **Branch naming**: `feat/feature-name`, `fix/bug-description`, `docs/what-changed`, `ci/what-changed`, `test/what-changed`
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org)
 - **Before submitting**: Run `npm run ci` (typecheck → lint → test → build)
+
+### Local secret scanning (pre-commit hook)
+
+`npm install` (via the `prepare` script) points git at the committed
+`.githooks/` directory, so a pre-commit hook scans **staged** changes with
+[gitleaks](https://github.com/gitleaks/gitleaks) before they can reach a branch:
+
+```bash
+npm run prepare          # (re)enable the hook — also runs on `npm install`
+npm run secrets:precommit  # run the scan by hand against the staged changes
+npm run secrets:scan       # scan the whole repo with .gitleaks.toml
+```
+
+What it does:
+
+- Uses the same `.gitleaks.toml` as CI, which extends gitleaks' ~160 default
+  rules **and** adds a strict Stellar secret-seed rule (`S` + 55 base32 chars).
+- Blocks the commit (exit 1) when a seed, API key or private key is staged.
+- Skips with a warning when gitleaks is not installed — run one of
+  ```bash
+  brew install gitleaks                                   # macOS
+  # or grab a release binary: https://github.com/gitleaks/gitleaks/releases
+  ```
+  to enable it. CI still scans every PR regardless, so a bypassed hook never
+  reaches `main` unnoticed.
+
+If gitleaks flags a **documented, non-sensitive** demo value, add it (with a
+short reason) to the `[allowlist]` in `.gitleaks.toml` rather than committing
+with `--no-verify`. Never commit a real key or seed: remove it, rotate the
+credential, and re-stage.
+
+> The hook is committed at `.githooks/pre-commit` and wired via
+> `core.hooksPath` (set by `scripts/install-git-hooks.mjs`) — no husky
+> dependency, and the hook itself is reviewable in the repo.
+
+### Type safety and lint suppressions
+
+Use `unknown` with a type guard or a narrower domain type instead of `any`.
+Type-safety ESLint suppressions should be avoided; when a targeted suppression
+is necessary, keep it to one line and explain why on that line. The zero-warning
+ESLint check runs in CI.
+
+### Dependency Updates
+
+[Dependabot](.github/dependabot.yml) checks the `npm` (root `package-lock.json`),
+`cargo` (`contracts/ophirpay` and `contracts/emitter`) and `github-actions`
+ecosystems once a week.
+
+- Minor and patch bumps in an ecosystem are grouped into a **single** PR; major
+  bumps arrive individually so they can be reviewed on their own.
+- Update PRs are labelled `dependencies` and use a `chore(deps)` commit prefix.
+- Review one like any other PR: wait for CI (the `contract-wasm` job matters for
+  Cargo bumps) and run it locally for security-sensitive packages. If a bump has
+  breaking changes or fails CI, coordinate with the team before merging instead
+  of force-landing it.
+
+#### Batch mode: update PRs target `integration/staging`
+
+While `integration/staging` exists, every `updates` entry in
+[`.github/dependabot.yml`](.github/dependabot.yml) sets
+`target-branch: "integration/staging"`. Dependabot opens version **and**
+security update PRs against that branch, so they pass
+`enforce-integration-branch.yml`. A Dependabot PR based on `main` is rejected by
+that guard and can never merge while batch mode is active.
+
+**Switching back when batch mode ends.** Once the promotion PR is merged into
+`main` and `integration/staging` is deleted:
+
+1. Remove the `target-branch: "integration/staging"` line from **all four**
+   `updates` entries in `.github/dependabot.yml` (npm, both Cargo entries, and
+   `github-actions`). Omitting the field restores the repository default branch
+   (`main`); `target-branch: "main"` is equivalent.
+2. Update this section (and the batch-mode notes in
+   [`docs/MERGE_GATE.md`](docs/MERGE_GATE.md)) so the docs no longer describe
+   the integration branch as live.
+3. Retarget outstanding update PRs. Dependabot applies `target-branch` only
+   when it **opens** a PR, so PRs created before the config change keep their
+   old base: comment `@dependabot recreate` on each (or close and reopen it) to
+   get a fresh PR against `main`.
+
+> The reverse also holds: when batch mode starts, update PRs opened before
+> `target-branch` was added stay based on `main` until they are recreated. Let
+> one finish its run, then comment `@dependabot recreate` to retarget it.
+
+### Issue triage & stale policy
+
+The [stale workflow](.github/workflows/stale.yml) runs every Monday and closes
+issues that have been inactive for **60 days + a 14-day grace period**. Bounty
+work is exempt, so the wave backlog does not get closed out from under a
+contributor:
+
+| Signal on the issue                                                      | Result                                                                               |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Label `bounty` or `Stellar Wave`                                         | **Never** marked stale — a wave round may outlive the inactivity window              |
+| Any assignee (claimed work)                                              | **Never** marked stale — the claim is the activity signal                            |
+| Label `pinned`, `security`, `blocked`, `good first issue`, `help wanted` | **Never** marked stale                                                               |
+| Any milestone                                                            | Exempt (`exempt-all-issue-milestones`)                                               |
+| Anything else, unassigned                                                | Marked `stale` after 60 days, closed 14 days later — commenting or pushing clears it |
+
+Pull requests follow a shorter clock (30 days stale, 7 days to close); `pinned`,
+`blocked` and `security` PRs plus drafts are exempt.
+
+When adding a new long-running programme (a wave, a funded milestone, a
+migration epic), add its label to `exempt-issue-labels` in
+`.github/workflows/stale.yml` **and** to the table above so maintainers can see
+the policy in one place.
 
 ### Adding or changing an API endpoint
 
@@ -33,25 +173,30 @@ Before adding or modifying an API endpoint, read the [API Endpoint Guide](docs/A
 
 ## CI/CD Pipeline
 
+See [`docs/MERGE_GATE.md`](docs/MERGE_GATE.md) for the authoritative table of
+required pull-request checks, local commands, and scheduled workflows that do
+not block merges.
+
 Every PR triggers the following independent CI/CD checks across quality,
 testing, security, and DevOps. The jobs in `.github/workflows/ci.yml` are the
 merge gate, and `npm run ci` runs the same frontend chain locally
 (typecheck → lint → test → build → deploy-config guards) so the two cannot
 drift apart again.
 
-| # | Job (workflow) | Runs on PR | Blocks merge |
-|---|---|---|---|
-| 1 | `lint` — ESLint `--max-warnings 0` (`ci.yml`) | ✅ | ✅ Required |
-| 2 | `typecheck` — tsc (`ci.yml`) | ✅ | ✅ Required |
-| 3 | `unit-tests` — Vitest (`ci.yml`) | ✅ | ✅ Required |
-| 4 | `build` — Next.js production build (`ci.yml`) | ✅ | ✅ Required |
-| 5 | `contract-wasm` — Soroban WASM build + tests (`ci.yml`) | ✅ | ✅ Required |
-| 6 | `deploy-config` — deploy-script config guards (`ci.yml`) | ✅ | ✅ Required |
-| 7 | `secrets-scan` — Gitleaks (`ci.yml`) | ✅ | ✅ Required |
-| 8 | `helm-lint` — Helm lint + render (`ci.yml`) | ✅ | ✅ Required |
-| 9 | `prisma` — schema + migration replay (`prisma-ci.yml`) | ✅ (prisma paths) | ✅ Required |
-| 10 | `contract-regression` — WASM size guardrails (`contract-regression.yml`) | ✅ (contract paths) | ✅ Required |
-| 11 | `enforce-base` — integration-branch guard (`enforce-integration-branch.yml`) | ✅ | ✅ Required |
+| #   | Job (workflow)                                                                    | Runs on PR                      | Blocks merge |
+| --- | --------------------------------------------------------------------------------- | ------------------------------- | ------------ |
+| 1   | `lint` — ESLint `--max-warnings 0` (`ci.yml`)                                     | ✅                              | ✅ Required  |
+| 2   | `typecheck` — tsc (`ci.yml`)                                                      | ✅                              | ✅ Required  |
+| 3   | `unit-tests` — Vitest (`ci.yml`)                                                  | ✅                              | ✅ Required  |
+| 4   | `build` — Next.js production build (`ci.yml`)                                     | ✅                              | ✅ Required  |
+| 5   | `contract-wasm` — Soroban WASM build + tests (`ci.yml`)                           | ✅                              | ✅ Required  |
+| 6   | `deploy-config` — deploy-script config guards (`ci.yml`)                          | ✅                              | ✅ Required  |
+| 7   | `secrets-scan` — Gitleaks (`ci.yml`)                                              | ✅                              | ✅ Required  |
+| 8   | `helm-lint` — Helm lint + render (`ci.yml`)                                       | ✅                              | ✅ Required  |
+| 9   | `prisma-gate` — schema + migration replay gate (`prisma-ci.yml`)                  | ✅ (full job on prisma paths)   | ✅ Required  |
+| 10  | `contract-regression-gate` — WASM size guardrail gate (`contract-regression.yml`) | ✅ (full job on contract paths) | ✅ Required  |
+| 11  | `docker-smoke-gate` — Docker build + smoke gate (`docker-smoke.yml`)              | ✅ (full job on Docker inputs)  | ✅ Required  |
+| 12  | `enforce-base` — integration-branch guard (`enforce-integration-branch.yml`)      | ✅                              | ✅ Required  |
 
 > **Batch mode**: while the `integration/staging` branch exists, every PR must
 > target it instead of `main` (enforced by `enforce-integration-branch.yml`),
@@ -66,7 +211,8 @@ Configure these in **Settings → Branches → Branch protection rules** for `ma
 - **Require approvals**: 1 minimum
 - **Dismiss stale pull request approvals when new commits are pushed**: ✅
 - **Require status checks to pass before merging**: ✅
-  - Required checks: `lint`, `typecheck`, `unit-tests`, `build`, `contract-wasm`, `deploy-config`, `secrets-scan`, `helm-lint`
+  - Required checks: `lint`, `typecheck`, `unit-tests`, `build`, `contract-wasm`, `deploy-config`, `secrets-scan`, `helm-lint`, `prisma-gate`, `contract-regression-gate`, `docker-smoke-gate`, `enforce-base`
+  - The path-scoped workflows are required through their **gate** jobs only; the heavy jobs are skipped on unrelated PRs and never report a status. See [`docs/MERGE_GATE.md`](docs/MERGE_GATE.md#gate-jobs-for-path-scoped-workflows).
 - **Require conversation resolution before merging**: ✅
 - **Require signed commits**: Recommended
 - **Require linear history**: Recommended
@@ -74,11 +220,24 @@ Configure these in **Settings → Branches → Branch protection rules** for `ma
 
 ### Merge Requirements Summary
 
-> A PR must pass every required check above (and the path-scoped `prisma`,
-> `contract-regression` and `enforce-base` checks) and have at least
-> **1 approving review** before it can be merged.
+> A PR must pass every required check above (including the `prisma-gate`,
+> `contract-regression-gate` and `docker-smoke-gate` gates and the `enforce-base`
+> policy check) and have at least **1 approving review** before it can be merged.
 
 ## Testing
+
+### Soroban contract tests
+
+Both contract crates use the same layout:
+
+- Put unit tests that need private implementation details in
+  `contracts/<crate>/src/test.rs`.
+- Put tests that exercise only the public contract API, including integration
+  and property tests, in `contracts/<crate>/tests/`.
+- Run a crate's complete Rust suite with `cd contracts/<crate> && cargo test`.
+
+This keeps implementation-level tests in the unit-test harness and gives
+public-contract tests the same integration-test harness in both crates.
 
 ```bash
 npm test              # Run all tests (800 frontend)
@@ -104,14 +263,14 @@ The measured surface is `src/lib/**`, `src/components/**`, `src/hooks/**` and
 `src/app/**`. `src/app/api/**` is included exactly once, as part of
 `src/app/**` — do not add a second, overlapping include entry.
 
-| Band | Glob(s) | Baseline (st / br / fn / ln) | Budget |
-|---|---|---|---|
-| 1 · API route handlers | `src/app/api/**` | 71.3 / 68.9 / 70.4 / 74.4 | 71 / 68 / 70 / 74 |
-| 1 · Security modules | `src/lib/{auth-rate-limit,auth-session,challenge,csrf,csrf-route-registry,crypto,lookup-rate-limit,sanitize,session,validation-schemas,webhook-url-guard}.ts` | 90.4 / 90.1 / 94.1 / 92.5 | 90 / 89 / 93 / 92 |
-| 2 · Shared lib logic | `src/lib/**` | 87.8 / 84.7 / 91.2 / 89.2 | 87 / 84 / 90 / 89 |
-| 3 · UI components | `src/components/**` | 70.4 / 75.0 / 69.1 / 71.5 | 70 / 74 / 69 / 71 |
-| 3 · Hooks | `src/hooks/**` | 95.3 / 82.5 / 95.7 / 97.1 | 95 / 82 / 95 / 97 |
-| 3 · App pages | `src/app/**` | 55.2 / 52.5 / 43.6 / 56.9 | 55 / 52 / 43 / 56 |
+| Band                   | Glob(s)                                                                                                                                                       | Baseline (st / br / fn / ln) | Budget            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ----------------- |
+| 1 · API route handlers | `src/app/api/**`                                                                                                                                              | 71.3 / 68.9 / 70.4 / 74.4    | 71 / 68 / 70 / 74 |
+| 1 · Security modules   | `src/lib/{auth-rate-limit,auth-session,challenge,csrf,csrf-route-registry,crypto,lookup-rate-limit,sanitize,session,validation-schemas,webhook-url-guard}.ts` | 90.4 / 90.1 / 94.1 / 92.5    | 90 / 89 / 93 / 92 |
+| 2 · Shared lib logic   | `src/lib/**`                                                                                                                                                  | 87.8 / 84.7 / 91.2 / 89.2    | 87 / 84 / 90 / 89 |
+| 3 · UI components      | `src/components/**`                                                                                                                                           | 70.4 / 75.0 / 69.1 / 71.5    | 70 / 74 / 69 / 71 |
+| 3 · Hooks              | `src/hooks/**`                                                                                                                                                | 95.3 / 82.5 / 95.7 / 97.1    | 95 / 82 / 95 / 97 |
+| 3 · App pages          | `src/app/**`                                                                                                                                                  | 55.2 / 52.5 / 43.6 / 56.9    | 55 / 52 / 43 / 56 |
 
 A file must clear **every band whose glob it matches**, so the strictest band
 wins. That is what makes a security module's budget bite even though it also
@@ -128,6 +287,27 @@ refreshed whenever a band's budget moves.
 # Run the gate locally exactly as CI does
 npm run coverage
 ```
+
+### Bundle-size budget
+
+The client JavaScript has a committed per-route budget in
+[`bundle-budget.json`](bundle-budget.json), enforced in CI by
+`scripts/check-bundle-budget.mjs` after the production build. The script reads
+the App Router client-reference manifests (`.next/server/app/**`), unions each
+route's first-load chunks, gzip-sizes them and fails with a per-route breakdown
+when a route exceeds its budget. The table is also appended to the GitHub job
+summary so reviewers see the delta on every PR.
+
+```bash
+npm run build         # produces .next
+npm run bundle:check  # enforce the committed budgets
+
+# Interactive treemap (opt-in; webpack-only, so it does not affect normal builds)
+npm run analyze       # writes .next/analyze/*.html
+```
+
+Budgets are raised **deliberately** in a PR, with a reason. Do not bump a budget
+just to make a red build green — trim the route instead.
 
 ### Dark-mode colour guard
 
@@ -190,37 +370,37 @@ OphirPay uses a two-tier label scheme: **plain labels** (semantic) and
 
 ### Semantic labels
 
-| Label | Meaning | What to do with it |
-|---|---|---|
-| `bug` | Something isn't working | Reproduce, add a failing test, fix, reference `Fixes #…` |
-| `enhancement` | New feature or improvement request | Discuss scope in the issue, then implement |
-| `feature` | Larger feature-tracked work | See the linked epic/Roadmap item |
-| `documentation` | Docs-only change (guides, README, comments) | Edit docs; keep commands copy-pasteable and verified |
-| `good first issue` | Small, well-scoped task for newcomers | Grab it — it's the intended on-ramp |
-| `help wanted` | Extra attention needed | Comment to coordinate before starting |
-| `question` | Needs clarification, not code | Answer with detail; close once resolved |
-| `duplicate` | Already tracked elsewhere | Link the original issue |
-| `invalid` | Not a valid issue/PR for this repo | Explain why when closing |
-| `wontfix` | Accepted, will not be worked on | Leave a note on the decision |
+| Label              | Meaning                                     | What to do with it                                       |
+| ------------------ | ------------------------------------------- | -------------------------------------------------------- |
+| `bug`              | Something isn't working                     | Reproduce, add a failing test, fix, reference `Fixes #…` |
+| `enhancement`      | New feature or improvement request          | Discuss scope in the issue, then implement               |
+| `feature`          | Larger feature-tracked work                 | See the linked epic/Roadmap item                         |
+| `documentation`    | Docs-only change (guides, README, comments) | Edit docs; keep commands copy-pasteable and verified     |
+| `good first issue` | Small, well-scoped task for newcomers       | Grab it — it's the intended on-ramp                      |
+| `help wanted`      | Extra attention needed                      | Comment to coordinate before starting                    |
+| `question`         | Needs clarification, not code               | Answer with detail; close once resolved                  |
+| `duplicate`        | Already tracked elsewhere                   | Link the original issue                                  |
+| `invalid`          | Not a valid issue/PR for this repo          | Explain why when closing                                 |
+| `wontfix`          | Accepted, will not be worked on             | Leave a note on the decision                             |
 
 ### Stack-area labels
 
-| Label | Area | Example use |
-|---|---|---|
-| `frontend` / `🎨 frontend` | UI components, pages, styling | Payment form, dashboard |
-| `backend` / `🔧 backend` | API routes, server logic | `/api/payments`, rate limiting |
-| `contracts` / `📦 contracts` | Soroban Rust contracts | `contracts/ophirpay`, `contracts/emitter` |
-| `security` / `🔒 security` | Auth, RBAC, secrets, audit | `AUTH_SECRET`, governance, multisig |
-| `tests` / `🧪 tests` | Vitest/Playwright coverage | New unit or e2e tests |
-| `ci` | CI/CD pipeline changes | `.github/workflows/ci.yml` |
-| `performance` | Gas, latency, bundle size | `docs/GAS.md` related work |
-| `devops` / `⚙️ devops` | Docker, Helm, K8s, monitoring | `helm/`, `k8s/`, `monitoring/` |
-| `database` / `🗄️ database` | Prisma schema & migrations | `prisma/schema.prisma` |
-| `dependencies` / `📦 dependencies` | npm/cargo dependency bumps | Renovate/Dependabot PRs |
-| `hooks` / `🪝 hooks` | React hooks | `src/lib/`, custom hooks |
-| `types` / `📐 types` | TypeScript types & ABI | `src/types/contract-abi.ts` |
-| `lib` / `📚 lib` | Shared libraries | `src/lib/` utilities |
-| `docs` / `📝 docs` | Documentation | Guides in `docs/` |
+| Label                              | Area                          | Example use                               |
+| ---------------------------------- | ----------------------------- | ----------------------------------------- |
+| `frontend` / `🎨 frontend`         | UI components, pages, styling | Payment form, dashboard                   |
+| `backend` / `🔧 backend`           | API routes, server logic      | `/api/payments`, rate limiting            |
+| `contracts` / `📦 contracts`       | Soroban Rust contracts        | `contracts/ophirpay`, `contracts/emitter` |
+| `security` / `🔒 security`         | Auth, RBAC, secrets, audit    | `AUTH_SECRET`, governance, multisig       |
+| `tests` / `🧪 tests`               | Vitest/Playwright coverage    | New unit or e2e tests                     |
+| `ci`                               | CI/CD pipeline changes        | `.github/workflows/ci.yml`                |
+| `performance`                      | Gas, latency, bundle size     | `docs/GAS.md` related work                |
+| `devops` / `⚙️ devops`             | Docker, Helm, K8s, monitoring | `helm/`, `k8s/`, `monitoring/`            |
+| `database` / `🗄️ database`         | Prisma schema & migrations    | `prisma/schema.prisma`                    |
+| `dependencies` / `📦 dependencies` | npm/cargo dependency bumps    | Renovate/Dependabot PRs                   |
+| `hooks` / `🪝 hooks`               | React hooks                   | `src/lib/`, custom hooks                  |
+| `types` / `📐 types`               | TypeScript types & ABI        | `src/types/contract-abi.ts`               |
+| `lib` / `📚 lib`                   | Shared libraries              | `src/lib/` utilities                      |
+| `docs` / `📝 docs`                 | Documentation                 | Guides in `docs/`                         |
 
 > 💡 **PR auto-labeling**: the `pr-labeler` CI job applies stack-area labels to
 > PRs automatically from the changed paths — you don't need to label your PR
@@ -272,28 +452,28 @@ and the required CI checks listed above.
 ### Functional & code requirements
 
 - [ ] Addresses the issue's acceptance criteria **completely** (docs issues:
-  every requested section exists and is accurate)
+      every requested section exists and is accurate)
 - [ ] Follows existing code conventions and the repo's style (Prettier + ESLint)
 - [ ] No new lint warnings (`npm run lint` clean)
 - [ ] No new type errors (`npx tsc --noEmit` clean)
 - [ ] Tests added/updated for the change, and the full suite passes
-  (`npm test` — 1,000+ tests; contract changes also need `cargo test`)
+      (`npm test` — 1,000+ tests; contract changes also need `cargo test`)
 - [ ] No new security findings (secret-scan, npm audit advisory level)
 
 ### Contract changes (additional)
 
 - [ ] `cargo build --target wasm32v1-none --release` succeeds for the changed
-  contract
+      contract
 - [ ] Contract WASM stays under the 128 KB Soroban protocol limit (CI
-  enforces it)
+      enforces it)
 - [ ] Rust tests added/updated in the contract's `src/lib.rs` and passing
 - [ ] If the contract ABI changed: TypeScript types updated in
-  `src/types/contract-abi.ts`
+      `src/types/contract-abi.ts`
 
 ### Documentation changes (additional)
 
 - [ ] Commands are copy-pasteable and were verified (or clearly marked as
-  expectations)
+      expectations)
 - [ ] New docs are linked from the README or the appropriate index page
 - [ ] No typos (`typos` spell-check CI job passes)
 - [ ] Cross-links use relative paths so they work on GitHub and in the docs

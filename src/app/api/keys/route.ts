@@ -1,19 +1,35 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
 
-import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import {
-  successResponse,
+  sensitiveSuccessResponse,
   badRequestError,
   unauthorizedError,
   handleApiError,
 } from "@/lib/api-response";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/auth-session";
-import { deriveKeyPrefix, API_SCOPES } from "@/lib/api-auth";
+import {
+  deriveKeyPrefix,
+  generateApiKey,
+  hashApiKeyV2,
+  assertMinimumKeyEntropy,
+  API_SCOPES,
+} from "@/lib/api-auth";
 import { withRequestLogging } from "@/lib/request-logging";
 import { verifyCsrf } from "@/lib/csrf";
+import {
+  activeApiKeyWhere,
+  apiKeyLimitError,
+  apiKeyQuotaError,
+  describeKeyInitiator,
+  isRetryableTransactionError,
+} from "@/lib/api-key-limits";
+import {
+  consumeApiKeyMutationQuota,
+  MAX_ACTIVE_API_KEYS,
+} from "@/lib/rate-limit";
 
 /** Validate an array of scopes against the known set. */
 function parseScopes(input: unknown): {
@@ -48,7 +64,7 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
     if (!auth) return unauthorizedError("Authentication required.");
 
     const keys = await prisma.apiKey.findMany({
-      where: { userId: auth.userId },
+      where: { userId: auth.userId, revokedAt: null },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -58,9 +74,12 @@ export const GET = withMetrics("GET /api/keys", withRequestLogging(async functio
         lastUsed: true,
         createdAt: true,
         expiresAt: true,
+        revokedAt: true,
+        rotatedAt: true,
+        rotatedToId: true,
       },
     });
-    return successResponse(keys);
+    return sensitiveSuccessResponse(keys);
   } catch (err) {
     return handleApiError(err, "GET /api/keys");
   }
@@ -93,27 +112,87 @@ export const POST = withMetrics("POST /api/keys", withRequestLogging(async funct
       return badRequestError(parsed.error ?? "Invalid scopes");
     }
 
-    const rawKey = `oph_${crypto.randomBytes(24).toString("hex")}`;
-    const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
-    const prefix = deriveKeyPrefix(rawKey);
+    // Charge the hourly create/rotate quota before touching the database. A
+    // valid-looking request from a compromised session must not be able to
+    // mint credentials faster than a human can react.
+    const quota = await consumeApiKeyMutationQuota(auth.userId);
+    if (!quota.allowed) return apiKeyQuotaError(quota);
 
-    const apiKey = await prisma.apiKey.create({
-      data: {
-        name,
-        keyHash,
-        prefix,
-        userId: auth.userId,
-        scopes: parsed.scopes,
-      },
-    });
+    // `generateApiKey` mints 32 CSPRNG bytes (issue #701) and fails closed if
+    // the result ever drifts from the documented `op_` + 64-hex format. The
+    // entropy assertion is belt-and-braces: a short/predictable key cannot be
+    // made safe by hashing it, so creation refuses one outright.
+    const rawKey = generateApiKey();
+    assertMinimumKeyEntropy(rawKey);
+    // Argon2id with a per-key random salt — computed before the transaction
+    // so the serializable lock covers only the count/insert/audit writes.
+    const keyHash = await hashApiKeyV2(rawKey);
+    const prefix = deriveKeyPrefix(rawKey);
+    const initiatedBy = describeKeyInitiator(auth);
+
+    // The cap is a count followed by an insert, so both must run in one
+    // Serializable transaction. Under the default isolation level two
+    // concurrent creates can each observe four keys and both insert, leaving
+    // the account with six. A serialization failure (P2034) means the other
+    // transaction won; retrying re-reads the count and rejects the loser.
+    let apiKey: { id: string; name: string } | null = null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        apiKey = await prisma.$transaction(
+          async (tx) => {
+            const activeKeys = await tx.apiKey.count({
+              where: activeApiKeyWhere(auth.userId),
+            });
+            if (activeKeys >= MAX_ACTIVE_API_KEYS) return null;
+
+            const created = await tx.apiKey.create({
+              data: {
+                name,
+                keyHash,
+                prefix,
+                userId: auth.userId,
+                scopes: parsed.scopes,
+              },
+            });
+
+            // Creation is a security-relevant event: a new credential can
+            // move money. Record it alongside the key so the audit trail can
+            // never be missing an entry for a key that exists.
+            await tx.auditLog.create({
+              data: {
+                action: "api_key:create",
+                actor: auth.userId,
+                target: created.id,
+                details: {
+                  name: created.name,
+                  prefix,
+                  scopes: parsed.scopes,
+                  initiatedBy,
+                },
+              },
+            });
+
+            return { id: created.id, name: created.name };
+          },
+          { isolationLevel: "Serializable" }
+        );
+        break;
+      } catch (err) {
+        if (isRetryableTransactionError(err) && attempt < 2) continue;
+        throw err;
+      }
+    }
+
+    if (!apiKey) return apiKeyLimitError();
 
     logger.info("API key generated", {
       id: apiKey.id,
       name,
       scopes: parsed.scopes,
+      initiatedBy,
     });
 
-    return successResponse(
+    return sensitiveSuccessResponse(
       {
         id: apiKey.id,
         name: apiKey.name,
@@ -158,12 +237,12 @@ async function __ophir_PATCH(request: Request) {
 
     // Scoped update — a user can only modify their own key
     const result = await prisma.apiKey.updateMany({
-      where: { id: body.id, userId: auth.userId },
+      where: { id: body.id, userId: auth.userId, revokedAt: null },
       data: { scopes: parsed.scopes },
     });
     if (result.count === 0) return badRequestError("Key not found");
 
-    return successResponse({ id: body.id, scopes: parsed.scopes });
+    return sensitiveSuccessResponse({ id: body.id, scopes: parsed.scopes });
   } catch (err) {
     return handleApiError(err, "PATCH /api/keys");
   }
@@ -185,12 +264,13 @@ export const DELETE = withMetrics("DELETE /api/keys", withRequestLogging(async f
     if (!id) return badRequestError("Key ID is required");
 
     // Scoped delete — a user can only revoke their own key
-    const result = await prisma.apiKey.deleteMany({
-      where: { id, userId: auth.userId },
+    const result = await prisma.apiKey.updateMany({
+      where: { id, userId: auth.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
     });
     if (result.count === 0) return badRequestError("Key not found");
 
-    return successResponse({ deleted: true });
+    return sensitiveSuccessResponse({ deleted: true });
   } catch (err) {
     return handleApiError(err, "DELETE /api/keys");
   }

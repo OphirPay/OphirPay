@@ -14,15 +14,15 @@ This document describes how the OphirPay `PaymentEventEmitter` Soroban smart con
 
 Stored permanently by event ID.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `u64` | Monotonic event identifier (1-based). |
-| `source` | `String` | Human-readable source label, e.g. `"OphirPay"`. |
-| `payer` | `Address` | Stellar account or contract that initiated the payment. |
-| `payee` | `Address` | Stellar account or contract receiving the payment. |
-| `amount` | `i128` | Payment amount in stroops or token-specific units. |
-| `tx_hash` | `String` | On-chain transaction hash. |
-| `timestamp` | `u64` | Ledger timestamp when the event was recorded. |
+| Field       | Type      | Description                                             |
+| ----------- | --------- | ------------------------------------------------------- |
+| `id`        | `u64`     | Monotonic event identifier (1-based).                   |
+| `source`    | `String`  | Human-readable source label, e.g. `"OphirPay"`.         |
+| `payer`     | `Address` | Stellar account or contract that initiated the payment. |
+| `payee`     | `Address` | Stellar account or contract receiving the payment.      |
+| `amount`    | `i128`    | Payment amount in stroops or token-specific units.      |
+| `tx_hash`   | `String`  | On-chain transaction hash.                              |
+| `timestamp` | `u64`     | Ledger timestamp when the event was recorded.           |
 
 ## Contract Functions
 
@@ -37,6 +37,7 @@ pub fn init(env: Env, owner: Address) -> Result<u32, EmitterError>
 - Sets `EVENT_COUNT` to `0`.
 
 **Errors:**
+
 - `AlreadyInitialized` — contract already initialized.
 
 ### Emit a Payment Event
@@ -60,10 +61,12 @@ pub fn emit_payment(
 - Returns the newly assigned event ID.
 
 **Authorization:**
+
 - `caller.require_auth()` is enforced.
 - Allow-list check prevents unauthorized accounts from fabricating events.
 
 **Errors:**
+
 - `Unauthorized` — caller is not the owner or allow-listed source.
 - `ContractPaused` — emits are currently paused.
 - `InvalidAmount` — amount validation failed (if enabled).
@@ -92,18 +95,18 @@ env.events().publish(
 
 ### Event Topics
 
-| Topic Index | Type | Value |
-|-------------|------|-------|
-| 0 | `Symbol` | `"payment_event"` |
-| 1 | `Address` | `payer` |
-| 2 | `Address` | `payee` |
+| Topic Index | Type      | Value             |
+| ----------- | --------- | ----------------- |
+| 0           | `Symbol`  | `"payment_event"` |
+| 1           | `Address` | `payer`           |
+| 2           | `Address` | `payee`           |
 
 ### Event Data
 
-| Data Index | Type | Value |
-|------------|------|-------|
-| 0 | `i128` | `amount` |
-| 1 | `String` | `tx_hash` |
+| Data Index | Type     | Value     |
+| ---------- | -------- | --------- |
+| 0          | `i128`   | `amount`  |
+| 1          | `String` | `tx_hash` |
 
 ## SSE Integration Flow
 
@@ -145,35 +148,83 @@ pub fn set_allowed_source(
 
 ## Pause / Upgrade
 
-| Function | Access | Purpose |
-|----------|--------|---------|
-| `propose_upgrade` | owner | Set new WASM hash with 24-hour timelock. |
-| `execute_upgrade` | anyone | Execute upgrade after timelock expires. |
-| `cancel_upgrade` | owner | Cancel pending upgrade. |
+| Function          | Access | Purpose                                  |
+| ----------------- | ------ | ---------------------------------------- |
+| `propose_upgrade` | owner  | Set new WASM hash with 24-hour timelock. |
+| `execute_upgrade` | anyone | Execute upgrade after timelock expires.  |
+| `cancel_upgrade`  | owner  | Cancel pending upgrade.                  |
 
 The contract rejects `emit_payment` while paused (pause is controlled by the orchestrator via a separate admin path).
 
 ## Error Codes
 
-| Code | Error | Meaning |
-|------|-------|---------|
-| 1 | `NotInitialized` | Contract has not been initialized. |
-| 2 | `AlreadyInitialized` | Contract already initialized. |
-| 3 | `EventNotFound` | Requested event ID does not exist. |
-| 4 | `Unauthorized` | Caller lacks permission. |
-| 5 | `UpgradeNotProposed` | No upgrade has been proposed. |
-| 6 | `UpgradeTimelockActive` | Upgrade timelock has not expired. |
-| 7 | `ContractPaused` | Contract is paused. |
-| 8 | `InvalidAmount` | Invalid payment amount. |
-| 9 | `DuplicateEvent` | Duplicate event ID. |
-| 10 | `MaxEventsReached` | Maximum event count reached. |
-| 11 | `ReentrantCall` | Reentrant call detected. |
-| 12 | `InvalidTxHash` | Invalid transaction hash. |
-| 13 | `EmitFailed` | Generic emit failure. |
-| 14 | `CrossContractCallFailed` | Cross-contract call failed. |
+| Code | Error                     | Meaning                            |
+| ---- | ------------------------- | ---------------------------------- |
+| 1    | `NotInitialized`          | Contract has not been initialized. |
+| 2    | `AlreadyInitialized`      | Contract already initialized.      |
+| 3    | `EventNotFound`           | Requested event ID does not exist. |
+| 4    | `Unauthorized`            | Caller lacks permission.           |
+| 5    | `UpgradeNotProposed`      | No upgrade has been proposed.      |
+| 6    | `UpgradeTimelockActive`   | Upgrade timelock has not expired.  |
+| 7    | `ContractPaused`          | Contract is paused.                |
+| 8    | `InvalidAmount`           | Invalid payment amount.            |
+| 9    | `DuplicateEvent`          | Duplicate event ID.                |
+| 10   | `MaxEventsReached`        | Maximum event count reached.       |
+| 11   | `ReentrantCall`           | Reentrant call detected.           |
+| 12   | `InvalidTxHash`           | Invalid transaction hash.          |
+| 13   | `EmitFailed`              | Generic emit failure.              |
+| 14   | `CrossContractCallFailed` | Cross-contract call failed.        |
+
+## Subscribing via Stellar RPC (Code Example)
+
+While OphirPay provides high-level Server-Sent Events (SSE) via `/api/events`, backend indexers and automated services can also subscribe directly to native on-chain contract events via Soroban RPC using `@stellar/stellar-sdk`.
+
+An executable TypeScript example is provided in [examples/subscribe-events.ts](../examples/subscribe-events.ts).
+
+### Running the Example
+
+```bash
+# Run with default testnet settings
+npx tsx examples/subscribe-events.ts
+
+# Or run with custom RPC and contract parameters
+NEXT_PUBLIC_STELLAR_RPC_URL="https://soroban-testnet.stellar.org" \
+NEXT_PUBLIC_EMITTER_CONTRACT_ID="CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN" \
+START_LEDGER=123456 \
+npx tsx examples/subscribe-events.ts
+```
+
+### Soroban RPC Query Mechanism
+
+The example connects via `rpc.Server` and queries `server.getEvents`:
+
+```typescript
+import { rpc, scValToNative, xdr } from "@stellar/stellar-sdk";
+
+const server = new rpc.Server("https://soroban-testnet.stellar.org");
+
+const response = await server.getEvents({
+  startLedger: 100000,
+  filters: [
+    {
+      type: "contract",
+      contractIds: [contractId],
+    },
+  ],
+  limit: 100,
+});
+
+for (const event of response.events) {
+  // Topics: [payment_event, payer_address, payee_address]
+  const topics = event.topic.map((t) => scValToNative(xdr.ScVal.fromXDR(t, "base64")));
+  // Value: [amount, tx_hash]
+  const value = scValToNative(xdr.ScVal.fromXDR(event.value, "base64"));
+}
+```
 
 ## Related Documentation
 
+- [examples/subscribe-events.ts](../examples/subscribe-events.ts) — executable event listener script.
 - `docs/SSE.md` — normalized SSE payloads delivered to clients.
 - `docs/SSE_DOCUMENTATION.md` — client integration, reconnection, and endpoint guidance.
 - `docs/integration-guide.md` — end-to-end integration overview.

@@ -1,0 +1,13 @@
+{
+  "event": "recurrence.completed",
+  "timestamp": "2026-09-01T08:00:14.000Z",
+  "data": {
+    "recurrenceId": "r_5d31ee77b2c9",
+    "paymentId": "p_7a11cc02f9e8",
+    "amount": "10.00",
+    "assetCode": "XLM",
+    "transactionHash": "b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff0011",
+    "completedAt": "2026-09-01T08:00:14.000Z"
+  },
+  "signature": "ce613c55d68126e4adac547d5bf677f2d7660786a3e19d2acab3d03c5f545842"
+}

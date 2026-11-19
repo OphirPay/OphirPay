@@ -9,13 +9,15 @@ interface CopyButtonProps {
   value: string;
   label?: string;
   className?: string;
+  /** Tooltip / accessible-name override (defaults to "Copy <label>"). */
+  title?: string;
 }
 
 /**
  * Copies a value (address, hash, secret) to the clipboard and shows
  * a brief "Copied" confirmation state.
  */
-export function CopyButton({ value, label = "Copy", className }: CopyButtonProps) {
+export function CopyButton({ value, label = "Copy", className, title }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -32,8 +34,8 @@ export function CopyButton({ value, label = "Copy", className }: CopyButtonProps
   return (
     <button
       onClick={handleCopy}
-      title={`Copy ${label.toLowerCase()}`}
-      aria-label={`Copy ${label.toLowerCase()}`}
+      title={title ?? `Copy ${label.toLowerCase()}`}
+      aria-label={title ?? `Copy ${label.toLowerCase()}`}
       className={cn(
         "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-200",
         copied

@@ -20,7 +20,7 @@ The review found **no single point of direct, unauthenticated fund theft**. Howe
   allowing the owner (or an attacker who compromises the owner key) to drain user-deposited funds
   through the refund path, which the documented invariant explicitly claims to prevent.
 - **1 High** trust/claim issue: the advertised "10/10 Kani formal verification" does **not**
-  verify the deployed contract. The proofs verify hand-written *models* that share no code with
+  verify the deployed contract. The proofs verify hand-written _models_ that share no code with
   the contract, are partially tautological, are not run in CI, and reference a harness that does
   not exist. The repository is **not** formally verified.
 - **Six Medium** issues: unauthenticated state mutation in `check_spending`, unbounded
@@ -36,6 +36,7 @@ Certora, Trail of Bits, OtterSec) is commissioned.
 ---
 
 ## 2. Methodology & ScopeThis review is a **line-by-line manual security review** of the two Soroban contracts (≈5,600 lines
+
 total) and the web/API authentication/SSRF/rate-limit layer, plus an assessment of the
 formal-verification harnesses and the security claims in `README.md`, `docs/VERIFICATION.md`,
 `ROADMAP.md`, `docs/SPEC.md`, and `SECURITY.md`.
@@ -53,13 +54,13 @@ What this review is **not**:
 
 ### Severity classification
 
-| Level | Meaning |
-|---|---|
-| **Critical** | Direct loss of user funds or permanent loss of contract control without preconditions |
-| **High** | Loss of funds or control under plausible preconditions (e.g. compromised/coerced owner) |
-| **Medium** | Availability, integrity, or defense-in-depth weakness that is exploitable under some conditions |
-| **Low** | Code-quality or validation gap with limited practical impact |
-| **Informational** | Documentation/consistency observations |
+| Level             | Meaning                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| **Critical**      | Direct loss of user funds or permanent loss of contract control without preconditions           |
+| **High**          | Loss of funds or control under plausible preconditions (e.g. compromised/coerced owner)         |
+| **Medium**        | Availability, integrity, or defense-in-depth weakness that is exploitable under some conditions |
+| **Low**           | Code-quality or validation gap with limited practical impact                                    |
+| **Informational** | Documentation/consistency observations                                                          |
 
 ---
 
@@ -79,7 +80,7 @@ What this review is **not**:
 
 The contract's headline security invariant is:
 
-> *`emergency_withdraw` enforces `withdraw_amount ≤ contract_balance − LOCKED_BALANCE`*, so even a
+> _`emergency_withdraw` enforces `withdraw_amount ≤ contract_balance − LOCKED_BALANCE`_, so even a
 > compromised owner cannot drain funds locked in escrows, streams, or proposal deposits.
 
 The refund lifecycle provides a second, **uncapped** withdrawal path that is not subject to this
@@ -124,9 +125,9 @@ The README and `docs/VERIFICATION.md` claim **"10/10 Kani invariants formally ve
 badge reads "verified-Kani". The reality:
 
 1. **The proofs are decoupled from the contract.** `spec/Cargo.toml` has **no dependency** on the
-   `ophirpay-contract` crate and explicitly notes *"The model functions are pure Rust — no Soroban
-   SDK dependency needed."* Each proof re-implements the logic in a hand-written `model_*`
-   function and proves properties of *that model*, not of `lib.rs`.
+   `ophirpay-contract` crate and explicitly notes _"The model functions are pure Rust — no Soroban
+   SDK dependency needed."_ Each proof re-implements the logic in a hand-written `model_*`
+   function and proves properties of _that model_, not of `lib.rs`.
 2. **Several "invariants" are tautological.** E.g. `model_vote(already_voted) = !already_voted`,
    and the proof asserts `!model_vote(true)` — trivially true by definition and unlinked to
    `vote_on_proposal`.
@@ -135,9 +136,10 @@ badge reads "verified-Kani". The reality:
    `compute_vested_boundary_at_start`, and `compute_vested_zero_duration` instead.
 4. **Not run in CI.** No job in `.github/workflows/ci.yml` installs or runs Kani; the "green"
    badge is decorative.
-5. **The docs contradict each other.** `docs/SPEC.md` still lists Kani as an *unchecked TODO*
-   (`- [ ] Bounded model checking with kani …`), while `ROADMAP.md` marks it *done* ("10/10 Kani
-   proofs passing"). The proof file header says "8 critical invariants"; the README says 10.
+5. **The verification status was inconsistent.** The original `docs/SPEC.md` wording
+   described a generic Kani TODO while `ROADMAP.md` reported that 10 model proofs existed.
+   The current SPEC and roadmap now both distinguish those model proofs from verification of
+   the deployed contract, which remains pending.
 
 Additionally, at least one modeled invariant does **not** hold in the actual code: invariant 8
 (spending-limit expiry) is modeled correctly, but the real `check_spending` (L1867) never checks
@@ -266,7 +268,7 @@ orchestrator and add a test for the mismatch case.
 
 **File:** `src/lib/webhook-deliver.ts`, `src/lib/webhook-url-guard.ts`
 
-`deliverWebhook` validates the *initial* URL with `isSafeWebhookUrlAtDelivery` but then calls
+`deliverWebhook` validates the _initial_ URL with `isSafeWebhookUrlAtDelivery` but then calls
 `fetch(url, …)` **without** `redirect: "manual"` / `"error"`, so the default behavior follows
 redirects. A user-supplied webhook URL that resolves to a public address can `302`/`307` redirect
 to `http://169.254.169.254/`, `http://localhost:…`, or another internal endpoint, bypassing the
@@ -308,6 +310,10 @@ and re-run the IP/hostname check against the final resolved address after follow
    canonicalizes the HMAC over `JSON.stringify({...payload, signature: ""})` and transmits the
    body with the real signature populated; a receiver empties the `signature` field and
    re-serializes to recompute an identical HMAC. Covered by `src/__tests__/webhook-deliver.test.ts`.
+   **Replay hardening (2026-09-25, issue #702):** the signed input is now
+   `<X-OphirPay-Timestamp>.<canonical body>`, so the timestamp header is authenticated and a
+   captured delivery cannot be re-dated; the reference verifiers and docs enforce a 300s
+   freshness window on the signed timestamp.
 10. **API keys hashed with plain SHA-256** (`src/lib/api-auth.ts`): fine for high-entropy random
     keys, but there is no enforcement that keys are long/random. Prefer a slow KDF (bcrypt/scrypt/
     argon2) or enforce 32+ byte CSPRNG keys at creation.
@@ -325,20 +331,21 @@ and re-run the IP/hostname check against the final resolved address after follow
   `propose_timelocked_action` / `execute_timelocked_action` mechanism (L1360/L1413) stores a
   string and flips an `executed` flag but **never dispatches** to any state-changing function —
   it is disconnected from the functions the README claims it protects. (Two-step ownership
-  transfer and WASM upgrade *are* correctly timelocked.)
+  transfer and WASM upgrade _are_ correctly timelocked.)
 - `execute_timelocked_action`, `execute_upgrade`, and `process_refund` are permissionless
-  executors (acceptable *only* when the payload is owner-approved and the action is
+  executors (acceptable _only_ when the payload is owner-approved and the action is
   content-bound, which is true for upgrade but **not** for refund).
-- `record_payment` and the emitter's `emit_payment` are permissionless recorders; ensure
-  downstream consumers treat on-chain records as *untrusted* for fund movement.
-- `src/lib/auth-session.ts` still describes proof-of-ownership as a *future* hardening step, but
+- `record_payment` and the emitter's `emit_payment` are record-only public paths; downstream
+  consumers must still treat on-chain records as _untrusted_ for fund movement. `record_payment`
+  now deduplicates retries by payer + `tx_hash` and rejects payload changes under the same key.
+- `src/lib/auth-session.ts` still describes proof-of-ownership as a _future_ hardening step, but
   the issuing route (`src/app/api/auth/session/route.ts`) already enforces the challenge +
   Ed25519-signature flow. Stale comment only — the protection is present.
 - `get_payments_range`/`get_payments_by_batch` return `Vec` without truncation flags.
 
 ---
 
-## 4. What *is* in place (positive findings)
+## 4. What _is_ in place (positive findings)
 
 - `require_auth` on essentially all privileged/state-changing entrypoints.
 - Two-step, timelocked ownership transfer in both contracts.
@@ -357,24 +364,31 @@ and re-run the IP/hostname check against the final resolved address after follow
 
 ## 5. Remediation priority
 
-| Priority | Finding | Effort |
-|---|---|---|
-| Priority | Finding | Status (2026-08-14) | Effort |
-|---|---|---|---|
-| P0 | HIGH-1 refund path bypasses LOCKED_BALANCE | ✅ Fixed | Medium |
-| P0 | HIGH-2 correct or remove "formally verified" claims | ✅ Fixed (README honesty note + badge removed; VERIFICATION.md retitled to "Modeled Invariants" with an explicit caveat) | Low |
-| P1 | MEDIUM-1 `check_spending` unauthenticated mutation | ✅ Fixed | Low |
-| P1 | MEDIUM-2 bound all enumeration | ✅ Fixed (`get_payments_range` + `get_reason_code_analytics` capped at 100, most-recent-first) | Low |
-| P1 | MEDIUM-3 emitter allow-list | ✅ Fixed (deploy + `set_allowed_source` pending) | Low |
-| P1 | MEDIUM-6 webhook SSRF redirect bypass | ✅ Fixed | Low |
-| P2 | MEDIUM-4 reentrancy on token-moving fns | ✅ Fixed (`REENTRANCY_LOCK` now wraps all token-transfer paths: escrow release/claim, stream claim/cancel, proposal deposit/refund, refund processing, emergency ops) | Medium |
-| P2 | MEDIUM-5 cross-contract pause result | ✅ Fixed | Low |
-| P2 | LOW validation/hygiene items | Partially fixed (LOW-9 HMAC, LOW-11 counts) | Low |
+| Priority | Finding                                             | Effort                                                                                                                                                                                        |
+| -------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Priority | Finding                                             | Status (2026-08-14)                                                                                                                                                                           | Effort |
+| ---      | ---                                                 | ---                                                                                                                                                                                           | ---    |
+| P0       | HIGH-1 refund path bypasses LOCKED_BALANCE          | ✅ Fixed                                                                                                                                                                                      | Medium |
+| P0       | HIGH-2 correct or remove "formally verified" claims | ✅ Fixed (README honesty note + badge removed; VERIFICATION.md retitled to "Modeled Invariants" with an explicit caveat)                                                                      | Low    |
+| P1       | MEDIUM-1 `check_spending` unauthenticated mutation  | ✅ Fixed                                                                                                                                                                                      | Low    |
+| P1       | MEDIUM-2 bound all enumeration                      | ✅ Fixed (`get_payments_range` + `get_reason_code_analytics` capped at 100, most-recent-first; #742 added the same cap + truncation flag to `get_payments_by_batch` / `get_subscriber_hooks`) | Low    |
+| P1       | MEDIUM-3 emitter allow-list                         | ✅ Fixed (deploy + `set_allowed_source` pending)                                                                                                                                              | Low    |
+| P1       | MEDIUM-6 webhook SSRF redirect bypass               | ✅ Fixed                                                                                                                                                                                      | Low    |
+| P2       | MEDIUM-4 reentrancy on token-moving fns             | ✅ Fixed (`REENTRANCY_LOCK` now wraps all token-transfer paths: escrow release/claim, stream claim/cancel, proposal deposit/refund, refund processing, emergency ops)                         | Medium |
+| P2       | MEDIUM-5 cross-contract pause result                | ✅ Fixed                                                                                                                                                                                      | Low    |
+| P2       | LOW validation/hygiene items                        | Partially fixed (LOW-9 HMAC, LOW-11 counts)                                                                                                                                                   | Low    |
 
 > **MEDIUM-2 note:** `get_payments_range` now iterates the most-recent tail first and stops at
 > 100 entries (matching `get_audit_log_range`), and `get_reason_code_analytics` scans only the
-> most recent 100 refunds. `get_payments_by_batch` and `get_subscriber_hooks` iterate their
-> inherently-bounded inputs (batch payment IDs / subscriber hook IDs) and need no cap.
+> most recent 100 refunds.
+>
+> **Update (issue #742):** `get_payments_by_batch` and `get_subscriber_hooks` are now capped and
+> report truncation too. The earlier rationale — "their inputs are inherently bounded" — only
+> holds if the upstream lists are bounded, and they are not: a subscriber can register an
+> unlimited number of hooks, and a batch written before the `BatchTooLarge` guard existed can
+> hold more payment ids than `create_batch` accepts today. Both readers return at most
+> `MAX_READER_ENTRIES` (100) entries, newest first, plus a `truncated` flag (`PaymentList` /
+> `HookList`). See SPEC.md INV-11.
 
 ---
 
@@ -384,3 +398,51 @@ This is an AI-assisted manual review performed on the source as of the reference
 a formal verification, not a security guarantee, and not a replacement for a professional audit by
 a qualified firm with dynamic analysis, fuzzing, and economic review. No funds should be deployed
 to mainnet solely on the basis of this report.
+
+---
+
+## 7. Post-audit web-layer findings (2026-09-28)
+
+### WEB-1 — CSP `script-src` retains `'unsafe-inline'`; nonce propagation not confirmed (issue #697)
+
+**File:** `src/proxy.ts` (`buildCsp`), `src/app/layout.tsx`
+
+**Status:** ✅ Fixed (2026-09-30, issue #1257) — re-tested on next@16.3.4.
+
+**Resolution:** the nonce never "failed to propagate" in Next itself — the App Router renderer
+reads the nonce from the _request_ `content-security-policy` header
+(`next/dist/server/app-render/app-render.js`, `getScriptNonceFromHeader`), but the proxy only set
+the CSP on the _response_. `src/proxy.ts` now generates a per-request nonce, sets the CSP on both
+the forwarded request headers and the response, and forwards `x-nonce` so `src/app/layout.tsx`
+tags its own inline scripts. Production `script-src` is now
+`'self' 'nonce-…' 'strict-dynamic' 'wasm-unsafe-eval'` with no `'unsafe-inline'`; browser check
+on a production build showed `nonce="…"` on every framework inline script and hydration with no
+CSP violation reports. `src/__tests__/config-drift.test.ts` and
+`src/__tests__/csp-nonce.test.ts` guard the new directive set. Re-verify on each Next minor bump.
+
+**Original finding:**
+
+`buildCsp()` produces `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'` in production.
+The intended mitigation is a per-request nonce: Next generates a fresh value per request and
+embeds it in its inline hydration scripts; the proxy propagates the same nonce in the CSP header
+so browsers accept the framework scripts while rejecting injected ones. In this Next 16 build
+the nonce does **not** propagate reliably from the middleware layer to the App Router renderer,
+so removing `'unsafe-inline'` causes hydration failures. The limitation is now documented in
+`SECURITY.md` and the inaccurate comment in `src/proxy.ts` has been corrected. A follow-up
+task should re-test nonce propagation on each Next minor release and remove `'unsafe-inline'`
+once propagation is confirmed end-to-end.
+
+**Risk:** Without a functioning nonce or hash-based allow-list, the `script-src` directive does
+not provide XSS protection for injected inline scripts. All other directives (`default-src
+'self'`, `connect-src` restricted to Stellar endpoints, `object-src 'none'`, etc.) remain strict.
+
+### WEB-2 — No CSP violation reporting endpoint (issue #698)
+
+**Status:** ✅ Fixed (2026-09-28).
+
+Added `report-to csp-endpoint` and `report-uri /api/csp-report` to the CSP directive in
+`buildCsp()`, plus `Report-To` and `Reporting-Endpoints` response headers. The collector at
+`POST /api/csp-report` accepts both `application/csp-report` (legacy) and
+`application/reports+json` (Reporting API) formats, caps bodies at 16 KiB, logs a redacted
+structured line via `logger.ts` (no cookies, tokens, or PII), and increments
+`csp_violation_reports_total` in `metrics-counters.ts`.

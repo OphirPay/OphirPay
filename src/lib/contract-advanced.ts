@@ -11,9 +11,10 @@
 import {
   Asset,
   nativeToScVal,
-  type xdr,
+  xdr,
 } from "@stellar/stellar-sdk";
 import {
+  CHAIN_READ_SOURCE,
   invokeContractFunction,
   submitContractInvocation,
   simulateContractCall,
@@ -101,6 +102,147 @@ async function signAndSubmit(
     const ce = classifyContractError(err);
     return { success: false, error: ce.message };
   }
+}
+
+export async function createEscrow(
+  depositor: string,
+  beneficiary: string,
+  arbiter: string | null,
+  amount: bigint,
+  asset: "native" | string,
+  deadline: number,
+  metadata: string,
+): Promise<ContractCallResult> {
+  const assetAddress = asset === "native"
+    ? Asset.native().contractId(NETWORK_PASSPHRASE)
+    : asset;
+  const args: xdr.ScVal[] = [
+    nativeToScVal(depositor, { type: "address" }),
+    nativeToScVal(beneficiary, { type: "address" }),
+    arbiter ? nativeToScVal(arbiter, { type: "address" }) : xdr.ScVal.scvVoid(),
+    nativeToScVal(amount, { type: "i128" }),
+    nativeToScVal(assetAddress, { type: "address" }),
+    nativeToScVal(deadline, { type: "u64" }),
+    nativeToScVal(metadata, { type: "string" }),
+  ];
+  return signAndSubmit(depositor, CONTRACT_ID, "create_escrow", args);
+}
+
+export async function releaseEscrow(
+  owner: string,
+  escrowId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(owner, CONTRACT_ID, "release_escrow", [
+    nativeToScVal(owner, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+  ]);
+}
+
+export async function releaseEscrowByArbiter(
+  arbiter: string,
+  escrowId: number,
+  releaseToBeneficiary: boolean,
+): Promise<ContractCallResult> {
+  return signAndSubmit(arbiter, CONTRACT_ID, "release_by_arbiter", [
+    nativeToScVal(arbiter, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+    nativeToScVal(releaseToBeneficiary, { type: "bool" }),
+  ]);
+}
+
+export async function claimEscrow(
+  beneficiary: string,
+  escrowId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(beneficiary, CONTRACT_ID, "claim_escrow", [
+    nativeToScVal(beneficiary, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+  ]);
+}
+
+/**
+ * Open a dispute on an escrow. Only the depositor or beneficiary may call this,
+ * and the escrow must have an arbiter configured.
+ */
+export async function raiseEscrowDispute(
+  caller: string,
+  escrowId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(caller, CONTRACT_ID, "initiate_dispute", [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+  ]);
+}
+
+/**
+ * Resolve a disputed escrow as its designated arbiter.
+ *
+ * `mutualAgreement` skips the contractual cooling-off window when both sides
+ * have signed. The UI uses it only for the arbitrator's explicit decision.
+ */
+export async function resolveEscrowDispute(
+  arbiter: string,
+  escrowId: number,
+  releaseToBeneficiary: boolean,
+  mutualAgreement = true,
+): Promise<ContractCallResult> {
+  return signAndSubmit(arbiter, CONTRACT_ID, "resolve_dispute", [
+    nativeToScVal(arbiter, { type: "address" }),
+    nativeToScVal(escrowId, { type: "u64" }),
+    nativeToScVal(releaseToBeneficiary, { type: "bool" }),
+    nativeToScVal(mutualAgreement, { type: "bool" }),
+  ]);
+}
+
+export async function getContractOwner(): Promise<string> {
+  const result = await simulateContractCall(CONTRACT_ID, "get_owner", CHAIN_READ_SOURCE);
+  if (result.status !== "SIMULATED" || typeof result.returnValue !== "string") {
+    throw new Error(result.error || "Unable to read the contract owner.");
+  }
+  return result.returnValue;
+}
+
+export async function createStream(
+  creator: string,
+  recipient: string,
+  totalAmount: bigint,
+  asset: "native" | string,
+  startTime: number,
+  endTime: number,
+  metadata: string,
+): Promise<ContractCallResult> {
+  const assetAddress = asset === "native"
+    ? Asset.native().contractId(NETWORK_PASSPHRASE)
+    : asset;
+  return signAndSubmit(creator, CONTRACT_ID, "create_stream", [
+    nativeToScVal(creator, { type: "address" }),
+    nativeToScVal(recipient, { type: "address" }),
+    nativeToScVal(totalAmount, { type: "i128" }),
+    nativeToScVal(assetAddress, { type: "address" }),
+    nativeToScVal(startTime, { type: "u64" }),
+    nativeToScVal(endTime, { type: "u64" }),
+    nativeToScVal(metadata, { type: "string" }),
+  ]);
+}
+
+export async function claimStream(
+  recipient: string,
+  streamId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(recipient, CONTRACT_ID, "claim_stream", [
+    nativeToScVal(recipient, { type: "address" }),
+    nativeToScVal(streamId, { type: "u64" }),
+  ]);
+}
+
+export async function cancelStream(
+  creator: string,
+  streamId: number,
+): Promise<ContractCallResult> {
+  return signAndSubmit(creator, CONTRACT_ID, "cancel_stream", [
+    nativeToScVal(creator, { type: "address" }),
+    nativeToScVal(streamId, { type: "u64" }),
+  ]);
 }
 
 // ── Multisig Functions ─────────────────────────────────────────
@@ -309,6 +451,21 @@ export async function processRefund(
     nativeToScVal(refundId, { type: "u64" }),
   ];
   return signAndSubmit(caller, CONTRACT_ID, "process_refund", args);
+}
+
+/**
+ * Reject a requested refund on-chain (`reject_refund`). Owner-only in the
+ * contract; the caller's signature over the invocation is what authorizes it.
+ */
+export async function rejectRefund(
+  caller: string,
+  refundId: number,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(refundId, { type: "u64" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "reject_refund", args);
 }
 
 // ── Notification Hook Functions ───────────────────────────────
@@ -536,3 +693,165 @@ export async function emergencyUnpauseAll(
   ];
   return signAndSubmit(caller, CONTRACT_ID, "emergency_unpause_all", args);
 }
+
+// ── Scoped Pause Functions ─────────────────────────────────────
+
+/**
+ * Feature scopes that can be paused independently of the global emergency
+ * pause. Values mirror the `PauseScope` enum in the Soroban contract, so they
+ * stay stable across the WASM/TS boundary.
+ */
+export const PauseScope = {
+  Payments: 0,
+  Escrows: 1,
+  Streams: 2,
+  Recurring: 3,
+  Refunds: 4,
+  Governance: 5,
+  Hooks: 6,
+  Batches: 7,
+} as const;
+
+export type PauseScopeValue = (typeof PauseScope)[keyof typeof PauseScope];
+
+/** Human-readable labels for the ids returned by `get_paused_scopes`. */
+export const PAUSE_SCOPE_LABELS: Record<number, string> = {
+  [PauseScope.Payments]: "Payments",
+  [PauseScope.Escrows]: "Escrows",
+  [PauseScope.Streams]: "Streams",
+  [PauseScope.Recurring]: "Recurring",
+  [PauseScope.Refunds]: "Refunds",
+  [PauseScope.Governance]: "Governance",
+  [PauseScope.Hooks]: "Hooks",
+  [PauseScope.Batches]: "Batches",
+};
+
+/**
+ * Read the ids of the feature scopes that are currently paused.
+ * Read-only simulation (no wallet signature required); returns `[]` when the
+ * contract is unreachable so callers degrade gracefully.
+ */
+export async function getPausedScopes(sourcePublicKey: string): Promise<number[]> {
+  const result = await simulateContractCall(
+    CONTRACT_ID,
+    "get_paused_scopes",
+    sourcePublicKey,
+  );
+  if (result.status === "SIMULATION_FAILED" || !Array.isArray(result.returnValue)) {
+    return [];
+  }
+  return result.returnValue
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value >= 0);
+}
+
+/**
+ * Owner-only: pause or resume a single feature scope on-chain.
+ * The global emergency pause still overrides every scope.
+ */
+export async function setScopePaused(
+  caller: string,
+  scope: PauseScopeValue,
+  paused: boolean,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(scope, { type: "u32" }),
+    nativeToScVal(paused, { type: "bool" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "set_scope_paused", args);
+}
+
+// ── Subsystem Capability Bitflags (#1358) ────────────────────
+export const SUBSYSTEM_FLAGS = {
+  PAUSE_PAYMENTS: 1,
+  PAUSE_ESCROWS: 2,
+  PAUSE_STREAMS: 4,
+  PAUSE_GOVERNANCE: 8,
+  PAUSE_RECURRING: 16,
+  PAUSE_REFUNDS: 32,
+  PAUSE_HOOKS: 64,
+  PAUSE_BATCHES: 128,
+  PAUSE_ALL: 255,
+} as const;
+
+export type SubsystemFlag = (typeof SUBSYSTEM_FLAGS)[keyof typeof SUBSYSTEM_FLAGS];
+
+export const SUBSYSTEM_FLAG_LABELS: Record<number, string> = {
+  [SUBSYSTEM_FLAGS.PAUSE_PAYMENTS]: "Payments",
+  [SUBSYSTEM_FLAGS.PAUSE_ESCROWS]: "Escrows",
+  [SUBSYSTEM_FLAGS.PAUSE_STREAMS]: "Streams",
+  [SUBSYSTEM_FLAGS.PAUSE_GOVERNANCE]: "Governance",
+  [SUBSYSTEM_FLAGS.PAUSE_RECURRING]: "Recurring",
+  [SUBSYSTEM_FLAGS.PAUSE_REFUNDS]: "Refunds",
+  [SUBSYSTEM_FLAGS.PAUSE_HOOKS]: "Hooks",
+  [SUBSYSTEM_FLAGS.PAUSE_BATCHES]: "Batches",
+};
+
+/**
+ * Deconstruct an integer bitmask into its individual active subsystem flags.
+ */
+export function parseSubsystemFlags(flags: number): number[] {
+  const allKnown = [
+    SUBSYSTEM_FLAGS.PAUSE_PAYMENTS,
+    SUBSYSTEM_FLAGS.PAUSE_ESCROWS,
+    SUBSYSTEM_FLAGS.PAUSE_STREAMS,
+    SUBSYSTEM_FLAGS.PAUSE_GOVERNANCE,
+    SUBSYSTEM_FLAGS.PAUSE_RECURRING,
+    SUBSYSTEM_FLAGS.PAUSE_REFUNDS,
+    SUBSYSTEM_FLAGS.PAUSE_HOOKS,
+    SUBSYSTEM_FLAGS.PAUSE_BATCHES,
+  ];
+  return allKnown.filter((flag) => (flags & flag) !== 0);
+}
+
+/**
+ * Read the current subsystem pause flags bitmask on-chain.
+ */
+export async function getSubsystemPauseFlags(sourcePublicKey: string): Promise<number> {
+  const result = await simulateContractCall(
+    CONTRACT_ID,
+    "get_pause_flags",
+    sourcePublicKey,
+  );
+  if (result.status === "SIMULATION_FAILED" || typeof result.returnValue !== "number") {
+    return 0;
+  }
+  return result.returnValue;
+}
+
+/**
+ * Check if a specific subsystem is paused on-chain via bitflag or global pause.
+ */
+export async function isSubsystemPaused(
+  sourcePublicKey: string,
+  subsystem: number,
+): Promise<boolean> {
+  const result = await simulateContractCall(
+    CONTRACT_ID,
+    "is_subsystem_paused",
+    sourcePublicKey,
+    [nativeToScVal(subsystem, { type: "u32" })],
+  );
+  if (result.status === "SIMULATION_FAILED" || typeof result.returnValue !== "boolean") {
+    return false;
+  }
+  return result.returnValue;
+}
+
+/**
+ * Owner-only: pause or resume a specific subsystem on-chain via bitflags.
+ */
+export async function setSubsystemPause(
+  caller: string,
+  subsystem: number,
+  paused: boolean,
+): Promise<ContractCallResult> {
+  const args: xdr.ScVal[] = [
+    nativeToScVal(caller, { type: "address" }),
+    nativeToScVal(subsystem, { type: "u32" }),
+    nativeToScVal(paused, { type: "bool" }),
+  ];
+  return signAndSubmit(caller, CONTRACT_ID, "set_subsystem_pause", args);
+}
+

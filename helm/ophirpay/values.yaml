@@ -4,8 +4,16 @@ replicaCount: 2
 
 image:
   repository: ghcr.io/ophirpay/ophirpay
-  tag: latest
-  pullPolicy: Always
+  # Empty by default: the template falls back to Chart.appVersion ("1.0.0").
+  # Never default to `latest` — it is a mutable tag, so pods of one release can
+  # run different builds and `helm rollback` does not restore the old code
+  # (issue #1333). Pin a real tag, or an immutable digest below, in production.
+  tag: ""
+  # Optional immutable pin, e.g. sha256:6f1c... (64 hex chars). When set it
+  # takes precedence over `tag`, and the running image cannot change without a
+  # new digest in values.
+  digest: ""
+  pullPolicy: IfNotPresent
 
 imagePullSecrets: []
 nameOverride: ""
@@ -16,6 +24,22 @@ serviceAccount:
   annotations: {}
   name: ""
 
+# ── Metrics scraping ───────────────────────────────────────────
+# /api/metrics now requires a credential (see docs/metrics-endpoints.md):
+# `Authorization: Bearer <METRICS_TOKEN>`. The classic prometheus.io/* pod
+# annotations below cannot carry a header, so they only tell discovery where
+# the endpoint is — the scrape job itself MUST attach the bearer token from the
+# `ophirpay-secrets` Secret. Example Prometheus `additionalScrapeConfigs`:
+#
+#   - job_name: ophirpay
+#     metrics_path: /api/metrics
+#     authorization:
+#       type: Bearer
+#       credentials_file: /etc/prometheus/secrets/metrics-token
+#     static_configs:
+#       - targets: ["ophirpay.ophirpay.svc.cluster.local:80"]
+#
+# Or, with the Prometheus Operator, an Authorization/secret on the ServiceMonitor.
 podAnnotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "3000"
@@ -23,9 +47,12 @@ podAnnotations:
 
 podSecurityContext:
   fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 1001
   capabilities:
@@ -62,6 +89,10 @@ resources:
     cpu: 1000m
     memory: 512Mi
 
+# When `autoscaling.enabled` is true the Deployment renders NO `spec.replicas`:
+# the HPA owns the replica count, so a helm upgrade cannot reset it back to
+# `replicaCount` and drop pods under load (issue #1331). Set
+# `autoscaling.enabled: false` to manage replicas by hand.
 autoscaling:
   enabled: true
   minReplicas: 2
@@ -75,6 +106,24 @@ pdb:
 
 networkPolicy:
   enabled: true
+  # Prometheus scraping ingress configuration (issue #1344).
+  # Allows Prometheus scrapers from the monitoring namespace to reach the metrics endpoint.
+  metrics:
+    enabled: true
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    podSelector: {}
+  # Egress configuration for Redis and custom backing services (issue #1345).
+  redis:
+    enabled: true
+    port: 6379
+    # Target namespace / pod selectors for Redis (optional; empty allows any in-cluster Redis on port 6379).
+    namespaceSelector: {}
+    podSelector: {}
+  egress:
+    # Additional TCP ports to allow for custom egress destinations.
+    extraPorts: []
 
 # ── Runtime configuration (rendered into a ConfigMap) ──────────
 # Every key here must be a real variable documented in `.env.example`;
@@ -95,32 +144,83 @@ config:
   NEXT_PUBLIC_STELLAR_RPC_URL: "https://soroban-testnet.stellar.org"
   DATABASE_PROVIDER: "postgresql"
   NODE_ENV: "production"
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+  NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+  RATE_LIMIT_RPM: "120"
+  AUTH_RATE_LIMIT_IP_RPM: "30"
+  AUTH_RATE_LIMIT_WALLET_RPM: "10"
+  # Empty by default so error reporting stays opt-in. `NEXT_PUBLIC_*` values
+  # are inlined at build time (see the note above), so pointing an existing
+  # image at a DSN requires rebuilding with it set — not just `helm upgrade`.
+  NEXT_PUBLIC_SENTRY_DSN: ""
 
 # ── Secrets (rendered into a Kubernetes Secret) ────────────────
 # Names must also exist in `.env.example` (same test as `config` above).
+#
+# Two ways to supply credentials:
+#   1. `secrets.existingSecret: <name>` — the chart renders NO Secret and the
+#      Deployment reads `<name>`. Prefer this in production: the Secret is
+#      owned by External Secrets / Sealed Secrets / Vault, so nothing sensitive
+#      ever lands in a values file or in the Helm release metadata (#1334).
+#   2. Leave `existingSecret` empty and set the values below. `DATABASE_URL`
+#      and `AUTH_SECRET` are then required: rendering fails with a message that
+#      names the missing value instead of starting a pod with an empty secret.
 secrets:
+  existingSecret: ""
   DATABASE_URL: ""
+  NEXT_PUBLIC_CONTRACT_ID: "CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET"
+  NEXT_PUBLIC_EMITTER_CONTRACT_ID: "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN"
+  AUTH_SECRET: ""
   REDIS_URL: ""
-  NEXT_PUBLIC_CONTRACT_ID: ""
-  NEXT_PUBLIC_EMITTER_CONTRACT_ID: ""
+  REDIS_TOKEN: ""
+  METRICS_TOKEN: ""
+  CRON_SECRET: ""
+  SCHEDULED_PAYMENTS_SOURCE_SECRET: ""
 
+# Opt-in pre-install/pre-upgrade Prisma migration Job. The image tag follows
+# image.tag (or Chart.appVersion) with a `-migrator` suffix unless overridden.
+migrations:
+  enabled: false
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Probes (issue #738) ────────────────────────────────────────
+# Liveness and readiness answer different questions, so they hit different
+# endpoints:
+#   • liveness  → /api/health/live  — process-only, no DB/RPC/Redis I/O, so a
+#                                    transient dependency outage never restarts
+#                                    an otherwise healthy pod.
+#   • readiness → /api/health/ready — database-only; external services cannot
+#                                    drain traffic when they are slow or down.
+# Both paths are exempt from the global rate limiter (src/proxy.ts).
 livenessProbe:
   httpGet:
-    path: /api/health
+    path: /api/health/live
     port: 3000
   initialDelaySeconds: 30
-  periodSeconds: 15
+  periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
 
 readinessProbe:
   httpGet:
-    path: /api/health
+    path: /api/health/ready
     port: 3000
-  initialDelaySeconds: 10
+  initialDelaySeconds: 15
   periodSeconds: 10
-  timeoutSeconds: 3
-  failureThreshold: 2
+  timeoutSeconds: 5
+  failureThreshold: 3
 
 nodeSelector: {}
 tolerations: []

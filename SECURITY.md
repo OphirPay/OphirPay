@@ -10,34 +10,61 @@ follow it.
 If you discover a security vulnerability in OphirPay, **do not** open a public
 issue, public pull request, discussion, or social post with sensitive details.
 
-Please report it through one of the private channels below.
+Please report it through one of the channels below.
 
 ### How to report
 
-1. **Private email (fastest)**
-   Send your report to **security@ophirpay.com**. Include the details listed
-   in [What to include](#what-to-include-in-your-report).
+1. **GitHub private vulnerability reporting (preferred)**
+   On the [Security tab](https://github.com/OphirPay/OphirPay/security/advisories),
+   choose **"Report a vulnerability"**. This opens a private advisory that is
+   visible only to the repository maintainers.
 
-2. **PGP-encrypted email (preferred for sensitive reports)**
-   Encrypt the full report with the security team's public key before sending
-   it to **security@ophirpay.com**. If you need the current key fingerprint,
-   request it over an out-of-band channel (for example the project's
-   [SUPPORT.md](.github/SUPPORT.md) or the GitHub organization profile), and
-   verify the fingerprint before use.
+   > The button only appears while **Private vulnerability reporting** is
+   > enabled under _Settings → Code security_. Maintainers: keeping it enabled
+   > is what makes this policy work — see the
+   > [maintainer checklist](#maintainer-checklist-keeping-the-channel-working).
+   > If the button is missing, use option 2: a maintainer can open the private
+   > advisory for you (and should re-enable the setting).
 
-3. **GitHub private vulnerability reporting (preferred when enabled)**
-   If the repository has private vulnerability reporting enabled, use the
-   **"Report a vulnerability"** button on the
-   [Security tab](https://github.com/OphirPay/OphirPay/security/advisories)
-   to open a private advisory form. Reports submitted this way are visible
-   only to repository maintainers. (The
+2. **No-details issue, then a private advisory (always available)**
+   Open a public issue with the
    [Security Vulnerability template](.github/ISSUE_TEMPLATE/security_vulnerability.yml)
-   exists only as a last-resort public fallback for researchers who cannot
-   use any private channel — it deliberately contains no exploit-detail
-   fields.)
+   that contains **no** exploit details — just the affected component and rough
+   severity. Ask a maintainer to open a private advisory with you, then send
+   the sensitive details there. This is the fallback that cannot dead-end, and
+   it is how issue #1280 was resolved.
+
+> **Email is not a supported channel right now.** The previously documented
+> `security@ophirpay.com` address has no MX record, so mail to it bounces
+> (issue #1280); `security@ophirpay.dev` does not resolve yet either. Please do
+> not send reports to either address. Once a monitored mailbox exists this
+> section — and `.well-known/security.txt` — will be updated to list it.
+
+3. **PGP-encrypted email (available once a mailbox is provisioned)**
+   When the mailbox above is published, encrypt the full report with the
+   security team's public key before sending it, and verify the fingerprint
+   over an out-of-band channel (for example the project's
+   [SUPPORT.md](.github/SUPPORT.md) or the GitHub organization profile) before
+   use. No key or mailbox is published today, so reports must use options 1–2.
 
 > Never send secrets, private keys, or real user data in a report. Redact
 > sensitive material and describe it in placeholders instead.
+
+### Maintainer checklist (keeping the channel working)
+
+A disclosure policy that points at a dead channel is worse than no policy, so
+maintainers must keep these true:
+
+- [ ] **Settings → Code security → Private vulnerability reporting** is enabled,
+      so the "Report a vulnerability" button is visible to researchers.
+- [ ] The [Security tab](https://github.com/OphirPay/OphirPay/security/advisories)
+      is monitored and new advisories are acknowledged within 48 hours.
+- [ ] When a mailbox is provisioned, add it to this file, to
+      `.well-known/security.txt` and to `src/lib/security-txt.ts` in the same PR
+      (the tests in `src/__tests__/security-txt.test.ts` enforce that the served
+      document and the repository file agree).
+- [ ] Never advertise an address on a domain without MX records; verify
+      deliverability before documenting it.
 
 ### What to include in your report
 
@@ -60,25 +87,27 @@ The more complete the report, the faster we can triage it:
 
 ### Response expectations
 
-| Stage | Timeframe |
-|---|---|
-| Acknowledgement of your report | Within **48 hours** |
-| Initial triage and severity assessment | Within **5 business days** |
-| Fix target — Critical / High | As soon as possible, coordinated with you |
-| Fix target — Medium / Low | Next planned release, coordinated with you |
-| Advisory publication | After the fix ships, credited to you (if you consent) |
+| Stage                                  | Timeframe                                             |
+| -------------------------------------- | ----------------------------------------------------- |
+| Acknowledgement of your report         | Within **48 hours**                                   |
+| Initial triage and severity assessment | Within **5 business days**                            |
+| Fix target — Critical / High           | As soon as possible, coordinated with you             |
+| Fix target — Medium / Low              | Next planned release, coordinated with you            |
+| Advisory publication                   | After the fix ships, credited to you (if you consent) |
 
-If you do not hear back within the acknowledgement window, please follow up on
-the same thread or escalate via [SUPPORT.md](.github/SUPPORT.md).
+If you do not hear back within the acknowledgement window, follow up on the
+same advisory thread. If a channel itself is broken, say so in a public issue
+**without sensitive details** and a maintainer will open a private advisory
+with you (this is how issue #1280 was resolved).
 
 ## Supported Versions
 
 Security fixes are backported to supported release lines:
 
-| Version | Supported |
-| ------- | --------- |
+| Version | Supported                                                   |
+| ------- | ----------------------------------------------------------- |
 | 1.0.x   | ✅ Active (current — incl. `v1.0.0-rc1` release candidates) |
-| 0.1.x   | ⚠️ Security patches only |
+| 0.1.x   | ⚠️ Security patches only                                    |
 
 Only the latest release of each supported line receives security fixes.
 Older versions are not patched; please upgrade. When reporting, state which
@@ -136,7 +165,8 @@ support.
 
 ### Step 1: Report the Vulnerability
 
-Email **security@ophirpay.com** with the following information:
+Open a private GitHub advisory (preferred) — or a no-details public issue that
+asks a maintainer to open one — with the following information:
 
 - **Subject**: `[SECURITY] Brief description of the vulnerability`
 - **Body**:
@@ -158,6 +188,7 @@ Our security team will validate the vulnerability within **5 business days**. We
 ### Step 4: Resolution
 
 Once validated, we will:
+
 - Develop and test a fix
 - Deploy the fix to production
 - Publish a security advisory on GitHub
@@ -172,7 +203,10 @@ If eligible, you will receive a reward based on the severity of the vulnerabilit
 OphirPay publishes a `security.txt` file at `/.well-known/security.txt` following the [RFC 9116](https://www.rfc-editor.org/rfc/rfc9116) standard. This file provides security researchers with contact information and disclosure policies.
 
 The file is accessible at:
-- **Production**: https://ophirpay.vercel.app/.well-known/security.txt
+
+- **Production**: https://ophirpay.vercel.app/.well-known/security.txt — served by
+  `src/app/.well-known/security.txt/route.ts` from `src/lib/security-txt.ts`; a
+  test asserts this document and the repository file below stay in sync
 - **Repository**: https://github.com/OphirPay/OphirPay/blob/main/.well-known/security.txt
 
 ## CSRF Protection Policy
@@ -234,14 +268,39 @@ The file is accessible at:
 import { verifyCsrf } from "@/lib/csrf";
 
 OphirPay implements the following security headers
-([`next.config.ts`](next.config.ts) is the single source of truth; `vercel.json`
-does not duplicate them):
+([`next.config.ts`](next.config.ts) is the single source of truth for static headers;
+`src/proxy.ts` sets the per-request `Content-Security-Policy` and violation-reporting headers):
+- For the CSP directives, nonce flow and maintenance procedure, see
+  [Security Headers & Content Security Policy](docs/SECURITY.md).
+- For the layer-by-layer effective policy, including Vercel behavior and API
+  overrides, see [Security Header Policy](docs/SECURITY_HEADERS.md).
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `X-XSS-Protection: 0` (the legacy `1; mode=block` filter is deprecated and
   must not be re-enabled)
 - `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`
+- `Content-Security-Policy` — strict `default-src 'self'`, `connect-src`
+  limited to Stellar/Soroban endpoints, `frame-src` limited to wallet
+  extensions, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
+
+  `script-src` is nonce-based: `'self' 'nonce-<per-request>' 'strict-dynamic'
+  'wasm-unsafe-eval'` in production (plus `'unsafe-eval'` in development for
+  HMR). `'unsafe-inline'` is **not** present, so injected inline scripts are
+  blocked. The proxy sets the CSP on the *request* headers so the App Router
+  renderer stamps the nonce on its framework scripts, and forwards it as
+  `x-nonce` for the inline scripts in `src/app/layout.tsx`.
+
+  **History (issues #697 → #1257):** earlier builds kept `'unsafe-inline'`
+  because the nonce appeared not to reach the renderer. Re-tested on
+  next@16.3.4 (2026-09-30): the cause was the proxy setting the CSP only on
+  the response. With the request header set, framework scripts carry
+  `nonce="…"` and pages hydrate with no CSP violations. See `src/proxy.ts`.
+
+- `Report-To` / `Reporting-Endpoints` — browsers POST CSP violation reports
+  to `POST /api/csp-report`, which validates, size-limits, and logs them via
+  the structured logger (with PII redaction) and counts them in the
+  `csp_violation_reports_total` metric (issue #698).
 
 // Method 2: Higher-order function wrapper
 import { withCsrf } from "@/lib/csrf";
@@ -257,3 +316,4 @@ import { withCsrf } from "@/lib/csrf";
   are guarded by reentrancy locks
 - Sensitive admin actions are protected by two-step ownership transfer (24h
   timelock) and timelocked upgrades
+```

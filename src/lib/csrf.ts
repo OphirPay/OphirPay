@@ -1,24 +1,37 @@
 // SPDX-License-Identifier: MIT
 
-import { randomBytes, timingSafeEqual } from "crypto";
-import { extractApiKey } from "@/lib/api-auth";
+import { randomBytes } from "crypto";
+import { extractApiKey } from "@/lib/api-key-format";
+import {
+  CSRF_COOKIE,
+  CSRF_COOKIE_INSECURE,
+  CSRF_TOKEN_BYTES,
+  getCsrfTokenFromCookies,
+  getCsrfTokenFromHeaders,
+  validateCsrfToken,
+} from "@/lib/csrf-token";
 
-const CSRF_COOKIE = "__Host-csrf";
-/** Plain-http dev fallback — `__Host-` cookies are rejected without Secure. */
-const CSRF_COOKIE_INSECURE = "csrf";
-const CSRF_HEADER = "x-csrf-token";
-const TOKEN_BYTES = 32;
+// Re-export the edge-safe helpers so existing callers keep one import site.
+export {
+  CSRF_COOKIE,
+  CSRF_COOKIE_INSECURE,
+  CSRF_TOKEN_BYTES,
+  CSRF_TOKEN_HEX_LENGTH,
+  getCsrfTokenFromCookies,
+  getCsrfTokenFromHeaders,
+  validateCsrfToken,
+} from "@/lib/csrf-token";
 
 /**
  * Generate a cryptographically random CSRF token.
  * Uses CSPRNG (crypto.randomBytes) — suitable for production.
  */
 export function generateCsrfToken(): string {
-  return randomBytes(TOKEN_BYTES).toString("hex");
+  return randomBytes(CSRF_TOKEN_BYTES).toString("hex");
 }
 
 /**
- * Create a CSRF cookie header value (HttpOnly, SameSite=Strict, Max-Age=86400).
+ * Create a CSRF cookie header value (HttpOnly, SameSite=Lax, Max-Age=86400).
  *
  * Over HTTPS the cookie is named `__Host-csrf` with `Secure` (the strongest
  * form — the prefix mandates Secure, no Domain, and Path=/). Over plain http
@@ -30,56 +43,10 @@ export function generateCsrfToken(): string {
 export function csrfCookieHeader(token: string, secure = true): string {
   const name = secure ? CSRF_COOKIE : CSRF_COOKIE_INSECURE;
   const secureAttr = secure ? "Secure; " : "";
-  return `${name}=${token}; Path=/; ${secureAttr}HttpOnly; SameSite=Strict; Max-Age=86400`;
-}
-
-/**
- * Validate an incoming CSRF token against the cookie.
- * Uses timing-safe comparison to prevent timing attacks.
- * Returns true if tokens match, false otherwise.
- */
-const TOKEN_HEX_RE = /^[0-9a-f]+$/;
-
-/**
- * Validate an incoming CSRF token against the cookie.
- * Uses timing-safe comparison to prevent timing attacks.
- * Returns true if tokens match, false otherwise.
- */
-export function validateCsrfToken(cookieToken: string | null, headerToken: string | null): boolean {
-  if (!cookieToken || !headerToken) return false;
-  if (cookieToken.length !== TOKEN_BYTES * 2) return false;
-  if (headerToken.length !== TOKEN_BYTES * 2) return false;
-  // Tokens are hex-encoded CSPRNG output — anything non-hex is malformed and
-  // decodes to an empty/garbage buffer, so reject it before comparing.
-  if (!TOKEN_HEX_RE.test(cookieToken) || !TOKEN_HEX_RE.test(headerToken)) return false;
-
-  const cookieBuf = Buffer.from(cookieToken, "hex");
-  const headerBuf = Buffer.from(headerToken, "hex");
-
-  try {
-    return timingSafeEqual(cookieBuf, headerBuf);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Extract the CSRF token from the request cookie header.
- * Accepts both the `__Host-csrf` (https) and `csrf` (plain-http dev) names.
- */
-export function getCsrfTokenFromCookies(cookieHeader: string | null): string | null {
-  if (!cookieHeader) return null;
-  const match = cookieHeader.match(
-    new RegExp(`(?:^|;\\s*)(?:${CSRF_COOKIE}|${CSRF_COOKIE_INSECURE})=([^;]*)`)
-  );
-  return match?.[1] ?? null;
-}
-
-/**
- * Extract the CSRF token from the request header.
- */
-export function getCsrfTokenFromHeaders(headers: Headers): string | null {
-  return headers.get(CSRF_HEADER);
+  // `SameSite=Lax` still blocks the cross-site POSTs this token guards against,
+  // while surviving top-level navigations back into the dashboard (Strict would
+  // withhold the cookie on that first request, forcing an unnecessary re-mint).
+  return `${name}=${token}; Path=/; ${secureAttr}HttpOnly; SameSite=Lax; Max-Age=86400`;
 }
 
 /**

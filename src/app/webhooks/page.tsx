@@ -371,8 +371,9 @@ export default function WebhooksPage() {
                       ) : (
                         <div className="space-y-2">
                           {deliveries.map((d) => (
-                            <div
+                            <Link
                               key={d.id}
+                              href={`/webhooks/${expandedId}/deliveries/${d.id}`}
                               className="flex items-center justify-between gap-3 text-xs bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2"
                             >
                               <div className="min-w-0">
@@ -393,7 +394,7 @@ export default function WebhooksPage() {
                                       : "text-red-600 dark:text-red-400"
                                   }
                                 >
-                                  {d.status}
+                                  {d.status === "DEAD_LETTER" ? "Dead letter" : d.status}
                                   {d.responseCode != null ? ` (${d.responseCode})` : ""}
                                 </span>
                                 <span>
@@ -404,8 +405,8 @@ export default function WebhooksPage() {
                                     minute: "2-digit",
                                   })}
                                 </span>
-                              </div>
                             </div>
+                            </Link>
                           ))}
                         </div>
                       )}

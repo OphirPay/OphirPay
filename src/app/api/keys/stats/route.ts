@@ -21,12 +21,15 @@ export async function GET(request: Request) {
     const since = new Date(now.getTime() - WINDOWS[window]);
 
     const keys = await prisma.apiKey.findMany({
-      where: { userId: auth.userId },
+      where: { userId: auth.userId, revokedAt: null },
       orderBy: { createdAt: "desc" },
       select: { id: true, name: true, prefix: true, lastUsed: true, createdAt: true, expiresAt: true },
     });
     const requests = await prisma.apiKeyRequestLog.findMany({
-      where: { key: { userId: auth.userId } },
+      where: {
+        key: { userId: auth.userId },
+        createdAt: { gte: since },
+      },
       select: { keyId: true, createdAt: true },
     });
 

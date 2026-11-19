@@ -18,6 +18,8 @@
   </p>
 </div>
 
+<!-- readme-sync: 49e2c32c0d25832fc35725e57127231ead5bc8f3 -->
+
 ---
 
 ## 📑 Tabla de Contenidos
@@ -25,7 +27,7 @@
 - [✨ ¿Por qué OphirPay?](#-por-qué-ophirpay)
 - [🚀 Demo en Vivo](#-demo-en-vivo)
 - [🧭 Arquitectura del Sistema](#-arquitectura-del-sistema)
-- [⚡ Inicio Rápido](#-inicio-rápido)
+- [⚡ Inicio Rápido](#-inicio-rápido-60-segundos)
 - [🔐 Integración de Billetera](#-integración-de-billetera)
 - [📡 Eventos en Tiempo Real](#-eventos-en-tiempo-real)
 - [🧪 Contratos Inteligentes](#-contratos-inteligentes)
@@ -40,26 +42,26 @@
 
 La mayoría de las herramientas de pago en blockchain son SDKs orientados a desarrolladores o paneles de control empresariales complejos. **OphirPay cierra la brecha** — una plataforma de pago de grado producción, de código abierto, lo suficientemente potente para tesorerías de DAO y lo suficientemente intuitiva para un freelancer enviando su primer pago en cripto.
 
-| Capacidad | OphirPay | dApp Típico |
-|---|---|---|
-| Pagos individuales | ✅ | ✅ |
-| **Pagos por lotes** (multi-destinatario en 1 tx) | ✅ | ❌ |
-| **Horarios de pago recurrentes** | ✅ | ❌ |
-| **Solicitudes de pago** (estilo factura, códigos QR) | ✅ | ❌ |
-| **Transmisión de eventos en tiempo real** (SSE) | ✅ | ❌ |
-| **Entrega de webhooks** (HMAC firmado, reintentos) | ✅ | ❌ |
-| **Comunicación entre contratos** | ✅ | ❌ |
-| **Soporte multi-billetera** (6 billeteras) | ✅ | ❌ |
-| **Soporte multi-asset** (USDC, tokens personalizados) | ✅ | ❌ |
-| **Aprobaciones multisig** (firmantes N-de-M) | ✅ | ❌ |
-| **Límites de gasto + niveles de escalamiento** | ✅ | ❌ |
-| **RBAC** (roles Admin/Operador/Auditor) | ✅ | ❌ |
-| **Registro de auditoría on-chain** (trazabilidad inmutable) | ✅ | ❌ |
-| **Configuración de comisiones** (bps por operación) | ✅ | ❌ |
-| **Acciones de admin con timelock** (retraso de 24h) | ✅ | ❌ |
-| **Gobernanza DAO** (proponer→votar→ejecutar) | ✅ | ❌ |
+| Capacidad                                                   | OphirPay | dApp Típico |
+| ----------------------------------------------------------- | -------- | ----------- |
+| Pagos individuales                                          | ✅       | ✅          |
+| **Pagos por lotes** (multi-destinatario en 1 tx)            | ✅       | ❌          |
+| **Horarios de pago recurrentes**                            | ✅       | ❌          |
+| **Solicitudes de pago** (estilo factura, códigos QR)        | ✅       | ❌          |
+| **Transmisión de eventos en tiempo real** (SSE)             | ✅       | ❌          |
+| **Entrega de webhooks** (HMAC firmado, reintentos)          | ✅       | ❌          |
+| **Comunicación entre contratos**                            | ✅       | ❌          |
+| **Soporte multi-billetera** (6 billeteras)                  | ✅       | ❌          |
+| **Soporte multi-asset** (USDC, tokens personalizados)       | ✅       | ❌          |
+| **Aprobaciones multisig** (firmantes N-de-M)                | ✅       | ❌          |
+| **Límites de gasto + niveles de escalamiento**              | ✅       | ❌          |
+| **RBAC** (roles Admin/Operador/Auditor)                     | ✅       | ❌          |
+| **Registro de auditoría on-chain** (trazabilidad inmutable) | ✅       | ❌          |
+| **Configuración de comisiones** (bps por operación)         | ✅       | ❌          |
+| **Acciones de admin con timelock** (retraso de 24h)         | ✅       | ❌          |
+| **Gobernanza DAO** (proponer→votar→ejecutar)                | ✅       | ❌          |
 
-> Todas las características anteriores tienen páginas de interfaz en el panel de control. Consulta la [hoja de ruta](#-hoja-de-ruta) para más detalles.
+> Todas las características anteriores tienen páginas de interfaz en el panel de control. Consulta la [hoja de ruta](README.md#-roadmap) para más detalles.
 
 ---
 
@@ -69,13 +71,13 @@ La mayoría de las herramientas de pago en blockchain son SDKs orientados a desa
 
 ### 🔗 **[ophirpay.vercel.app](https://ophirpay.vercel.app)**
 
-*Desplegado en Vercel — compilaciones automáticas desde `main` en cada push. PostgreSQL (Neon), contratos de testnet Soroban y flujo de billetera en vivo.*
+_Desplegado en Vercel — compilaciones automáticas desde `main` en cada push. PostgreSQL (Neon), contratos de testnet Soroban y flujo de billetera en vivo._
 
 ### 🎥 Video de Presentación (3 min)
 
 **▶️ Ver en [Loom](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)** · [Ver en Vercel](https://ophirpay.vercel.app/demo.mp4)
 
-*11 escenas: Problema → Panel en Vivo → Despliegue en Vercel → Contratos Soroban → Enviar Pago → Eventos en Tiempo Real → GitHub README → Pipeline CI → Seguridad Multisig → Código Abierto → Créditos*
+_11 escenas: Problema → Panel en Vivo → Despliegue en Vercel → Contratos Soroban → Enviar Pago → Eventos en Tiempo Real → GitHub README → Pipeline CI → Seguridad Multisig → Código Abierto → Créditos_
 
 </div>
 
@@ -174,24 +176,24 @@ Abre **[http://localhost:3000](http://localhost:3000)** — conecta tu billetera
 
 OphirPay admite múltiples billeteras Stellar a través de una abstracción unificada de conectores. Nuestro contexto `MultiWalletProvider` envuelve toda la aplicación, proporcionando:
 
-| Característica | Implementación |
-|---|---|
-| **Multi-billetera** | Interfaz de conector para Freighter, Albedo, xBull, Rabet, Lobstr, Ledger |
-| **Conexión** | Modal selector de billetera → `connector.connect()` |
-| **Desconexión** | Reset completo del estado + limpieza específica del conector |
-| **Persistencia de sesión** | Detección automática de conexiones existentes al cargar |
-| **Billetera faltante** | Detección elegante — badge "No encontrada" + error accionable |
+| Característica             | Implementación                                                            |
+| -------------------------- | ------------------------------------------------------------------------- |
+| **Multi-billetera**        | Interfaz de conector para Freighter, Albedo, xBull, Rabet, Lobstr, Ledger |
+| **Conexión**               | Modal selector de billetera → `connector.connect()`                       |
+| **Desconexión**            | Reset completo del estado + limpieza específica del conector              |
+| **Persistencia de sesión** | Detección automática de conexiones existentes al cargar                   |
+| **Billetera faltante**     | Detección elegante — badge "No encontrada" + error accionable             |
 
 **Billeteras soportadas:**
 
-| Billetera | Tipo | Estado |
-|---|---|---|
-| Freighter | Extensión de navegador | ✅ Soportado |
-| xBull | Extensión de navegador | ✅ Soportado |
-| Rabet | Extensión de navegador | ✅ Soportado |
-| Albedo | Basado en web (sin extensión) | ✅ Soportado |
-| Lobstr | Basado en web (SEP-7) | ✅ Soportado |
-| Ledger | Hardware (WebUSB/HID) | ✅ Soportado |
+| Billetera | Tipo                          | Estado       |
+| --------- | ----------------------------- | ------------ |
+| Freighter | Extensión de navegador        | ✅ Soportado |
+| xBull     | Extensión de navegador        | ✅ Soportado |
+| Rabet     | Extensión de navegador        | ✅ Soportado |
+| Albedo    | Basado en web (sin extensión) | ✅ Soportado |
+| Lobstr    | Basado en web (SEP-7)         | ✅ Soportado |
+| Ledger    | Hardware (WebUSB/HID)         | ✅ Soportado |
 
 ---
 
@@ -208,10 +210,10 @@ Navegador ←──flujo SSE─── GET /api/events ──consulta──→ Pa
 
 **Eventos emitidos:**
 
-| Evento | Disparador |
-|---|---|
-| `connected` | Flujo establecido |
-| `heartbeat` | Cada 15 segundos (keep-alive) |
+| Evento            | Disparador                              |
+| ----------------- | --------------------------------------- |
+| `connected`       | Flujo establecido                       |
+| `heartbeat`       | Cada 15 segundos (keep-alive)           |
 | `payment:created` | Nuevo evento de pago detectado on-chain |
 
 Visita **`/events`** en la aplicación para ver el feed en vivo con indicador de estado de conexión, badges de tipo de evento, marcas de tiempo y auto-scroll.
@@ -250,18 +252,18 @@ npm run ci   # typecheck → lint → test → build
 
 ## 🛠 Stack Tecnológico
 
-| Capa | Tecnología | Por qué |
-|---|---|---|
-| **Framework** | [Next.js 16](https://nextjs.org) | App Router, SSR, rutas API, Vercel nativo |
-| **Lenguaje** | [TypeScript](https://www.typescriptlang.org) | Modo estricto, seguridad total de tipos |
-| **Estilos** | [Tailwind CSS v4](https://tailwindcss.com) | Utilidad-first, modo oscuro, tema personalizado |
-| **Blockchain** | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org) | Horizon, Soroban RPC, construcción de TX |
-| **Contratos** | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27 | Compilación WASM, invocación cross-contract |
-| **Billetera** | Freighter · xBull · Rabet · Albedo · Lobstr · Ledger | Abstracción de 6 conectores de billetera |
-| **Base de datos** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite | ORM de tipos seguros, cambio de proveedor |
-| **Pruebas** | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | Cobertura unitaria, integración y E2E |
-| **CI/CD** | [GitHub Actions](https://github.com/features/actions) | CI de 4 trabajos en push/PR + flujos programados |
-| **Hosting** | [Vercel](https://vercel.com) | Despliegue automático desde `main`, red edge |
+| Capa              | Tecnología                                                                                  | Por qué                                          |
+| ----------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **Framework**     | [Next.js 16](https://nextjs.org)                                                            | App Router, SSR, rutas API, Vercel nativo        |
+| **Lenguaje**      | [TypeScript](https://www.typescriptlang.org)                                                | Modo estricto, seguridad total de tipos          |
+| **Estilos**       | [Tailwind CSS v4](https://tailwindcss.com)                                                  | Utilidad-first, modo oscuro, tema personalizado  |
+| **Blockchain**    | [Stellar SDK v13](https://stellar.org) + [Soroban](https://soroban.stellar.org)             | Horizon, Soroban RPC, construcción de TX         |
+| **Contratos**     | [Rust](https://www.rust-lang.org) + `soroban-sdk` 27                                        | Compilación WASM, invocación cross-contract      |
+| **Billetera**     | Freighter · xBull · Rabet · Albedo · Lobstr · Ledger                                        | Abstracción de 6 conectores de billetera         |
+| **Base de datos** | [Prisma](https://prisma.io) + PostgreSQL (Neon) / SQLite                                    | ORM de tipos seguros, cambio de proveedor        |
+| **Pruebas**       | [Vitest](https://vitest.dev) + React Testing Library + [Playwright](https://playwright.dev) | Cobertura unitaria, integración y E2E            |
+| **CI/CD**         | [GitHub Actions](https://github.com/features/actions)                                       | CI de 4 trabajos en push/PR + flujos programados |
+| **Hosting**       | [Vercel](https://vercel.com)                                                                | Despliegue automático desde `main`, red edge     |
 
 ---
 
@@ -278,6 +280,7 @@ npm run ci   # typecheck → lint → test → build
 ### Convención de Commits
 
 Seguimos [Conventional Commits](https://www.conventionalcommits.org):
+
 - `feat:` — nueva característica
 - `fix:` — corrección de error
 - `docs:` — documentación

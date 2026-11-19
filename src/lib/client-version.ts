@@ -11,9 +11,11 @@ export function getBuildId(): string {
 
   // Next.js injects __NEXT_DATA__ with the buildId
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = (window as any).__NEXT_DATA__;
-    if (data?.buildId) return data.buildId as string;
+    const nextWindow = window as Window & {
+      __NEXT_DATA__?: { buildId?: unknown };
+    };
+    const buildId = nextWindow.__NEXT_DATA__?.buildId;
+    if (typeof buildId === "string") return buildId;
   } catch {
     // Not a Next.js runtime
   }
@@ -25,9 +27,11 @@ export function getBuildId(): string {
   return "unknown";
 }
 
+import { getAppVersion as getResolvedAppVersion } from "./app-version";
+
 /** Get the app version from package.json or env. */
 export function getAppVersion(): string {
-  return process.env.NEXT_PUBLIC_APP_VERSION || "0.1.0";
+  return getResolvedAppVersion();
 }
 
 /** Check if the deployed version differs from what the user has cached. */

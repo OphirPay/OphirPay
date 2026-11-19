@@ -15,7 +15,7 @@
 # (b) the build is non-deterministic (a bug that must be fixed).
 #
 # On failure the script prints BOTH the expected and the actual hash so the
-# mismatch can be diagnosed immediately (issue #405 acceptance criteria).
+# mismatch can be diagnosed immediately (issue #405 and #1418 acceptance criteria).
 #
 # Usage:
 #   ./scripts/verify-wasm-reproducibility.sh            # build + verify
@@ -27,13 +27,35 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HASH_FILE="$ROOT/contracts/expected-wasm-hashes.sha256"
 TARGET="wasm32v1-none"
 
+echo "=========================================================="
+echo "🔍 Checking Soroban Toolchain & Environment"
+echo "=========================================================="
+
+# Check if rustc and cargo are present
+if ! command -v rustc >/dev/null 2>&1 || ! command -v cargo >/dev/null 2>&1; then
+  echo "❌ Error: Rust toolchain not found." >&2
+  echo "   Please run ./scripts/setup-soroban-env.sh to configure the required environment." >&2
+  exit 1
+fi
+
+# Check if the target is installed
+if ! rustup target list --installed 2>/dev/null | grep -q "$TARGET"; then
+  echo "❌ Error: Rust target '$TARGET' is not installed." >&2
+  echo "   Please run ./scripts/setup-soroban-env.sh to install all required targets." >&2
+  exit 1
+fi
+
 # Build deterministically: `file!()`-style macros inside dependency sources
 # embed the absolute CARGO_HOME registry path (e.g. /home/runner/.cargo vs
 # /home/user/.cargo), which would make the WASM bytes differ between
 # machines. Remap CARGO_HOME to a fixed, environment-independent prefix so
 # every build produces identical bytes regardless of where cargo lives.
 REMAP_PREFIX="/cargo-home"
-RUSTFLAGS="-C link-arg=-s --remap-path-prefix=${CARGO_HOME:-"$HOME/.cargo"}=$REMAP_PREFIX"
+RUSTFLAGS="-C opt-level=z -C link-arg=-s --remap-path-prefix=${CARGO_HOME:-"$HOME/.cargo"}=$REMAP_PREFIX"
+
+echo "==> Toolchain: $(cd "$ROOT/contracts/ophirpay" && rustc --version)"
+echo "==> Target:    $TARGET"
+echo "==> Flags:     --locked, opt-level=z, link-arg=-s, --remap-path-prefix"
 
 # A temp dir that mirrors the repo layout used in the hash file, so
 # sha256sum -c works against our committed file verbatim.
@@ -50,9 +72,6 @@ build() {
     RUSTFLAGS="$RUSTFLAGS" cargo build --locked --target "$TARGET" --release
   )
 }
-
-echo "==> Toolchain: $(cd "$ROOT/contracts/ophirpay" && rustc --version)"
-echo "==> Target:    $TARGET"
 
 build "contracts/ophirpay"
 build "contracts/emitter"
@@ -79,10 +98,15 @@ fi
 
 echo "==> Comparing freshly built artifacts against committed expected hashes..."
 if (cd "$TMP_ROOT" && sha256sum -c "$HASH_FILE" 2>&1); then
+  echo "=========================================================="
   echo "✅ WASM artifacts are reproducible — byte-for-byte identical to the committed expected hashes."
+  echo "=========================================================="
   exit 0
 else
-  echo "❌ WASM reproducibility check FAILED."
+  echo ""
+  echo "=========================================================="
+  echo "❌ WASM reproducibility check FAILED!"
+  echo "=========================================================="
   echo ""
   echo "    Expected hashes (committed in $HASH_FILE):"
   sed 's/^/      /' "$HASH_FILE"
@@ -91,8 +115,14 @@ else
   (cd "$TMP_ROOT" && sha256sum contracts/ophirpay/target/wasm32v1-none/release/*.wasm \
                              contracts/emitter/target/wasm32v1-none/release/*.wasm) | sed 's/^/      /'
   echo ""
-  echo "    If the contract sources changed intentionally, update the expected hashes with:"
-  echo "      ./scripts/verify-wasm-reproducibility.sh --update"
-  echo "    If the sources did NOT change, the build is non-deterministic — investigate!"
+  echo "Actionable Remediation:"
+  echo "  1. Ensure you are using the pinned Rust toolchain:"
+  echo "       ./scripts/setup-soroban-env.sh"
+  echo "  2. Clean existing build cache and rebuild:"
+  echo "       (cd contracts/ophirpay && cargo clean) && (cd contracts/emitter && cargo clean)"
+  echo "  3. If contract sources were modified intentionally, update expected hashes with:"
+  echo "       ./scripts/verify-wasm-reproducibility.sh --update"
+  echo "     Then commit the updated $HASH_FILE along with your changes."
+  echo "=========================================================="
   exit 1
 fi

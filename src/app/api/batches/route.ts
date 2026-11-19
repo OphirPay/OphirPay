@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 import { withMetrics } from "@/lib/metrics-middleware";
+import { ERROR_CODES } from "@/lib/error-codes";
 
 import type { PaymentStatus } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { createBatchSchema, idempotencyKeySchema, paginationSchema } from "@/lib/validation-schemas";
+import { createBatchSchema, paginationSchema } from "@/lib/validation-schemas";
 import {
   successResponse,
   validationError,
@@ -14,15 +15,21 @@ import {
 } from "@/lib/api-response";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
+import { requireScope } from "@/lib/api-route";
 import { verifyCsrf } from "@/lib/csrf";
 import { incMetric } from "@/lib/metrics-counters";
-import crypto from "crypto";
 import {
   buildCursorWhere,
   computeNextCursor,
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
+import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
+import {
+  claimIdempotencyKey,
+  type IdempotencyClaim,
+} from "@/lib/idempotency";
+import { requireIdempotencyKey } from "@/lib/api-route";
 
 // ── GET /api/batches — List batches with pagination ──────────
 
@@ -74,7 +81,17 @@ export const GET = withMetrics("GET /api/batches", withRequestLogging(async func
     const [batches, total] = await Promise.all([
       prisma.batch.findMany({
         where,
-        include: { payments: true },
+        include: {
+          // Bound each batch's child payments at the same ceiling the on-chain
+          // reader enforces (#742). `createBatchSchema` caps a batch at 100
+          // recipients, but rows written before that guard existed — or by a
+          // future writer — must not turn this response into an unbounded
+          // payload. One extra row is fetched to detect the cut.
+          payments: {
+            orderBy: { createdAt: "desc" },
+            take: CONTRACT_READER_ENTRY_CAP + 1,
+          },
+        },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         // Fetch one extra row to learn whether another page exists.
         ...(useCursor ? { take: limit + 1 } : prismaPagination(page, limit)),
@@ -87,12 +104,32 @@ export const GET = withMetrics("GET /api/batches", withRequestLogging(async func
       ? computeNextCursor(batches, limit)
       : { nextCursor: null, hasMore: page * limit < total };
 
-    return successResponse(visible, {
+    // Surface the per-batch cap rather than silently returning partial data:
+    // each row reports whether its `payments` array was cut short.
+    let anyBatchTruncated = false;
+    const items = visible.map((batch) => {
+      const payments = batch.payments ?? [];
+      const truncated = payments.length > CONTRACT_READER_ENTRY_CAP;
+      if (truncated) anyBatchTruncated = true;
+      return {
+        ...batch,
+        payments: truncated
+          ? payments.slice(0, CONTRACT_READER_ENTRY_CAP)
+          : payments,
+        paymentsTruncated: truncated,
+        paymentsLimit: CONTRACT_READER_ENTRY_CAP,
+      };
+    });
+
+    return successResponse(items, {
       page,
       limit,
       total,
       nextCursor: pageInfo.nextCursor,
       hasMore: pageInfo.hasMore,
+      // `truncated` covers both the page itself and any capped child list, so
+      // a client can trust a single flag to decide whether to page.
+      truncated: pageInfo.hasMore || anyBatchTruncated,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
@@ -141,6 +178,9 @@ async function fetchBatchWithPayments(batchId: string) {
 }
 
 export const POST = withMetrics("POST /api/batches", withRequestLogging(async function POST(request: Request) {
+  // Declared outside `try` so the catch block can release a lease taken by the
+  // request that then failed.
+  let claim: IdempotencyClaim | null = null;
   try {
     const csrfError = verifyCsrf(request);
     if (csrfError) return csrfError;
@@ -151,6 +191,11 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
         "Authentication required. Connect your wallet or provide an API key."
       );
     }
+
+    // Least privilege for delegated API keys. Browser sessions are exempt
+    // (they belong to the account owner); see requireScope().
+    const scopeError = await requireScope(request, "batches:create", auth);
+    if (scopeError) return scopeError;
 
     const body = await request.json();
 
@@ -163,19 +208,80 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
       parsed.data;
     const { userId } = auth;
 
-    // Idempotency key (issue #170): the `Idempotency-Key` header takes
-    // precedence over the optional body field. A present-but-invalid header —
-    // including a whitespace-only value — is a validation error; it must never
-    // silently fall back to a fresh key, which would allow duplicate batches.
-    let idempotencyKey = parsed.data.idempotencyKey;
-    const headerKey = request.headers.get("idempotency-key");
-    if (headerKey !== null) {
-      const headerCheck = idempotencyKeySchema.safeParse(headerKey);
-      if (!headerCheck.success) {
-        return validationError(headerCheck.error);
-      }
-      idempotencyKey = headerCheck.data;
+    // Idempotency key (issues #170, #1440): the `Idempotency-Key` header is
+    // REQUIRED on every batch submission. It used to be optional (with an
+    // optional `idempotencyKey` body field as fallback), which meant a client
+    // that simply omitted it got a fresh key per retry — exactly the duplicate
+    // batch this guard exists to prevent. The body field is still accepted by
+    // the schema for backwards compatibility but is no longer used.
+    const idempotency = requireIdempotencyKey(request);
+    if (!idempotency.ok) return idempotency.response;
+    const idempotencyKey = idempotency.key;
+
+    // ── Atomic idempotency claim (issue #1366) ─────────────────
+    //
+    // The database checks below only see committed rows, so two retries that
+    // arrive while the first request is still assembling transactions both
+    // miss them and race each other. Claiming a short Redis lease *before* any
+    // work is what actually serializes concurrent submissions: the loser is
+    // told (409 + Retry-After) that the winner is still working, and a retry
+    // that arrives after completion is replayed from the cached response.
+    //
+    // With Redis unset/unreachable the claim is `unavailable` and this route
+    // behaves exactly as it did before: the unique (userId, idempotencyKey)
+    // index is still the durable guarantee, the lease is only the fast path.
+    claim = await claimIdempotencyKey(userId, idempotencyKey);
+
+    if (claim?.status === "replay") {
+      // 409 with the byte-identical body the first request received (#1440):
+      // the caller must be able to distinguish "already submitted" from "this
+      // retry submitted", or a retry loop looks successful twice. The original
+      // status is preserved in `X-Original-Status` for clients that need it.
+      incMetric("batches_processed_total");
+      return Response.json(claim.response.body, {
+        status: 409,
+        headers: {
+          "Idempotency-Replay": "true",
+          "X-Original-Status": String(claim.response.status),
+        },
+      });
     }
+
+    if (claim?.status === "in-flight") {
+      // Not a validation error and not a duplicate: the first request is
+      // simply still running. `Retry-After` is the actionable part.
+      return conflictError(
+        "A batch with this idempotency key is already being processed. Retry after the indicated delay.",
+        { "Retry-After": String(claim.retryAfterSeconds) },
+        ERROR_CODES.OPERATION_IN_PROGRESS
+      );
+    }
+
+    /**
+     * Finish the request and settle the lease.
+     *
+     * Successful responses are cached for 24 h (so a later retry replays
+     * them); anything else releases the lease immediately, because a 4xx/5xx
+     * must never pin the key and block the client from fixing its request.
+     */
+    const settle = async (response: Response): Promise<Response> => {
+      if (claim?.status !== "acquired") return response;
+      if (!response.ok) {
+        await claim.release();
+        return response;
+      }
+      try {
+        await claim.remember({
+          status: response.status,
+          body: await response.clone().json(),
+        });
+      } catch {
+        // A non-JSON success body cannot be replayed; release the lease so the
+        // next retry can at least reach the database guard.
+        await claim.release();
+      }
+      return response;
+    };
 
     // Re-submission of an already-processed batch: same user + same key means
     // no new batch. If the first attempt created the batch row but crashed
@@ -194,18 +300,22 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
           });
           const resumed = await fetchBatchWithPayments(existing.id);
           incMetric("batches_processed_total");
-          return successResponse(
-            resumed,
-            { deduplicated: true, resumed: true, timestamp: new Date().toISOString() },
-            200
+          return settle(
+            successResponse(
+              resumed,
+              { deduplicated: true, resumed: true, timestamp: new Date().toISOString() },
+              200
+            )
           );
         }
 
         incMetric("batches_processed_total");
-        return successResponse(
-          existing,
-          { deduplicated: true, timestamp: new Date().toISOString() },
-          200
+        return settle(
+          successResponse(
+            existing,
+            { deduplicated: true, timestamp: new Date().toISOString() },
+            200
+          )
         );
       }
     }
@@ -221,10 +331,9 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
             name,
             description,
             userId,
-            // Server-generated when the client sends no key, so every batch
-            // records an idempotency key. Deduplication only applies to
-            // client-supplied keys, which retries actually re-send.
-            idempotencyKey: idempotencyKey ?? crypto.randomUUID(),
+            // Always the client-supplied key — it is required by the guard
+            // above, so every batch records the key its retries reuse.
+            idempotencyKey,
           },
         });
 
@@ -247,17 +356,21 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
         });
         if (winner) {
           incMetric("batches_processed_total");
-          return successResponse(
-            winner,
-            { deduplicated: true, timestamp: new Date().toISOString() },
-            200
+          return settle(
+            successResponse(
+              winner,
+              { deduplicated: true, timestamp: new Date().toISOString() },
+              200
+            )
           );
         }
         // A unique violation on the compound (userId, idempotencyKey) with no
         // recoverable winner is a genuine data conflict — surface a 409 rather
         // than failing the whole request.
-        return conflictError(
-          "A batch with this idempotency key already exists but could not be recovered."
+        return settle(
+          conflictError(
+            "A batch with this idempotency key already exists but could not be recovered."
+          )
         );
       }
       throw err;
@@ -265,8 +378,15 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
 
     incMetric("batches_processed_total");
 
-    return successResponse(result, { timestamp: new Date().toISOString() }, 201);
+    return settle(
+      successResponse(result, { timestamp: new Date().toISOString() }, 201)
+    );
   } catch (err) {
+    // An exception would otherwise leave the lease pinned for the full 120 s
+    // TTL, turning a transient 500 into a two-minute outage for that key.
+    if (claim?.status === "acquired") {
+      await claim.release().catch(() => {});
+    }
     return handleApiError(err, "POST /api/batches");
   }
 }));

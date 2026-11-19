@@ -1,11 +1,22 @@
 // SPDX-License-Identifier: MIT
 
 import { test, expect } from "@playwright/test";
+import { xdr } from "@stellar/stellar-sdk";
+import {
+  FIXTURE_SIGNER_ADDRESS,
+  TRANSACTION_FIXTURES,
+  TRANSACTION_FIXTURE_KINDS,
+  buildTransactionFixture,
+  createState,
+  handleRpcRequest,
+  successfulTransactionMeta,
+} from "./helpers/stellar-mock";
 
 const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 
 // Security model under test:
-//   • Public endpoints (/api/health, /api/metrics) remain open.
+//   • /api/health remains public; /api/metrics requires a bearer token
+//     (METRICS_TOKEN) or an admin API key → 401 without one.
 //   • Every data route is auth-gated → 401 without a session/API key.
 //   • Mutating routes validate the CSRF token before auth → 403 without one.
 //   • Pages render client-side regardless of wallet connection.
@@ -317,9 +328,23 @@ test.describe("Public endpoints", () => {
     }
   });
 
-  test("metrics endpoint bypasses rate limiting", async ({ request }) => {
+  test("metrics endpoint requires authentication", async ({ request }) => {
+    // Issue #699: the exposition leaks process/endpoint internals, so a
+    // credential is mandatory. Unauthenticated scrapes are refused.
     const res = await request.get(`${BASE_URL}/api/metrics`);
+    expect(res.status()).toBe(401);
+    expect(await res.text()).not.toContain("ophirpay_process_resident_set_bytes");
+  });
+
+  test("metrics endpoint returns the exposition with the scrape token", async ({ request }) => {
+    const token = process.env.METRICS_TOKEN;
+    test.skip(!token, "METRICS_TOKEN is not configured for this deployment");
+    const res = await request.get(`${BASE_URL}/api/metrics`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toContain("text/plain");
+    expect(await res.text()).toContain("ophirpay_http_requests_total");
   });
 
   test("OPTIONS preflight returns CORS headers", async ({ request }) => {
@@ -343,9 +368,11 @@ test.describe("Response Content Types", () => {
     expect(res.headers()["content-type"]).toContain("application/json");
   });
 
-  test("metrics returns Prometheus text format", async ({ request }) => {
+  test("metrics refuses the exposition without a credential", async ({ request }) => {
     const res = await request.get(`${BASE_URL}/api/metrics`);
-    expect(res.headers()["content-type"]).toContain("text/plain");
+    expect(res.status()).toBe(401);
+    // The 401 is a JSON error envelope, never the Prometheus text body.
+    expect(res.headers()["content-type"]).toContain("application/json");
   });
 });
 
@@ -361,5 +388,97 @@ test.describe("API Versioning", () => {
       "api-version" in headers;
     // Not required yet, but validate response is well-formed
     expect([200, 503]).toContain(res.status());
+  });
+});
+
+// ── Offline Soroban fixtures ───────────────────────────────────
+//
+// These tests run entirely in Node against the same pure handlers the
+// Playwright route mocks use. They need no app server, no browser wallet and
+// no network: `npm run test:e2e:offline` runs only this block.
+
+test.describe("Offline Soroban RPC fixtures @offline", () => {
+  test("common transaction fixtures produce deterministic, parseable envelopes", () => {
+    expect(TRANSACTION_FIXTURE_KINDS).toHaveLength(4);
+
+    for (const kind of TRANSACTION_FIXTURE_KINDS) {
+      const fixture = TRANSACTION_FIXTURES[kind];
+      expect(fixture.kind).toBe(kind);
+      expect(fixture.operationCount).toBeGreaterThan(0);
+      expect(fixture.hash).toMatch(/^[0-9a-f]{64}$/);
+
+      // Rebuilding yields byte-identical output (fixed signer + no clock).
+      const rebuilt = buildTransactionFixture(kind);
+      expect(rebuilt.hash).toBe(fixture.hash);
+      expect(rebuilt.envelopeXdr).toBe(fixture.envelopeXdr);
+
+      const envelope = xdr.TransactionEnvelope.fromXDR(
+        fixture.envelopeXdr,
+        "base64",
+      );
+      expect(envelope.switch().name).toBe("envelopeTypeTx");
+      expect(envelope.v1().signatures()).toHaveLength(1);
+      expect(xdr.ScVal.fromXDR(fixture.resultXdr, "base64")).toBeDefined();
+    }
+  });
+
+  test("fixtures cover single, batch, escrow and stream shapes", () => {
+    expect(TRANSACTION_FIXTURES["single-payment"].operationCount).toBe(1);
+    expect(TRANSACTION_FIXTURES["batch-payment"].operationCount).toBe(3);
+    expect(TRANSACTION_FIXTURES["escrow-creation"].operationCount).toBe(1);
+    expect(TRANSACTION_FIXTURES["stream-creation"].operationCount).toBe(1);
+
+    expect(FIXTURE_SIGNER_ADDRESS).toMatch(/^G[A-Z0-9]{55}$/);
+  });
+
+  test("mock RPC completes simulate -> send -> getTransaction offline", () => {
+    const state = createState({
+      fixture: "escrow-creation",
+      transactionMeta: "success",
+      getTransactionPollsRemaining: 1,
+    });
+
+    const simulate = handleRpcRequest(state, {
+      id: 1,
+      method: "simulateTransaction",
+    });
+    expect(simulate.transactionData).toBeTruthy();
+    const results = simulate.results as { auth: unknown[]; xdr: string }[];
+    expect(results).toHaveLength(1);
+    expect(xdr.ScVal.fromXDR(results[0].xdr, "base64")).toBeDefined();
+
+    const send = handleRpcRequest(state, { id: 2, method: "sendTransaction" });
+    expect(send.status).toBe("PENDING");
+    expect(send.hash).toBe(TRANSACTION_FIXTURES["escrow-creation"].hash);
+
+    // A real submission is NOT_FOUND until the ledger ingests it; one
+    // configured poll models that delay without waiting.
+    const pending = handleRpcRequest(state, {
+      id: 3,
+      method: "getTransaction",
+    });
+    expect(pending.status).toBe("NOT_FOUND");
+
+    const confirmed = handleRpcRequest(state, {
+      id: 4,
+      method: "getTransaction",
+    });
+    expect(confirmed.status).toBe("SUCCESS");
+
+    const meta = xdr.TransactionMeta.fromXDR(
+      confirmed.resultMetaXdr as string,
+      "base64",
+    );
+    expect(meta.switch()).toBe(3);
+    expect(meta.v3().sorobanMeta()).not.toBeNull();
+  });
+
+  test("successfulTransactionMeta is a decodable v3 meta", () => {
+    const meta = xdr.TransactionMeta.fromXDR(
+      successfulTransactionMeta(),
+      "base64",
+    );
+    expect(meta.switch()).toBe(3);
+    expect(meta.v3().sorobanMeta()?.events()).toHaveLength(0);
   });
 });

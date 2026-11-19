@@ -67,7 +67,7 @@ export async function POST(
     return successResponse({
       deliveryId: newDeliveryId,
       priorDeliveryId: deliveryId,
-      status: result.success ? "SUCCESS" : "FAILED",
+      status: result.success ? "SUCCESS" : "DEAD_LETTER",
       responseCode: result.statusCode,
       latencyMs: result.latencyMs,
       attempts: result.attempts,

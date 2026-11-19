@@ -8,6 +8,13 @@
  *
  * Keep this registry in sync with docs/CSRF-AUDIT.md and the enforcement
  * tests in src/__tests__/csrf-coverage.test.ts.
+ *
+ * Two lists, and the drift guard in the test suite treats them as the union
+ * that must account for every mutating handler on disk:
+ *   • MUTATING_ROUTES      — browser-reachable handlers that call verifyCsrf.
+ *   • CSRF_EXEMPT_ROUTES   — machine-invoked handlers that authenticate with a
+ *                            shared secret instead of a CSRF token. Each one
+ *                            needs a written reason.
  */
 
 export type MutatingMethod = "POST" | "PUT" | "PATCH" | "DELETE";
@@ -21,7 +28,11 @@ export interface CsrfRouteEntry {
   description: string;
 }
 
-/** Every mutating route in the API tree (40 handlers). */
+/**
+ * Every browser-reachable mutating route.
+ *
+ * Machine-invoked endpoints live in CSRF_EXEMPT_ROUTES below.
+ */
 export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   // Auth
   { method: "POST", path: "/api/auth/session", routeFile: "auth/session/route.ts", description: "Login / session renewal" },
@@ -31,6 +42,7 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "POST", path: "/api/keys", routeFile: "keys/route.ts", description: "Generate API key" },
   { method: "PATCH", path: "/api/keys", routeFile: "keys/route.ts", description: "Update key scopes" },
   { method: "DELETE", path: "/api/keys", routeFile: "keys/route.ts", description: "Revoke API key" },
+  { method: "POST", path: "/api/keys/[id]/rotate", routeFile: "keys/[id]/rotate/route.ts", description: "Rotate API key with a 24-hour overlap" },
 
   // Payments
   { method: "POST", path: "/api/payments", routeFile: "payments/route.ts", description: "Create payment" },
@@ -48,6 +60,8 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "PATCH", path: "/api/recurring", routeFile: "recurring/route.ts", description: "Update recurrence settings" },
   { method: "PATCH", path: "/api/recurring/[id]", routeFile: "recurring/[id]/route.ts", description: "Update recurring schedule" },
   { method: "POST", path: "/api/requests", routeFile: "requests/route.ts", description: "Create payment request" },
+  { method: "POST", path: "/api/requests/[id]/paid", routeFile: "requests/[id]/paid/route.ts", description: "Confirm a request payment from its Stellar transaction" },
+  { method: "POST", path: "/api/requests/[id]/remind", routeFile: "requests/[id]/remind/route.ts", description: "Email a payment reminder to the payer" },
 
   // Scheduled payments
   { method: "POST", path: "/api/scheduled", routeFile: "scheduled/route.ts", description: "Create scheduled payment" },
@@ -64,8 +78,17 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "POST", path: "/api/webhooks/[id]/replay", routeFile: "webhooks/[id]/replay/route.ts", description: "Replay stored webhook events" },
   { method: "POST", path: "/api/webhooks/[id]/test", routeFile: "webhooks/[id]/test/route.ts", description: "Send test webhook" },
   { method: "POST", path: "/api/webhooks/[id]/deliveries/[deliveryId]/redeliver", routeFile: "webhooks/[id]/deliveries/[deliveryId]/redeliver/route.ts", description: "Redeliver a webhook payload" },
+  { method: "POST", path: "/api/webhooks/[id]/deliveries/requeue", routeFile: "webhooks/[id]/deliveries/requeue/route.ts", description: "Requeue dead-lettered webhook deliveries" },
   { method: "POST", path: "/api/hooks", routeFile: "hooks/route.ts", description: "Register notification hook" },
   { method: "PATCH", path: "/api/hooks/[id]", routeFile: "hooks/[id]/route.ts", description: "Deactivate notification hook" },
+
+  // Admin step-up (issue #1389) — these routes authorize an on-chain admin
+  // mutation after a cryptographic re-verification newer than 15 minutes.
+  { method: "POST", path: "/api/fee-config", routeFile: "fee-config/route.ts", description: "Authorize a protocol fee-config change (sudo step-up)" },
+  { method: "POST", path: "/api/rbac", routeFile: "rbac/route.ts", description: "Authorize a role grant/revoke (sudo step-up)" },
+
+  // Settings
+  { method: "POST", path: "/api/settings", routeFile: "settings/route.ts", description: "Update application and custom RPC settings" },
 
   // Governance
   { method: "POST", path: "/api/governance/proposals", routeFile: "governance/proposals/route.ts", description: "Create governance proposal" },
@@ -77,9 +100,67 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   { method: "POST", path: "/api/multisig/propose", routeFile: "multisig/propose/route.ts", description: "Propose multisig payment" },
   { method: "POST", path: "/api/multisig/approve", routeFile: "multisig/approve/route.ts", description: "Approve multisig payment" },
   { method: "POST", path: "/api/multisig/execute", routeFile: "multisig/execute/route.ts", description: "Execute multisig payment" },
+];
 
-  // Jobs & cron
-  { method: "POST", path: "/api/jobs/process-due-recurring", routeFile: "jobs/process-due-recurring/route.ts", description: "Recurring scheduler sweep (cron / worker)" },
-  { method: "POST", path: "/api/cron", routeFile: "cron/route.ts", description: "Scheduled payment execution sweep (cron)" },
-  { method: "POST", path: "/api/scheduled/run", routeFile: "scheduled/run/route.ts", description: "Trigger scheduled payment run (cron)" },
+export interface CsrfExemptRoute {
+  method: MutatingMethod;
+  /** API path relative to origin, e.g. /api/cron */
+  path: string;
+  /** Route module under src/app/api (used by coverage tests) */
+  routeFile: string;
+  /**
+   * Why this handler does not carry CSRF protection. Must be a real reason
+   * (a different authentication mechanism), never "forgot" — the drift test
+   * fails if the reason is empty or the route is also registered above.
+   */
+  reason: string;
+}
+
+/**
+ * Machine-invoked mutating routes that intentionally authenticate differently
+ * from browser sessions.
+ *
+ * These are triggered by a scheduler/worker (not a browser), and they require
+ * a shared secret sent as a custom header (`Authorization: Bearer $CRON_SECRET`
+ * or `x-cron-secret`). Custom headers cannot be attached cross-site without a
+ * CORS preflight, so a CSRF token would add no protection — the shared secret
+ * *is* the authentication. They still call `verifyCsrf()` as defence in depth,
+ * but they are listed here so the drift guard knows they are accounted for
+ * rather than accidentally omitted.
+ *
+ * There is deliberately no entry for an inbound Webhook receiver: OphirPay
+ * delivers webhooks outbound only. Should a receiver route be added, it must
+ * be listed here with a reason (signature verification) rather than left to
+ * silently drift.
+ */
+export const CSRF_EXEMPT_ROUTES: CsrfExemptRoute[] = [
+  {
+    method: "POST",
+    path: "/api/jobs/process-due-recurring",
+    routeFile: "jobs/process-due-recurring/route.ts",
+    reason: "Scheduler/worker sweep; authenticated by CRON_SECRET, never a browser session.",
+  },
+  {
+    method: "POST",
+    path: "/api/cron",
+    routeFile: "cron/route.ts",
+    reason: "Vercel cron entrypoint; authenticated by Authorization: Bearer $CRON_SECRET.",
+  },
+  {
+    method: "POST",
+    path: "/api/scheduled/run",
+    routeFile: "scheduled/run/route.ts",
+    reason: "Scheduled-payment runner; authenticated by CRON_SECRET, not a browser session.",
+  },
+  {
+    method: "POST",
+    path: "/api/csp-report",
+    routeFile: "csp-report/route.ts",
+    reason:
+      "Browser-generated CSP violation report. Sent by the browser itself (no user session), " +
+      "not by JavaScript on the page. CSRF tokens cannot be included in browser-generated " +
+      "reports; the browser is the authorised sender by definition. The endpoint only accepts " +
+      "structured CSP payloads, is size-capped at 16 KiB, never mutates state, and only logs " +
+      "and increments a counter.",
+  },
 ];

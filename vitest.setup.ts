@@ -1,4 +1,46 @@
 import "@testing-library/jest-dom/vitest";
+import { beforeEach } from "vitest";
+import { resetReadCache } from "@/lib/api-cache";
+import { resetFeeStatsCache } from "@/lib/fee-stats";
+import { resetPendingWork } from "@/lib/session-lifecycle";
+import { resetSessionRevocation } from "@/lib/session-revocation";
+
+// ── Hermetic backends ──────────────────────────────────────────
+//
+// The unit suite must never depend on — or write to — a service outside the
+// process. A dev container / docker-compose environment commonly exports
+// REDIS_URL, and the read cache, session revocation and rate limiter then use
+// the shared Redis tier. That tier is *not* reset between test files
+// (`resetReadCache()` clears L1 only), so an entry written by one file
+// satisfies a later file's read: the same suite is green on CI — which has no
+// Redis — and fails locally. Unset it so every unit test runs against the
+// in-process backend, exactly as it does on CI; suites that exercise Redis
+// stub the client explicitly.
+delete process.env.REDIS_URL;
+
+// The read cache (#741) is process-global by design — that is what makes it
+// useful in production and a cross-test leak in a test run. Reset it before
+// every test so a cached payload from one case can never satisfy another.
+beforeEach(async () => {
+  await resetReadCache();
+  // Session revocation (#1399) is process- and Redis-global for the same
+  // reason; a wallet revoked by one case must not be treated as revoked by the
+  // next. Only writes this process made are cleared, so this stays cheap.
+  await resetSessionRevocation();
+  // Same reasoning for the Horizon fee-statistics cache (#825): a cached
+  // sample from one case must not drive another case's recommended fee.
+  //
+  // NOTE: keep this module free of a static import of `@/lib/stellar` (as
+  // `@/lib/asset-metadata` has): setup files run *before* a test file's
+  // `vi.mock` calls are applied, so pulling the SDK in here would defeat the
+  // per-file mocks in stellar-*.test.ts. The asset-metadata cache is reset in
+  // its own suite instead.
+  resetFeeStatsCache();
+  // The pending-work registry (#1379) is module-global like the caches above;
+  // a draft registered by one case must not make another case's disconnect
+  // prompt for confirmation.
+  resetPendingWork();
+});
 
 const createLocalStorageMock = () => {
   let store: Record<string, string> = {};

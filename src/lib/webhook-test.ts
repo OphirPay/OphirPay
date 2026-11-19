@@ -12,10 +12,11 @@ import type { WebhookPayload } from "@/lib/webhook-deliver";
  */
 export function buildTestWebhookPayload(
   event: WebhookEventType = WEBHOOK_EVENTS.PAYMENT_COMPLETED,
+  timestamp = new Date().toISOString(),
 ): WebhookPayload {
   return {
     event,
-    timestamp: new Date().toISOString(),
+    timestamp,
     test: true,
     data: {
       test: true,
@@ -25,7 +26,7 @@ export function buildTestWebhookPayload(
       assetIssuer: "GA5ZSEJ4KZ3P4P6XWJLZ4TLQUDV6C6PDU4XJ7BCVQZ4TVPULZNK3WYJ",
       status: "COMPLETED",
       description: "OphirPay test event — no real payment was created",
-      createdAt: new Date().toISOString(),
+      createdAt: timestamp,
     },
   };
 }

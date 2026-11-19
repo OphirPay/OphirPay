@@ -35,11 +35,44 @@ vi.mock("@/components/ui/Toast", () => ({
   }),
 }));
 
+// Mock the live fee hook — it would otherwise call Horizon from jsdom.
+vi.mock("@/hooks/useFeeStats", () => ({
+  useFeeStats: () => ({
+    snapshot: {
+      tiers: {
+        baseFee: 100,
+        low: 100,
+        recommended: 100,
+        fast: 150,
+        percentiles: { low: "p50", recommended: "p90", fast: "p99" },
+      },
+      congestion: "low",
+      ledgerCapacityUsage: 0.1,
+      source: "horizon",
+      stale: false,
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+      basis: "p90 of recently charged fees",
+    },
+    isLoading: false,
+    error: null,
+    refresh: vi.fn(),
+  }),
+}));
+
 // Mock fee-estimator
 vi.mock("@/lib/fee-estimator", () => ({
   estimateTransactionFee: vi.fn().mockResolvedValue({
     baseFee: "100",
+    recommendedFee: "100",
+    estimatedFee: "100",
+    totalFee: "100",
+    operations: 1,
     networkCongestion: "low",
+    percentile: "p90",
+    aggressiveness: "medium",
+    source: "horizon",
+    stale: false,
+    basis: "p90 of recently charged fees",
   }),
 }));
 
@@ -221,6 +254,12 @@ describe("SendPage - Path Payment Cross-Asset UI", () => {
       expect(screen.getByTestId("estimated-dest-amount")).toBeInTheDocument();
     }, { timeout: 8000 });
 
+    // Choose a custom fee and verify it reaches the signed transaction (#1373).
+    fireEvent.click(screen.getByRole("radio", { name: /custom fee/i }));
+    fireEvent.change(screen.getByLabelText(/custom fee in stroops/i), {
+      target: { value: "250" },
+    });
+
     // Click send button
     const sendBtn = screen.getByTestId("send-btn");
     expect(sendBtn).not.toBeDisabled();
@@ -232,5 +271,9 @@ describe("SendPage - Path Payment Cross-Asset UI", () => {
       expect(screen.getByText("~2.5000000 USDC")).toBeInTheDocument();
       expect(screen.getByText(/Recorded/)).toBeInTheDocument();
     }, { timeout: 8000 });
+
+    expect(
+      vi.mocked(stellarLib.buildPathPaymentStrictSendTx)
+    ).toHaveBeenCalledWith(expect.objectContaining({ fee: 250 }));
   }, 15000);
 });

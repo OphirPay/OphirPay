@@ -18,6 +18,12 @@ describe("decodeContractError", () => {
     );
   });
 
+  it("decodes the payment idempotency conflict", () => {
+    expect(decodeContractError("Error(Contract, #309)")).toBe(
+      "Idempotency key was reused for a different payment payload",
+    );
+  });
+
   it("returns raw string for unknown errors", () => {
     expect(decodeContractError("UnknownFault")).toBe("UnknownFault");
   });
@@ -54,5 +60,12 @@ describe("getContractErrorCatalog", () => {
     const entry = catalog.find((e) => e.code === "45");
     expect(entry).toBeDefined();
     expect(entry!.message).toContain("Deposit");
+  });
+
+  it("includes PaymentIdempotencyConflict (309) in error catalog", () => {
+    const catalog = getContractErrorCatalog();
+    const entry = catalog.find((e) => e.code === "309");
+    expect(entry).toBeDefined();
+    expect(entry!.message).toContain("Idempotency key");
   });
 });

@@ -12,6 +12,10 @@
  *   - `next.config.ts` owns the security header set;
  *   - `vercel.json` never repeats a header the app layer already sets;
  *   - `X-XSS-Protection` is declared once and is exactly `"0"`.
+ *
+ * Issue #740 extends the same single-owner rule to cache policy: the
+ * `/_next/static` immutable directive and the `/_next/image` rule live in
+ * `next.config.ts`, so self-hosted targets emit the identical headers.
  */
 
 import { describe, it, expect } from "vitest";
@@ -87,9 +91,9 @@ describe("X-XSS-Protection (#681)", () => {
 
 describe("security header ownership (#681)", () => {
   it("does not declare the same header for the same path from both layers", async () => {
-    // `Cache-Control` is set by both layers, but on different paths
-    // (`/api/(.*)` in next.config.ts, `/_next/static/(.*)` in vercel.json),
-    // so the pair (path, header) is still unique.
+    // `Cache-Control` is declared for several paths, but only ever by one
+    // layer per path (issue #740 moved `/_next/static` out of vercel.json),
+    // so the pair (path, header) stays unique.
     const declarations = [
       ...(await appHeaderRules()),
       ...platformHeaderRules(),
@@ -102,14 +106,56 @@ describe("security header ownership (#681)", () => {
     expect(declarations).toHaveLength(new Set(declarations).size);
   });
 
-  it("keeps the immutable static-asset cache rule in vercel.json", () => {
-    const rule = platformHeaderRules().find(
+  it("declares the immutable static-asset cache rule in next.config.ts (#740)", async () => {
+    const rule = (await appHeaderRules()).find(
       (candidate) => candidate.source === "/_next/static/(.*)",
     );
 
     expect(rule?.headers).toContainEqual({
       key: "Cache-Control",
       value: "public, max-age=31536000, immutable",
+    });
+  });
+
+  it("declares a short, revalidatable cache rule for /_next/image (#740)", async () => {
+    const rule = (await appHeaderRules()).find(
+      (candidate) => candidate.source === "/_next/image",
+    );
+    const value = rule?.headers.find(
+      (header) => header.key === "Cache-Control",
+    )?.value;
+
+    expect(value).toBeDefined();
+    // Must be far shorter than the 1-year immutable chunk policy and must allow
+    // a revalidation window, because the optimised bytes can change.
+    expect(value).not.toContain("immutable");
+    expect(value).toContain("max-age=3600");
+    expect(value).toContain("stale-while-revalidate");
+  });
+
+  it("does not duplicate the static-asset cache rule in vercel.json (#740)", () => {
+    expect(keysFor(platformHeaderRules(), "/_next/static/(.*)")).not.toContain(
+      "cache-control",
+    );
+  });
+
+  it("keeps the /api no-store rule and leaves the security set to /(.*) (#740)", async () => {
+    const rules = await appHeaderRules();
+
+    // The security headers live once, on `/(.*)` — which matches asset and API
+    // requests too — so responses carry exactly one value each.
+    const assetRules = ["/_next/static/(.*)", "/_next/image"] as const;
+    for (const source of assetRules) {
+      const rule = rules.find((candidate) => candidate.source === source);
+      expect(rule?.headers.map((header) => header.key)).toEqual([
+        "Cache-Control",
+      ]);
+    }
+
+    const apiRule = rules.find((candidate) => candidate.source === "/api/(.*)");
+    expect(apiRule?.headers).toContainEqual({
+      key: "Cache-Control",
+      value: "no-cache, no-store, must-revalidate",
     });
   });
 

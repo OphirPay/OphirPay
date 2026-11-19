@@ -20,7 +20,222 @@ const counters = {
   db_query_duration_seconds_count: 0,
   /** Gauge: currently open SSE event-stream connections (inc on connect, dec on disconnect). */
   sse_open_connections: 0,
+  /**
+   * Counter: SSE events shed because a slow/stalled consumer exhausted its
+   * bounded outbound buffer (issue #744). A rising value with a flat
+   * `sse_open_connections` means clients are being out-paced by the stream.
+   */
+  sse_dropped_events_total: 0,
+  /** Counter: cumulative RPC failover transitions (issue #820). */
+  rpc_failover_total: 0,
+  /** Counter: cumulative RPC recoveries to the primary endpoint (issue #820). */
+  rpc_failover_recoveries_total: 0,
+  /**
+   * Counter: CSP violation reports received at POST /api/csp-report (issue #698).
+   * Incremented once per accepted, parsed, and logged report.  Oversized or
+   * malformed requests are rejected before reaching this counter.
+   */
+  csp_violation_reports_total: 0,
+  /** Gauge: Prisma connection pool queue wait duration in seconds (issue #1412). */
+  database_pool_wait_seconds: 0,
+  /** Counter: cumulative cron execution logs pruned older than retention window (issue #1420). */
+  cron_logs_pruned_total: 0,
+  /** Counter: cumulative API key request logs pruned older than retention window (issue #1830). */
+  api_key_logs_pruned_total: 0,
+  /** Counter: cumulative expired idempotency keys pruned (issue #2025). */
+  idempotency_keys_pruned_total: 0,
+  /** Counter: cumulative RPC circuit breaker trips to OPEN state (issue #1421). */
+  rpc_circuit_breaker_trips_total: 0,
+  /** Gauge: currently active WebSocket connections (issue #1829). */
+  ws_active_connections: 0,
+  /** Counter: cumulative WebSocket broadcast frames sent to clients (issue #1829). */
+  ws_broadcast_frames_total: 0,
 };
+
+export type WsDisconnectReason =
+  | "client_close"
+  | "slow_consumer"
+  | "ping_timeout"
+  | "socket_error";
+
+const wsDisconnections = new Map<WsDisconnectReason, number>([
+  ["client_close", 0],
+  ["slow_consumer", 0],
+  ["ping_timeout", 0],
+  ["socket_error", 0],
+]);
+
+/** Increment or decrement active WebSocket connection gauge (issue #1829). */
+export function incWsActiveConnections(delta = 1): void {
+  counters.ws_active_connections = Math.max(0, counters.ws_active_connections + delta);
+}
+
+export function decWsActiveConnections(delta = 1): void {
+  counters.ws_active_connections = Math.max(0, counters.ws_active_connections - delta);
+}
+
+/** Increment counter for WebSocket disconnections by reason (issue #1829). */
+export function incWsDisconnections(reason: WsDisconnectReason, delta = 1): void {
+  wsDisconnections.set(reason, (wsDisconnections.get(reason) ?? 0) + delta);
+}
+
+/** Increment counter for broadcast frames sent (issue #1829). */
+export function incWsBroadcastFrames(delta = 1): void {
+  counters.ws_broadcast_frames_total += delta;
+}
+
+/** Get snapshot of WebSocket disconnections by reason. */
+export function getWsDisconnectionsSnapshot(): Record<WsDisconnectReason, number> {
+  return {
+    client_close: wsDisconnections.get("client_close") ?? 0,
+    slow_consumer: wsDisconnections.get("slow_consumer") ?? 0,
+    ping_timeout: wsDisconnections.get("ping_timeout") ?? 0,
+    socket_error: wsDisconnections.get("socket_error") ?? 0,
+  };
+}
+
+/** Increment the API key request logs pruned counter (issue #1830). */
+export function incApiKeyLogsPruned(count = 1): void {
+  counters.api_key_logs_pruned_total += count;
+}
+
+/** Increment the expired idempotency keys pruned counter (issue #2025). */
+export function incIdempotencyKeysPruned(count = 1): void {
+  counters.idempotency_keys_pruned_total += count;
+}
+
+/** Increment the cron logs pruned counter (issue #1420). */
+export function incCronLogsPruned(count = 1): void {
+  counters.cron_logs_pruned_total += count;
+}
+
+/** Increment the RPC circuit breaker trips counter (issue #1421). */
+export function incCircuitBreakerTrips(count = 1): void {
+  counters.rpc_circuit_breaker_trips_total += count;
+}
+
+/** Set the Prisma connection pool queue wait time in seconds (issue #1412). */
+export function setDatabasePoolWaitSeconds(seconds: number): void {
+  counters.database_pool_wait_seconds = seconds;
+}
+
+/** Map of currently active SSE connections keyed by route (issue #1425). */
+const sseActiveConnections = new Map<string, number>([
+  ["events", 0],
+  ["audit-log", 0],
+]);
+
+/** Increment or decrement active SSE connection gauge for a specific route (issue #1425). */
+export function incSseActiveConnection(route: string, delta = 1): void {
+  const current = sseActiveConnections.get(route) ?? 0;
+  const next = Math.max(0, current + delta);
+  sseActiveConnections.set(route, next);
+}
+
+/** Get snapshot of active SSE connections by route (issue #1425). */
+export function getSseActiveConnections(): Array<{ route: string; count: number }> {
+  return Array.from(sseActiveConnections.entries()).map(([route, count]) => ({
+    route,
+    count,
+  }));
+}
+
+/** Histogram bucket upper bounds (seconds) for SSE connection duration (issue #1425). */
+export const SSE_DURATION_BUCKET_BOUNDS = [
+  1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600,
+];
+
+export interface SseDurationObservation {
+  count: number;
+  sum: number;
+  buckets: number[];
+}
+
+const sseDurations = new Map<string, SseDurationObservation>();
+
+/** Record an SSE connection duration in seconds for a specific route (issue #1425). */
+export function recordSseConnectionDuration(
+  route: string,
+  durationSeconds: number
+): void {
+  let obs = sseDurations.get(route);
+  if (!obs) {
+    obs = {
+      count: 0,
+      sum: 0,
+      buckets: new Array(SSE_DURATION_BUCKET_BOUNDS.length + 1).fill(0),
+    };
+    sseDurations.set(route, obs);
+  }
+  obs.count += 1;
+  obs.sum += durationSeconds;
+  for (let i = 0; i < SSE_DURATION_BUCKET_BOUNDS.length; i++) {
+    if (durationSeconds <= SSE_DURATION_BUCKET_BOUNDS[i]) {
+      obs.buckets[i] += 1;
+    }
+  }
+  obs.buckets[SSE_DURATION_BUCKET_BOUNDS.length] += 1;
+}
+
+/** Get snapshot of recorded SSE connection duration observations (issue #1425). */
+export function getSseDurations(): Array<{
+  route: string;
+  observation: SseDurationObservation;
+}> {
+  return Array.from(sseDurations.entries()).map(([route, observation]) => ({
+    route,
+    observation: {
+      count: observation.count,
+      sum: observation.sum,
+      buckets: [...observation.buckets],
+    },
+  }));
+}
+
+export type CspReportDropReason = "rate_limited" | "deduplicated" | "oversized";
+
+const cspReportsDropped = new Map<CspReportDropReason, number>([
+  ["rate_limited", 0],
+  ["deduplicated", 0],
+  ["oversized", 0],
+]);
+
+/** Increment the counter for dropped CSP violation reports (#1392). */
+export function incCspReportsDropped(reason: CspReportDropReason, delta = 1): void {
+  cspReportsDropped.set(reason, (cspReportsDropped.get(reason) ?? 0) + delta);
+}
+
+/** Get a snapshot of dropped CSP report counts by reason. */
+export function getCspReportsDroppedSnapshot(): Record<CspReportDropReason, number> {
+  return {
+    rate_limited: cspReportsDropped.get("rate_limited") ?? 0,
+    deduplicated: cspReportsDropped.get("deduplicated") ?? 0,
+    oversized: cspReportsDropped.get("oversized") ?? 0,
+  };
+}
+
+/** Last failover snapshot read by a scrape, for diffing gauge/counter gauges. */
+let lastRpcFailover: {
+  failoverCount: number;
+  recoveryCount: number;
+  activeEndpoint: string | null;
+  primaryEndpoint: string | null;
+  usingFallback: boolean;
+  currentFallbackDurationMs: number;
+  longestFallbackDurationMs: number;
+} | null = null;
+
+/** Store the latest RPC failover state so the metrics exposition stays consistent. */
+export function recordRpcFailoverState(state: NonNullable<typeof lastRpcFailover>): void {
+  lastRpcFailover = state;
+  counters.rpc_failover_total = state.failoverCount;
+  counters.rpc_failover_recoveries_total = state.recoveryCount;
+}
+
+/** Read the last recorded RPC failover state (null before the first record). */
+export function getRpcFailoverSnapshot(): typeof lastRpcFailover {
+  return lastRpcFailover;
+}
 
 export type MetricName = keyof typeof counters;
 export type DeliveryType = "webhook" | "batch";
@@ -106,6 +321,13 @@ export function observeDbQuery(durationSeconds: number): void {
 export function getMetricsSnapshot(): typeof counters & {
   delivery_attempts: DeliveryAttemptMetric[];
   delivery_final_outcomes: DeliveryFinalOutcomeMetric[];
+  csp_reports_dropped: Record<CspReportDropReason, number>;
+  sse_active_connections: Array<{ route: string; count: number }>;
+  sse_connection_durations: Array<{
+    route: string;
+    observation: SseDurationObservation;
+  }>;
+  ws_disconnections: Record<WsDisconnectReason, number>;
 } {
   return {
     ...counters,
@@ -120,6 +342,10 @@ export function getMetricsSnapshot(): typeof counters & {
         a.attempt_number - b.attempt_number ||
         a.final_outcome.localeCompare(b.final_outcome)
     ),
+    csp_reports_dropped: getCspReportsDroppedSnapshot(),
+    sse_active_connections: getSseActiveConnections(),
+    sse_connection_durations: getSseDurations(),
+    ws_disconnections: getWsDisconnectionsSnapshot(),
   };
 }
 
@@ -129,6 +355,138 @@ export function resetMetricsForTest(): void {
   }
   deliveryAttempts.clear();
   deliveryFinalOutcomes.clear();
+  lastRpcFailover = null;
+  rpcRequestsTotal.set("2xx", 0);
+  rpcRequestsTotal.set("5xx", 0);
+  rpcLatencySum = 0;
+  rpcLatencyCount = 0;
+  rpcLatencyBuckets.fill(0);
+  rpcCallHistograms.clear();
+  dbQueryHistograms.clear();
+  for (const reason of ["rate_limited", "deduplicated", "oversized"] as CspReportDropReason[]) {
+    cspReportsDropped.set(reason, 0);
+  }
+  for (const reason of ["client_close", "slow_consumer", "ping_timeout", "socket_error"] as WsDisconnectReason[]) {
+    wsDisconnections.set(reason, 0);
+  }
+  sseActiveConnections.set("events", 0);
+  sseActiveConnections.set("audit-log", 0);
+  sseDurations.clear();
+}
+
+// ── Soroban RPC call histograms (SLO latency) ─────────────────
+
+export type RpcCallOutcome = "success" | "failure";
+
+/**
+ * SLO buckets for Soroban RPC calls: 100ms, 500ms, 1s, 3s, 5s, 10s.
+ * A trailing +Inf bucket is implied.
+ */
+export const RPC_LATENCY_BUCKET_BOUNDS = [0.1, 0.5, 1, 3, 5, 10];
+
+interface HistogramState {
+  buckets: number[];
+  sum: number;
+  count: number;
+}
+
+export interface RpcCallMetric extends HistogramState {
+  endpoint: string;
+  outcome: RpcCallOutcome;
+}
+
+const rpcCallHistograms = new Map<string, RpcCallMetric>();
+
+function observeHistogram(
+  state: HistogramState,
+  bounds: readonly number[],
+  durationSeconds: number
+): void {
+  state.sum += durationSeconds;
+  state.count += 1;
+  for (let i = 0; i < bounds.length; i++) {
+    if (durationSeconds <= bounds[i]) state.buckets[i] += 1;
+  }
+  state.buckets[bounds.length] += 1;
+}
+
+/**
+ * Record one Soroban RPC call, labelled by the endpoint used and whether it
+ * succeeded. Emitted by `rpc-failover.ts` and exposed at `/api/metrics`.
+ */
+export function recordRpcCall(
+  endpoint: string,
+  outcome: RpcCallOutcome,
+  durationSeconds: number
+): void {
+  const key = `${endpoint}|${outcome}`;
+  let metric = rpcCallHistograms.get(key);
+  if (!metric) {
+    metric = {
+      endpoint,
+      outcome,
+      buckets: new Array(RPC_LATENCY_BUCKET_BOUNDS.length + 1).fill(0),
+      sum: 0,
+      count: 0,
+    };
+    rpcCallHistograms.set(key, metric);
+  }
+  observeHistogram(metric, RPC_LATENCY_BUCKET_BOUNDS, durationSeconds);
+}
+
+/** Snapshot of per-endpoint Soroban RPC latency histograms. */
+export function getRpcCallMetrics(): RpcCallMetric[] {
+  return [...rpcCallHistograms.values()].sort(
+    (a, b) =>
+      a.endpoint.localeCompare(b.endpoint) || a.outcome.localeCompare(b.outcome)
+  );
+}
+
+// ── Prisma query histograms (per model + operation) ───────────
+
+/** Buckets for database query latency (5ms … 10s), with an implied +Inf. */
+export const DB_LATENCY_BUCKET_BOUNDS = [
+  0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+];
+
+export interface DbQueryMetric extends HistogramState {
+  model: string;
+  operation: string;
+}
+
+const dbQueryHistograms = new Map<string, DbQueryMetric>();
+
+/**
+ * Record a Prisma query observation labelled by model and operation, and keep
+ * the legacy aggregate summary in sync (`observeDbQuery`).
+ */
+export function recordDbQuery(
+  model: string,
+  operation: string,
+  durationSeconds: number
+): void {
+  observeDbQuery(durationSeconds);
+  const key = `${model}|${operation}`;
+  let metric = dbQueryHistograms.get(key);
+  if (!metric) {
+    metric = {
+      model,
+      operation,
+      buckets: new Array(DB_LATENCY_BUCKET_BOUNDS.length + 1).fill(0),
+      sum: 0,
+      count: 0,
+    };
+    dbQueryHistograms.set(key, metric);
+  }
+  observeHistogram(metric, DB_LATENCY_BUCKET_BOUNDS, durationSeconds);
+}
+
+/** Snapshot of per-model/operation Prisma latency histograms. */
+export function getDbQueryMetrics(): DbQueryMetric[] {
+  return [...dbQueryHistograms.values()].sort(
+    (a, b) =>
+      a.model.localeCompare(b.model) || a.operation.localeCompare(b.operation)
+  );
 }
 
 // ── Per-endpoint latency histograms and error counts ──────────
@@ -144,6 +502,49 @@ export type StatusClass = "2xx" | "3xx" | "4xx" | "5xx";
 export const LATENCY_BUCKET_BOUNDS = [
   0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
 ];
+
+const rpcRequestsTotal = new Map<string, number>([
+  ["2xx", 0],
+  ["5xx", 0],
+]);
+
+const rpcLatencyBuckets = new Array(LATENCY_BUCKET_BOUNDS.length + 1).fill(0);
+let rpcLatencySum = 0;
+let rpcLatencyCount = 0;
+
+/** Record Soroban RPC request observation (latency and status class) (issue #1412). */
+export function recordRpcObservation(
+  statusClass: "2xx" | "5xx",
+  durationSeconds: number
+): void {
+  rpcRequestsTotal.set(
+    statusClass,
+    (rpcRequestsTotal.get(statusClass) ?? 0) + 1
+  );
+  rpcLatencySum += durationSeconds;
+  rpcLatencyCount += 1;
+  const bucketIndex = LATENCY_BUCKET_BOUNDS.findIndex(
+    (bound) => durationSeconds <= bound
+  );
+  if (bucketIndex === -1) {
+    rpcLatencyBuckets[LATENCY_BUCKET_BOUNDS.length] += 1;
+  } else {
+    rpcLatencyBuckets[bucketIndex] += 1;
+  }
+}
+
+/** Get snapshot of Soroban RPC metrics (issue #1412). */
+export function getRpcMetricsSnapshot() {
+  return {
+    requestsTotal: {
+      "2xx": rpcRequestsTotal.get("2xx") ?? 0,
+      "5xx": rpcRequestsTotal.get("5xx") ?? 0,
+    },
+    latencySum: rpcLatencySum,
+    latencyCount: rpcLatencyCount,
+    buckets: [...rpcLatencyBuckets],
+  };
+}
 
 export interface EndpointObservation {
   requests: number;

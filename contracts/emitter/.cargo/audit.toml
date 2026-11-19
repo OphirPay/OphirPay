@@ -1,0 +1,19 @@
+# Cargo Audit Configuration
+# https://docs.rs/cargo-audit/latest/cargo_audit/config/struct.AuditConfig.html
+
+[advisories]
+# Ignored security advisories with documented rationale:
+ignore = [
+    # RUSTSEC-2026-0387: Multiple timing variability issues in operations intended to be constant-time
+    # Transitive dependency via soroban-sdk -> soroban-env-host -> k256/p256 -> crypto-bigint v0.5.5.
+    # Non-exploitable in contract WASM execution because soroban-env-host is only used in host test environment.
+    "RUSTSEC-2026-0387",
+
+    # RUSTSEC-2026-0543: chrono is unmaintained
+    # Transitive dev-dependency advisory; non-exploitable in smart contract deployment.
+    "RUSTSEC-2026-0543",
+
+    # RUSTSEC-2024-0436: paste - no longer maintained
+    # Macro utility used in test/toolchain dependencies; non-exploitable in smart contract deployment.
+    "RUSTSEC-2024-0436",
+]

@@ -2,17 +2,63 @@
 
 All notable changes to OphirPay will be documented in this file.
 
+## [Unreleased] — 2026-10-17
+
+### Added
+
+- **Automated Conventional Commit changelog generator script (#1414)**: Added `scripts/generate-changelog.mjs` and `npm run changelog` to automatically parse Conventional Commits, group release notes into Keep a Changelog categories, resolve PR numbers, and attribute contributor GitHub handles. Documented workflow and CLI flags in `docs/CHANGELOG_GUIDE.md`.
+- **RFC 7807 problem details for the payment API (#1364)**: `POST /api/payments`, `/api/payments/cancel` and `/api/payments/retry` (plus `GET /api/payments` and `/api/payments/export`) now answer every failure — validation, auth, CSRF, conflict, not-found, server error — with `Content-Type: application/problem+json` and an RFC 9457 body (`type`, `title`, `status`, `detail`, `instance`, plus `code`, `requestId` and per-field `errors[]`). Zod rejections map to one `errors[]` entry per field instead of a single joined sentence. `@ophirpay/client` exposes the document as `OphirPayError.problem`, and the in-app fetchers (`src/lib/api-client.ts`, `useApiQuery`) normalise both wire formats so the rest of the API can migrate incrementally.
+- **Atomic Redis idempotency lease for batch creation (#1366)**: `POST /api/batches` now claims `SET idempotency:lock:<user>:<key> … EX 120 NX` before doing any work, so concurrent retries with the same `Idempotency-Key` can no longer race the pre-insert lookup. The loser gets `409` with `Retry-After: 5` (`code: OPERATION_IN_PROGRESS`); a completed response is cached for 24 h and replayed byte-for-byte with `Idempotent-Replay: true`. The lease is compare-and-deleted in `finally`, so a failed attempt frees the key immediately. With `REDIS_URL` unset or unreachable it degrades to the previous database-uniqueness behaviour.
+- **Stellar memo variant validation (#1368)**: `src/lib/validation/stellar.ts` validates all four memo encodings — `MEMO_TEXT` (28 **UTF-8 bytes**, measured with `TextEncoder`, plus a printable-charset check), `MEMO_ID` (full unsigned 64-bit range via `BigInt`, rejecting `123abc`/`1e3`/negatives), `MEMO_HASH` and `MEMO_RETURN` (exactly 64 hex characters) — and rejects unpaired surrogates that would silently become U+FFFD. Payment, payment-request, batch, multisig, update and scheduled-payment schemas accept an optional `memoType` (defaulting to `MEMO_TEXT`, so existing text-only clients are unchanged) and fail fast with a 400 instead of a downstream Horizon error.
+
+### Changed
+
+- **Payment and audit-log CSV exports stream (#1369)**: `GET /api/payments/export` walks the result set with a Prisma cursor in 250-row pages and flushes each page as its own chunk (`Transfer-Encoding: chunked`), so memory is flat regardless of dataset size and `skip`-based deep pagination is gone. The 10,000-row cap and `X-Export-Truncated` header were removed: the cap only existed because the CSV was materialised as one string, and keeping it would silently withhold rows from exactly the large accounts the change targets. A database failure after the headers are sent now errors the stream, so a partial download fails instead of looking complete.
+
+## [Unreleased] — 2026-09-25
+
+### Added
+
+- **Interactive stream vesting timeline + claim simulator (#1377)**: the stream list now links to `/streams/[id]`, which renders an SVG timeline with a live claimable-stroop counter, explicit start/current/end markers and a future-date slider. The math lives in `src/lib/vesting.ts` and mirrors the contract's `compute_vested` floor division exactly; a cliff marker is only drawn when a real `cliffTime` is supplied (the current contract has no cliff). Claim remains a single signed `claim_stream` call and refreshes the chart.
+- **SEP-7 payment-request QR codes (#1375)**: the payment-request view now renders a wallet-native `web+stellar:pay` URI locally via `PaymentRequestModal` and `buildSep7PayUri`, with amount/asset/issuer/memo/msg support, a print-resolution PNG download and one-click URI copy. This replaces the third-party `api.qrserver.com` image call, so recipient and amount data no longer leave the device.
+- **Live network fee selector on the send form (#1373)**: `useFeeStats` refreshes Horizon fee statistics every 30 seconds and `FeeSelector` presents Low/Recommended/Fast tiers in stroops and XLM alongside a validated custom override. The chosen per-operation fee is passed to `buildPaymentTx` / `buildPathPaymentStrictSendTx`; when statistics are unavailable the selector degrades to the cached/configured fee instead of blocking payment.
+- **Scoped pause controls (#826)**: the circuit breaker is no longer all-or-nothing. `PauseScope` exposes eight feature domains (payments, escrows, streams, recurring, refunds, governance, hooks, batches) through `set_scope_paused` / `is_scope_paused` / `get_paused_scopes`; the global `emergency_pause_all` still overrides every scope, unknown scope ids return `InvalidPauseScope` (308), and `/api/pause-state` plus the pause-controls page surface the per-scope state with an explicit confirmation step.
+
+### Security
+
+- **API-key create/rotate quotas and active-key cap (#1370)**: `POST /api/keys` and `POST /api/keys/[id]/rotate` now share a 10-per-hour per-account sliding window and return `429` with `Retry-After` plus a machine-readable `resetAt`. Creation is capped at five active (unrevoked, unrotated, unexpired) keys, enforced inside a Serializable transaction with `P2034` retry so concurrent requests cannot exceed the cap. Both key creation and rotation write audit-log entries recording the initiating session or API key.
+- **Session cookies hardened + rolling renewal + logout revocation (#1399)**: session cookies now carry `SameSite=Strict` (was `Lax`) and `Secure` in production, and an active session is reissued once less than half its TTL remains so users are never logged out mid-operation. Logout revokes the wallet's outstanding tokens (Redis-backed, in-memory fallback) so every tab and device is invalidated at once, not just the browser that clicked sign-out. Test-only: `src/__tests__/auth-session.test.ts`.
+- **Secret scanning actually scans now (#1398)**: `.gitleaks.toml` gained `[extend] useDefault = true` — without it the config silently _replaced_ gitleaks' built-in rules, so the CI `secrets-scan` job scanned with zero rules and always reported clean. A strict Stellar secret-seed rule (`S` + 55 base32 chars) catches leaked keys, and a committed pre-commit hook (`scripts/pre-commit-secrets.sh`, enabled by `npm run prepare`) blocks staged secrets locally. Known demo/test fixtures are allowlisted explicitly.
+- **Distributed rate limiting became real (#703)**: `REDIS_URL` previously had no effect on the global limiter because `src/proxy.ts` constructed its own in-memory store on the Edge runtime. The rate-limit store now selects its transport from the URL scheme — `https://` (Upstash-compatible REST) is shared by every replica on both runtimes, while `redis://` uses ioredis on Node — and the README, `.env.example` and `docker-compose.yml` describe the enforcement point and its per-instance limitation. Two replicas now share one bucket when a REST Redis endpoint is configured.
+- **CSRF registry drift guard (#704)**: `src/__tests__/csrf-coverage.test.ts` now globs every `src/app/api/**/route.ts`, extracts each exported mutating handler by method, and fails with the exact registry entry to add when one is neither registered nor allowlisted. The scheduler endpoints are allowlisted with reasons, and `docs/CSRF-AUDIT.md` was regenerated to match the registry (37 protected + 3 allowlisted).
+
+### Changed
+
+- **Coverage now measures the security surface (#700)**: `src/lib/api-auth.ts`, `rate-limit.ts`, `webhook-dispatcher.ts` and `webhook-deliver.ts` are no longer excluded from the coverage report; new suites cover the API-key lookup, the Redis REST store and webhook dispatch. The README coverage figure was regenerated (68.9% overall).
+- **JavaScript bundle-size budget (#739)**: added `bundle-budget.json` with committed per-route first-load budgets, `npm run bundle:check` (runs in CI after every production build and appends a per-route table to the job summary) and an opt-in `npm run analyze` treemap. `HOOK_PAGE_LIMIT` moved to `src/lib/hooks-pagination.ts` so the hooks route module exports only HTTP handlers (required by the webpack build the analyzer uses).
+
+### Fixed
+
+- **Amount component no longer silently truncates malformed values (#1406)**: `<Amount value="12px" />` used `parseFloat`, which reads a numeric prefix and rendered `12.00 XLM` — an amount the user never entered. Parsing now goes through the shared strict `parseAmount` helper and renders the documented `—` placeholder for anything that is not a complete, finite number. Also adds a `fast-check` property suite proving `parse(format(x)) === x` exactly for every non-negative stroop count and that invalid input degrades without throwing.
+
+### Added
+
+- **Postgres full-text search for payments and audit entries (#823)**: `prisma/migrations/20260925120000_add_full_text_search` adds a stored generated `searchVector` tsvector column plus a GIN index to `Payment` (transactionHash `A`, memo `B`, description `C`) and `AuditLog` (actor `A`, action `B`, details `C`). `src/lib/full-text-search.ts` builds the sanitised, bound `to_tsquery` match and `ts_rank` relevance expressions and keeps the #157 substring fallback for the SQLite dev path; `buildPaymentWhere` now delegates to it so the two paths cannot drift. Documented in `docs/DATABASE_SCHEMA_MIGRATIONS.md` §5.
+
 ## [Unreleased] — 2026-08-26
 
 ### Added
+
 - **Request-id + duration structured request logging**: every API request now emits a single structured log line with the request id, HTTP method, path, response status, and duration in ms. `withRequestLogging()` wraps every route handler (the proxy cannot observe a handler's final status/duration), the proxy threads the `X-Request-Id` it mints into the downstream request headers so handlers and error logs correlate with the response header, and `logger.request()`/`handleApiError()` now include the request id in their structured context. Rate-limited (429) rejections are logged from the proxy with the same request id.
 
 ## [Unreleased] — 2026-08-12 (submission hardening pass)
 
 ### Added
+
 - **Keyboard navigation for the payments table**: rows use a roving tabindex (the active row is the only one in the tab order) and ArrowUp/ArrowDown/Home/End move between rows — from the row itself or from its action buttons. The active row gets a theme-matched highlight, headers declare `scope="col"`, and an axe scan + keyboard-flow tests (unit and Playwright) cover the table
 
 ### Fixed
+
 - **Stale wallet balance after disconnect**: `MultiWalletProvider`/`WalletProvider` now reset wallet state synchronously on disconnect (before async wallet/session cleanup) and ignore balance fetches that resolve after a disconnect, so the dashboard and header render the connect placeholder instead of a stale cached balance
 - **Governance list renders real proposals**: `GET /api/governance/proposals` now enumerates proposals on-chain (count + by-id, capped at 100, each read cached 30s) and returns an array; the page previously received a bare count number and always showed the empty state
 - **Governance create flow works end-to-end**: the modal now accepts a deposit amount (XLM → stroops) and optional asset; empty asset resolves to native XLM's SAC address instead of the proposer address (which was never a token contract)
@@ -25,6 +71,7 @@ All notable changes to OphirPay will be documented in this file.
 - **Stale contract-error tests**: `contract-utils.test.ts` asserted the pre-expansion error mapping; expectations now match the 300-code catalog (full suite: 800/800 green)
 
 ### Changed
+
 - **Scoped query invalidation**: governance mutations invalidate only `['governance']` instead of every query (avoids refetching expensive on-chain enumeration queries)
 - **`isOnChainId` guard**: refunds/hooks on-chain actions are gated behind a positive-u64 check with clear messaging; dead action buttons are hidden for off-chain DB records
 - **Multisig empty state**: action button wired; offers Configure when multisig is not yet enabled
@@ -33,17 +80,20 @@ All notable changes to OphirPay will be documented in this file.
 ## [Unreleased] — 2026-08-11
 
 ### Changed
+
 - **React Query rollout complete**: All 16 remaining data-driven pages converted from raw `fetch` + `useState` to `useApiQuery`/`useApiMutation` (batches, policy-versions, recurring, RBAC, timelock, hooks, fee-config, refunds, multisig, webhooks, requests, audit-log, dashboard, payments, events, send). Contract-signed mutations keep in-browser Freighter signing but now refresh the cache via `queryClient.invalidateQueries()` instead of manual state patching; webhooks/requests/send use `useApiMutation` with scoped invalidation
 - **CSRF client plumbing**: added `GET /api/csrf` (sets `__Host-csrf` cookie + returns token) and `apiFetch` now auto-attaches `x-csrf-token` to non-GET requests — fixes 403s that previously blocked ALL mutation API routes (including the already-converted governance page)
 - **`useApiMutation` upgrades**: `method` option (POST/DELETE/PUT/PATCH), URL-as-function for resource-identified routes, `invalidateKeys` for scoped cache invalidation
 - **`useApiQuery` upgrades**: optional `queryFn` override for non-REST sources (on-chain Soroban reads on dashboard/payments/events) with `refetchOnWindowFocus: false` to avoid N+1 RPC refetches on tab focus
 
 ### Security Fixes
+
 - **Voting weight**: `vote_on_proposal` no longer accepts self-reported `weight` parameter. Each address gets exactly 1 vote per proposal with double-vote prevention via persistent storage tracking. Added `AlreadyVoted` error (51).
 - **Reentrancy guard**: Added `REENTRANCY_LOCK` with `acquire_reentrancy_lock()`/`release_reentrancy_lock()` helpers and `ReentrantCall` error (52). Applied to `emergency_withdraw`, `emergency_pause_all`, `emergency_unpause_all`.
 - **Min proposal deposit**: `create_proposal` now requires `deposit_asset` + `deposit_amount` params, validated against `config.min_proposal_deposit`. Deposit transferred to contract and tracked in `LOCKED_BALANCE`. `execute_proposal` refunds deposit regardless of outcome.
 
 ### Changed
+
 - **Error code expansion**: OphirPay PaymentError from 52 → 94 variants (grouped, 100-255 reserved). Emitter EmitterError from 7 → 14 variants. TypeScript `CONTRACT_ERROR_MAP` updated with human-readable messages for all 94 codes.
 - **CI/CD pipeline**: 12 → 20 jobs. Added Rust Clippy, Rust Format, Secrets Scan (Gitleaks), Docker Build, Bundle Size, Accessibility Audit (axe-core), OpenAPI Validation (Redocly), Spell Check (typos-cli).
 - **React Query**: Added `@tanstack/react-query` with `QueryProvider`, `useApiQuery` (typed GET), `useApiMutation` (typed POST with auto-invalidation). Wired into `AppShell`.
@@ -52,10 +102,12 @@ All notable changes to OphirPay will be documented in this file.
 ## [Unreleased] — 2026-08-10
 
 ### Changed
+
 - **Next.js 16 upgrade**: bumped `next` + `eslint-config-next` to 16.3 — removed the removed `instrumentationHook` config option (enabled by default in 16), migrated `eslint.config.mjs` to the native flat configs exported by `eslint-config-next` 16, and documented the suppressed react-hooks v6 opinionated rules
 - **Test suite**: 154 → 184 app tests (13 suites) and 62 contract tests (56 OphirPay + 6 Emitter); corrected stale test/CI counts across README, docs, and PR templates
 
 ### Fixed
+
 - **Startup bootstrap**: `bootstrap()` now called via Next.js instrumentation hook; env validation with Zod
 - **Environment**: Added `.env.example` with all 20+ documented variables
 - **CI**: Removed `|| true` that masked ESLint failures; added Playwright E2E job
@@ -75,6 +127,7 @@ All notable changes to OphirPay will be documented in this file.
 ## [Unreleased] — 2026-08-07
 
 ### Changed
+
 - **Auth refactor**: merged duplicate `auth-middleware.ts` into `api-auth.ts`, indexed hash+prefix DB lookup (O(1) vs O(n))
 - **Rate-limit consolidation**: merged `rate-limit-store.ts`, added Redis auto-init with REDIS_URL env var, periodic in-memory cleanup
 - **Error handling**: added `handleApiError()` mapping Prisma/Zod errors to correct HTTP codes (400/404/409/503), fixed 11 route handlers
@@ -93,6 +146,7 @@ All notable changes to OphirPay will be documented in this file.
 - **Cargo.toml**: caret ranges (`^22.0.0`) for Soroban SDK patch updates
 
 ## [0.1.0-alpha] — 2026-08-06
+
 - **Structured refund system**: `RefundReasonCode` enum (6 variant codes), `RefundStatus` lifecycle (Requested→Approved→Rejected→Processed), `request_refund`/`approve_refund`/`process_refund` with SAC token transfers, `get_reason_code_analytics()` for on-chain analytics
 - **Cross-contract orchestration**: Emitter contract `pause`/`unpause`/`is_paused`, OphirPay `set_emitter`/`get_emitter`, `emergency_pause_all()` and `emergency_unpause_all()` atomically pause both contracts via `env.invoke_contract()`
 - **On-chain notification hooks**: `NotificationHook` struct, `register_hook`/`unregister_hook`, `get_hooks_by_event` (off-chain relayer queryable), `get_subscriber_hooks`, per-subscriber indexing
@@ -111,6 +165,7 @@ All notable changes to OphirPay will be documented in this file.
 - **50 error codes**: Granular typed errors from `NotInitialized=1` to `RefundWindowExpired=50`
 
 ### Added — Frontend
+
 - **15-page UI**: Dashboard, Send, Payments, Batches, Requests, Webhooks, Analytics, Events, Contracts, Recurring, Multisig, Governance, Audit Log, Refunds, Notification Hooks
 - **Refunds page**: Request→Approve→Process lifecycle, reason code analytics bar chart, status badges, Freighter signing
 - **Notification hooks page**: Register/deactivate on-chain hooks, 9 event type selector, active/inactive badges
@@ -120,6 +175,7 @@ All notable changes to OphirPay will be documented in this file.
 - **Mobile UX**: 48px touch targets, `inputMode=decimal`, safe-area insets, swipe-to-dismiss, pull-to-refresh, bottom-sheet modals
 
 ### Added — Backend & API
+
 - **API key authentication**: DB-backed key validation with SHA-256 hashing, `withApiAuth` wrapper, protected `/api/keys` and `/api/webhooks`
 - **Prisma models**: `Refund`, `NotificationHook` with indexes on userId/status/eventType, reverse relations on `User`
 - **Webhook relayer**: `scripts/relayer.ts` — dual-source polling (Prisma + Soroban audit log), event matching, HMAC-SHA256 delivery
@@ -127,6 +183,7 @@ All notable changes to OphirPay will be documented in this file.
 - **SSE audit log streaming**: `/api/audit-log/sse` with Soroban contract polling every 15s, new entry diff and push
 
 ### Added — DevOps & CI
+
 - **15-job CI/CD pipeline**: Lint, TypeCheck, Unit Tests, Coverage, Contract WASM, Next.js Build, E2E Chromium, E2E Firefox, Prisma Validate, Docker Build, K8s Validate, Helm Lint, Secret Scan (Gitleaks), npm Audit, PR Auto-Label
 - **Kubernetes manifests**: Namespace, Deployment (2 replicas, RollingUpdate, resource limits, probes), Service, Ingress (TLS), HPA, PDB, NetworkPolicy, ConfigMap, Secret
 - **Helm chart**: `Chart.yaml`, `values.yaml` (100+ values), 7 templates, Prometheus scrape annotations
@@ -136,11 +193,13 @@ All notable changes to OphirPay will be documented in this file.
 - **One-click demo seed**: `scripts/demo-seed.sh` provisions DB, creates `.env.local` with demo mode, starts dev server in <60s
 
 ### Added — Testing
+
 - **46 Rust contract tests**: Refund lifecycle (5), emergency_pause_all (2), notification hooks (2), policy versioning (2), two-step ownership (3), plus existing tests for payments, escrows, streams, batches, multisig, spending limits, RBAC, audit log, recurring, fees, timelock, governance
 - **15 Playwright E2E tests**: Dashboard smoke, all 13 pages navigation, multisig modal interactions, governance proposal forms
 - **Demo mode tests**: Simulated TXs, demo wallet, pre-generated data validation
 
 ### Added — Community Infrastructure
+
 - **Contributor Covenant Code of Conduct v2.1**
 - **Issue templates**: Bug report (environment fields, component checklist), Feature request (affected area checklist)
 - **SUPPORT.md**: Where to get help, security disclosures, community links
@@ -152,6 +211,7 @@ All notable changes to OphirPay will be documented in this file.
 - **Gitleaks secret scanning**: Full-history scan on every PR
 
 ### Changed
+
 - Contract error codes expanded from 21 → 50
 - Contract test count: 33 → 46
 - Frontend test count: 154 across 10 suites
@@ -163,6 +223,7 @@ All notable changes to OphirPay will be documented in this file.
 ## [0.1.0] — 2026-08-05
 
 ### Added
+
 - Wallet connect/disconnect with Freighter browser extension
 - Send XLM payments on Stellar Testnet
 - Batch payments (multi-recipient in single transaction)
@@ -187,12 +248,14 @@ All notable changes to OphirPay will be documented in this file.
 - Comprehensive input validation and sanitization
 
 ### Changed
+
 - Contracts use Result types instead of panics
 - Payment struct includes timestamp and metadata
 - API responses use structured success/error format
 - Sidebar uses shared Icon components
 
 ### Security
+
 - Security headers on all responses (CSP, HSTS, COOP, CORP, Permissions-Policy)
 - Input sanitization against XSS
 - SQL injection pattern detection

@@ -20,10 +20,20 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/api-auth";
+import { assertAuthSecret } from "@/lib/env";
 import { isValidStellarAddress } from "@/lib/stellar";
+import { isWalletRevoked } from "@/lib/session-revocation";
 
-export const SESSION_COOKIE_NAME = "ophirpay_session";
+import { SESSION_COOKIE_NAME } from "@/lib/session-cookie";
+
+export { SESSION_COOKIE_NAME };
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/**
+ * A valid session is reissued once it has less than half its TTL left, so an
+ * active user is never logged out mid-operation (issue #1399).
+ */
+export const SESSION_RENEW_AFTER_MS = SESSION_TTL_MS / 2;
 
 // ── Secret ────────────────────────────────────────────────────
 
@@ -33,13 +43,14 @@ export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
  */
 export function getAuthSecret(): string {
   const secret = process.env.AUTH_SECRET;
-  if (secret && secret.length >= 32) return secret;
   if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "AUTH_SECRET is required in production. Generate one with: openssl rand -hex 32"
-    );
+    // Rejects missing, too-short, and placeholder values alike. Without the
+    // placeholder check a deployment that kept `.env.example` would sign
+    // sessions with a publicly known string (issue #705).
+    return assertAuthSecret(secret);
   }
   // Dev-only fallback — never valid in production (the branch above throws).
+  if (secret && secret.length >= 32) return secret;
   return "dev-only-auth-secret-000000000000000000000000";
 }
 
@@ -49,6 +60,10 @@ interface SessionPayload {
   pk: string; // Stellar public key (G...)
   nw: string; // network: TESTNET | PUBLIC
   exp: number; // expiry (ms epoch)
+  /** Issued-at (ms epoch) — compared against the revocation list. Optional so
+   *  tokens minted before issue #1399 still verify (and are treated as revoked
+   *  once their wallet logs out). */
+  iat?: number;
 }
 
 function b64url(input: Buffer | string): string {
@@ -64,10 +79,12 @@ function signToken(body: string): string {
 
 /** Create a signed session token for a wallet public key. */
 export function createSessionToken(publicKey: string, network: string): string {
+  const issuedAt = Date.now();
   const payload: SessionPayload = {
     pk: publicKey,
     nw: network === "PUBLIC" ? "PUBLIC" : "TESTNET",
-    exp: Date.now() + SESSION_TTL_MS,
+    exp: issuedAt + SESSION_TTL_MS,
+    iat: issuedAt,
   };
   const body = b64url(JSON.stringify(payload));
   return `${body}.${signToken(body)}`;
@@ -91,6 +108,7 @@ export function parseSessionToken(token: string): SessionPayload | null {
     ) as SessionPayload;
     if (!isValidStellarAddress(payload.pk ?? "")) return null;
     if (typeof payload.exp !== "number" || payload.exp < Date.now()) return null;
+    if (payload.iat !== undefined && typeof payload.iat !== "number") return null;
     return payload;
   } catch {
     return null;
@@ -112,18 +130,41 @@ export function readSessionCookie(request: Request): SessionPayload | null {
   return null;
 }
 
+/**
+ * The security attributes every session cookie carries.
+ *
+ * `Secure` is set whenever `NODE_ENV=production`, `HttpOnly` keeps the value
+ * away from JavaScript, and `SameSite=Strict` means the browser never attaches
+ * the cookie to a cross-site request — the strongest defence against CSRF and
+ * cross-site session fixation for a first-party dashboard (issue #1399).
+ */
+function sessionCookieAttributes(): string {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `Path=/; HttpOnly; SameSite=Strict${secure}`;
+}
+
 /** Build the Set-Cookie value for a new session. */
 export function buildSessionCookie(publicKey: string, network: string): string {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   return (
     `${SESSION_COOKIE_NAME}=${createSessionToken(publicKey, network)}; ` +
-    `Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure}`
+    `${sessionCookieAttributes()}; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`
   );
 }
 
 /** Build the Set-Cookie value that clears the session. */
 export function buildLogoutCookie(): string {
-  return `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  // Must carry the same attributes as the cookie it clears; a Secure/Strict
+  // mismatch would leave the original cookie in place over HTTPS.
+  return `${SESSION_COOKIE_NAME}=; ${sessionCookieAttributes()}; Max-Age=0`;
+}
+
+/**
+ * Whether an already-valid session should be reissued to roll its expiry
+ * forward. True once less than half the TTL remains, so a session is refreshed
+ * while it still has plenty of life left rather than at the edge of expiry.
+ */
+export function sessionNeedsRenewal(session: SessionPayload): boolean {
+  return session.exp - Date.now() < SESSION_RENEW_AFTER_MS;
 }
 
 // ── Auth context resolution ───────────────────────────────────
@@ -132,6 +173,8 @@ export interface AuthContext {
   userId: string;
   publicKey?: string;
   keyId?: string;
+  /** Scopes granted to the API key (only set for key authentication). */
+  scopes?: string[];
 }
 
 /**
@@ -148,6 +191,9 @@ export async function getAuthContext(
 ): Promise<AuthContext | null> {
   const session = readSessionCookie(request);
   if (session) {
+    // A stateless cookie proves issuance, not that the session is still
+    // wanted — honour an explicit logout before trusting it (issue #1399).
+    if (await isWalletRevoked(session.pk, session.iat)) return null;
     try {
       let user = await prisma.user.findUnique({
         where: { stellarAddress: session.pk },
@@ -167,7 +213,13 @@ export async function getAuthContext(
   }
 
   const apiAuth = await authenticateRequest(request);
-  if (apiAuth) return { userId: apiAuth.userId, keyId: apiAuth.keyId };
+  if (apiAuth) {
+    return {
+      userId: apiAuth.userId,
+      keyId: apiAuth.keyId,
+      scopes: apiAuth.scopes,
+    };
+  }
 
   return null;
 }

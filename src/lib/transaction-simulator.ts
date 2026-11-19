@@ -5,7 +5,11 @@ import {
   Operation,
   Asset,
 } from "@stellar/stellar-sdk";
-import { getHorizonServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import {
+  getHorizonServer,
+  NETWORK_PASSPHRASE,
+  resolveTransactionFee,
+} from "@/lib/stellar";
 
 interface SimulateResult {
   success: boolean;
@@ -31,7 +35,9 @@ export async function simulatePayment(params: {
     const sourceAccount = await server.loadAccount(params.sourcePublicKey);
 
     const now = Math.floor(Date.now() / 1000);
-    const baseFee = await server.fetchBaseFee();
+    // Use the same recommendation the signer will bake into the transaction,
+    // so the fee previewed here matches the fee submitted (issue #825).
+    const baseFee = await resolveTransactionFee(server);
 
     const tx = new TransactionBuilder(sourceAccount, {
       fee: baseFee.toString(),

@@ -1,6 +1,8 @@
 #!/bin/bash
-# Pre-commit lint-staged script.
-# Install with: npx husky add .husky/pre-commit "bash scripts/lint-staged.sh"
+# Pre-commit lint-staged script (opt-in, heavier than the default hook).
+# The committed pre-commit hook runs scripts/pre-commit-secrets.sh. To also run
+# the full typecheck/lint/test gate before committing, enable this via
+# `git config core.hooksPath .githooks` and calling it from .githooks/pre-commit.
 
 echo "🔍 Running pre-commit checks..."
 

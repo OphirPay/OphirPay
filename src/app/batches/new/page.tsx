@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { useWallet } from "@/hooks/useMultiWallet";
@@ -18,11 +18,16 @@ import {
 } from "@/lib/stellar";
 import { formatAmount, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
-import { estimateBatchFee } from "@/lib/fee-estimator";
+import { estimateBatchFee, estimateTransactionFee } from "@/lib/fee-estimator";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { AddressBookMultiSelect } from "@/components/batches/AddressBookMultiSelect";
 import { mergeAddressBookSelections } from "@/lib/address-book";
 import type { AddressEntry } from "@/lib/address-book";
+import {
+  setInFlightTransactions,
+  setUnsavedDrafts,
+  resetPendingWork,
+} from "@/lib/session-lifecycle";
 import dynamic from "next/dynamic";
 
 // The confirmation dialog is only rendered after the user hits "Send", so it is
@@ -78,12 +83,56 @@ export default function NewBatchPage() {
   const [step, setStep] = useState<TxStep>("idle");
   const [result, setResult] = useState<TxResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Fee recommendation from Horizon fee statistics (issue #825). The quoted
+  // batch fee uses the same per-operation value the builder will bake in, so
+  // the confirmation matches what gets signed.
+  const [feeRecommendation, setFeeRecommendation] = useState<{
+    perOpFee: number;
+    basis: string;
+    stale: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    estimateTransactionFee(1)
+      .then((fee) =>
+        setFeeRecommendation({
+          perOpFee: Number(fee.recommendedFee) || 100,
+          basis: fee.basis,
+          stale: fee.stale,
+        })
+      )
+      .catch(() => {});
+  }, []);
   const [showConfirm, setShowConfirm] = useState(false);
   const [mode, setMode] = useState<EntryMode>("manual");
   const [csvValid, setCsvValid] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Session-lifecycle reporting (issue #1379) ─────────────
+  // Publish this page's unsaved drafts / in-flight transaction so the wallet
+  // disconnect dialog can warn the user before throwing the work away.
+  useEffect(() => {
+    const draftCount = recipients.filter(
+      (r) => r.address.trim() !== "" || r.amount.trim() !== ""
+    ).length;
+    setUnsavedDrafts(step === "done" ? 0 : draftCount);
+  }, [recipients, step]);
+
+  useEffect(() => {
+    const inFlight =
+      step === "building" || step === "signing" || step === "submitting";
+    setInFlightTransactions(inFlight ? 1 : 0);
+  }, [step]);
+
+  useEffect(
+    () => () => {
+      resetPendingWork();
+    },
+    []
+  );
 
   // ── CSV import wiring ────────────────────────────────────
 
@@ -899,7 +948,12 @@ export default function NewBatchPage() {
           amount: r.amount,
         }))}
         totalAmount={totalAmount}
-        estimatedFee={estimateBatchFee(recipients.length)}
+        estimatedFee={estimateBatchFee(
+          recipients.length,
+          feeRecommendation?.perOpFee ?? 100
+        )}
+        feeBasis={feeRecommendation?.basis}
+        feeStale={feeRecommendation?.stale}
         onConfirm={handleConfirmSend}
         onCancel={() => setShowConfirm(false)}
       />

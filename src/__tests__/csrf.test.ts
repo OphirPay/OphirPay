@@ -35,7 +35,7 @@ describe("CSRF Protection", () => {
       expect(header).toContain("__Host-csrf=");
       expect(header).toContain("Secure");
       expect(header).toContain("HttpOnly");
-      expect(header).toContain("SameSite=Strict");
+      expect(header).toContain("SameSite=Lax");
       expect(header).toContain("Max-Age=86400");
     });
 
@@ -46,7 +46,7 @@ describe("CSRF Protection", () => {
       expect(header).toContain("csrf=");
       expect(header).not.toContain("Secure");
       expect(header).toContain("HttpOnly");
-      expect(header).toContain("SameSite=Strict");
+      expect(header).toContain("SameSite=Lax");
     });
   });
 

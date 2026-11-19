@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0a0a1a" />
+    <title>OphirPay — Offline</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        align-items: center;
+        background: #0a0a1a;
+        color: #e2e8f0;
+        display: flex;
+        font-family: system-ui, -apple-system, sans-serif;
+        justify-content: center;
+        margin: 0;
+        min-height: 100vh;
+        padding: 2rem;
+        text-align: center;
+      }
+
+      main {
+        background: #1e1e3a;
+        border: 1px solid #2d2d5e;
+        border-radius: 1rem;
+        max-width: 28rem;
+        padding: 2.5rem;
+      }
+
+      .banner {
+        background: #d97706;
+        border-radius: 0.5rem;
+        color: white;
+        font-size: 0.875rem;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+        padding: 0.75rem;
+      }
+
+      h1 {
+        color: #a99bff;
+        font-size: 1.5rem;
+        margin: 0 0 0.5rem;
+      }
+
+      p {
+        color: #cbd5e1;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        margin: 0 0 1.5rem;
+      }
+
+      button {
+        background: #7b68ee;
+        border: 0;
+        border-radius: 0.5rem;
+        color: white;
+        cursor: pointer;
+        font-size: 0.875rem;
+        padding: 0.75rem 1.5rem;
+      }
+
+      button:focus-visible {
+        outline: 3px solid white;
+        outline-offset: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="banner" role="status">
+        You are offline — some features may be unavailable.
+      </p>
+      <h1>You're Offline</h1>
+      <p>
+        OphirPay requires an internet connection to process payments and sync
+        blockchain data.
+      </p>
+      <button type="button" onclick="location.reload()">Try Again</button>
+    </main>
+  </body>
+</html>

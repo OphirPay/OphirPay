@@ -1,4 +1,4 @@
-name: "🛡️ OpenSSF Scorecard"
+name: "🔒 OpenSSF Scorecard"
 
 on:
   branch_protection_rule:
@@ -6,6 +6,10 @@ on:
     - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
 
 permissions: read-all
+
+# -- Global Concurrency - singleton group for scheduled runs --------
+concurrency:
+  group: ${{ github.workflow }}
 
 jobs:
   analysis:

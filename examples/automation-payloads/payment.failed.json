@@ -1,0 +1,12 @@
+{
+  "event": "payment.failed",
+  "timestamp": "2026-09-01T10:00:09.000Z",
+  "data": {
+    "paymentId": "p_9f2c81ab34d74e0f",
+    "amount": "25.50",
+    "assetCode": "USDC",
+    "errorMessage": "Transaction simulation failed: insufficient trustline for USDC",
+    "failedAt": "2026-09-01T10:00:09.000Z"
+  },
+  "signature": "e38b8216d2bc0a920663600d07fa275823b9cea7c039eb0dd345f56129daa136"
+}

@@ -15,7 +15,7 @@ import { isProduction, getDatabaseProvider, getAppUrl } from '@/lib/env';
 import { sanitizeHtml, escapeHtml, sanitizeSlug, hasSqlInjectionPatterns } from '@/lib/sanitize';
 import { logger } from '@/lib/logger';
 import { computePagination, prismaPagination } from '@/lib/pagination-utils';
-import { isRateLimited, getRateLimitHeaders } from '@/lib/rate-limit-headers';
+import { isRateLimited, getRateLimitHeaders, getRateLimitExceededHeaders } from '@/lib/rate-limit-headers';
 import { generateRandomHex, generateId, timingSafeEqual } from '@/lib/crypto';
 import { FEATURE_FLAGS, isFeatureEnabled, type FeatureFlag } from '@/lib/feature-flags';
 import { truncate, truncateMiddle, pluralize, titleCase, formatBytes } from '@/lib/text';
@@ -392,12 +392,20 @@ describe('Misc branches', () => {
 
   it('getRateLimitHeaders edge cases', () => {
     const h = getRateLimitHeaders({ limit: 10, remaining: 0, reset: 9999999999 });
+    expect(h['X-RateLimit-Limit']).toBe('10');
+    expect(h['X-RateLimit-Remaining']).toBe('0');
+    expect(h['Retry-After']).toBeUndefined();
+  });
+
+  it('getRateLimitExceededHeaders adds a Retry-After countdown', () => {
+    const h = getRateLimitExceededHeaders({ limit: 10, remaining: 0, reset: 9999999999 });
     expect(Number(h['Retry-After'])).toBeGreaterThan(0);
   });
 
   it('getRateLimitHeaders with remaining capacity', () => {
     const h = getRateLimitHeaders({ limit: 10, remaining: 5, reset: 9999999999 });
-    expect(h['Retry-After']).toBe('0');
+    expect(h['X-RateLimit-Remaining']).toBe('5');
+    expect(h['Retry-After']).toBeUndefined();
   });
 
   it('crypto edge cases', () => {

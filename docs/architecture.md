@@ -125,6 +125,48 @@ All writes call `extend_ttl(5000, 50000)` to prevent archival.
 
 300 typed error variants from `NotInitialized=1` to `SystemOverloaded=300` (many reserved for unimplemented features). Contract functions return `Result<T, PaymentError>` — no panics in production code.
 
+### 6. Server Lifecycle & Graceful Shutdown
+
+`src/lib/lifecycle.ts` owns process termination for the Next.js server and
+containerized workers (Kubernetes rolling updates, Docker stops, operator
+Ctrl-C). `src/instrumentation.ts` installs the handlers once on Node startup;
+they are deliberately **not** installed when `NODE_ENV !== "production"`, so
+`next dev` keeps its normal module hot-reload behaviour (Next restarts server
+modules on edits and must not have a SIGTERM handler exiting underneath it).
+
+On SIGTERM or SIGINT the sequence is:
+
+1. `isShuttingDown()` flips to true and the structured log
+   `Graceful shutdown started` is emitted with the signal, grace period and
+   in-flight operation count. Background loops call
+   `assertAcceptingOperations()` to refuse new work; request handlers simply
+   stop receiving connections.
+2. In-flight work is drained. Prisma's query extension wraps every operation in
+   `beginAsyncOperation()`, so `waitForInFlightOperations()` can wait for open
+   queries/transactions to settle. The budget is `SHUTDOWN_GRACE_PERIOD_MS`
+   (default `5000`); once it elapses the shutdown continues and logs a warning
+   rather than hanging forever.
+3. Registered cleanup tasks run concurrently: `prisma.$disconnect()` and
+   `redis.quit()`. Registration is de-duplicated by name, so a re-evaluated
+   module cannot stack tasks or signal listeners. Each task gets the remaining
+   grace budget (minimum 1 s) and a failure is logged without blocking the
+   others.
+4. `Graceful shutdown complete` is logged with the duration, whether the drain
+   succeeded, and which tasks completed or failed. The process then exits 0.
+
+Cleanup is idempotent: concurrent signals share one shutdown promise, and a
+second signal cannot re-run `$disconnect()`/`quit()`.
+
+**Configuration**
+
+| Variable                   | Default | Purpose                                              |
+| -------------------------- | ------- | ---------------------------------------------------- |
+| `SHUTDOWN_GRACE_PERIOD_MS` | `5000`  | Time allowed for in-flight operations before cleanup |
+
+Keep Kubernetes `terminationGracePeriodSeconds` above this value (for example
+15 s for the 5 s default) so the kernel does not SIGKILL the process while it
+is still draining.
+
 ## Directory Structure
 
 ```

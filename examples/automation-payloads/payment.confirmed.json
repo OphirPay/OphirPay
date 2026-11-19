@@ -1,0 +1,12 @@
+{
+  "event": "payment.confirmed",
+  "timestamp": "2026-09-01T10:00:11.000Z",
+  "data": {
+    "paymentId": "p_9f2c81ab34d74e0f",
+    "amount": "25.50",
+    "assetCode": "USDC",
+    "transactionHash": "a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00",
+    "confirmedAt": "2026-09-01T10:00:11.000Z"
+  },
+  "signature": "552f764591d98b5a488e00f9420aaede81a78cd6ecc451828a442751b07ead31"
+}

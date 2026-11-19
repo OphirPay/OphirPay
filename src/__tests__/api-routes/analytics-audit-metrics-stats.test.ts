@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock dependencies
 vi.mock("@/lib/prisma", () => ({
@@ -11,6 +11,14 @@ vi.mock("@/lib/prisma", () => ({
       groupBy: vi.fn(),
     },
   },
+  getPrismaPrometheusMetrics: vi.fn().mockResolvedValue(""),
+  getPrismaPoolMetrics: vi.fn().mockResolvedValue({
+    busy: 0,
+    idle: 0,
+    open: 0,
+    waitDurationMsSum: 0,
+    waitDurationMsCount: 0,
+  }),
 }));
 
 vi.mock("@/lib/api-auth", async () => {
@@ -201,13 +209,33 @@ describe("API Routes: Analytics, Audit Log, Metrics & Stats", () => {
   });
 
   describe("GET /api/metrics", () => {
-    it("returns Prometheus formatted metrics text", async () => {
-      const res = await getMetrics();
+    const METRICS_TOKEN = "test-metrics-token-0123456789abcdef";
+
+    beforeEach(() => {
+      process.env.METRICS_TOKEN = METRICS_TOKEN;
+    });
+
+    afterEach(() => {
+      delete process.env.METRICS_TOKEN;
+    });
+
+    it("returns Prometheus formatted metrics text for a valid token", async () => {
+      const res = await getMetrics(
+        new Request("http://localhost/api/metrics", {
+          headers: { authorization: `Bearer ${METRICS_TOKEN}` },
+        })
+      );
       expect(res.status).toBe(200);
       expect(res.headers.get("Content-Type")).toContain("text/plain");
       const text = await res.text();
       expect(text).toContain("ophirpay_http_requests_total");
       expect(text).toContain("ophirpay_info");
+    });
+
+    it("returns 401 without a credential", async () => {
+      const res = await getMetrics(new Request("http://localhost/api/metrics"));
+      expect(res.status).toBe(401);
+      expect(await res.text()).not.toContain("ophirpay_info");
     });
   });
 

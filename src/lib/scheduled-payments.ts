@@ -2,7 +2,11 @@
 
 import { Keypair, TransactionBuilder, Operation, Asset, Memo } from "@stellar/stellar-sdk";
 import prisma from "@/lib/prisma";
-import { getHorizonServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import {
+  getHorizonServer,
+  NETWORK_PASSPHRASE,
+  resolveTransactionFee,
+} from "@/lib/stellar";
 import type { ScheduledPayment, ScheduledPaymentStatus } from "@prisma/client";
 
 /**
@@ -60,8 +64,12 @@ export async function submitScheduledPayment(
       ? Asset.native()
       : new Asset(payment.assetCode, payment.assetIssuer);
 
+  // Same fee policy as the interactive builders (issue #825): a scheduled
+  // payout submitted during congestion must clear, not sit underbid until its
+  // timebounds expire.
+  const fee = await resolveTransactionFee(server);
   let builder = new TransactionBuilder(sourceAccount, {
-    fee: (await server.fetchBaseFee()).toString(),
+    fee: fee.toString(),
     networkPassphrase: NETWORK_PASSPHRASE,
     timebounds: {
       minTime: 0,

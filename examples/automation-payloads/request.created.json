@@ -1,0 +1,13 @@
+{
+  "event": "request.created",
+  "timestamp": "2026-09-01T12:00:00.000Z",
+  "data": {
+    "requestId": "q_2b7d9c4f11aa",
+    "amount": "100.00",
+    "assetCode": "USDC",
+    "description": "Invoice #402 — September retainer",
+    "status": "PENDING",
+    "createdAt": "2026-09-01T12:00:00.000Z"
+  },
+  "signature": "3175788599e930e7cd4e5001e24c05988930a5ada72b5994710c8bd0936992c2"
+}

@@ -11,6 +11,14 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(),
 }));
 
+// Keep these cases hermetic: the lease has its own suites, and a local Redis
+// would otherwise replay a response from an earlier case.
+vi.mock("@/lib/idempotency", () => ({
+  claimIdempotencyKey: vi.fn().mockResolvedValue({ status: "unavailable" }),
+  IDEMPOTENCY_RESPONSE_TTL_SECONDS: 24 * 60 * 60,
+  IDEMPOTENCY_LOCK_TTL_SECONDS: 120,
+}));
+
 vi.mock("@/lib/contracts", () => ({
   DEFAULT_CONTRACT_ID: "CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN",
   CHAIN_READ_SOURCE: "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
@@ -35,10 +43,17 @@ function csrfHeaders(): Record<string, string> {
   return { "x-csrf-token": token, cookie: `__Host-csrf=${token}` };
 }
 
+let idempotencyCounter = 0;
+
 function postRequest(url: string, body?: unknown): Request {
+  idempotencyCounter += 1;
   return new Request(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `test-idempotency-key-${idempotencyCounter}`,
+      ...csrfHeaders(),
+    },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 }

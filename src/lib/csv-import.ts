@@ -2,6 +2,7 @@
 
 import type { BatchRecipient } from "@/types";
 import { isValidStellarAddress } from "@/lib/stellar";
+import { validateStellarMemo } from "@/lib/validation/stellar";
 
 /**
  * Maximum recipients allowed in a single batch transaction (matches the
@@ -134,9 +135,13 @@ export function validateRecipientFields(
     }
   }
 
+  // Memo rules are the server's MEMO_TEXT rules verbatim (charset → character
+  // count → UTF-8 byte count), so a row that passes here cannot be rejected
+  // later by the batch API with a whole-batch error that pins down no row.
   const mem = memo.trim();
-  if (mem.length > 28) {
-    errors.memo = "Memo must be 28 characters or fewer.";
+  const memoIssue = validateStellarMemo(mem, "MEMO_TEXT");
+  if (memoIssue) {
+    errors.memo = memoIssue.message;
   }
 
   return errors;

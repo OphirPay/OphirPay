@@ -8,6 +8,8 @@
  * (text/ping/close), and a stateful decoder for client→server frames
  * (masking + fragmentation + partial-buffer handling). Kept dependency-free
  * and fully unit-tested.
+ *
+ * @see docs/WEBSOCKET.md for protocol and wire framing details.
  */
 
 import { createHash } from "node:crypto";

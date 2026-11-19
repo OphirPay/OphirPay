@@ -5,8 +5,76 @@ import { NextResponse } from "next/server";
 import {
   getMetricsSnapshot,
   getEndpointMetrics,
+  getRpcMetricsSnapshot,
+  getRpcCallMetrics,
+  getDbQueryMetrics,
+  recordRpcFailoverState,
   LATENCY_BUCKET_BOUNDS,
+  SSE_DURATION_BUCKET_BOUNDS,
+  RPC_LATENCY_BUCKET_BOUNDS,
+  DB_LATENCY_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
+import { getRpcFailoverState } from "@/lib/rpc-failover";
+import { timingSafeEqual } from "@/lib/crypto";
+import { authenticateRequest } from "@/lib/api-auth";
+import { hasScope, ADMIN_SCOPE } from "@/lib/api-scopes";
+import * as prismaModule from "@/lib/prisma";
+
+/**
+ * /api/metrics — Prometheus exposition endpoint.
+ *
+ * The body is a map of the running process: resident/heap memory, per-endpoint
+ * latency histograms and error counts labelled with method/endpoint/status,
+ * webhook delivery-attempt and final-outcome counters, and the live count of
+ * open SSE connections. On a public deployment that is a free inventory of the
+ * API surface with live error rates plus a cheap target for resource-exhaustion
+ * probing, so the endpoint requires a credential (issue #699):
+ *
+ *   • `Authorization: Bearer <METRICS_TOKEN>` — the static scrape credential
+ *     the in-cluster Prometheus service monitor is configured to send, or
+ *   • an API key (`Authorization: Bearer` / `X-API-Key`) carrying the `admin`
+ *     scope, for operators who already manage keys in the dashboard.
+ *
+ * Denying by default: when `METRICS_TOKEN` is unset and the request carries no
+ * usable key, the endpoint returns 401 and no metric body rather than failing
+ * open. The Prometheus exposition format is unchanged, so a scraper only needs
+ * to add the header.
+ */
+export const METRICS_TOKEN_ENV = "METRICS_TOKEN";
+
+/** Extract a bearer token from the Authorization header (case-insensitive). */
+export function extractBearerToken(request: Request | undefined): string | null {
+  const header = request?.headers.get("authorization");
+  if (!header) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return match ? match[1]!.trim() : null;
+}
+
+/**
+ * Whether the request may read `/api/metrics`.
+ *
+ * The static token is compared in constant time. The API-key fallback is only
+ * attempted when the request actually carries a key, so an unauthenticated
+ * scrape never touches the database.
+ */
+export async function isAuthorizedMetricsRequest(
+  request: Request | undefined
+): Promise<boolean> {
+  const expected = process.env[METRICS_TOKEN_ENV];
+  const provided = extractBearerToken(request);
+  if (expected && provided && timingSafeEqual(provided, expected)) return true;
+
+  if (!request) return false;
+
+  const hasKeyHeader =
+    request.headers.get("x-api-key") !== null ||
+    request.headers.get("authorization") !== null;
+  if (!hasKeyHeader) return false;
+
+  const auth = await authenticateRequest(request);
+  // `admin` implicitly grants every scope, so an admin key can read metrics.
+  return auth !== null && hasScope(auth.scopes, [ADMIN_SCOPE]);
+}
 
 function escapeLabelValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -18,7 +86,7 @@ function labels(labels: Record<string, string | number>): string {
     .join(",");
 }
 
-function buildMetrics(): string {
+export async function buildMetrics(): Promise<string> {
   const c = getMetricsSnapshot();
 
   const lines: string[] = [
@@ -67,10 +135,28 @@ function buildMetrics(): string {
         })}} ${metric.count}`
     ),
     "",
-    "# HELP ophirpay_db_query_duration_seconds_sum Database query duration sum",
-    "# TYPE ophirpay_db_query_duration_seconds_sum summary",
+    "# HELP ophirpay_db_query_duration_seconds Database query duration",
+    "# TYPE ophirpay_db_query_duration_seconds summary",
     `ophirpay_db_query_duration_seconds_sum ${c.db_query_duration_seconds_sum}`,
     `ophirpay_db_query_duration_seconds_count ${c.db_query_duration_seconds_count}`,
+    "",
+    "# HELP ophirpay_csp_violation_reports_total Total accepted CSP violation reports",
+    "# TYPE ophirpay_csp_violation_reports_total counter",
+    `ophirpay_csp_violation_reports_total ${c.csp_violation_reports_total}`,
+    "",
+    "# HELP ophirpay_csp_reports_dropped_total Total CSP violation reports dropped by reason",
+    "# TYPE ophirpay_csp_reports_dropped_total counter",
+    `ophirpay_csp_reports_dropped_total{reason="rate_limited"} ${c.csp_reports_dropped.rate_limited}`,
+    `ophirpay_csp_reports_dropped_total{reason="deduplicated"} ${c.csp_reports_dropped.deduplicated}`,
+    `ophirpay_csp_reports_dropped_total{reason="oversized"} ${c.csp_reports_dropped.oversized}`,
+    "",
+    "# HELP ophirpay_cron_logs_pruned_total Total cron execution logs pruned older than retention window",
+    "# TYPE ophirpay_cron_logs_pruned_total counter",
+    `ophirpay_cron_logs_pruned_total ${c.cron_logs_pruned_total}`,
+    "",
+    "# HELP cron_logs_pruned_total Total cron execution logs pruned older than retention window",
+    "# TYPE cron_logs_pruned_total counter",
+    `cron_logs_pruned_total ${c.cron_logs_pruned_total}`,
     "",
   ];
 
@@ -124,6 +210,126 @@ function buildMetrics(): string {
     'ophirpay_info{version="1.0.0"} 1'
   );
 
+  // ── Soroban RPC failover (issue #820) ───────────────────────
+  // Which endpoint is serving, whether we are on a fallback, how many
+  // failovers have occurred and how long the current fallback has lasted.
+  // Sampled on scrape so the gauges track the live failover module state.
+  const failover = getRpcFailoverState();
+  recordRpcFailoverState({
+    failoverCount: failover.failoverCount,
+    recoveryCount: failover.recoveryCount,
+    activeEndpoint: failover.activeEndpoint,
+    primaryEndpoint: failover.primaryEndpoint,
+    usingFallback: failover.usingFallback,
+    currentFallbackDurationMs: failover.currentFallbackDurationMs,
+    longestFallbackDurationMs: failover.longestFallbackDurationMs,
+  });
+  const endpointLabel = failover.activeEndpoint
+    ? `endpoint="${escapeLabelValue(failover.activeEndpoint)}"`
+    : "";
+  lines.push(
+    "",
+    "# HELP ophirpay_rpc_failover_total Cumulative transitions away from the primary Soroban RPC endpoint",
+    "# TYPE ophirpay_rpc_failover_total counter",
+    `ophirpay_rpc_failover_total ${failover.failoverCount}`,
+    "",
+    "# HELP ophirpay_rpc_failover_recoveries_total Cumulative transitions back to the primary Soroban RPC endpoint",
+    "# TYPE ophirpay_rpc_failover_recoveries_total counter",
+    `ophirpay_rpc_failover_recoveries_total ${failover.recoveryCount}`,
+    "",
+    "# HELP ophirpay_rpc_failover_active 1 while serving from a non-primary Soroban RPC endpoint",
+    "# TYPE ophirpay_rpc_failover_active gauge",
+    `ophirpay_rpc_failover_active${endpointLabel ? `{${endpointLabel}}` : ""} ${failover.usingFallback ? 1 : 0}`,
+    "",
+    "# HELP ophirpay_rpc_failover_fallback_duration_seconds Seconds spent on the current fallback endpoint (0 when primary)",
+    "# TYPE ophirpay_rpc_failover_fallback_duration_seconds gauge",
+    `ophirpay_rpc_failover_fallback_duration_seconds ${(failover.currentFallbackDurationMs / 1000).toFixed(3)}`,
+    "",
+    "# HELP ophirpay_rpc_failover_longest_fallback_duration_seconds Longest fallback episode observed since process start",
+    "# TYPE ophirpay_rpc_failover_longest_fallback_duration_seconds gauge",
+    `ophirpay_rpc_failover_longest_fallback_duration_seconds ${(failover.longestFallbackDurationMs / 1000).toFixed(3)}`,
+    "",
+    "# HELP ophirpay_rpc_circuit_breaker_trips_total Total times the RPC circuit breaker tripped open on provider failure",
+    "# TYPE ophirpay_rpc_circuit_breaker_trips_total counter",
+    `ophirpay_rpc_circuit_breaker_trips_total ${c.rpc_circuit_breaker_trips_total}`,
+    "",
+    "# HELP rpc_circuit_breaker_trips_total Total times the RPC circuit breaker tripped open on provider failure",
+    "# TYPE rpc_circuit_breaker_trips_total counter",
+    `rpc_circuit_breaker_trips_total ${c.rpc_circuit_breaker_trips_total}`
+  );
+
+  // ── Soroban RPC performance & requests (issue #1412) ────────
+  const rpcMetrics = getRpcMetricsSnapshot();
+  lines.push(
+    "",
+    "# HELP ophirpay_rpc_request_duration_seconds Latency of Soroban RPC calls in seconds",
+    "# TYPE ophirpay_rpc_request_duration_seconds histogram"
+  );
+  for (let i = 0; i < LATENCY_BUCKET_BOUNDS.length; i++) {
+    const le = LATENCY_BUCKET_BOUNDS[i];
+    lines.push(
+      `ophirpay_rpc_request_duration_seconds_bucket{le="${le}"} ${rpcMetrics.buckets[i]}`
+    );
+  }
+  lines.push(
+    `ophirpay_rpc_request_duration_seconds_bucket{le="+Inf"} ${rpcMetrics.buckets[LATENCY_BUCKET_BOUNDS.length]}`,
+    `ophirpay_rpc_request_duration_seconds_sum ${rpcMetrics.latencySum}`,
+    `ophirpay_rpc_request_duration_seconds_count ${rpcMetrics.latencyCount}`,
+    "",
+    "# HELP ophirpay_rpc_requests_total Total Soroban RPC requests served by status class",
+    "# TYPE ophirpay_rpc_requests_total counter",
+    `ophirpay_rpc_requests_total{status_class="2xx"} ${rpcMetrics.requestsTotal["2xx"]}`,
+    `ophirpay_rpc_requests_total{status_class="5xx"} ${rpcMetrics.requestsTotal["5xx"]}`,
+    "",
+    "# HELP ophirpay_database_pool_wait_seconds Prisma database connection pool queue wait duration in seconds",
+    "# TYPE ophirpay_database_pool_wait_seconds gauge",
+    `ophirpay_database_pool_wait_seconds ${c.database_pool_wait_seconds}`
+  );
+
+  // ── Soroban RPC call histograms (SLO latency by endpoint) ──
+  lines.push(
+    "",
+    "# HELP ophirpay_rpc_call_duration_seconds Soroban RPC call latency by endpoint and outcome",
+    "# TYPE ophirpay_rpc_call_duration_seconds histogram"
+  );
+  for (const metric of getRpcCallMetrics()) {
+    const baseLabels = `endpoint="${escapeLabelValue(
+      metric.endpoint
+    )}",outcome="${metric.outcome}"`;
+    for (let i = 0; i < RPC_LATENCY_BUCKET_BOUNDS.length; i++) {
+      lines.push(
+        `ophirpay_rpc_call_duration_seconds_bucket{${baseLabels},le="${RPC_LATENCY_BUCKET_BOUNDS[i]}"} ${metric.buckets[i]}`
+      );
+    }
+    lines.push(
+      `ophirpay_rpc_call_duration_seconds_bucket{${baseLabels},le="+Inf"} ${metric.buckets[RPC_LATENCY_BUCKET_BOUNDS.length]}`,
+      `ophirpay_rpc_call_duration_seconds_sum{${baseLabels}} ${metric.sum}`,
+      `ophirpay_rpc_call_duration_seconds_count{${baseLabels}} ${metric.count}`
+    );
+  }
+
+  // ── Prisma query histograms (latency by model + operation) ─
+  lines.push(
+    "",
+    "# HELP ophirpay_prisma_query_duration_seconds Prisma query latency by model and operation",
+    "# TYPE ophirpay_prisma_query_duration_seconds histogram"
+  );
+  for (const metric of getDbQueryMetrics()) {
+    const baseLabels = `model="${escapeLabelValue(
+      metric.model
+    )}",operation="${escapeLabelValue(metric.operation)}"`;
+    for (let i = 0; i < DB_LATENCY_BUCKET_BOUNDS.length; i++) {
+      lines.push(
+        `ophirpay_prisma_query_duration_seconds_bucket{${baseLabels},le="${DB_LATENCY_BUCKET_BOUNDS[i]}"} ${metric.buckets[i]}`
+      );
+    }
+    lines.push(
+      `ophirpay_prisma_query_duration_seconds_bucket{${baseLabels},le="+Inf"} ${metric.buckets[DB_LATENCY_BUCKET_BOUNDS.length]}`,
+      `ophirpay_prisma_query_duration_seconds_sum{${baseLabels}} ${metric.sum}`,
+      `ophirpay_prisma_query_duration_seconds_count{${baseLabels}} ${metric.count}`
+    );
+  }
+
   // ── Live gauges: process memory + open SSE connections ──────
   // Sampled on scrape so load tests can assert memory stays bounded and
   // that SSE connections are released after clients disconnect.
@@ -144,14 +350,100 @@ function buildMetrics(): string {
     "",
     "# HELP ophirpay_sse_open_connections Currently open SSE event-stream connections",
     "# TYPE ophirpay_sse_open_connections gauge",
-    `ophirpay_sse_open_connections ${c.sse_open_connections}`
+    `ophirpay_sse_open_connections ${c.sse_open_connections}`,
+    "",
+    "# HELP ophirpay_sse_dropped_events_total SSE events shed by the bounded slow-consumer buffer",
+    "# TYPE ophirpay_sse_dropped_events_total counter",
+    `ophirpay_sse_dropped_events_total ${c.sse_dropped_events_total}`,
+    "",
+    "# HELP ophirpay_sse_active_connections Currently active SSE client connections partitioned by route",
+    "# TYPE ophirpay_sse_active_connections gauge",
+    ...c.sse_active_connections.map(
+      (m) =>
+        `ophirpay_sse_active_connections{route="${escapeLabelValue(m.route)}"} ${m.count}`
+    ),
+    "",
+    "# HELP ophirpay_ws_active_connections Currently active WebSocket client connections",
+    "# TYPE ophirpay_ws_active_connections gauge",
+    `ophirpay_ws_active_connections ${c.ws_active_connections}`,
+    "",
+    "# HELP ophirpay_ws_disconnections_total WebSocket disconnections partitioned by reason",
+    "# TYPE ophirpay_ws_disconnections_total counter",
+    `ophirpay_ws_disconnections_total{reason="client_close"} ${c.ws_disconnections.client_close}`,
+    `ophirpay_ws_disconnections_total{reason="slow_consumer"} ${c.ws_disconnections.slow_consumer}`,
+    `ophirpay_ws_disconnections_total{reason="ping_timeout"} ${c.ws_disconnections.ping_timeout}`,
+    `ophirpay_ws_disconnections_total{reason="socket_error"} ${c.ws_disconnections.socket_error}`,
+    "",
+    "# HELP ophirpay_ws_broadcast_frames_total Total WebSocket broadcast frames sent to clients",
+    "# TYPE ophirpay_ws_broadcast_frames_total counter",
+    `ophirpay_ws_broadcast_frames_total ${c.ws_broadcast_frames_total}`
   );
+
+  // ── SSE Connection Durations (issue #1425) ──────────────────
+  if (c.sse_connection_durations.length > 0) {
+    lines.push(
+      "",
+      "# HELP ophirpay_sse_connection_duration_seconds Histogram of SSE client connection durations in seconds",
+      "# TYPE ophirpay_sse_connection_duration_seconds histogram"
+    );
+    for (const entry of c.sse_connection_durations) {
+      const route = escapeLabelValue(entry.route);
+      const obs = entry.observation;
+      for (let i = 0; i < SSE_DURATION_BUCKET_BOUNDS.length; i++) {
+        const le = SSE_DURATION_BUCKET_BOUNDS[i];
+        lines.push(
+          `ophirpay_sse_connection_duration_seconds_bucket{route="${route}",le="${le}"} ${obs.buckets[i]}`
+        );
+      }
+      lines.push(
+        `ophirpay_sse_connection_duration_seconds_bucket{route="${route}",le="+Inf"} ${obs.buckets[SSE_DURATION_BUCKET_BOUNDS.length]}`,
+        `ophirpay_sse_connection_duration_seconds_sum{route="${route}"} ${obs.sum.toFixed(3)}`,
+        `ophirpay_sse_connection_duration_seconds_count{route="${route}"} ${obs.count}`
+      );
+    }
+  }
+
+  // ── Database Connection Pool Metrics (#1371) ─────────────────
+  if (typeof prismaModule.getPrismaPrometheusMetrics === "function") {
+    const prismaMetrics = await prismaModule.getPrismaPrometheusMetrics();
+    if (prismaMetrics) {
+      lines.push("", prismaMetrics);
+    }
+  }
 
   return lines.join("\n") + "\n";
 }
 
-export const GET = withMetrics("GET /api/metrics", async function GET() {
-  return new NextResponse(buildMetrics(), {
+function unauthorizedMetricsResponse() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: {
+        code: "UNAUTHORIZED",
+        message:
+          `A valid metrics credential is required. Send "Authorization: Bearer <${METRICS_TOKEN_ENV}>" ` +
+          "or an API key carrying the admin scope.",
+      },
+      timestamp: new Date().toISOString(),
+    },
+    {
+      status: 401,
+      headers: {
+        "WWW-Authenticate": 'Bearer realm="ophirpay-metrics"',
+        "Cache-Control": "no-store",
+      },
+    }
+  );
+}
+
+export const GET = withMetrics("GET /api/metrics", async function GET(request: Request) {
+  // No credential → no body. Return before building the exposition so a
+  // configuration mistake cannot leak the process/endpoint internals.
+  if (!(await isAuthorizedMetricsRequest(request))) {
+    return unauthorizedMetricsResponse();
+  }
+
+  return new NextResponse(await buildMetrics(), {
     status: 200,
     headers: {
       "Content-Type": "text/plain; version=0.0.4",

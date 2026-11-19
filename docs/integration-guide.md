@@ -47,6 +47,121 @@ stellar contract invoke \
 
 ## Integration Patterns
 
+## Retries and idempotency
+
+Every mutation that creates a payment, batch, escrow or stream requires an
+`Idempotency-Key` header. Send a value that is unique per logical operation and
+**reuse it verbatim when retrying** — that is what makes the retry safe:
+
+```typescript
+const key = crypto.randomUUID(); // one per operation, not per attempt
+
+async function createPayment(body: object) {
+  const res = await fetch("/api/payments", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPHIRPAY_API_KEY}`,
+      "Idempotency-Key": key,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (res.status === 409 && res.headers.get("Idempotency-Replay") === "true") {
+    // The operation already happened: `res.json()` is the original response.
+    return res.json();
+  }
+  if (res.status === 409) {
+    // `Retry-After` — the first attempt is still in flight; back off.
+  }
+  return res.json();
+}
+```
+
+Successful responses are cached for 24 hours. A repeat returns `409` with the
+original body, `Idempotency-Replay: true` and `X-Original-Status: <code>`; a
+concurrent duplicate returns `409` with `Retry-After` and
+`code: OPERATION_IN_PROGRESS`. Never generate a new key for an automatic retry
+— that is indistinguishable from a deliberate second payment.
+
+`@ophirpay/client` generates a UUID per POST for you, and you can pass your own
+via `client.createPayment(body, { idempotencyKey })` to make a retry in your own
+code reuse it.
+
+## Type-safe SDK (generated from the OpenAPI spec)
+
+`docs/openapi.yaml` is the source of truth for the API. `@ophirpay/client` ships
+types generated from it, so an integration cannot silently drift from the spec:
+a renamed field, a new required body member or a changed status code shows up as
+a TypeScript error instead of a runtime surprise.
+
+```bash
+npm run generate:sdk          # rewrite packages/ophirpay-client/*.generated.*
+npm run generate:sdk -- --check   # fail if the committed output is stale (CI)
+```
+
+The generator writes three artefacts into `packages/ophirpay-client/`:
+
+| File                        | Contents                                                                                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `operations.generated.js`   | Operation catalogue — method, path, summary, tags, whether a body is expected                                                                                                   |
+| `operations.generated.d.ts` | `ApiOperation` / `ApiOperationName` for the catalogue                                                                                                                           |
+| `api-types.generated.d.ts`  | An interface per `components.schemas` entry plus `ApiRequestBodies`, `ApiResponseBodies`, `ApiPathParams`, `ApiQueryParams` and `ApiHeaderParams`, each keyed by operation name |
+
+### Typing a call
+
+```ts
+import type {
+  ApiHeaderParams,
+  ApiOperationName,
+  ApiRequestBodies,
+  ApiResponseBodies,
+  PaymentEnvelopeResponse,
+} from "@ophirpay/client";
+
+// Every documented route is a member of ApiOperationName (99 at the time of
+// writing), so a typo is a compile error rather than a 404.
+const op: ApiOperationName = "postApiPayments";
+
+// The request body is typed from the spec's requestBody schema…
+const body: ApiRequestBodies[typeof op] = {
+  amount: 125,
+  assetCode: "XLM",
+  destAddress: "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU",
+};
+
+// …and the response is typed per status code.
+type Created = ApiResponseBodies[typeof op]["201"];
+
+const res = await fetch("/api/payments", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+  body: JSON.stringify(body),
+});
+const created = (await res.json()) as PaymentEnvelopeResponse;
+```
+
+Operations that take headers expose them through `ApiHeaderParams`, e.g.
+`ApiHeaderParams["postApiBatches"]` is `{ "Idempotency-Key"?: string }`. Path and
+query parameters work the same way (`ApiPathParams["getApiPaymentsId"]` is
+`{ id: string }`), so a client wrapper can be generic:
+
+```ts
+async function call<N extends ApiOperationName>(
+  name: N,
+  init: { body?: ApiRequestBodies[N]; headers?: ApiHeaderParams[N] }
+): Promise<ApiResponseBodies[N][keyof ApiResponseBodies[N]]> {
+  /* … */
+}
+```
+
+### Keeping the generated types current
+
+CI regenerates from `docs/openapi.yaml` and fails when the committed artefacts
+differ (`npm run generate:sdk -- --check`, wired into the typecheck job). After
+editing the spec, run `npm run generate:sdk` and commit the regenerated files in
+the same change; a hand-edited `*.generated.*` file is always overwritten.
+
 ## API Key Usage
 
 The dashboard's **API Keys** view shows request totals for each key and its last-used time. The same data is available to an authenticated browser session through:
@@ -86,7 +201,7 @@ const escrowId = await contract.create_escrow({
   amount: 10000000n, // in stroops
   asset: "native",
   deadline: Math.floor(Date.now() / 1000) + 86400, // 24h from now
-  metadata: "Security deposit for apartment #42"
+  metadata: "Security deposit for apartment #42",
 });
 ```
 
@@ -109,7 +224,7 @@ import { registerHook } from "@/lib/contract-advanced";
 
 await registerHook(
   subscriberPublicKey,
-  "payment_recorded",          // event type to subscribe to
+  "payment_recorded", // event type to subscribe to
   "https://my-server.com/hooks" // your webhook endpoint
 );
 ```
@@ -120,6 +235,7 @@ Your endpoint receives HMAC-SHA256 signed payloads:
 POST /hooks HTTP/1.1
 Content-Type: application/json
 X-OphirPay-Signature: <hmac-sha256 hex>
+X-OphirPay-Timestamp: 2026-08-06T12:00:00Z
 X-OphirPay-Event: payment_recorded
 
 {
@@ -130,11 +246,14 @@ X-OphirPay-Event: payment_recorded
 }
 ```
 
-The signature is HMAC-SHA256 (hex) over the payload with the `signature`
-field **emptied** (set to `""`, the key is kept) and re-serialized with
-stable key order — using the secret returned when you registered the
-webhook. The same value is mirrored in the `X-OphirPay-Signature` header for
-convenience. Verify by recomputing over the exact canonical form:
+The signature is HMAC-SHA256 (hex) over
+`<X-OphirPay-Timestamp>.<payload with the signature field emptied>` — the
+`signature` field is set to `""` (the key is kept) and re-serialized with
+stable key order, using the secret returned when you registered the webhook.
+Binding the timestamp into the signed input is what makes the
+`X-OphirPay-Timestamp` header trustworthy for replay protection. The same
+signature is mirrored in the `X-OphirPay-Signature` header for convenience.
+Verify by recomputing over the exact canonical form:
 
 ```typescript
 import { createHmac, timingSafeEqual } from "crypto";
@@ -143,16 +262,18 @@ const received = await request.json();
 // Canonicalize: empty the signature field (keep the key, set it to "") and
 // re-serialize with the received key order — matches buildSignedPayload.
 const canonical = JSON.stringify({ ...received, signature: "" });
-const expected = createHmac("sha256", yourSecret)
-  .update(canonical)
-  .digest("hex");
+// The timestamp is part of the signed input.
+const timestamp = request.headers.get("x-ophirpay-timestamp") ?? received.timestamp ?? "";
+const expected = createHmac("sha256", yourSecret).update(`${timestamp}.${canonical}`).digest("hex");
 const provided = request.headers.get("x-ophirpay-signature") ?? "";
-const ok = provided.length === expected.length &&
+const ok =
+  provided.length === expected.length &&
   timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
 ```
 
 Always compare with a constant-time comparison (`timingSafeEqual`), verify
-against the **header** value, and reject requests missing a valid signature.
+against the **header** value, enforce the timestamp freshness window, and
+reject requests missing a valid signature.
 See [Webhook Signature Verification](webhook-verification.md) for the exact
 canonical form, replay protection, and runnable Node/Python reference
 implementations.
@@ -169,14 +290,14 @@ to update, and save the new secret right away: it is shown only once.
 
 Payments emit lifecycle events as they progress through their lifecycle:
 
-| Event | Fired when |
-|---|---|
-| `payment.created` | A payment record is created |
-| `payment.signed` | The payment transaction has been signed |
+| Event               | Fired when                                               |
+| ------------------- | -------------------------------------------------------- |
+| `payment.created`   | A payment record is created                              |
+| `payment.signed`    | The payment transaction has been signed                  |
 | `payment.submitted` | The signed transaction has been submitted to the network |
-| `payment.confirmed` | The submitted transaction has been confirmed on-chain |
-| `payment.completed` | The payment is fully settled/completed |
-| `payment.failed` | The payment failed |
+| `payment.confirmed` | The submitted transaction has been confirmed on-chain    |
+| `payment.completed` | The payment is fully settled/completed                   |
+| `payment.failed`    | The payment failed                                       |
 
 Batches, recurrences, and payment requests emit their own events
 (`batch.*`, `recurrence.*`, `request.*`). Subscribe to any subset of these
@@ -198,7 +319,7 @@ const res = await fetch("/api/webhooks/<webhook-id>/replay", {
   body: JSON.stringify({
     since: "2026-08-19T00:00:00Z", // optional, clamped to 7-day window
     until: "2026-08-26T00:00:00Z", // optional, defaults to now
-    limit: 50,                     // optional, max 100
+    limit: 50, // optional, max 100
   }),
 });
 const { data } = await res.json();
@@ -211,55 +332,61 @@ Each replay attempt is recorded as a delivery. View history at
 ## Available Contract Functions
 
 ### Payments
-| Function | Description |
-|---|---|
-| `record_payment` | Record an off-chain payment on the Soroban ledger |
-| `get_payment` | Get a payment by ID |
-| `get_payment_count` | Total payment count |
-| `cancel_payment` | Cancel a payment record (owner only) |
-| `atomic_spend` | Validate spending limit THEN record payment atomically |
+
+| Function            | Description                                            |
+| ------------------- | ------------------------------------------------------ |
+| `record_payment`    | Record an off-chain payment on the Soroban ledger      |
+| `get_payment`       | Get a payment by ID                                    |
+| `get_payment_count` | Total payment count                                    |
+| `cancel_payment`    | Cancel a payment record (owner only)                   |
+| `atomic_spend`      | Validate spending limit THEN record payment atomically |
 
 ### Escrows
-| Function | Description |
-|---|---|
-| `create_escrow` | Lock tokens with deadline, optional arbiter |
-| `release_escrow` | Owner releases to beneficiary |
-| `claim_escrow` | Beneficiary claims after deadline |
-| `get_escrow` | Get escrow by ID |
+
+| Function         | Description                                 |
+| ---------------- | ------------------------------------------- |
+| `create_escrow`  | Lock tokens with deadline, optional arbiter |
+| `release_escrow` | Owner releases to beneficiary               |
+| `claim_escrow`   | Beneficiary claims after deadline           |
+| `get_escrow`     | Get escrow by ID                            |
 
 ### Refunds
-| Function | Description |
-|---|---|
-| `request_refund` | Request a refund with reason code |
-| `approve_refund` | Owner approves refund |
-| `process_refund` | Execute refund (transfers tokens back) |
-| `get_refund` | Get refund by ID |
-| `get_reason_code_analytics` | Count refunds grouped by reason code |
+
+| Function                    | Description                            |
+| --------------------------- | -------------------------------------- |
+| `request_refund`            | Request a refund with reason code      |
+| `approve_refund`            | Owner approves refund                  |
+| `process_refund`            | Execute refund (transfers tokens back) |
+| `get_refund`                | Get refund by ID                       |
+| `get_reason_code_analytics` | Count refunds grouped by reason code   |
 
 ### Multisig
-| Function | Description |
-|---|---|
-| `set_multisig_config` | Configure N-of-M signers |
-| `propose_payment` | Propose a payment needing approval |
-| `approve_payment` | Signer approves a proposal |
-| `execute_approved_payment` | Execute after threshold met |
+
+| Function                   | Description                        |
+| -------------------------- | ---------------------------------- |
+| `set_multisig_config`      | Configure N-of-M signers           |
+| `propose_payment`          | Propose a payment needing approval |
+| `approve_payment`          | Signer approves a proposal         |
+| `execute_approved_payment` | Execute after threshold met        |
 
 ### Governance
-| Function | Description |
-|---|---|
-| `configure_governance` | Set voting parameters |
-| `create_proposal` | Create a DAO proposal |
-| `vote_on_proposal` | Vote yes/no with weight |
-| `execute_proposal` | Execute after voting ends |
+
+| Function               | Description               |
+| ---------------------- | ------------------------- |
+| `configure_governance` | Set voting parameters     |
+| `create_proposal`      | Create a DAO proposal     |
+| `vote_on_proposal`     | Vote yes/no with weight   |
+| `execute_proposal`     | Execute after voting ends |
 
 ### Admin
-| Function | Description |
-|---|---|
-| `pause` / `unpause` | Circuit breaker |
+
+| Function              | Description                              |
+| --------------------- | ---------------------------------------- |
+| `pause` / `unpause`   | Circuit breaker                          |
 | `emergency_pause_all` | Pause both OphirPay + Emitter atomically |
-| `transfer_ownership` | Two-step transfer with 24h timelock |
-| `accept_ownership` | Accept pending ownership |
-| `set_fee_config` | Configure platform fees per operation |
+| `transfer_ownership`  | Two-step transfer with 24h timelock      |
+| `accept_ownership`    | Accept pending ownership                 |
+| `set_fee_config`      | Configure platform fees per operation    |
 
 ## Rate Limiting
 
@@ -283,16 +410,18 @@ The 429 response uses the standard error envelope:
 
 ### Headers
 
-| Header | Description |
-|---|---|
-| `Retry-After` | Seconds (integer) until the current window resets. Clients should wait this long before retrying. |
-| `X-RateLimit-Limit` | Maximum requests allowed in the current window. |
-| `X-RateLimit-Remaining` | Requests remaining in the current window. |
-| `X-RateLimit-Reset` | Unix timestamp (seconds) when the window resets. |
+| Header                  | Description                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `Retry-After`           | Seconds (integer) until the current window resets. Clients should wait this long before retrying. |
+| `X-RateLimit-Limit`     | Maximum requests allowed in the current window.                                                   |
+| `X-RateLimit-Remaining` | Requests remaining in the current window.                                                         |
+| `X-RateLimit-Reset`     | Unix timestamp (seconds) when the window resets.                                                  |
 
 The limit is configurable via the `RATE_LIMIT_RPM` environment variable
 (default: 120 requests per minute per IP). Health (`/api/health`) and metrics
-(`/api/metrics`) endpoints are excluded from rate limiting.
+(`/api/metrics`) endpoints are excluded from rate limiting. The metrics
+endpoint additionally requires `Authorization: Bearer $METRICS_TOKEN` — see
+[Per-Endpoint Metrics](./metrics-endpoints.md).
 
 ### Backing Off
 
@@ -302,15 +431,15 @@ workloads, implement exponential backoff starting from the `Retry-After` value.
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `NEXT_PUBLIC_STELLAR_RPC_URL` | Yes | Soroban RPC endpoint |
-| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | Yes | Horizon API endpoint |
-| `NEXT_PUBLIC_CONTRACT_ID` | Yes | OphirPay contract address |
-| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | Yes | Emitter contract address |
-| `NEXT_PUBLIC_DEMO_MODE` | No | Enable simulated TXs without real funds |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `HOOK_SECRET` | No | Webhook HMAC signing secret |
+| Variable                          | Required | Description                             |
+| --------------------------------- | -------- | --------------------------------------- |
+| `NEXT_PUBLIC_STELLAR_RPC_URL`     | Yes      | Soroban RPC endpoint                    |
+| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | Yes      | Horizon API endpoint                    |
+| `NEXT_PUBLIC_CONTRACT_ID`         | Yes      | OphirPay contract address               |
+| `NEXT_PUBLIC_EMITTER_CONTRACT_ID` | Yes      | Emitter contract address                |
+| `NEXT_PUBLIC_DEMO_MODE`           | No       | Enable simulated TXs without real funds |
+| `DATABASE_URL`                    | Yes      | PostgreSQL connection string            |
+| `HOOK_SECRET`                     | No       | Webhook HMAC signing secret             |
 
 ## Testing
 

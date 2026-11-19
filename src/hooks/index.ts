@@ -12,6 +12,18 @@ export { useRetry } from "./useRetry";
 export { useWindowSize } from "./useWindowSize";
 export { useCountdown } from "./useCountdown";
 export { useNetworkChange, useNetworkPoller } from "./useNetworkChange";
+export {
+  useRpcHealth,
+  formatRpcEndpoint,
+  parseRpcHealthPayload,
+  RPC_HEALTH_LATENCY_THRESHOLD_MS,
+} from "./useRpcHealth";
+export type {
+  RpcHealthStatus,
+  RpcHealthSnapshot,
+  RpcHealthProbe,
+  UseRpcHealthOptions,
+} from "./useRpcHealth";
 export { useErrorTracker } from "./useErrorTracker";
 export { useCopyToClipboard } from "./useCopyToClipboard";
 export { useIsMounted, useMountedRef } from "./useIsMounted";

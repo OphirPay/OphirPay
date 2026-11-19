@@ -51,7 +51,31 @@ interface LogEntry {
   timestamp: string;
   level: LogLevel;
   message: string;
+  /** Correlation id of the request that produced this entry, when in scope. */
+  requestId?: string;
   context?: Record<string, unknown>;
+}
+
+/**
+ * Read the current request id without importing the async-context module here.
+ *
+ * `logger` is imported by the Edge proxy, where `node:async_hooks` is not
+ * available. `request-logging` publishes its lookup function on `globalThis`
+ * once loaded, so every log emitted inside a handled request automatically
+ * carries its id while the logger itself stays runtime-agnostic.
+ */
+const REQUEST_ID_PROVIDER = "__ophirpayRequestIdProvider";
+
+type GlobalWithRequestIdProvider = typeof globalThis & {
+  [REQUEST_ID_PROVIDER]?: () => string | undefined;
+};
+
+function currentRequestId(): string | undefined {
+  try {
+    return (globalThis as GlobalWithRequestIdProvider)[REQUEST_ID_PROVIDER]?.();
+  } catch {
+    return undefined;
+  }
 }
 
 function formatEntry(entry: LogEntry): string {
@@ -59,10 +83,12 @@ function formatEntry(entry: LogEntry): string {
 }
 
 function log(level: LogLevel, message: string, context?: Record<string, unknown>) {
+  const requestId = currentRequestId();
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
     level,
     message,
+    ...(requestId ? { requestId } : {}),
     context,
   };
 

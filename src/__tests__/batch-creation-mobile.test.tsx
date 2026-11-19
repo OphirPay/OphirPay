@@ -2,6 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 
 // Mock the wallet hook
 vi.mock("@/hooks/useMultiWallet", () => ({
@@ -40,6 +41,19 @@ vi.mock("@/lib/utils", () => ({
 // Mock the fee estimator
 vi.mock("@/lib/fee-estimator", () => ({
   estimateBatchFee: (count: number) => String(count * 100),
+  estimateTransactionFee: vi.fn().mockResolvedValue({
+    baseFee: "100",
+    recommendedFee: "100",
+    estimatedFee: "100",
+    totalFee: "100",
+    operations: 1,
+    networkCongestion: "low",
+    percentile: "p90",
+    aggressiveness: "medium",
+    source: "horizon",
+    stale: false,
+    basis: "p90 of recently charged fees",
+  }),
 }));
 
 // Mock the CSV import
@@ -68,8 +82,7 @@ vi.mock("@/components/ui/CopyButton", () => ({
 
 // Mock next/link
 vi.mock("next/link", () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  default: ({ children, href, ...props }: Record<string, any>) => (
+  default: ({ children, href, ...props }: ComponentProps<"a">) => (
     <a href={href} {...props}>
       {children}
     </a>

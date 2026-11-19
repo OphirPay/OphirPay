@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MIT
+
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+
+export default function RequestsLoading() {
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <Breadcrumb items={[{ label: "Payment Requests" }]} />
+      <div className="flex items-center justify-between gap-4">
+        <LoadingSkeleton lines={2} className="w-64" />
+        <LoadingSkeleton lines={1} className="w-32" />
+      </div>
+      <LoadingSkeleton variant="stats" />
+      <LoadingSkeleton variant="table" lines={5} />
+    </div>
+  );
+}

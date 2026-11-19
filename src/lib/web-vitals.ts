@@ -21,26 +21,21 @@ interface Metric {
 /**
  * Report Web Vitals to console in development, or to analytics in production.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function reportWebVitals(metric: any): void {
-  // Cast to Metric for type safety
-  const m = metric as Metric;
-
+export function reportWebVitals(metric: Metric): void {
   if (process.env.NODE_ENV === "development") {
     console.debug(
-      `[Web Vitals] ${m.name}: ${m.value.toFixed(1)} (${m.rating})`
+      `[Web Vitals] ${metric.name}: ${metric.value.toFixed(1)} (${metric.rating})`
     );
     return;
   }
 
   // Production: send to Vercel Analytics or Google Analytics
   if (typeof window !== "undefined" && "gtag" in window) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).gtag?.("event", "web_vitals", {
-      metric_name: m.name,
-      metric_value: m.value,
-      metric_rating: m.rating,
-      metric_delta: m.delta,
+    window.gtag?.("event", "web_vitals", {
+      metric_name: metric.name,
+      metric_value: metric.value,
+      metric_rating: metric.rating,
+      metric_delta: metric.delta,
       event_category: "Web Vitals",
       non_interaction: true,
     });

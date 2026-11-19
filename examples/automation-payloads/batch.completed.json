@@ -1,0 +1,15 @@
+{
+  "event": "batch.completed",
+  "timestamp": "2026-09-01T09:31:44.000Z",
+  "data": {
+    "batchId": "b_71c0aa9e55d2",
+    "itemCount": 25,
+    "succeeded": 24,
+    "failed": 1,
+    "totalAmount": "612.25",
+    "assetCode": "USDC",
+    "status": "COMPLETED",
+    "completedAt": "2026-09-01T09:31:44.000Z"
+  },
+  "signature": "03449ab5f04ce63faf111d3576fc52cbafa950de675f22794c2d6a7fdef634dd"
+}

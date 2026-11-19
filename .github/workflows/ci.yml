@@ -14,12 +14,36 @@ permissions:
   contents: read
   pull-requests: write
 
-# ── Global Concurrency — cancel stale runs on same PR ────────
+# ── Global Concurrency — cancel stale runs on same PR (issue #1343) ────────
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  docs-links:
+    name: "Documentation — Markdown Links"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - run: npm run check:docs-links
+
+  prettier:
+    name: "Documentation — Prettier Format Check"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run format:check
+
   # ══════════════════════════════════════════════════════════════
   # 1. LINT — ESLint with zero tolerance (issue #677)
   #    The `npm run ci` gate runs this exact command; the workflow used to
@@ -31,13 +55,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npm run lint -- --max-warnings 0
 
   # ══════════════════════════════════════════════════════════════
-  # 2. TYPECHECK — TypeScript strict type-checking
+  # 2. TYPECHECK — TypeScript strict type-checking (issue #1979)
   # ══════════════════════════════════════════════════════════════
   typecheck:
     name: "2️⃣ Frontend — TypeCheck (tsc)"
@@ -45,26 +67,46 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npx tsc --noEmit
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
+      - name: Verify TypeScript types without emitting JS
+        run: npx tsc --noEmit
+      - name: Verify generated SDK matches docs/openapi.yaml (issues #822, #1439)
+        # Regenerates from the committed spec and fails if ANY artefact is
+        # stale: the operation catalogue (operations.generated.*) and the typed
+        # request/response maps (api-types.generated.d.ts). A spec edit that is
+        # not regenerated can therefore never merge.
+        run: npm run generate:sdk -- --check
 
   # ══════════════════════════════════════════════════════════════
-  # 3. UNIT TESTS — Vitest (800 frontend tests)
+  # 3. UNIT TESTS — Vitest (3000+ frontend tests)
   # ══════════════════════════════════════════════════════════════
   unit-tests:
     name: "3️⃣ Frontend — Unit Tests (Vitest)"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # The suite is ~3000 tests across ~225 files and does not finish in five
+    # minutes; the old cap killed the runner mid-suite, which reported as a
+    # red job even with every assertion still passing. 30 leaves headroom for a
+    # cold cache without letting a genuinely hung suite burn a runner for an
+    # hour.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npx vitest run --reporter=verbose
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
+      - name: Run unit tests (4 shards — fresh process per quarter; see vitest.config.ts)
+        # One vitest process accumulates per-file state (jsdom environments,
+        # Prisma engines) across all 226 files and OOMs near the end even
+        # though every assertion passes. Sharding gives each quarter of the
+        # suite a fresh process; shards run sequentially so the check name
+        # (and branch-protection match) is unchanged.
+        run: |
+          set -e
+          for i in 1 2 3 4; do
+            echo "::group::Vitest shard $i/4"
+            npx vitest run --shard=$i/4 --reporter=verbose
+            echo "::endgroup::"
+          done
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
   # ══════════════════════════════════════════════════════════════
   # 4. NEXT.JS BUILD — Production build verification (issue #677)
@@ -74,18 +116,79 @@ jobs:
   build:
     name: "9️⃣ Frontend — Build (Next.js)"
     runs-on: ubuntu-latest
+    needs: [lint, typecheck]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version-file: '.nvmrc', cache: "npm" }
-      - run: npm ci
-      - run: npx prisma generate
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
       - run: npm run build
       - name: Verify build output
         run: |
           test -d .next && echo "✅ .next directory exists"
           test -f .next/BUILD_ID && echo "✅ BUILD_ID exists"
+
+      - name: JavaScript bundle-size budget
+        # Reads the App Router client-reference manifests emitted by the build
+        # above and fails when a route exceeds its committed budget (#739).
+        # The per-route table is also appended to the job summary.
+        run: node scripts/check-bundle-budget.mjs
+
+  # ══════════════════════════════════════════════════════════════
+  # 4b. BUNDLE ANALYSIS — compare PR first-load JS with the base branch
+  #     Builds both refs (the `build` job only measures the PR) and posts a
+  #     route-by-route diff to the job summary. Fails if a route exceeds the
+  #     committed budget; warns on unusual growth. See docs/PERFORMANCE.md.
+  # ══════════════════════════════════════════════════════════════
+  bundle-analysis:
+    name: "1️⃣3️⃣ Performance — Bundle Diff"
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The base SHA has to be fetchable for the comparison build.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node-prisma # node-version-file: '.nvmrc'
+      - name: Build PR and measure first-load JS
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bundle
+          npm run build
+          node scripts/check-bundle-budget.mjs --json=/tmp/bundle/head.json
+      - name: Build base branch and measure first-load JS
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/ophirpay-base "$BASE_SHA"
+          cd /tmp/ophirpay-base
+          npm ci --no-audit --no-fund || true
+          npx prisma generate || true
+          if npm run build; then
+            cd "$GITHUB_WORKSPACE"
+            # The base branch may legitimately be over a budget this PR is
+            # changing; only the comparison matters here.
+            NEXT_BUILD_DIR=/tmp/ophirpay-base/.next \
+              node scripts/check-bundle-budget.mjs --json=/tmp/bundle/base.json || true
+          else
+            echo "⚠️ Base branch build failed — falling back to head report as baseline."
+            cd "$GITHUB_WORKSPACE"
+            cp /tmp/bundle/head.json /tmp/bundle/base.json
+          fi
+      - name: Compare PR bundle against base and publish the summary
+        env:
+          # A route growing by more than this is flagged for review (not a
+          # hard failure). Budget breaches are hard failures.
+          BUNDLE_GROWTH_WARN_KB: "10"
+        run: node scripts/bundle-diff.mjs /tmp/bundle/base.json /tmp/bundle/head.json
+      - name: Upload bundle reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-report
+          path: /tmp/bundle/*.json
+          retention-days: 14
 
   # ══════════════════════════════════════════════════════════════
   # 5. CONTRACT WASM BUILD — Build both Soroban contracts
@@ -102,7 +205,7 @@ jobs:
           components: rustfmt, clippy
       - name: Install Soroban SDK deps & WASM optimization tools
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen
+          sudo apt-get update -qq && sudo apt-get install -y -qq build-essential binaryen wabt
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -121,20 +224,49 @@ jobs:
         env:
           RUSTFLAGS: "-C link-arg=-s"
         run: cd contracts/emitter && cargo build --target wasm32v1-none --release
+      - name: Run fee assertions and emit fee report
+        run: cargo test --manifest-path contracts/ophirpay/Cargo.toml --test fee_report -- --nocapture
+        env:
+          OPHIRPAY_FEE_REPORT_PATH: ${{ github.workspace }}/fee-report.json
+      - name: Check contract regressions against baseline
+        run: node scripts/check-contract-regressions.mjs
+        env:
+          FEE_REPORT_PATH: fee-report.json
+          REGRESSION_REPORT_PATH: contract-regression-report.md
       - name: Optimize WASM (OphirPay + Emitter)
         run: |
-          set -e
+          set -euo pipefail
           OPHIR_WASM=contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm
           EMIT_WASM=contracts/emitter/target/wasm32v1-none/release/ophirpay_emitter.wasm
 
+          {
+            echo "### Optimized contract WASM sizes"
+            echo ""
+            echo "| Contract | Before | After |"
+            echo "|---|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           for f in "$OPHIR_WASM" "$EMIT_WASM"; do
-            if [ -f "$f" ]; then
-              echo "Before: $(basename $f) $(stat -c%s "$f") bytes"
-              cp "$f" "${f}.orig"
-              wasm-strip "$f" || true
-              wasm-opt -Oz -o "$f" "${f}" || true
-              echo "After:  $(basename $f) $(stat -c%s "$f") bytes"
+            if [ ! -f "$f" ]; then
+              echo "::error::Expected contract WASM was not built: $f"
+              exit 1
             fi
+
+            before=$(stat -c%s "$f")
+            wasm-strip "$f"
+            optimized="${f}.optimized"
+            wasm-opt -Oz -o "$optimized" "$f"
+            after=$(stat -c%s "$optimized")
+
+            echo "Before: $(basename "$f") ${before} bytes"
+            echo "After:  $(basename "$f") ${after} bytes"
+            echo "| \`$(basename "$f")\` | ${before} bytes | ${after} bytes |" >> "$GITHUB_STEP_SUMMARY"
+
+            if [ "$after" -gt "$before" ]; then
+              echo "::error::Optimized WASM is larger than the original: $f (${before} -> ${after} bytes)"
+              exit 1
+            fi
+            mv "$optimized" "$f"
           done
       - name: Verify WASM artifacts
         run: |
@@ -144,6 +276,12 @@ jobs:
         run: cd contracts/ophirpay && PROPTEST_CASES=64 cargo test
       - name: Run Emitter contract unit tests
         run: cd contracts/emitter && cargo test
+      - name: Audit contract dependencies with cargo-audit (issue #1977)
+        run: |
+          which cargo-audit || cargo install cargo-audit --locked
+          cd contracts
+          cargo audit -f ophirpay/Cargo.lock
+          cargo audit -f emitter/Cargo.lock
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -170,6 +308,29 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
       - name: Run Gitleaks detect
         run: gitleaks detect --config .gitleaks.toml --verbose --redact
+      # Stellar seed self-test (issue #1398): the config must extend the default
+      # rules AND catch a Stellar `S…` secret seed. A config that silently
+      # replaces the defaults (no `[extend]`) would pass the scan above while
+      # detecting nothing, so this positive control is what keeps the gate real.
+      - name: Self-test — the Stellar seed rule catches a sample seed
+        run: |
+          set -e
+          tmp="$(mktemp -d)"
+          printf 'STELLAR_SECRET_KEY=S%s\n' "$(printf 'A%.0s' $(seq 1 55))" > "$tmp/sample.txt"
+          set +e
+          # --verbose is required: without it gitleaks prints only the finding
+          # count, not the RuleID this step greps for.
+          gitleaks detect --no-git --source "$tmp" --config .gitleaks.toml \
+            --no-banner --redact --verbose >/tmp/gitleaks-stellar.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ] && grep -q "stellar-secret-seed" /tmp/gitleaks-stellar.log; then
+            echo "✅ Stellar seed rule caught the sample seed (rule: stellar-secret-seed)"
+          else
+            echo "::error::Stellar seed rule did NOT flag a sample seed (exit $rc)"
+            cat /tmp/gitleaks-stellar.log
+            exit 1
+          fi
       # Scanner self-test (issue #393): prove the blocklist catches a sample
       # secret and does not false-positive on clean text. The fixture
       # directory is allowlisted for the repo-wide scan above, so these
@@ -217,14 +378,37 @@ jobs:
       - run: bash scripts/validate-deploy-config.sh
 
   # ══════════════════════════════════════════════════════════════
-  # 8. HELM LINT — chart lint + render assertions (issue #684)
+  # 6. MONITORING — validate the shipped Grafana artifact
+  # ══════════════════════════════════════════════════════════════
+  grafana-dashboard:
+    name: "6️⃣ Infra — Grafana Dashboard"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: ".nvmrc", cache: "npm" }
+      - run: node scripts/validate-grafana-dashboard.mjs
+
+  # ══════════════════════════════════════════════════════════════
+  # 8. HELM LINT — chart lint + value validation + render assertions
+  #    (#684, values validation)
   #    Proves the autoscaling / pdb / networkPolicy / serviceAccount
-  #    values actually produce objects instead of being inert.
+  #    values actually produce objects instead of being inert, and that the
+  #    chart rejects invalid values before they reach a cluster. Runs on every
+  #    PR (not only helm/ changes) so k8s/ manifest drift cannot slip through.
   # ══════════════════════════════════════════════════════════════
   helm-lint:
     name: "1️⃣9️⃣ Infra — Helm (Lint + Render)"
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Since #1334 the chart refuses to render without `secrets.DATABASE_URL` and
+    # `secrets.AUTH_SECRET` (or `secrets.existingSecret`). These two obviously
+    # fake values mirror helm/ophirpay/values.ci.yaml so the "default values"
+    # renders have something to render; nothing here is a credential.
+    env:
+      CI_DATABASE_URL: "postgresql://ci:ci@postgres:5432/ophirpay_ci"
+      CI_AUTH_SECRET: "ci-only-not-a-real-auth-secret"
     steps:
       - uses: actions/checkout@v4
       - name: Install Helm (pinned v3.16.3)
@@ -232,18 +416,68 @@ jobs:
           HELM_VER=3.16.3
           curl -fsSL "https://get.helm.sh/helm-v${HELM_VER}-linux-amd64.tar.gz" | tar xz
           sudo mv linux-amd64/helm /usr/local/bin/helm
+      - name: Install kubeconform
+        run: |
+          KUBECONFORM_VER=0.6.7
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VER}/kubeconform-linux-amd64.tar.gz" | tar xz
+          sudo mv kubeconform /usr/local/bin/kubeconform
       - name: Lint the chart with default values
-        run: helm lint helm/ophirpay --strict
+        # Since #1334 the chart fails fast when neither `secrets.DATABASE_URL` /
+        # `secrets.AUTH_SECRET` nor `secrets.existingSecret` is set, so even the
+        # "defaults" render has to supply the two required values. Everything
+        # else stays at its default.
+        run: |
+          helm lint helm/ophirpay --strict \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET"
       - name: Lint the chart with every feature flag enabled
         run: |
           helm lint helm/ophirpay --strict \
             --set autoscaling.enabled=true \
             --set pdb.enabled=true \
             --set networkPolicy.enabled=true \
-            --set serviceAccount.create=true
+            --set serviceAccount.create=true \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET"
+      - name: Lint the chart with an existingSecret (issue #1334)
+        # `secrets.existingSecret` is the alternative to plain-text values: the
+        # chart must lint cleanly with NO values.yaml secrets at all.
+        run: |
+          helm lint helm/ophirpay --strict \
+            --set secrets.existingSecret=ophirpay-external-secrets
+      - name: Lint the chart with CI values
+        # values.ci.yaml fills the values production intentionally leaves empty
+        # (secrets) and exercises every opt-in resource. --strict turns lint
+        # warnings into failures, so a malformed template cannot pass silently.
+        run: helm lint helm/ophirpay --strict -f helm/ophirpay/values.ci.yaml
+      - name: Reject invalid values with a clear error
+        # Acceptance criterion: misconfigured values fail during CI, not at
+        # deploy time. values.schema.json must name the offending field.
+        run: |
+          set -euo pipefail
+          bad_values="$(mktemp)"
+          printf 'replicaCount: two\nresources:\n  limits:\n    cpu: lots\n' > "$bad_values"
+          if helm lint helm/ophirpay --strict -f "$bad_values" >/tmp/invalid-values.log 2>&1; then
+            echo "::error::helm lint accepted invalid values — values.schema.json is not being enforced"
+            exit 1
+          fi
+          if ! grep -q "replicaCount" /tmp/invalid-values.log; then
+            echo "::error::helm lint failed but did not identify 'replicaCount' in its output"
+            cat /tmp/invalid-values.log
+            exit 1
+          fi
+          echo "✅ Invalid values were rejected with a field-level error (replicaCount):"
+          grep -E "replicaCount|Error:" /tmp/invalid-values.log | sed 's/^/   /'
       - name: Render and assert the flag-gated objects
         run: |
           set -euo pipefail
+
+          # Default values + the two required secrets (#1334). Nothing else is
+          # overridden, so this is the reference render for the defaults.
+          helm template ophirpay helm/ophirpay \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET" \
+            > /tmp/default.yaml
 
           helm template ophirpay helm/ophirpay \
             --set autoscaling.enabled=true \
@@ -252,6 +486,8 @@ jobs:
             --set pdb.enabled=true \
             --set networkPolicy.enabled=true \
             --set serviceAccount.create=true \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET" \
             > /tmp/enabled.yaml
 
           helm template ophirpay helm/ophirpay \
@@ -259,7 +495,19 @@ jobs:
             --set pdb.enabled=false \
             --set networkPolicy.enabled=false \
             --set serviceAccount.create=false \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET" \
             > /tmp/disabled.yaml
+
+          # CI values: required secrets populated, every feature flag on.
+          helm template ophirpay helm/ophirpay -f helm/ophirpay/values.ci.yaml \
+            > /tmp/ci-values.yaml
+
+          helm template ophirpay helm/ophirpay \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET" \
+            --set migrations.enabled=true \
+            > /tmp/migrations.yaml
 
           fail=0
           expect() {
@@ -287,11 +535,358 @@ jobs:
           expect "kind: NetworkPolicy" /tmp/enabled.yaml
           expect "kind: ServiceAccount" /tmp/enabled.yaml
           expect "policyTypes:" /tmp/enabled.yaml
+          expect "kubernetes.io/metadata.name: monitoring" /tmp/enabled.yaml
+          expect "port: 6379" /tmp/enabled.yaml
+          expect "kind: Job" /tmp/migrations.yaml
+          expect '"helm.sh/hook": pre-install,pre-upgrade' /tmp/migrations.yaml
+          expect "ophirpay:1.0.0-migrator" /tmp/migrations.yaml
 
           reject "kind: HorizontalPodAutoscaler" /tmp/disabled.yaml
           reject "kind: PodDisruptionBudget" /tmp/disabled.yaml
           reject "kind: NetworkPolicy" /tmp/disabled.yaml
           reject "kind: ServiceAccount" /tmp/disabled.yaml
+          reject "kind: Job" /tmp/default.yaml
+          reject "kubernetes.io/metadata.name: monitoring" /tmp/disabled.yaml
+          reject "port: 6379" /tmp/disabled.yaml
+
+          # #1331 — with autoscaling enabled the HPA owns the replica count, so
+          # the Deployment must not declare spec.replicas at all.
+          if grep -qE '^  replicas: ' /tmp/enabled.yaml; then
+            echo "::error::/tmp/enabled.yaml renders spec.replicas while autoscaling is enabled — a helm upgrade would reset the HPA (#1331)"
+            fail=1
+          else
+            echo "✅ /tmp/enabled.yaml has no Deployment spec.replicas (HPA owns it)"
+          fi
 
           exit "$fail"
 
+      - name: Assert config and secret changes roll the pods (issue #1332)
+        # A helm upgrade that only edits config/secrets used to update the
+        # ConfigMap/Secret objects while every running pod kept the old
+        # environment. The pod template now carries a checksum over the
+        # rendered templates/config.yaml, so the pod hash changes on every
+        # config/secret edit and the RollingUpdate strategy restarts the pods.
+        run: |
+          set -euo pipefail
+
+          AUTH_SECRET="$CI_AUTH_SECRET"
+          DB_URL="$CI_DATABASE_URL"
+          checksum() { grep -E '^        checksum/config: ' "$1" | awk '{print $2}'; }
+          render() {
+            local out="$1"; shift
+            helm template ophirpay helm/ophirpay \
+              --show-only templates/deployment.yaml \
+              --set secrets.DATABASE_URL="$DB_URL" \
+              --set secrets.AUTH_SECRET="$AUTH_SECRET" \
+              "$@" > "$out"
+          }
+
+          render /tmp/rollout-base.yaml
+          # Same inputs rendered twice must produce the SAME checksum: no churn
+          # on a `helm upgrade` that changes nothing (otherwise every release
+          # restarts every pod).
+          render /tmp/rollout-base-again.yaml
+          render /tmp/rollout-config.yaml --set config.NODE_ENV=staging
+          render /tmp/rollout-secret.yaml --set secrets.AUTH_SECRET="$AUTH_SECRET-rotated"
+
+          base=$(checksum /tmp/rollout-base.yaml)
+          base_again=$(checksum /tmp/rollout-base-again.yaml)
+          config=$(checksum /tmp/rollout-config.yaml)
+          secret=$(checksum /tmp/rollout-secret.yaml)
+
+          fail=0
+          for pair in "base:$base" "base-again:$base_again" "config:$config" "secret:$secret"; do
+            value=${pair#*:}
+            if [ -z "$value" ]; then
+              echo "::error::pod template is missing the checksum/config annotation (#1332)"
+              fail=1
+            fi
+          done
+
+          if [ -n "$base" ] && [ "$base" = "$base_again" ]; then
+            echo "✅ unchanged config/secrets keep the checksum stable ($base)"
+          else
+            echo "::error::checksum/config changed without any config change (no-op upgrades would restart pods)"
+            fail=1
+          fi
+
+          if [ -n "$config" ] && [ "$base" != "$config" ]; then
+            echo "✅ config change changes checksum/config ($base → $config)"
+          else
+            echo "::error::changing config.NODE_ENV did NOT change checksum/config (#1332)"
+            fail=1
+          fi
+
+          if [ -n "$secret" ] && [ "$base" != "$secret" ]; then
+            echo "✅ secret change changes checksum/config ($base → $secret)"
+          else
+            echo "::error::changing secrets.AUTH_SECRET did NOT change checksum/config (#1332)"
+            fail=1
+          fi
+
+          # The annotation has to reach the pod template, not the Deployment
+          # metadata: only spec.template changes trigger a rollout.
+          if ! awk '/^  template:/{in_template=1} in_template && /checksum\/config:/{found=1} END{exit !found}' /tmp/rollout-base.yaml; then
+            echo "::error::checksum/config is not on the pod template (spec.template.metadata.annotations)"
+            fail=1
+          else
+            echo "✅ checksum/config is on the pod template"
+          fi
+
+          exit "$fail"
+
+      - name: Assert the image reference is immutable (issue #1333)
+        # `:latest` is mutable: two pods of one release could run different
+        # builds and `helm rollback` would not restore the previous code.
+        run: |
+          set -euo pipefail
+
+          DB_URL="$CI_DATABASE_URL"
+          AUTH_SECRET="$CI_AUTH_SECRET"
+          image_of() { grep -E '^          image: ' "$1" | sed -E 's/^ +image: //; s/^"//; s/"$//'; }
+          render() {
+            local out="$1"; shift
+            helm template ophirpay helm/ophirpay \
+              --show-only templates/deployment.yaml \
+              --set secrets.DATABASE_URL="$DB_URL" \
+              --set secrets.AUTH_SECRET="$AUTH_SECRET" \
+              "$@" > "$out"
+          }
+
+          DIGEST="sha256:$(openssl rand -hex 32)"
+
+          render /tmp/image-default.yaml
+          render /tmp/image-tag.yaml --set image.tag=v2.3.4
+          render /tmp/image-digest.yaml --set image.digest="$DIGEST"
+
+          fail=0
+          default_image=$(image_of /tmp/image-default.yaml)
+          tag_image=$(image_of /tmp/image-tag.yaml)
+          digest_image=$(image_of /tmp/image-digest.yaml)
+
+          if [ "$default_image" = "ghcr.io/ophirpay/ophirpay:1.0.0" ]; then
+            echo "✅ default render uses the chart appVersion ($default_image)"
+          else
+            echo "::error::default render is '$default_image', expected 'ghcr.io/ophirpay/ophirpay:1.0.0' (Chart.appVersion)"
+            fail=1
+          fi
+
+          if [ "$tag_image" = "ghcr.io/ophirpay/ophirpay:v2.3.4" ]; then
+            echo "✅ image.tag overrides the appVersion default ($tag_image)"
+          else
+            echo "::error::image.tag override rendered '$tag_image'"
+            fail=1
+          fi
+
+          if [ "$digest_image" = "ghcr.io/ophirpay/ophirpay@$DIGEST" ]; then
+            echo "✅ image.digest renders an immutable reference ($digest_image)"
+          else
+            echo "::error::image.digest rendered '$digest_image', expected '@$DIGEST'"
+            fail=1
+          fi
+
+          if grep -qF ':latest' /tmp/image-default.yaml; then
+            echo "::error::the default render still contains the mutable ':latest' tag"
+            fail=1
+          else
+            echo "✅ the default render contains no ':latest' tag"
+          fi
+
+          # An immutable digest is sha256:<64 hex>; anything else must fail loudly
+          # instead of rendering a reference Kubernetes cannot pull. Two layers
+          # enforce it: values.schema.json and the ophirpay.image helper, so the
+          # assertion accepts either message as long as image.digest is named.
+          if render /tmp/image-bad-digest.yaml --set image.digest=latest >/tmp/image-bad-digest.log 2>&1; then
+            echo "::error::an invalid image.digest was accepted"
+            fail=1
+          elif grep -q "image.digest" /tmp/image-bad-digest.log; then
+            echo "✅ an invalid image.digest is rejected with a descriptive error"
+            grep -m1 "image.digest" /tmp/image-bad-digest.log | sed 's/^/   /'
+          else
+            echo "::error::an invalid image.digest failed without an explanatory message"
+            cat /tmp/image-bad-digest.log
+            fail=1
+          fi
+
+          # The standalone manifests must be pinned too (#1333 AC).
+          if grep -qE '^ +image: .*:latest$' k8s/deployment.yaml; then
+            echo "::error::k8s/deployment.yaml still deploys a ':latest' image"
+            fail=1
+          else
+            echo "✅ k8s/deployment.yaml uses a pinned image tag"
+          fi
+          if grep -qE '^ +imagePullPolicy: Always$' k8s/deployment.yaml; then
+            echo "::error::k8s/deployment.yaml still uses imagePullPolicy: Always"
+            fail=1
+          fi
+
+          exit "$fail"
+
+      - name: Assert HPA-owned replicas and Secret sourcing (issues #1331, #1334)
+        run: |
+          set -euo pipefail
+
+          DB_URL="$CI_DATABASE_URL"
+          AUTH_SECRET="$CI_AUTH_SECRET"
+          render() {
+            local out="$1"; shift
+            helm template ophirpay helm/ophirpay "$@" > "$out"
+          }
+
+          fail=0
+
+          # #1331 — autoscaling disabled: replicaCount is honoured verbatim.
+          render /tmp/replicas-off.yaml \
+            --set autoscaling.enabled=false \
+            --set replicaCount=5 \
+            --set secrets.DATABASE_URL="$DB_URL" \
+            --set secrets.AUTH_SECRET="$AUTH_SECRET"
+          if grep -qx '  replicas: 5' /tmp/replicas-off.yaml; then
+            echo "✅ autoscaling disabled honours replicaCount (replicas: 5)"
+          else
+            echo "::error::autoscaling disabled did not render 'replicas: 5' (#1331)"
+            fail=1
+          fi
+
+          # #1331 — autoscaling enabled: spec.replicas must be absent.
+          render /tmp/replicas-on.yaml \
+            --set autoscaling.enabled=true \
+            --set replicaCount=5 \
+            --set secrets.DATABASE_URL="$DB_URL" \
+            --set secrets.AUTH_SECRET="$AUTH_SECRET"
+          if grep -qE '^  replicas: ' /tmp/replicas-on.yaml; then
+            echo "::error::autoscaling enabled still rendered spec.replicas (#1331)"
+            fail=1
+          else
+            echo "✅ autoscaling enabled renders no spec.replicas"
+          fi
+
+          # #1334 — helm template without secrets or existingSecret fails with a
+          # message that names the missing value.
+          if render /tmp/no-secrets.yaml >/tmp/no-secrets.log 2>&1; then
+            echo "::error::helm template succeeded without secrets or secrets.existingSecret (#1334)"
+            fail=1
+          elif grep -q 'secrets.DATABASE_URL is required' /tmp/no-secrets.log; then
+            echo "✅ missing secrets abort the render and name secrets.DATABASE_URL"
+          else
+            echo "::error::the missing-secrets error does not mention secrets.DATABASE_URL"
+            cat /tmp/no-secrets.log
+            fail=1
+          fi
+
+          if render /tmp/no-auth-secret.yaml --set secrets.DATABASE_URL="$DB_URL" >/tmp/no-auth-secret.log 2>&1; then
+            echo "::error::helm template succeeded without secrets.AUTH_SECRET (#1334)"
+            fail=1
+          elif grep -q 'secrets.AUTH_SECRET is required' /tmp/no-auth-secret.log; then
+            echo "✅ a missing AUTH_SECRET aborts the render and names secrets.AUTH_SECRET"
+          else
+            echo "::error::the missing AUTH_SECRET error is not descriptive"
+            cat /tmp/no-auth-secret.log
+            fail=1
+          fi
+
+          # #1334 — existingSecret: no Secret object, and the Deployment points
+          # at the named Secret.
+          render /tmp/existing-secret.yaml --set secrets.existingSecret=ophirpay-external-secrets
+          if grep -q 'kind: Secret' /tmp/existing-secret.yaml; then
+            echo "::error::the chart rendered a Secret although secrets.existingSecret is set (#1334)"
+            fail=1
+          else
+            echo "✅ secrets.existingSecret renders no Secret object"
+          fi
+          if grep -q 'name: ophirpay-external-secrets' /tmp/existing-secret.yaml; then
+            echo "✅ the Deployment references the existing Secret"
+          else
+            echo "::error::the Deployment does not reference secrets.existingSecret (#1334)"
+            fail=1
+          fi
+
+          exit "$fail"
+
+      - name: Validate rendered manifests with kubeconform (Kubernetes 1.28)
+        # Pinned to the oldest Kubernetes version the chart supports so a
+        # manifest using a newer API field fails here rather than on an old
+        # cluster.
+        run: |
+          for manifest in /tmp/default.yaml /tmp/enabled.yaml /tmp/disabled.yaml /tmp/ci-values.yaml /tmp/migrations.yaml; do
+            echo "::group::kubeconform $manifest"
+            kubeconform -strict -summary -kubernetes-version 1.28.0 "$manifest"
+            echo "::endgroup::"
+          done
+      - name: Validate the raw k8s/ manifests with kubeconform
+        run: kubeconform -strict -summary -kubernetes-version 1.28.0 k8s/
+
+      - name: Assert rendered config keys against .env.example
+        # AC of #730: a broken template or an unknown config key must fail the
+        # job. Every key the chart renders into the ConfigMap/Secret has to be
+        # a variable the app documents in .env.example, and every active
+        # variable is rendered, so config drift cannot recur silently.
+        run: |
+          set -euo pipefail
+
+          # All documented variables are allowed chart keys; only uncommented
+          # variables are required to be present in the rendered chart.
+          sed -nE 's/^[[:space:]]*#?[[:space:]]*([A-Z][A-Z0-9_]*)=.*/\1/p' .env.example \
+            | sort -u > /tmp/env.documented
+          sed -nE 's/^[[:space:]]*([A-Z][A-Z0-9_]*)=.*/\1/p' .env.example \
+            | sort -u > /tmp/env.required
+
+          # Keys rendered by the chart (ConfigMap `data` + Secret `stringData`).
+          # The two required secrets are supplied because the chart now refuses
+          # to render without them (#1334).
+          helm template ophirpay helm/ophirpay --show-only templates/config.yaml \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET" \
+            --set secrets.NEXT_PUBLIC_CONTRACT_ID="CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET" \
+            --set secrets.NEXT_PUBLIC_EMITTER_CONTRACT_ID="CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN" \
+            | grep -E '^  [A-Z][A-Z0-9_]*:' \
+            | awk -F':' '{print $1}' \
+            | sed 's/^[[:space:]]*//' \
+            | sort -u > /tmp/chart.keys
+
+          # Optional credentials are accepted when configured, but empty
+          # defaults must not create blank Secret entries.
+          helm template ophirpay helm/ophirpay --show-only templates/config.yaml \
+            --set secrets.DATABASE_URL="$CI_DATABASE_URL" \
+            --set secrets.AUTH_SECRET="$CI_AUTH_SECRET" \
+            --set-string secrets.METRICS_TOKEN=ci-metrics-token \
+            --set-string secrets.CRON_SECRET=ci-cron-secret \
+            --set-string secrets.REDIS_TOKEN=ci-redis-token \
+            --set-string secrets.REDIS_URL=redis://redis:6379 \
+            --set-string secrets.SCHEDULED_PAYMENTS_SOURCE_SECRET=ci-stellar-secret \
+            | grep -E '^  (METRICS_TOKEN|CRON_SECRET|REDIS_TOKEN|REDIS_URL|SCHEDULED_PAYMENTS_SOURCE_SECRET):' \
+            | sort -u > /tmp/optional-chart.keys
+
+          for key in METRICS_TOKEN CRON_SECRET REDIS_TOKEN REDIS_URL SCHEDULED_PAYMENTS_SOURCE_SECRET; do
+            grep -Eq "^  ${key}:" /tmp/optional-chart.keys || {
+              echo "::error::configured optional secret '$key' was not rendered"
+              exit 1
+            }
+          done
+
+          for key in METRICS_TOKEN CRON_SECRET REDIS_TOKEN REDIS_URL SCHEDULED_PAYMENTS_SOURCE_SECRET; do
+            if grep -Fxq "$key" /tmp/chart.keys; then
+              echo "::error::empty optional secret '$key' was rendered"
+              exit 1
+            fi
+          done
+
+          fail=0
+          while read -r key; do
+            grep -Fxq "$key" /tmp/chart.keys || {
+              echo "::error::required .env.example variable '$key' is not rendered by the chart"
+              fail=1
+            }
+          done < /tmp/env.required
+
+          while read -r key; do
+            grep -Fxq "$key" /tmp/env.documented || {
+              echo "::error::chart renders '$key', which is not documented in .env.example"
+              fail=1
+            }
+          done < /tmp/chart.keys
+
+          if [ "$fail" -eq 0 ]; then
+            echo "✅ Required chart keys are present and all chart keys are documented ($(wc -l < /tmp/chart.keys | tr -d ' ') rendered keys)"
+          fi
+          exit "$fail"

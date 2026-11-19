@@ -19,12 +19,12 @@ pattern when new contracts are added.
 The two contracts exist because payment logic and event emission have
 different lifecycles, access patterns, and failure modes:
 
-| Concern | OphirPayContract | PaymentEventEmitter |
-|---|---|---|
+| Concern        | OphirPayContract                                                                                                              | PaymentEventEmitter                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | Responsibility | Payment domain rules: payments, escrows, streams, batches, refunds, multisig, RBAC, governance, timelocks, fees, hooks, audit | Event publication and query: `emit_payment`, `get_event`, `get_event_count` |
-| Written by | Payment flows (record, validate, transition state) | Emitters (indexers, the SSE stream, notification relays) |
-| Failure mode | A payment-domain error must revert the whole operation | An emission error must not corrupt payment state |
-| Extensibility | Adding a new payment feature must not require touching event code | Adding a new event type must not require touching payment code |
+| Written by     | Payment flows (record, validate, transition state)                                                                            | Emitters (indexers, the SSE stream, notification relays)                    |
+| Failure mode   | A payment-domain error must revert the whole operation                                                                        | An emission error must not corrupt payment state                            |
+| Extensibility  | Adding a new payment feature must not require touching event code                                                             | Adding a new event type must not require touching payment code              |
 
 The split keeps each contract single-purpose and independently testable, and
 it lets the Emitter enforce its own access control (an allow-list of sources
@@ -60,7 +60,7 @@ allow-list checks, so a cross-contract call is never a backdoor.
 ## 3. Worked example: `emergency_pause_all`
 
 The canonical example is the atomic circuit breaker. Both contracts expose
-`pause` / `unpause`; OphirPay's `emergency_pause_all` pauses *itself* and then
+`pause` / `unpause`; OphirPay's `emergency_pause_all` pauses _itself_ and then
 pauses the Emitter in the same transaction, so a single owner action freezes
 the whole system.
 
@@ -118,7 +118,7 @@ Key points to notice:
   sub-call becomes a local error (`CrossContractCallFailed`), which `?`
   propagates and reverts the whole transaction. Nothing is left half-paused.
 - **`acquire_reentrancy_lock` / `release_reentrancy_lock`** — the cross-contract
-  call happens *inside* the reentrancy guard, so the Emitter cannot re-enter
+  call happens _inside_ the reentrancy guard, so the Emitter cannot re-enter
   OphirPay mid-invocation. The lock is released before the error is propagated
   so a revert does not leave the lock stuck.
 - **Audit** — `record_audit` gives the off-chain relayer an immutable trail of
@@ -164,7 +164,7 @@ into a full revert, restoring the invariant:
 > returns `Ok`, both contracts are paused, and after `emergency_unpause_all`
 > returns `Ok`, both are unpaused. Without a linked Emitter, only OphirPay
 > changes state. If either function returns `Err`, the transaction reverts
-> and *nothing* changed.
+> and _nothing_ changed.
 
 ## 4. Sequence diagram
 
@@ -221,7 +221,7 @@ voucher contract, …). Follow this recipe:
 4. **Map the return.** Wrap the raw `Result<_, soroban_sdk::Error>` from
    `invoke_contract` in a local error variant
    (`result.map_err(|_| PaymentError::CrossContractCallFailed)?`) so callers
-   of *your* contract see a typed error and the transaction reverts on
+   of _your_ contract see a typed error and the transaction reverts on
    failure.
 
 5. **Guard against reentrancy.** If the callee can call back into the caller,
@@ -246,7 +246,32 @@ voucher contract, …). Follow this recipe:
 - [ ] Audit entry recorded
 - [ ] Contract test covering the happy path and the failure path
 
-## 6. Related reading
+## 6. Storage Retention & Automatic TTL Extension Policy
+
+Soroban's state rent model expires persistent ledger entries unless their
+Time-To-Live (TTL) is periodically extended. Long-lived financial positions
+such as active escrows (`(ESCROW_KEY, id)`) and payment streams
+(`(STREAM_KEY, id)`) must never expire while funds remain locked.
+
+To prevent accidental archival of active positions between off-chain
+`bump_storage` maintenance runs, `contracts/ophirpay/src/storage.rs` defines
+an automatic TTL extension policy:
+
+- **`TTL_THRESHOLD = 10_000`** ledgers (~14 hours at 5 seconds/ledger)
+- **`TTL_EXTEND_TO = 50_000`** ledgers (~2.9 days at 5 seconds/ledger)
+- **`touch_record_ttl(env, key)`** — automatically checks persistent storage
+  presence and extends both the record's persistent TTL and the contract's
+  instance storage TTL to `TTL_EXTEND_TO` whenever the remaining TTL falls
+  below `TTL_THRESHOLD`.
+
+### Automatic TTL Touch Points
+
+| Subsystem   | Entrypoints Invoking `touch_record_ttl`                                               | Storage Key               |
+| ----------- | ------------------------------------------------------------------------------------- | ------------------------- |
+| **Escrows** | `create_escrow`, `get_escrow`, `release_escrow`, `release_by_arbiter`, `claim_escrow` | `(ESCROW_KEY, escrow_id)` |
+| **Streams** | `create_stream`, `get_stream`, `claim_stream`, `cancel_stream`                        | `(STREAM_KEY, stream_id)` |
+
+## 7. Related reading
 
 - [`docs/architecture.md`](architecture.md) — the system-level architecture
 - [`contracts/ophirpay/src/lib.rs`](../contracts/ophirpay/src/lib.rs) — the calling contract

@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MIT
 
 import prisma from "@/lib/prisma";
-import { deliverWebhook } from "@/lib/webhook-deliver";
+import {
+  deliverWebhook,
+  deliveryStatusAfterFailure,
+  nextWebhookAttemptAt,
+} from "@/lib/webhook-deliver";
 import { logger } from "@/lib/logger";
 import type { WebhookEventType } from "@/app/api/webhooks/event-types";
 import {
   recordWebhookDelivery,
   storeWebhookEvent,
 } from "@/lib/webhook-event-store";
+import { getCurrentRequestId } from "@/lib/request-logging";
 import { isSubscribedToEvent } from "@/lib/webhook-filter";
 
 /**
@@ -38,10 +43,12 @@ export async function dispatchWebhookEvent(
     );
     if (webhooks.length === 0) return;
 
+    const requestId = getCurrentRequestId();
     const payload = {
       event,
       timestamp: new Date().toISOString(),
       data,
+      ...(requestId ? { requestId } : {}),
     };
 
     logger.info("Dispatching webhooks", { event, count: webhooks.length });
@@ -61,10 +68,25 @@ export async function dispatchWebhookEvent(
       webhooks.map(async (wh) => {
         const result = await deliverWebhook(wh.url, wh.secret, payload);
         if (storedEventId) {
-          await recordWebhookDelivery(wh.id, storedEventId, result.success ? "SUCCESS" : "FAILED", {
-            responseCode: result.statusCode,
-            isReplay: false,
-          });
+          // A failed delivery is queued for the cron retry processor rather
+          // than being dead-lettered immediately. `retryCount: 0` schedules
+          // the first retry (1 minute); after the final retry the processor
+          // flips the row to DEAD_LETTER.
+          await recordWebhookDelivery(
+            wh.id,
+            storedEventId,
+            result.success ? "SUCCESS" : deliveryStatusAfterFailure(0),
+            {
+              responseCode: result.statusCode,
+              latencyMs: result.latencyMs,
+              attempts: result.attempts,
+              errorMessage: result.errorMessage,
+              isReplay: false,
+              retryCount: 0,
+              nextAttemptAt: result.success ? null : nextWebhookAttemptAt(0),
+              lastAttemptAt: new Date(),
+            },
+          );
         }
         return result.success;
       }),

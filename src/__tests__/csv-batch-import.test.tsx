@@ -164,4 +164,70 @@ describe("CsvBatchImport", () => {
       await screen.findByText(/must have a header row and at least one data row/i)
     ).toBeInTheDocument();
   });
+
+  it("summarizes every failing row with its source row number", async () => {
+    setup();
+    await uploadFile(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      csvFile(
+        `address,amount,memo\nBAD_ONE,100,\n${VALID_ADDRESS},0,\n${OTHER_ADDRESS},5,\n`
+      )
+    );
+
+    const summary = await screen.findByTestId("csv-row-errors");
+    expect(summary).toHaveTextContent(/fix 2 rows to continue/i);
+    expect(screen.getByTestId("csv-row-error-1")).toHaveTextContent(
+      "Invalid Stellar address."
+    );
+    expect(screen.getByTestId("csv-row-error-2")).toHaveTextContent(
+      "Amount must be a number greater than 0."
+    );
+    // The summary repeats each message, but must not make the inline cell
+    // error ambiguous for exact-text queries.
+    expect(screen.getAllByText("Invalid Stellar address.")).toHaveLength(1);
+  });
+
+  it("reports a file-level error when the file cannot be read", async () => {
+    setup();
+    const file = csvFile(
+      `address,amount,memo\n${VALID_ADDRESS},100,\n`
+    );
+    vi.spyOn(file, "text").mockRejectedValueOnce(new Error("unreadable"));
+
+    fireEvent.change(screen.getByTestId("csv-file-input") as HTMLInputElement, {
+      target: { files: [file] },
+    });
+
+    expect(
+      await screen.findByText(/could not read the csv file/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("csv-preview-table")).toBeNull();
+    expect(screen.queryByTestId("csv-row-errors")).toBeNull();
+    // Zero parsed rows with a file error must not read as "all rows valid".
+    expect(screen.getByTestId("csv-summary")).toHaveTextContent(/import blocked/i);
+  });
+
+  it("flags memos within 28 characters but over the server's 28-byte limit", async () => {
+    setup();
+    // 15 × "é" is 15 characters but 30 UTF-8 bytes: accepted by a naive
+    // `.length <= 28` check, rejected by the batch API with a whole-batch
+    // error that named no row.
+    await uploadFile(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,${"é".repeat(15)}\n`)
+    );
+
+    expect(await screen.findByTestId("csv-row-error-1")).toHaveTextContent(
+      /28 bytes or fewer/i
+    );
+    expect(
+      screen
+        .getAllByRole("alert")
+        .map((el) => el.textContent)
+        .join(" ")
+    ).toMatch(/28 bytes or fewer/i);
+    expect(screen.getByTestId("csv-status")).toHaveTextContent(
+      /fix the highlighted fields/i
+    );
+  });
 });

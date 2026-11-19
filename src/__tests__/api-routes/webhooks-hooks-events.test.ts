@@ -42,6 +42,7 @@ import {
   DELETE as deleteWebhooks,
 } from "@/app/api/webhooks/route";
 import { GET as getHooks, POST as postHooks } from "@/app/api/hooks/route";
+import { HOOK_PAGE_LIMIT } from "@/lib/hooks-pagination";
 import { PATCH as patchHookById } from "@/app/api/hooks/[id]/route";
 import { GET as getEvents } from "@/app/api/events/route";
 import { GET as getEventsHistory } from "@/app/api/events/history/route";
@@ -228,6 +229,34 @@ describe("API Routes: Webhooks, Hooks & Events", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.data).toHaveLength(1);
+      // Below the cap → a complete list. (#742)
+      expect(data.meta.truncated).toBe(false);
+      expect(data.meta.limit).toBe(HOOK_PAGE_LIMIT);
+    });
+
+    it("GET flags truncation when the user has more hooks than the cap (#742)", async () => {
+      vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
+      // The route asks for limit + 1 rows precisely to detect this case.
+      vi.mocked(prisma.notificationHook.findMany).mockResolvedValueOnce(
+        Array.from({ length: HOOK_PAGE_LIMIT + 1 }, (_, i) => ({
+          id: `hk_${i}`,
+          eventType: "payment.created",
+          webhookUrl: "https://example.com/wh",
+          active: true,
+        })) as never
+      );
+
+      const res = await getHooks(new Request("http://localhost/api/hooks"));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+
+      // Capped to the limit, with the overflow counted as a truncated result
+      // rather than silently dropped.
+      expect(data.data).toHaveLength(HOOK_PAGE_LIMIT);
+      expect(data.meta.truncated).toBe(true);
+      expect(vi.mocked(prisma.notificationHook.findMany)).toHaveBeenCalledWith(
+        expect.objectContaining({ take: HOOK_PAGE_LIMIT + 1 })
+      );
     });
 
     it("POST returns 403 on CSRF failure", async () => {

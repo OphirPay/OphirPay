@@ -41,4 +41,13 @@ docs/MAINNET_RUNBOOK.md before pointing anything at Stellar Mainnet.
 
 Configuration sources for this release:
   • ConfigMap: {{ include "ophirpay.fullname" . }}-config
-  • Secret   : {{ include "ophirpay.fullname" . }}-secrets
+  • Secret   : {{ include "ophirpay.secretName" . }}{{ if .Values.secrets.existingSecret }} (pre-existing, managed outside this release){{ end }}
+  • Image    : {{ include "ophirpay.image" . }}
+  • Replicas : {{ if .Values.autoscaling.enabled }}managed by the HorizontalPodAutoscaler ({{ .Values.autoscaling.minReplicas }}–{{ .Values.autoscaling.maxReplicas }}){{ else }}fixed at {{ .Values.replicaCount }} (autoscaling disabled){{ end }}
+
+Config and secret changes restart the pods automatically: the pod template
+carries a `checksum/config` annotation over templates/config.yaml, so any edit
+to `config.*` or `secrets.*` produces a new pod template and a rolling update.
+Changes made directly to a Secret that was created outside this release
+(`secrets.existingSecret`) do not trigger a rollout — the owning controller
+(External Secrets, Sealed Secrets, Vault) is responsible for that.

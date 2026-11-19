@@ -5,8 +5,8 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 import ReceivePage from "@/app/receive/page";
 
-const ADDRESS_A = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const ADDRESS_B = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+const ADDRESS_A = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+const ADDRESS_B = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
 const toDataURLMock = vi.fn();
 
@@ -100,7 +100,7 @@ describe("ReceivePage", () => {
 
     // Full address + shortened + SEP-7 URI
     expect(screen.getByText(ADDRESS_A)).toBeInTheDocument();
-    expect(screen.getByText("GAAAAAAAA...AAAAAAAA")).toBeInTheDocument();
+    expect(screen.getByText("GA5ZSEJYB...34K4KZVN")).toBeInTheDocument();
     expect(
       screen.getByText(`web+stellar:pay?destination=${ADDRESS_A}`)
     ).toBeInTheDocument();

@@ -7,10 +7,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/Toast";
 import PaymentsPage from "@/app/payments/page";
 
+const { mockSearchParams } = vi.hoisted(() => ({
+  mockSearchParams: { current: new URLSearchParams("") },
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), prefetch: vi.fn() }),
   usePathname: () => "/payments",
-  useSearchParams: () => new URLSearchParams(""),
+  useSearchParams: () => mockSearchParams.current,
 }));
 
 vi.mock("@/lib/contracts", () => ({
@@ -100,6 +104,52 @@ describe("PaymentsPage", () => {
     });
     expect(anchorClick).toHaveBeenCalled();
 
+    vi.unstubAllGlobals();
+    anchorClick.mockRestore();
+  });
+
+  it("offers JSON export and forwards the active filters", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('{"count":0}', {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Disposition":
+            'attachment; filename="ophirpay-payments-2026-08-26.json"',
+        },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:fake"),
+      revokeObjectURL: vi.fn(),
+    });
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+
+    mockSearchParams.current = new URLSearchParams(
+      "status=COMPLETED&dateFrom=2026-01-01&dateTo=2026-01-31&asset=XLM"
+    );
+    renderPage();
+
+    const exportButton = await screen.findByRole("button", {
+      name: /export json/i,
+    });
+    await userEvent.click(exportButton);
+
+    await waitFor(() => {
+      const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+      expect(url).toContain("format=json");
+      expect(url).toContain("status=COMPLETED");
+      expect(url).toContain("dateFrom=2026-01-01");
+      expect(url).toContain("dateTo=2026-01-31");
+      expect(url).toContain("asset=XLM");
+    });
+    expect(anchorClick).toHaveBeenCalled();
+
+    mockSearchParams.current = new URLSearchParams("");
     vi.unstubAllGlobals();
     anchorClick.mockRestore();
   });

@@ -179,7 +179,23 @@ describe("Stellar Path Payment Utilities", () => {
     it("builds a valid PathPaymentStrictSend transaction XDR", async () => {
       const server = getHorizonServer();
       vi.spyOn(server, "loadAccount").mockResolvedValue(mockAccount);
-      vi.spyOn(server, "fetchBaseFee").mockResolvedValue(100);
+      // The fee now comes from Horizon fee statistics (issue #825); stub the
+      // stats endpoint so the builder does not hit the network.
+      vi.spyOn(server, "feeStats").mockResolvedValue({
+        last_ledger: "100",
+        last_ledger_base_fee: "100",
+        ledger_capacity_usage: "0",
+        fee_charged: {
+          min: "100", max: "100", mode: "100", p10: "100", p20: "100",
+          p40: "100", p50: "100", p60: "100", p70: "100", p80: "100",
+          p90: "100", p95: "100", p99: "100",
+        },
+        max_fee: {
+          min: "100", max: "100", mode: "100", p10: "100", p20: "100",
+          p40: "100", p50: "100", p60: "100", p70: "100", p80: "100",
+          p90: "100", p95: "100", p99: "100",
+        },
+      } as never);
 
       const sourcePublicKey = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
       const destination = "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU";
@@ -221,7 +237,23 @@ describe("Stellar Path Payment Utilities", () => {
     it("delegates to pathPaymentStrictSend when destination asset differs from source asset", async () => {
       const server = getHorizonServer();
       vi.spyOn(server, "loadAccount").mockResolvedValue(mockAccount);
-      vi.spyOn(server, "fetchBaseFee").mockResolvedValue(100);
+      // The fee now comes from Horizon fee statistics (issue #825); stub the
+      // stats endpoint so the builder does not hit the network.
+      vi.spyOn(server, "feeStats").mockResolvedValue({
+        last_ledger: "100",
+        last_ledger_base_fee: "100",
+        ledger_capacity_usage: "0",
+        fee_charged: {
+          min: "100", max: "100", mode: "100", p10: "100", p20: "100",
+          p40: "100", p50: "100", p60: "100", p70: "100", p80: "100",
+          p90: "100", p95: "100", p99: "100",
+        },
+        max_fee: {
+          min: "100", max: "100", mode: "100", p10: "100", p20: "100",
+          p40: "100", p50: "100", p60: "100", p70: "100", p80: "100",
+          p90: "100", p95: "100", p99: "100",
+        },
+      } as never);
 
       const sourcePublicKey = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
       const destination = "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU";
@@ -244,7 +276,23 @@ describe("Stellar Path Payment Utilities", () => {
     it("uses standard payment when source and destination assets are identical", async () => {
       const server = getHorizonServer();
       vi.spyOn(server, "loadAccount").mockResolvedValue(mockAccount);
-      vi.spyOn(server, "fetchBaseFee").mockResolvedValue(100);
+      // The fee now comes from Horizon fee statistics (issue #825); stub the
+      // stats endpoint so the builder does not hit the network.
+      vi.spyOn(server, "feeStats").mockResolvedValue({
+        last_ledger: "100",
+        last_ledger_base_fee: "100",
+        ledger_capacity_usage: "0",
+        fee_charged: {
+          min: "100", max: "100", mode: "100", p10: "100", p20: "100",
+          p40: "100", p50: "100", p60: "100", p70: "100", p80: "100",
+          p90: "100", p95: "100", p99: "100",
+        },
+        max_fee: {
+          min: "100", max: "100", mode: "100", p10: "100", p20: "100",
+          p40: "100", p50: "100", p60: "100", p70: "100", p80: "100",
+          p90: "100", p95: "100", p99: "100",
+        },
+      } as never);
 
       const sourcePublicKey = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
       const destination = "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU";

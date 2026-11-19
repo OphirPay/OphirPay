@@ -19,4 +19,11 @@ export const MEDIA = {
   isDesktop: `(min-width: ${BREAKPOINTS.lg}px)`,
   prefersReducedMotion: "(prefers-reduced-motion: reduce)",
   prefersDarkMode: "(prefers-color-scheme: dark)",
+  /**
+   * Coarse pointer (touch) detection for gesture affordances. A hybrid
+   * laptop with a touchscreen reports `fine` while its trackpad is in use, so
+   * swipe handlers keyed on this stay dormant until the user actually touches
+   * the screen.
+   */
+  hasTouch: "(hover: none) and (pointer: coarse)",
 } as const;

@@ -1,0 +1,200 @@
+name: "🐳 Docker Smoke Test"
+
+# Issue #731 — the Dockerfile is one of the supported self-hosted deployment
+# paths (docs/DEPLOYMENT.md, docker-compose.yml), but no workflow built it. It
+# is also unusually sensitive: it must use Debian rather than Alpine because
+# Tailwind v4's native binaries crash on musl, and it disables the Puppeteer
+# download to stay hermetic. A dependency, base-image or Next output-mode
+# change could therefore ship a broken image and only be found by a user.
+#
+# This job builds the image on PRs that can affect it (without pushing) and
+# proves the running container answers GET /api/health with 200. The BuildKit
+# GHA cache keeps it from dominating CI runtime.
+
+# Docker-related changes are detected by a `changes` job plus an
+# always-running gate job instead of a workflow-level `paths:` filter. A
+# path-filtered workflow never reports a check when it is skipped, so a
+# required `docker-smoke` check would leave unrelated PRs pending. The gate
+# always reports and passes when the build was legitimately skipped.
+on:
+  pull_request:
+    branches: [main, integration/staging]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Docker-related changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        id: filter
+        with:
+          filters: |
+            docker:
+              - "Dockerfile"
+              - "package.json"
+              - "package-lock.json"
+              - "next.config.ts"
+              - "docker-compose.yml"
+              - "scripts/check-node.mjs"
+              - ".github/workflows/docker-smoke.yml"
+
+  docker-smoke:
+    name: "🐳 Docker build & smoke test"
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        # Needed on the host to run `prisma migrate deploy` against the compose
+        # database; `.nvmrc` also satisfies the repo's preinstall check.
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ophirpay:smoke,ophirpay:latest
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan Docker image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "ophirpay:smoke"
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          trivyignores: ".trivyignore"
+
+      - name: Start backing services
+        run: docker compose -f docker-compose.yml up -d db redis
+
+      - name: Apply committed migrations to the compose database
+        run: |
+          npm ci --ignore-scripts
+          npx --yes wait-on tcp:5432 --timeout 60000
+          DATABASE_URL=postgresql://ophirpay:ophirpay@127.0.0.1:5432/ophirpay \
+            npx prisma migrate deploy
+
+      - name: Start and exercise compose app service (issues #731, #1340)
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          docker compose -f docker-compose.yml up -d app
+
+          status=""
+          for _ in $(seq 1 60); do
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/health || true)
+            if [ "$status" = "200" ]; then
+              echo "✅ /api/health returned 200"
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$status" != "200" ]; then
+            echo "::error::/api/health did not return 200 (last status: ${status:-<none>})"
+            docker compose -f docker-compose.yml logs app
+            exit 1
+          fi
+
+          # Verify dynamic version and short commit SHA (issue #1339)
+          health_json=$(curl -s http://127.0.0.1:3000/api/health)
+          echo "Health response: ${health_json}"
+          version=$(echo "${health_json}" | jq -r .data.version)
+          commit=$(echo "${health_json}" | jq -r .data.commit)
+          expected_commit=$(echo "${{ github.sha }}" | cut -c1-7)
+
+          if [ -z "${version}" ] || [ "${version}" = "null" ]; then
+            echo "::error::/api/health did not return a valid version"
+            exit 1
+          fi
+          if [ "${commit}" != "${expected_commit}" ]; then
+            echo "::error::/api/health returned commit '${commit}', expected '${expected_commit}'"
+            exit 1
+          fi
+          echo "✅ /api/health verified with version '${version}' and commit '${commit}'"
+
+      - name: Verify compose app container becomes healthy (issues #738, #1340)
+        run: |
+          for _ in $(seq 1 60); do
+            status=$(docker compose -f docker-compose.yml ps app --format '{{.Health}}' 2>/dev/null || docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}<none>{{end}}' $(docker compose -f docker-compose.yml ps -q app) 2>/dev/null || true)
+            if [ "$status" = "healthy" ]; then
+              echo "✅ docker compose ps reports health status: ${status}"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "::error::Compose app container never became healthy (last status: ${status:-<none>})"
+          docker compose -f docker-compose.yml ps app || true
+          docker compose -f docker-compose.yml logs app || true
+          exit 1
+
+  # The only required status check for this workflow. It always runs, so a
+  # PR that cannot affect the image gets a green `docker-smoke-gate` instead of
+  # a check that never reports. Never mark `docker-smoke` or `changes` as
+  # required — they can be skipped.
+  docker-smoke-gate:
+    name: docker-smoke-gate
+    needs: [changes, docker-smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Confirm the Docker smoke test passed or was not needed
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          JOB_RESULT: ${{ needs.docker-smoke.result }}
+          DOCKER_NEEDED: ${{ needs.changes.outputs.docker }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::Change detection failed (${CHANGES_RESULT}), so the Docker smoke test cannot be certified."
+            exit 1
+          fi
+
+          case "$JOB_RESULT" in
+            success)
+              echo "✅ Docker build and smoke test passed."
+              ;;
+            skipped)
+              if [ "$DOCKER_NEEDED" = "true" ]; then
+                echo "::error::Docker-related files changed but the docker-smoke job was skipped."
+                exit 1
+              fi
+              echo "✅ No Docker-related files changed; the docker-smoke job was skipped."
+              ;;
+            *)
+              echo "::error::Docker build and smoke test did not pass (${JOB_RESULT})."
+              exit 1
+              ;;
+          esac

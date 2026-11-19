@@ -7,6 +7,7 @@ import { verifyCsrf } from "@/lib/csrf";
 import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
 import { nativeToScVal } from "@stellar/stellar-sdk";
 import { withRequestLogging } from "@/lib/request-logging";
+import { requireIdempotencyKey, withIdempotency } from "@/lib/api-route";
 
 /**
  * GET /api/streams — list streams or fetch single by ?id=N
@@ -65,10 +66,21 @@ export const POST = withMetrics("POST /api/streams", withRequestLogging(async fu
       return badRequestError("creator, recipient, and totalAmount are required");
     }
 
-    return successResponse({
-      message: "Stream creation requires wallet signing via the client-side createStream flow.",
-      params: { creator, recipient, totalAmount, asset: asset ?? "native", startTime, endTime, metadata },
-    }, undefined, 202);
+    // Required for the same reason as the payment route (issue #1440): the
+    // returned parameters are handed to the wallet to sign, and a duplicated
+    // submit would sign and broadcast the stream twice.
+    const idempotency = requireIdempotencyKey(request);
+    if (!idempotency.ok) return idempotency.response;
+
+    return await withIdempotency(
+      request,
+      { userId: auth.userId, key: idempotency.key },
+      () =>
+        successResponse({
+          message: "Stream creation requires wallet signing via the client-side createStream flow.",
+          params: { creator, recipient, totalAmount, asset: asset ?? "native", startTime, endTime, metadata },
+        }, undefined, 202)
+    );
   } catch (err) {
     return handleApiError(err, "POST /api/streams");
   }

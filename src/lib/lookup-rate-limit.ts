@@ -42,12 +42,10 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+import { getClientIp as extractClientIp } from "@/lib/client-ip";
+
 function getClientIp(request: Request): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown"
-  );
+  return extractClientIp(request.headers);
 }
 
 /** Build the 429 response with standard RateLimit and Retry-After headers. */

@@ -1,0 +1,13 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# Committed pre-commit hook (issue #1398). Git discovers it via
+# `core.hooksPath=.githooks`, which `npm run prepare` sets
+# (scripts/install-git-hooks.mjs). Keeping the hook in the repo — rather than
+# in .git/hooks — means it is versioned, reviewable and installed for everyone.
+#
+# Add further pre-commit steps here; keep each one fast and focused.
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+exec bash "${REPO_ROOT}/scripts/pre-commit-secrets.sh" "$@"

@@ -17,13 +17,13 @@
 
 ## Before you start
 
-| Tool | Version | Check |
-|---|---|---|
-| `stellar` CLI | latest | `stellar --version` |
-| Rust | 1.85+ with `wasm32v1-none` target | `rustup target list --installed \| grep wasm32v1-none` |
-| `jq` | 1.6+ | `jq --version` |
-| `kubectl` + `helm` | 3+ | `kubectl version --client`, `helm version` |
-| Deployer wallet | Freighter (hardware wallet recommended) | Secret key available to the operator **only** |
+| Tool               | Version                                 | Check                                                  |
+| ------------------ | --------------------------------------- | ------------------------------------------------------ |
+| `stellar` CLI      | latest                                  | `stellar --version`                                    |
+| Rust               | 1.85+ with `wasm32v1-none` target       | `rustup target list --installed \| grep wasm32v1-none` |
+| `jq`               | 1.6+                                    | `jq --version`                                         |
+| `kubectl` + `helm` | 3+                                      | `kubectl version --client`, `helm version`             |
+| Deployer wallet    | Freighter (hardware wallet recommended) | Secret key available to the operator **only**          |
 
 > 🔐 The **deployer secret key** (`<MAINNET_SECRET_KEY>`) should be held by the
 > on-call operator, never committed, and ideally stored in a secrets manager
@@ -54,16 +54,16 @@
     round plus headroom for the timelocked upgrade path.
 
 - [ ] **Owner account funded** (same source) — it will later sign
-  `init`, `set_emitter`, and any `propose_upgrade` transactions.
+      `init`, `set_emitter`, and any `propose_upgrade` transactions.
 
 - [ ] **Fee budget confirmed** — mainnet `--fee` is set explicitly
-  (`--fee 10000000` = 10 XLM max) so an unexpected surge cannot stall the
-  submission mid-sequence.
+      (`--fee 10000000` = 10 XLM max) so an unexpected surge cannot stall the
+      submission mid-sequence.
 
 ### 0.2 Build & record WASM hashes
 
 - [ ] Build both contracts from a **tagged release commit** (never from a
-  dirty working tree):
+      dirty working tree):
 
   ```bash
   git checkout v1.0.0        # or the release commit SHA you intend to ship
@@ -72,8 +72,8 @@
   ```
 
 - [ ] **Compute and record the SHA-256 of both artifacts** (you will compare
-  these against the on-chain state in Phase 3, and reuse them for
-  `propose_upgrade` on future releases):
+      these against the on-chain state in Phase 3, and reuse them for
+      `propose_upgrade` on future releases):
 
   ```bash
   sha256sum contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm
@@ -82,7 +82,7 @@
   ```
 
 - [ ] **WASM size ≤ 128 KB** (Soroban protocol limit — enforced in CI by the
-  `contract-wasm` job, re-verify locally):
+      `contract-wasm` job, re-verify locally):
 
   ```bash
   stat -c '%n %s bytes' contracts/ophirpay/target/wasm32v1-none/release/ophirpay_contract.wasm \
@@ -92,16 +92,16 @@
 ### 0.3 Contract IDs
 
 - [ ] **Prepare the registry** (Phase 4) with placeholder rows for
-  `NEXT_PUBLIC_CONTRACT_ID` and `NEXT_PUBLIC_EMITTER_CONTRACT_ID`. Actual IDs
-  are returned by `stellar contract deploy` in Phase 2 — record them there.
+      `NEXT_PUBLIC_CONTRACT_ID` and `NEXT_PUBLIC_EMITTER_CONTRACT_ID`. Actual IDs
+      are returned by `stellar contract deploy` in Phase 2 — record them there.
 
 - [ ] If this is an **upgrade of an existing deployment**: confirm you have the
-  existing main/emitter IDs and their current owner keys before starting.
+      existing main/emitter IDs and their current owner keys before starting.
 
 ### 0.4 Network configuration
 
 - [ ] **Mainnet endpoints and passphrase** verified (a testnet value here is the
-  most common mainnet foot-gun):
+      most common mainnet foot-gun):
 
   ```bash
   bash scripts/validate-deploy-config.sh
@@ -110,19 +110,19 @@
   ```
 
 - [ ] **Dry-run** completes (see Phase 1) and **fails cleanly**, proving the
-  script targets mainnet and would not submit anything.
+      script targets mainnet and would not submit anything.
 
 ### 0.5 Infrastructure
 
 - [ ] PostgreSQL 16 provisioned and reachable (`psql` test or
-  `DATABASE_URL=... npx prisma migrate deploy` on a scratch copy).
+      `DATABASE_URL=... npx prisma migrate deploy` on a scratch copy).
 - [ ] Kubernetes cluster + ingress-nginx + cert-manager ready (if deploying via
-  Helm).
+      Helm).
 - [ ] Domain DNS record pointed at the cluster ingress IP.
 - [ ] Monitoring (Prometheus + Grafana) and alerting (PagerDuty/Slack) reachable
-  — see [docs/metrics-endpoints.md](./metrics-endpoints.md).
+      — see [docs/metrics-endpoints.md](./metrics-endpoints.md).
 - [ ] Nightly DB backup job enabled (`.github/workflows/db-backup.yml`) so the
-  rollback path in Phase 5 has a restore point.
+      rollback path in Phase 5 has a restore point.
 
 ---
 
@@ -210,7 +210,7 @@
   ```
 
 - [ ] **Record the deployer's remaining balance** — used later to confirm fee
-  accounting:
+      accounting:
 
   ```bash
   curl -s "https://horizon.stellar.org/accounts/<MAINNET_PUBLIC_KEY>" \
@@ -250,7 +250,7 @@
   ```
 
 - [ ] **Payment counter is 0** on a fresh deployment (or matches the prior
-  deployment's count on an upgrade):
+      deployment's count on an upgrade):
 
   ```bash
   stellar contract invoke \
@@ -279,30 +279,30 @@
   ```
 
 - [ ] **Version endpoint reports the deployed contract** (app-level check after
-  env config — `GET /api/contracts` returns `get_version`/`get_owner`).
+      env config — `GET /api/contracts` returns `get_version`/`get_owner`).
 
 ---
 
 ## Phase 4 — Record addresses and hashes
 
 - [ ] **Fill the registry** (keep it in a private, backed-up location — this is
-  the source of truth for rollback and future upgrades):
+      the source of truth for rollback and future upgrades):
 
-  | Artifact | Value |
-  |---|---|
-  | Deploy commit / tag | `v1.0.0` (or SHA) |
-  | Mainnet `OphirPayContract` ID | `<CONTRACT_ID>` |
+  | Artifact                         | Value                   |
+  | -------------------------------- | ----------------------- |
+  | Deploy commit / tag              | `v1.0.0` (or SHA)       |
+  | Mainnet `OphirPayContract` ID    | `<CONTRACT_ID>`         |
   | Mainnet `PaymentEventEmitter` ID | `<EMITTER_CONTRACT_ID>` |
-  | Owner public key | `<OWNER_PUBLIC_KEY>` |
-  | `ophirpay_contract.wasm` SHA-256 | `<from Phase 0.2>` |
-  | `ophirpay_emitter.wasm` SHA-256 | `<from Phase 0.2>` |
-  | Deploy date | `<date>` |
-  | Operator | `<name>` |
+  | Owner public key                 | `<OWNER_PUBLIC_KEY>`    |
+  | `ophirpay_contract.wasm` SHA-256 | `<from Phase 0.2>`      |
+  | `ophirpay_emitter.wasm` SHA-256  | `<from Phase 0.2>`      |
+  | Deploy date                      | `<date>`                |
+  | Operator                         | `<name>`                |
 
 - [ ] Update `.env.production` with the real IDs (see [Phase 6](#phase-6--deploy-the-app)).
 
 - [ ] Update this table in [docs/deployment-mainnet.md](./deployment-mainnet.md)
-  (§ 2.6 Contract Address Registry) so future operators can find the IDs.
+      (§ 2.6 Contract Address Registry) so future operators can find the IDs.
 
 ---
 
@@ -324,11 +324,11 @@
   ```
 
 - [ ] Restore the previous environment block (contract IDs, network config) in
-  the secret/ConfigMap before rolling back — the app must point at the **old**
-  contract IDs, not the new ones.
+      the secret/ConfigMap before rolling back — the app must point at the **old**
+      contract IDs, not the new ones.
 
 - [ ] Verify with the [Phase 7](#phase-7--post-deploy-verification-app) health
-  checks.
+      checks.
 
 ### 5.2 Contract rollback — upgrade window (24h)
 
@@ -348,8 +348,8 @@
   ```
 
 - [ ] **Upgrade already executed** → there is no on-chain "undo". Roll back by
-  deploying the previous artifact and pointing the app at the new (old-code)
-  contract IDs:
+      deploying the previous artifact and pointing the app at the new (old-code)
+      contract IDs:
 
   1. Deploy the previous release WASM (Phase 2 flow) → new `<CONTRACT_ID>`.
   2. Re-init with the original owner and emitter.
@@ -361,7 +361,7 @@
 ### 5.3 Database rollback
 
 - [ ] Restore the nightly backup (`.github/workflows/db-backup.yml` retains 30
-  days):
+      days):
 
   ```bash
   DB_HOST=... DB_USER=... DB_PASSWORD=... \
@@ -370,7 +370,7 @@
   ```
 
 - [ ] After restore, re-run the app health checks and confirm
-  `GET /api/health` reports `database: connected`.
+      `GET /api/health` reports `database: connected`.
 
 ---
 
@@ -383,7 +383,7 @@
   ```
 
 - [ ] Configure `.env.production` with the **recorded** contract IDs and
-  mainnet network values:
+      mainnet network values:
 
   ```env
   NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC
@@ -413,13 +413,13 @@
   ```
 
 - [ ] ⚠️ **Verify the image was built for mainnet.** `NEXT_PUBLIC_*` variables
-  are inlined by Next.js at build time, so `config.NEXT_PUBLIC_*` cannot
-  retarget a prebuilt image: a testnet image stays on testnet no matter what
-  Helm is given. Build (or select) an image built with
-  `NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC`, `NEXT_PUBLIC_STELLAR_RPC_URL` and
-  `NEXT_PUBLIC_STELLAR_HORIZON_URL` set, then confirm the running bundle
-  targets mainnet before continuing. `helm upgrade` prints this warning via
-  `helm/ophirpay/templates/NOTES.txt`.
+      are inlined by Next.js at build time, so `config.NEXT_PUBLIC_*` cannot
+      retarget a prebuilt image: a testnet image stays on testnet no matter what
+      Helm is given. Build (or select) an image built with
+      `NEXT_PUBLIC_STELLAR_NETWORK=PUBLIC`, `NEXT_PUBLIC_STELLAR_RPC_URL` and
+      `NEXT_PUBLIC_STELLAR_HORIZON_URL` set, then confirm the running bundle
+      targets mainnet before continuing. `helm upgrade` prints this warning via
+      `helm/ophirpay/templates/NOTES.txt`.
 
 ---
 
@@ -437,8 +437,8 @@
 - [ ] **Contract endpoints answer**: `curl -s https://ophirpay.com/api/contracts | jq .` returns the deployed version and owner.
 
 - [ ] **SSE stream connects**: `curl -N https://ophirpay.com/api/events` emits a
-  `connected` event then `heartbeat` frames every 15s (see
-  [docs/SSE.md](./SSE.md)).
+      `connected` event then `heartbeat` frames every 15s (see
+      [docs/SSE.md](./SSE.md)).
 
 - [ ] **Manual smoke test**:
   - [ ] Dashboard loads without console errors
@@ -461,7 +461,7 @@
 - [ ] Phase 3 contract verification all green
 - [ ] Phase 4 registry filled and backed up
 - [ ] Phase 7 app verification all green
-- [ ] Monitoring shows healthy metrics (`/api/metrics`)
+- [ ] Monitoring shows healthy metrics (`/api/metrics`, scraped with the `METRICS_TOKEN` bearer token)
 - [ ] Emergency contact recorded (on-call engineer, status.stellar.org)
 
 > **Done — OphirPay is live on mainnet.** Keep the Phase 4 registry safe: it is
@@ -476,3 +476,7 @@
 - [docs/TROUBLESHOOTING.md](./TROUBLESHOOTING.md) — symptom → cause → fix for common errors
 - [docs/metrics-endpoints.md](./metrics-endpoints.md) — monitoring endpoints
 - [docs/SSE.md](./SSE.md) — real-time event stream contract
+
+## Post-Deployment Verification
+
+Run `scripts/verify-deployment.sh` after deployment to ensure `ALLOWED_SOURCE` matches the deployed orchestrator and ownership is aligned. If left unset, emergency pause will fail.

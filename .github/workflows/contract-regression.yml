@@ -1,15 +1,62 @@
 name: Contract regression guard
 
+# Reports WASM size and fee deltas for every contract change (issue #743):
+#   - a size table (baseline / new / Δ bytes / Δ %) in the job summary
+#   - a fee table diffed against contracts/fee-baseline.json
+#   - a PR comment so the numbers are visible during review
+# Fails only when a contract grows past WASM_SIZE_THRESHOLD_PERCENT (default
+# 3 %, or `sizeThresholdPercent` in contracts/wasm-baseline.json) or when a fee
+# assertion changes.
+#
+# Details and the baseline-update procedure: docs/GAS.md
+
+# Contract changes are detected by a `changes` job plus an always-running gate
+# job instead of workflow-level `paths:` filters. A path-filtered workflow never
+# reports a check when it is skipped, so requiring `contract-regression` in
+# branch protection left unrelated PRs on "Expected — waiting for status".
 on:
   pull_request:
-    paths:
-      - 'contracts/**'
-      - 'scripts/check-contract-regressions.mjs'
-      - '.github/workflows/contract-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# -- Global Concurrency — cancel stale runs on same PR --------
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  contract-regression:
+  changes:
+    name: Detect contract changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      # workflow_dispatch has no diff to compute: fall back to running the job.
+      contracts: ${{ steps.filter.outputs.contracts || 'true' }}
+    steps:
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            contracts:
+              - 'contracts/**'
+              - 'scripts/check-contract-regressions.mjs'
+              - '.github/workflows/contract-regression.yml'
+
+  contract-regression:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    # Default 3 %; override per-PR/per-repo with the WASM_SIZE_THRESHOLD_PERCENT
+    # repository variable, or by running the script with the env var set.
+    env:
+      WASM_SIZE_THRESHOLD_PERCENT: ${{ vars.WASM_SIZE_THRESHOLD_PERCENT }}
     defaults:
       run:
         working-directory: contracts
@@ -21,6 +68,88 @@ jobs:
           target: wasm32v1-none
       - run: cargo build --manifest-path ophirpay/Cargo.toml --target wasm32v1-none --release
       - run: cargo build --manifest-path emitter/Cargo.toml --target wasm32v1-none --release
-      - name: Check WASM size guardrails
+      - name: Run fee assertions and emit the fee report
+        run: cargo test --manifest-path ophirpay/Cargo.toml --test fee_report -- --nocapture
+        env:
+          OPHIRPAY_FEE_REPORT_PATH: ${{ github.workspace }}/fee-report.json
+      - name: Check WASM size and fee deltas
         working-directory: .
         run: node scripts/check-contract-regressions.mjs
+        env:
+          FEE_REPORT_PATH: fee-report.json
+          REGRESSION_REPORT_PATH: contract-regression-report.md
+      - name: Upload the regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-regression-report
+          path: contract-regression-report.md
+          if-no-files-found: warn
+      - name: Comment the report on the pull request
+        # Fork PRs get a read-only token, so a failed comment must not fail the
+        # job — the job summary always carries the same report.
+        if: always() && github.event_name == 'pull_request' && hashFiles('contract-regression-report.md') != ''
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- contract-regression-report -->';
+            const body = `${marker}\n${fs.readFileSync('contract-regression-report.md', 'utf8')}`;
+            const issue_number = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+
+            const existing = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+            });
+            const previous = existing.find((c) => c.body?.includes(marker));
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: previous.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+  # The only required status check for this workflow. It always runs, so a
+  # PR that does not touch contracts gets a green `contract-regression-gate`
+  # instead of a check that never reports. Never mark `contract-regression` or
+  # `changes` as required — they can be skipped.
+  contract-regression-gate:
+    name: contract-regression-gate
+    needs: [changes, contract-regression]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Confirm the contract checks passed or were not needed
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          JOB_RESULT: ${{ needs.contract-regression.result }}
+          CONTRACTS_NEEDED: ${{ needs.changes.outputs.contracts }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::Change detection failed (${CHANGES_RESULT}), so the contract checks cannot be certified."
+            exit 1
+          fi
+
+          case "$JOB_RESULT" in
+            success)
+              echo "✅ Contract regression checks passed."
+              ;;
+            skipped)
+              if [ "$CONTRACTS_NEEDED" = "true" ]; then
+                echo "::error::Contract files changed but the contract-regression job was skipped."
+                exit 1
+              fi
+              echo "✅ No contract-related files changed; the contract-regression job was skipped."
+              ;;
+            *)
+              echo "::error::Contract regression checks did not pass (${JOB_RESULT})."
+              exit 1
+              ;;
+          esac

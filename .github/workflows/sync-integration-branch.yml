@@ -1,0 +1,176 @@
+name: "🔁 Sync Integration Branch"
+
+# Keeps `integration/staging` from drifting behind `main` while batch mode is
+# active. Commits land on `main` directly (release chores, hotfixes, the
+# promotion merge itself); without this sync the integration branch silently
+# falls behind, every PR is developed and tested against a stale base, and the
+# next promotion PR carries conflicts nobody saw coming.
+#
+# Behaviour:
+#   - runs on every push to `main` (and on demand via `workflow_dispatch`)
+#   - no-op when `integration/staging` does not exist (batch mode over)
+#   - fast-forwards when possible, otherwise merges `main` into the branch
+#   - a conflicting merge is aborted and a tracking issue is opened (or
+#     updated) with the conflicting files, so the drift is visible instead of
+#     silent
+#
+# Token: the push prefers `INTEGRATION_SYNC_TOKEN` (GitHub App token or fine-grained
+# PAT with contents:write) so downstream `on: push` workflows trigger on the sync
+# commit. If `INTEGRATION_SYNC_TOKEN` is not configured, it falls back to
+# `GITHUB_TOKEN` with a warning, keeping the sync operational without failing CI.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-integration-branch
+  cancel-in-progress: false
+
+env:
+  INTEGRATION_BRANCH: integration/staging
+  SOURCE_BRANCH: main
+  CONFLICT_MARKER: "<!-- integration-sync-conflict -->"
+
+jobs:
+  sync:
+    name: "🔁 Sync integration/staging with main"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check whether the integration branch exists
+        id: branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          set +e
+          api_output=$(gh api -i "repos/${GITHUB_REPOSITORY}/git/ref/heads/${INTEGRATION_BRANCH}" 2>&1)
+          api_exit=$?
+          set -e
+
+          http_status=$(printf '%s\n' "$api_output" | grep -m1 -E '^HTTP/[0-9.]+[[:space:]]+[0-9]{3}' | awk '{print $2}' || true)
+
+          # Only a genuine 404 means batch mode is over. Rate limits, auth
+          # failures and 5xx responses fail the job instead of silently
+          # skipping the sync (same fail-closed rule as the PR guard).
+          if [ "$http_status" = "404" ] || { [ "$api_exit" -ne 0 ] && printf '%s' "$api_output" | grep -q "HTTP 404"; }; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::'${INTEGRATION_BRANCH}' does not exist — batch mode is over. Nothing to sync."
+          elif [ "$http_status" = "200" ] || [ "$api_exit" -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "'${INTEGRATION_BRANCH}' exists. Batch mode active."
+          else
+            echo "::error title=GitHub API error::Could not verify '${INTEGRATION_BRANCH}' (exit ${api_exit}, HTTP status '${http_status:-unknown}')."
+            printf '%s\n' "$api_output"
+            exit 1
+          fi
+
+      - name: Resolve sync token
+        id: token
+        if: steps.branch.outputs.exists == 'true'
+        env:
+          SYNC_TOKEN: ${{ secrets.INTEGRATION_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${SYNC_TOKEN:-}" ]; then
+            echo "✅ Using INTEGRATION_SYNC_TOKEN for branch sync."
+          else
+            echo "::warning title=Missing INTEGRATION_SYNC_TOKEN::INTEGRATION_SYNC_TOKEN is not configured in repository secrets. Falling back to GITHUB_TOKEN. Note: Pushes via GITHUB_TOKEN will not trigger downstream branch CI. Set INTEGRATION_SYNC_TOKEN (PAT or GitHub App with contents:write) to trigger branch CI."
+          fi
+
+      - name: Check out the integration branch
+        if: steps.branch.outputs.exists == 'true'
+        uses: actions/checkout@v4
+        with:
+          # Literal rather than `env:`: the `env` context is not available in
+          # `with:`. Keep in sync with the INTEGRATION_BRANCH value above.
+          ref: integration/staging
+          token: ${{ secrets.INTEGRATION_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Merge main into the integration branch
+        id: merge
+        if: steps.branch.outputs.exists == 'true'
+        run: |
+          set -euo pipefail
+
+          git config user.name "ophirpay-integration-sync"
+          git config user.email "integration-sync@ophirpay.dev"
+          git fetch --no-tags origin "${SOURCE_BRANCH}"
+
+          before=$(git rev-parse HEAD)
+          if ! git merge --ff --no-edit "origin/${SOURCE_BRANCH}"; then
+            conflicts=$(git diff --name-only --diff-filter=U | sort)
+            git merge --abort || true
+            if [ -z "$conflicts" ]; then
+              echo "::error::Merging ${SOURCE_BRANCH} into ${INTEGRATION_BRANCH} failed without reporting conflicting files."
+              exit 1
+            fi
+            {
+              echo "conflicts<<SYNC_EOF"
+              printf '%s\n' "$conflicts"
+              echo "SYNC_EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "::warning::Merge conflict between ${SOURCE_BRANCH} and ${INTEGRATION_BRANCH}; opening a tracking issue."
+            exit 0
+          fi
+
+          after=$(git rev-parse HEAD)
+          if [ "$before" = "$after" ]; then
+            echo "'${INTEGRATION_BRANCH}' is already up to date with '${SOURCE_BRANCH}'."
+            exit 0
+          fi
+
+          git push origin "HEAD:${INTEGRATION_BRANCH}"
+          echo "Synced ${INTEGRATION_BRANCH} to ${after}."
+
+      - name: Open or update the conflict tracking issue
+        if: steps.branch.outputs.exists == 'true' && steps.merge.outputs.conflicts != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFLICTS: ${{ steps.merge.outputs.conflicts }}
+          SYNCED_SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          body_file=$(mktemp)
+          {
+            printf '%s\n' "$CONFLICT_MARKER"
+            printf '`%s` could not be merged from `%s`, so batch-mode PRs are now based on a stale branch.\n\n' "$INTEGRATION_BRANCH" "$SOURCE_BRANCH"
+            printf -- '- **Pushed commit:** `%s`\n' "$SYNCED_SHA"
+            printf -- '- **Workflow run:** %s\n\n' "$RUN_URL"
+            printf '## Conflicting files\n\n'
+            printf '%s\n' "$CONFLICTS" | sed 's/^/- `/; s/$/`/'
+            printf '\n## How to resolve\n\n'
+            printf '```bash\n'
+            printf 'git fetch origin\n'
+            printf 'git switch %s\n' "$INTEGRATION_BRANCH"
+            printf 'git merge origin/%s\n' "$SOURCE_BRANCH"
+            printf '# resolve the conflicts listed above, then:\n'
+            printf 'git push origin %s\n' "$INTEGRATION_BRANCH"
+            printf '```\n\n'
+            printf 'The next push to `%s` re-runs the sync and updates this issue. Close it once the merge lands and the integration branch is current.\n' "$SOURCE_BRANCH"
+            printf '\n<sub>Automated by <code>.github/workflows/sync-integration-branch.yml</code>.</sub>\n'
+          } > "$body_file"
+
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 \
+            --json number,body \
+            --jq ".[] | select(.body // \"\" | contains(\"${CONFLICT_MARKER}\")) | .number" \
+            | head -n1 || true)
+
+          if [ -n "${existing:-}" ]; then
+            gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --body-file "$body_file"
+            echo "Updated conflict tracking issue #${existing}."
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "integration-sync: ${SOURCE_BRANCH} conflicts with ${INTEGRATION_BRANCH}" \
+              --body-file "$body_file"
+          fi

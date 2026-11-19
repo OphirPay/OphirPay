@@ -102,6 +102,25 @@ describe("replaySql / parseMigrations", () => {
     expect(state.tables.Payment.amount).toBe("DECIMAL(18,7)");
   });
 
+  it("replays every column in a multi-line, comma-separated ALTER TABLE", () => {
+    // Regression: Prisma emits `ALTER TABLE "X"\n  ADD COLUMN a ...,\n  ADD COLUMN b ...;`
+    // for multi-column migrations. Only the first ADD COLUMN used to be
+    // parsed, so all the remaining columns were reported as false drift.
+    const state: MigrationState = { tables: {}, enums: {} };
+    replaySql(
+      `ALTER TABLE "WebhookDelivery"
+       ADD COLUMN "targetUrl" TEXT,
+       ADD COLUMN "canonicalBody" TEXT,
+       ADD COLUMN "durationMs" INTEGER;`,
+      state
+    );
+    expect(state.tables.WebhookDelivery).toEqual({
+      targetUrl: "TEXT",
+      canonicalBody: "TEXT",
+      durationMs: "INTEGER",
+    });
+  });
+
   it("semicolons inside comments do not split statements", () => {
     const state: MigrationState = { tables: { Refund: {} }, enums: {} };
     replaySql(

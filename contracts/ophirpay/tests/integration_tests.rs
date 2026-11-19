@@ -2,8 +2,8 @@
 #![cfg(test)]
 
 use ophirpay_contract::{
-    BatchCreateResult, OphirPayContract, OphirPayContractClient, Payment, PaymentError,
-    RefundReasonCode, RefundStatus,
+    AssetFeeTotal, BatchCreateResult, MultiAssetPayment, OphirPayContract, OphirPayContractClient,
+    Payment, PaymentError, RefundReasonCode, RefundStatus,
 };
 use ophirpay_emitter::{EmitterError, PaymentEventEmitter, PaymentEventEmitterClient};
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -39,6 +39,7 @@ impl<'a> TestFixture<'a> {
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
 
         TestFixture {
             env,
@@ -62,6 +63,17 @@ impl<'a> TestFixture<'a> {
     pub fn mint(&self, to: &Address, amount: i128) {
         self.token_admin_client.mint(to, &amount);
     }
+}
+
+/// Read a per-asset fee from a `MultiAssetBatchResult` vector.
+fn fee_for(fees: &Vec<AssetFeeTotal>, asset: &Address) -> i128 {
+    for index in 0..fees.len() {
+        let entry = fees.get(index).unwrap();
+        if entry.asset == *asset {
+            return entry.fee;
+        }
+    }
+    0
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -290,12 +302,16 @@ fn test_batch_payment_happy_path() {
     assert_eq!(batch.payment_ids.len(), 4);
 
     // Verify payments by batch
+    // Bounded reader (#742): a `PaymentList` of at most 100 entries, newest
+    // first, with an explicit truncation flag.
     let batch_payments = fix.client.get_payments_by_batch(&1);
-    assert_eq!(batch_payments.len(), 4);
-    assert_eq!(batch_payments.get(0).unwrap().payee, p1);
-    assert_eq!(batch_payments.get(0).unwrap().amount, 100_000);
-    assert_eq!(batch_payments.get(3).unwrap().payee, p4);
-    assert_eq!(batch_payments.get(3).unwrap().amount, 150_000);
+    assert_eq!(batch_payments.total, 4);
+    assert!(!batch_payments.truncated);
+    assert_eq!(batch_payments.items.len(), 4);
+    assert_eq!(batch_payments.items.get(0).unwrap().payee, p4);
+    assert_eq!(batch_payments.items.get(0).unwrap().amount, 150_000);
+    assert_eq!(batch_payments.items.get(3).unwrap().payee, p1);
+    assert_eq!(batch_payments.items.get(3).unwrap().amount, 100_000);
 }
 
 #[test]
@@ -363,6 +379,232 @@ fn test_batch_empty_and_overflow_errors() {
         fix.client
             .try_create_batch(&creator, &payees, &zero_amounts, &fix.token_id, &tx_hash);
     assert!(res.is_err());
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2b. MULTI-ASSET BATCH PAYMENTS (#1403)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_multi_asset_batch_settles_three_tokens_and_accounts_fees() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let fee_collector = Address::generate(&fix.env);
+
+    // Three distinct SAC token contracts: XLM (from the fixture), USDC, EURC.
+    let usdc_admin = Address::generate(&fix.env);
+    let usdc_id = fix.env.register_stellar_asset_contract(usdc_admin.clone());
+    let usdc_admin_client = token::StellarAssetClient::new(&fix.env, &usdc_id);
+    let usdc_client = token::Client::new(&fix.env, &usdc_id);
+
+    let eurc_admin = Address::generate(&fix.env);
+    let eurc_id = fix.env.register_stellar_asset_contract(eurc_admin.clone());
+    let eurc_admin_client = token::StellarAssetClient::new(&fix.env, &eurc_id);
+    let eurc_client = token::Client::new(&fix.env, &eurc_id);
+
+    let xlm_client = token::Client::new(&fix.env, &fix.token_id);
+
+    // Fund the payer. The collector starts empty: SAC transfers create the
+    // recipient balance, which is exactly what a fresh fee collector looks like.
+    let creator_xlm_initial = 100_000_000i128;
+    let creator_usdc_initial = 100_000_000i128;
+    let creator_eurc_initial = 100_000_000i128;
+    fix.mint(&creator, creator_xlm_initial);
+    usdc_admin_client.mint(&creator, &creator_usdc_initial);
+    eurc_admin_client.mint(&creator, &creator_eurc_initial);
+
+    // 1% payment fee, collected per asset.
+    fix.client
+        .set_fee_config(&fix.owner, &100u32, &0u32, &0u32, &0i128, &0i128, &true);
+    fix.client.set_fee_collector(&fix.owner, &fee_collector);
+
+    let alice = Address::generate(&fix.env);
+    let bob = Address::generate(&fix.env);
+    let carol = Address::generate(&fix.env);
+
+    let mut legs = Vec::new(&fix.env);
+    legs.push_back(MultiAssetPayment {
+        payee: alice.clone(),
+        amount: 1_000_000i128,
+        asset: fix.token_id.clone(),
+    });
+    legs.push_back(MultiAssetPayment {
+        payee: bob.clone(),
+        amount: 500_000i128,
+        asset: fix.token_id.clone(),
+    });
+    legs.push_back(MultiAssetPayment {
+        payee: carol.clone(),
+        amount: 2_000_000i128,
+        asset: usdc_id.clone(),
+    });
+    legs.push_back(MultiAssetPayment {
+        payee: alice.clone(),
+        amount: 3_000_000i128,
+        asset: eurc_id.clone(),
+    });
+
+    let tx_hash = String::from_str(&fix.env, "multi_asset_batch_001");
+    let result = fix
+        .client
+        .execute_multi_asset_batch(&creator, &legs, &tx_hash);
+
+    assert_eq!(result.batch_id, 1);
+    assert_eq!(result.total_requests, 4);
+    assert_eq!(result.successful, 4);
+    assert_eq!(result.failed, 0);
+    assert_eq!(result.fees.len(), 3);
+
+    // Per-token fee totals: 1% of 1.5M XLM-stroops, 2M USDC, 3M EURC.
+    assert_eq!(fee_for(&result.fees, &fix.token_id), 15_000);
+    assert_eq!(fee_for(&result.fees, &usdc_id), 20_000);
+    assert_eq!(fee_for(&result.fees, &eurc_id), 30_000);
+
+    // Each recipient received exactly the requested asset and amount.
+    assert_eq!(xlm_client.balance(&alice), 1_000_000);
+    assert_eq!(xlm_client.balance(&bob), 500_000);
+    assert_eq!(usdc_client.balance(&carol), 2_000_000);
+    assert_eq!(eurc_client.balance(&alice), 3_000_000);
+
+    // Fees landed with the collector, per token, not in a cross-asset pool.
+    assert_eq!(xlm_client.balance(&fee_collector), 15_000);
+    assert_eq!(usdc_client.balance(&fee_collector), 20_000);
+    assert_eq!(eurc_client.balance(&fee_collector), 30_000);
+
+    // Payer paid principal + fee in each token.
+    assert_eq!(
+        xlm_client.balance(&creator),
+        creator_xlm_initial - 1_500_000 - 15_000
+    );
+    assert_eq!(
+        usdc_client.balance(&creator),
+        creator_usdc_initial - 2_000_000 - 20_000
+    );
+    assert_eq!(
+        eurc_client.balance(&creator),
+        creator_eurc_initial - 3_000_000 - 30_000
+    );
+
+    // Conservation invariant, per token contract: every stroop is either still
+    // with the payer, with a recipient, or with the fee collector.
+    assert_eq!(
+        xlm_client.balance(&creator)
+            + xlm_client.balance(&alice)
+            + xlm_client.balance(&bob)
+            + xlm_client.balance(&fee_collector),
+        creator_xlm_initial
+    );
+    assert_eq!(
+        usdc_client.balance(&creator)
+            + usdc_client.balance(&carol)
+            + usdc_client.balance(&fee_collector),
+        creator_usdc_initial
+    );
+    assert_eq!(
+        eurc_client.balance(&creator)
+            + eurc_client.balance(&alice)
+            + eurc_client.balance(&fee_collector),
+        creator_eurc_initial
+    );
+
+    // Lifetime per-asset accounting matches the batch response.
+    assert_eq!(fix.client.get_asset_fee_total(&fix.token_id), 15_000);
+    assert_eq!(fix.client.get_asset_fee_total(&usdc_id), 20_000);
+    assert_eq!(fix.client.get_asset_fee_total(&eurc_id), 30_000);
+
+    // Batch header and individual payment records preserve token identity.
+    assert_eq!(fix.client.get_multi_asset_batch_count(), 1);
+    let batch = fix.client.get_multi_asset_batch(&1);
+    assert_eq!(batch.total_recipients, 4);
+    assert_eq!(batch.payment_ids.len(), 4);
+    assert_eq!(batch.fees.len(), 3);
+    assert_eq!(fee_for(&batch.fees, &usdc_id), 20_000);
+
+    let first = fix.client.get_payment(&1);
+    assert_eq!(first.asset, fix.token_id);
+    assert_eq!(first.payee, alice);
+    assert_eq!(first.amount, 1_000_000);
+    let third = fix.client.get_payment(&3);
+    assert_eq!(third.asset, usdc_id);
+    assert_eq!(third.payee, carol);
+    let fourth = fix.client.get_payment(&4);
+    assert_eq!(fourth.asset, eurc_id);
+
+    assert_eq!(fix.client.get_payment_count(), 4);
+    let stats = fix.client.get_stats();
+    assert_eq!(stats.total_batches_processed, 1);
+    assert_eq!(stats.total_payments_recorded, 4);
+
+    // The single-asset reader uses a separate namespace and stays empty.
+    assert_eq!(fix.client.get_batch_count(), 0);
+}
+
+#[test]
+fn test_multi_asset_batch_partial_failure_and_validation_guards() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    fix.mint(&creator, 10_000_000);
+
+    // No fee config: fees are disabled, so the batch settles principal only.
+    let mut legs = Vec::new(&fix.env);
+    legs.push_back(MultiAssetPayment {
+        payee: payee.clone(),
+        amount: 0i128,
+        asset: fix.token_id.clone(),
+    });
+    legs.push_back(MultiAssetPayment {
+        payee: payee.clone(),
+        amount: -5i128,
+        asset: fix.token_id.clone(),
+    });
+    legs.push_back(MultiAssetPayment {
+        payee: payee.clone(),
+        amount: 250_000i128,
+        asset: fix.token_id.clone(),
+    });
+
+    let result = fix.client.execute_multi_asset_batch(
+        &creator,
+        &legs,
+        &String::from_str(&fix.env, "partial_multi_asset"),
+    );
+    assert_eq!(result.total_requests, 3);
+    assert_eq!(result.successful, 1);
+    assert_eq!(result.failed, 2);
+    assert_eq!(result.fees.len(), 0);
+    assert_eq!(fix.token_client.balance(&payee), 250_000);
+    assert_eq!(fix.client.get_payment_count(), 1);
+
+    // Empty batches are rejected before any transfer or record is written.
+    let empty = Vec::new(&fix.env);
+    let empty_result = fix.client.try_execute_multi_asset_batch(
+        &creator,
+        &empty,
+        &String::from_str(&fix.env, "empty_multi_asset"),
+    );
+    assert!(matches!(empty_result, Err(Ok(PaymentError::BatchEmpty))));
+
+    // The 100-leg cap mirrors create_batch and is enforced before transfers.
+    let mut too_many = Vec::new(&fix.env);
+    for _ in 0..101 {
+        too_many.push_back(MultiAssetPayment {
+            payee: Address::generate(&fix.env),
+            amount: 1_000i128,
+            asset: fix.token_id.clone(),
+        });
+    }
+    let too_large_result = fix.client.try_execute_multi_asset_batch(
+        &creator,
+        &too_many,
+        &String::from_str(&fix.env, "too_many_multi_asset"),
+    );
+    assert!(matches!(
+        too_large_result,
+        Err(Ok(PaymentError::BatchTooLarge))
+    ));
+    assert_eq!(fix.client.get_multi_asset_batch_count(), 1);
+    assert_eq!(fix.client.get_payment_count(), 1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -777,20 +1019,20 @@ fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
         &total,
         &fix.token_id,
         &now,
-        &(now + 4),
+        &(now + 100),
         &String::from_str(&fix.env, "overflow e2e"),
     );
     assert_eq!(stream_id, 1);
 
-    // Half-way through the schedule: `total * 2` overflows i128. Before the
+    // Half-way through the schedule: `total * 50` overflows i128. Before the
     // fix this vested 0, so the recipient could claim nothing at all.
-    fix.env.ledger().set_timestamp(now + 2);
+    fix.env.ledger().set_timestamp(now + 50);
     let claimed = fix.client.claim_stream(&recipient, &stream_id);
     assert!(claimed > 0, "overflow must not collapse vesting to zero");
     assert_eq!(claimed, total / 2);
 
     // Past the end time the remainder is claimable and drains the stream.
-    fix.env.ledger().set_timestamp(now + 100);
+    fix.env.ledger().set_timestamp(now + 150);
     let remainder = fix.client.claim_stream(&recipient, &stream_id);
     assert_eq!(remainder, total - (total / 2));
 
@@ -809,3 +1051,499 @@ fn test_stream_vesting_overflow_pays_correct_balance_end_to_end() {
     assert_eq!(fix.token_client.balance(&recipient), total);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SCOPED PAUSE TESTS (issue #826)
+//
+// Scopes are exposed as numeric ids so the contract can reject an unknown id
+// with a clear error: Payments = 0, Escrows = 1, Streams = 2, Recurring = 3,
+// Refunds = 4, Governance = 5, Hooks = 6, Batches = 7.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Pausing one scope blocks only that scope's mutating entrypoints; every
+/// other scope and all getters keep working, and resuming restores writes.
+#[test]
+fn test_scoped_pause_blocks_only_that_scope() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    fix.mint(&payer, 1_000_000);
+
+    // Pause only the Payments scope (id 0).
+    fix.client.set_scope_paused(&fix.owner, &0u32, &true);
+    assert_eq!(fix.client.is_paused(), false);
+    assert_eq!(fix.client.is_scope_paused(&0u32), true);
+
+    let paused = fix.client.get_paused_scopes();
+    assert_eq!(paused.len(), 1);
+    assert_eq!(paused.get(0), Some(0u32));
+
+    // A payments write is rejected...
+    let tx = String::from_str(&fix.env, "0xscoped_pause");
+    let meta = String::from_str(&fix.env, "scope test");
+    let blocked =
+        fix.client
+            .try_record_payment(&payer, &payee, &1_000i128, &fix.token_id, &tx, &meta);
+    assert_eq!(blocked, Err(Ok(PaymentError::ContractPaused)));
+
+    // ...but escrows (a different scope) still move funds.
+    let escrow_id = fix.client.create_escrow(
+        &payer,
+        &payee,
+        &Option::<Address>::None,
+        &500i128,
+        &fix.token_id,
+        &(fix.env.ledger().timestamp() + 86_400),
+        &String::from_str(&fix.env, "still open"),
+    );
+    assert_eq!(escrow_id, 1);
+
+    // Getters keep answering while a scope is paused.
+    assert_eq!(fix.client.get_payment_count(), 0);
+    assert_eq!(fix.client.get_escrow_count(), 1);
+
+    // Resuming the scope restores payments.
+    fix.client.set_scope_paused(&fix.owner, &0u32, &false);
+    assert_eq!(fix.client.is_scope_paused(&0u32), false);
+    assert_eq!(fix.client.get_paused_scopes().len(), 0);
+    let payment_id =
+        fix.client
+            .record_payment(&payer, &payee, &1_000i128, &fix.token_id, &tx, &meta);
+    assert_eq!(payment_id, 1);
+}
+
+/// The global emergency pause overrides the scope flags: with no scope paused,
+/// it blocks every mutating path while getters keep answering.
+#[test]
+fn test_global_pause_overrides_scopes() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    fix.mint(&payer, 1_000_000);
+
+    // No scope is individually paused before the emergency pause.
+    assert_eq!(fix.client.get_paused_scopes().len(), 0);
+
+    fix.client.emergency_pause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), true);
+
+    let tx = String::from_str(&fix.env, "0xglobal_override");
+    let meta = String::from_str(&fix.env, "global");
+    let payments =
+        fix.client
+            .try_record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert_eq!(payments, Err(Ok(PaymentError::ContractPaused)));
+
+    let escrow = fix.client.try_create_escrow(
+        &payer,
+        &payee,
+        &Option::<Address>::None,
+        &100i128,
+        &fix.token_id,
+        &(fix.env.ledger().timestamp() + 86_400),
+        &String::from_str(&fix.env, "global"),
+    );
+    assert_eq!(escrow, Err(Ok(PaymentError::ContractPaused)));
+
+    // Read-only getters still answer during a global pause.
+    assert_eq!(fix.client.get_payment_count(), 0);
+
+    // Emergency unpause restores writes; scope flags were never touched.
+    fix.client.emergency_unpause_all(&fix.owner);
+    assert_eq!(fix.client.is_paused(), false);
+    assert_eq!(fix.client.get_paused_scopes().len(), 0);
+    let payment_id =
+        fix.client
+            .record_payment(&payer, &payee, &100i128, &fix.token_id, &tx, &meta);
+    assert_eq!(payment_id, 1);
+}
+
+/// Unknown scope ids are rejected by both the setter and the reader, and no
+/// state is written for them.
+#[test]
+fn test_unknown_pause_scope_is_rejected() {
+    let fix = TestFixture::new();
+
+    // 8 is the first id past the eight defined scopes.
+    let set = fix.client.try_set_scope_paused(&fix.owner, &8u32, &true);
+    assert_eq!(set, Err(Ok(PaymentError::InvalidPauseScope)));
+
+    let read = fix.client.try_is_scope_paused(&8u32);
+    assert_eq!(read, Err(Ok(PaymentError::InvalidPauseScope)));
+
+    // Nothing was written for the unknown id.
+    assert_eq!(fix.client.get_paused_scopes().len(), 0);
+}
+
+// ===========================================================================
+// AUTOMATIC TTL EXTENSION FOR ACTIVE ESCROW & STREAM RECORDS (#1352)
+// ===========================================================================
+
+#[test]
+fn test_escrow_and_stream_automatic_ttl_extension_on_read_and_claim() {
+    use ophirpay_contract::{touch_record_ttl, ESCROW_KEY, STREAM_KEY, TTL_EXTEND_TO, TTL_THRESHOLD};
+
+    assert_eq!(TTL_THRESHOLD, 10_000);
+    assert_eq!(TTL_EXTEND_TO, 50_000);
+
+    let fix = TestFixture::new();
+    let depositor = Address::generate(&fix.env);
+    let beneficiary = Address::generate(&fix.env);
+    fix.mint(&depositor, 100_000);
+
+    let now = fix.env.ledger().timestamp();
+    let escrow_id = fix.client.create_escrow(
+        &depositor,
+        &beneficiary,
+        &Option::<Address>::None,
+        &25_000i128,
+        &fix.token_id,
+        &(now + 3600),
+        &String::from_str(&fix.env, "ttl_escrow"),
+    );
+    let stream_id = fix.client.create_stream(
+        &depositor,
+        &beneficiary,
+        &50_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 1000),
+        &String::from_str(&fix.env, "ttl_stream"),
+    );
+
+    // Status reads via get_escrow and get_stream automatically touch record TTL
+    let esc = fix.client.get_escrow(&escrow_id);
+    assert_eq!(esc.amount, 25_000);
+    let str_rec = fix.client.get_stream(&stream_id);
+    assert_eq!(str_rec.total_amount, 50_000);
+
+    // Direct helper invocation inside contract context succeeds without error
+    fix.env.as_contract(&fix.contract_id, || {
+        touch_record_ttl(&fix.env, &(ESCROW_KEY, escrow_id));
+        touch_record_ttl(&fix.env, &(STREAM_KEY, stream_id));
+    });
+
+    // Partial stream claim and escrow release also refresh record TTLs
+    fix.env.ledger().set_timestamp(now + 500);
+    let claimed = fix.client.claim_stream(&beneficiary, &stream_id);
+    assert_eq!(claimed, 25_000);
+
+    fix.client.release_escrow(&fix.owner, &escrow_id);
+    assert_eq!(fix.client.get_escrow(&escrow_id).released, true);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stream Duration Bounds Enforcement (#1350)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_create_stream_duration_too_short_fails() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 100_000);
+
+    let now = fix.env.ledger().timestamp();
+    // 59 seconds duration (< MIN_STREAM_DURATION = 60s) fails with StreamDurationTooShort
+    let res = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &10_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 59),
+        &String::from_str(&fix.env, "meta_short"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::StreamDurationTooShort)));
+}
+
+#[test]
+fn test_create_stream_duration_too_long_fails() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 100_000);
+
+    let now = fix.env.ledger().timestamp();
+    let five_years = 5 * 365 * 86_400;
+    // 5 years + 1 second (> MAX_STREAM_DURATION) fails with StreamDurationTooLong
+    let res = fix.client.try_create_stream(
+        &creator,
+        &recipient,
+        &10_000i128,
+        &fix.token_id,
+        &now,
+        &(now + five_years + 1),
+        &String::from_str(&fix.env, "meta_long"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::StreamDurationTooLong)));
+}
+
+#[test]
+fn test_create_stream_valid_boundaries_succeed() {
+    let fix = TestFixture::new();
+    let creator = Address::generate(&fix.env);
+    let recipient = Address::generate(&fix.env);
+    fix.mint(&creator, 200_000);
+
+    let now = fix.env.ledger().timestamp();
+    let five_years = 5 * 365 * 86_400;
+
+    // Boundary 1: Exactly 60 seconds (MIN_STREAM_DURATION) succeeds
+    let min_stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &10_000i128,
+        &fix.token_id,
+        &now,
+        &(now + 60),
+        &String::from_str(&fix.env, "meta_min"),
+    );
+    assert_eq!(min_stream_id, 1);
+
+    // Boundary 2: Exactly 5 years (MAX_STREAM_DURATION) succeeds
+    let max_stream_id = fix.client.create_stream(
+        &creator,
+        &recipient,
+        &10_000i128,
+        &fix.token_id,
+        &now,
+        &(now + five_years),
+        &String::from_str(&fix.env, "meta_max"),
+    );
+    assert_eq!(max_stream_id, 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fee Configuration & Collector Update On-Chain Events (#1349)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_fee_config_and_collector_update_emits_on_chain_event() {
+    let fix = TestFixture::new();
+    let collector_1 = Address::generate(&fix.env);
+    let collector_2 = Address::generate(&fix.env);
+
+    // Initial fee configuration emits on-chain event
+    fix.client.set_fee_config(
+        &fix.owner,
+        &50u32,
+        &100u32,
+        &150u32,
+        &10i128,
+        &1i128,
+        &true,
+    );
+    use soroban_sdk::testutils::Events as _;
+    let events = fix.env.events().all();
+    assert!(!events.events().is_empty());
+
+    let config = fix.client.get_fee_config().unwrap();
+    assert_eq!(config.payment_fee_bps, 50);
+
+    // Set collector emits on-chain event
+    fix.client.set_fee_collector(&fix.owner, &collector_1);
+    let events = fix.env.events().all();
+    assert!(!events.events().is_empty());
+    assert_eq!(fix.client.get_fee_collector(), Some(collector_1.clone()));
+
+    // Update collector emits on-chain event
+    fix.client.set_fee_collector(&fix.owner, &collector_2);
+    let events = fix.env.events().all();
+    assert!(!events.events().is_empty());
+    assert_eq!(fix.client.get_fee_collector(), Some(collector_2.clone()));
+
+    // Update fee config again emits on-chain event
+    fix.client.set_fee_config(
+        &fix.owner,
+        &100u32,
+        &200u32,
+        &300u32,
+        &20i128,
+        &2i128,
+        &true,
+    );
+    let events = fix.env.events().all();
+    assert!(!events.events().is_empty());
+
+    let updated_config = fix.client.get_fee_config().unwrap();
+    assert_eq!(updated_config.payment_fee_bps, 100);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Token Decimal Precision Validation (#1347)
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_record_payment_standard_7_decimals_succeeds() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+
+    // Default asset (7 decimals) accepts any valid stroop amount
+    let id1 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &1i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx_1"),
+        &String::from_str(&fix.env, "meta_1"),
+    );
+    assert_eq!(id1, 1);
+
+    let id2 = fix.client.record_payment(
+        &payer,
+        &payee,
+        &12_345_678i128,
+        &fix.token_id,
+        &String::from_str(&fix.env, "tx_2"),
+        &String::from_str(&fix.env, "meta_2"),
+    );
+    assert_eq!(id2, 2);
+}
+
+#[test]
+fn test_record_payment_custom_decimals_precision_enforced() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let custom_asset = Address::generate(&fix.env);
+
+    // Configure 2 decimals for fiat-like token (1 cent = 100_000 stroops)
+    fix.client.set_token_decimals(&fix.owner, &custom_asset, &2u32);
+    assert_eq!(fix.client.get_token_decimals(&custom_asset), 2);
+
+    // Exact cent multiple (5 cents = 500_000 stroops) succeeds
+    let id = fix.client.record_payment(
+        &payer,
+        &payee,
+        &500_000i128,
+        &custom_asset,
+        &String::from_str(&fix.env, "tx_cents_valid"),
+        &String::from_str(&fix.env, "cents_ok"),
+    );
+    assert_eq!(id, 1);
+
+    // Sub-cent fractional amount (500_001 stroops) violates decimal precision
+    let res = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &500_001i128,
+        &custom_asset,
+        &String::from_str(&fix.env, "tx_cents_invalid"),
+        &String::from_str(&fix.env, "cents_fail"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+}
+
+#[test]
+fn test_record_payment_indivisible_0_decimals_enforced() {
+    let fix = TestFixture::new();
+    let payer = Address::generate(&fix.env);
+    let payee = Address::generate(&fix.env);
+    let indivisible_asset = Address::generate(&fix.env);
+
+    // Configure 0 decimals (indivisible units: 1 unit = 10_000_000 stroops)
+    fix.client.set_token_decimals(&fix.owner, &indivisible_asset, &0u32);
+    assert_eq!(fix.client.get_token_decimals(&indivisible_asset), 0);
+
+    // Whole unit (3 units = 30_000_000 stroops) succeeds
+    let id = fix.client.record_payment(
+        &payer,
+        &payee,
+        &30_000_000i128,
+        &indivisible_asset,
+        &String::from_str(&fix.env, "tx_whole"),
+        &String::from_str(&fix.env, "whole_ok"),
+    );
+    assert_eq!(id, 1);
+
+    // Fractional unit (10_500_000 stroops) fails
+    let res = fix.client.try_record_payment(
+        &payer,
+        &payee,
+        &10_500_000i128,
+        &indivisible_asset,
+        &String::from_str(&fix.env, "tx_fractional"),
+        &String::from_str(&fix.env, "fractional_fail"),
+    );
+    assert_eq!(res, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+}
+
+#[test]
+fn test_set_token_decimals_bounds_and_auth() {
+    let fix = TestFixture::new();
+    let non_owner = Address::generate(&fix.env);
+    let asset = Address::generate(&fix.env);
+
+    // Non-owner unauthorized
+    let res_auth = fix.client.try_set_token_decimals(&non_owner, &asset, &6u32);
+    assert_eq!(res_auth, Err(Ok(PaymentError::Unauthorized)));
+
+    // Decimals exceeding MAX_TOKEN_DECIMALS (18) fails
+    let res_bounds = fix.client.try_set_token_decimals(&fix.owner, &asset, &19u32);
+    assert_eq!(res_bounds, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+    // Decimals at boundary 18 succeeds
+    fix.client.set_token_decimals(&fix.owner, &asset, &18u32);
+    assert_eq!(fix.client.get_token_decimals(&asset), 18);
+}
+
+
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TIMELOCK DISPATCH
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_admin_fee_config_is_timelocked_and_dispatched() {
+    let fix = TestFixture::new();
+    // The fixture opts out for legacy tests; exercise the production default.
+    fix.client.set_timelock_enabled(&fix.owner, &true);
+    let now = fix.env.ledger().timestamp();
+
+    fix.client
+        .set_fee_config(&fix.owner, &42u32, &100u32, &200u32, &10i128, &1i128, &true);
+
+    // Queued, not applied.
+    assert!(fix.client.get_fee_config().is_none());
+    assert_eq!(fix.client.get_timelock_count(), 1);
+
+    // Premature execution is rejected.
+    assert_eq!(
+        fix.client.try_execute_timelocked_action(&1),
+        Err(Ok(PaymentError::TimelockNotDue))
+    );
+
+    fix.env.ledger().set_timestamp(now + 86_400);
+    fix.client.execute_timelocked_action(&1);
+
+    let config = fix.client.get_fee_config().expect("fee config applied");
+    assert_eq!(config.payment_fee_bps, 42);
+    assert!(fix.client.get_timelocked_action(&1).executed);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ISSUE #1286: ERROR CODE SEMANTICS (HOOKS & OWNERSHIP)
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_unregister_nonexistent_hook_returns_hook_not_found() {
+    let fix = TestFixture::new();
+    let caller = Address::generate(&fix.env);
+
+    // Attempting to unregister a hook that does not exist must return HookNotFound
+    let res = fix.client.try_unregister_hook(&caller, &999);
+    assert_eq!(res, Err(Ok(PaymentError::HookNotFound)));
+}
+
+#[test]
+fn test_accept_ownership_without_pending_transfer_returns_ownership_error() {
+    let fix = TestFixture::new();
+    let caller = Address::generate(&fix.env);
+
+    // Attempting to accept ownership when no transfer was proposed must return NoPendingOwner / OwnershipTransferNotProposed
+    let res = fix.client.try_accept_ownership(&caller);
+    assert_eq!(res, Err(Ok(PaymentError::NoPendingOwner)));
+    assert_eq!(res, Err(Ok(PaymentError::OwnershipTransferNotProposed)));
+}

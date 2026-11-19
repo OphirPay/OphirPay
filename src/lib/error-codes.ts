@@ -75,6 +75,10 @@ export const ERROR_CODES = {
   INSUFFICIENT_PERMISSIONS: "INSUFFICIENT_PERMISSIONS",
   INSUFFICIENT_SCOPE: "INSUFFICIENT_SCOPE",
   ROLE_REQUIRED: "ROLE_REQUIRED",
+  // Step-up authentication ("sudo mode", issue #1389): the session is
+  // authenticated but its last cryptographic verification is too old for a
+  // critical administrative mutation.
+  SUDO_REQUIRED: "SUDO_REQUIRED",
   NOT_OWNER: "NOT_OWNER",
   NOT_SIGNER: "NOT_SIGNER",
   NOT_MEMBER: "NOT_MEMBER",
@@ -108,6 +112,9 @@ export const ERROR_CODES = {
   FILE_NOT_FOUND: "FILE_NOT_FOUND",
   EXPORT_NOT_FOUND: "EXPORT_NOT_FOUND",
   NOTIFICATION_NOT_FOUND: "NOTIFICATION_NOT_FOUND",
+  HOOK_NOT_FOUND: "HOOK_NOT_FOUND",
+  NO_PENDING_OWNER: "NO_PENDING_OWNER",
+  OWNERSHIP_TRANSFER_NOT_PROPOSED: "OWNERSHIP_TRANSFER_NOT_PROPOSED",
   ROUTE_NOT_FOUND: "ROUTE_NOT_FOUND",
 
   // ═══════════════════════════════════════════════════════════════
@@ -244,6 +251,11 @@ export const ERROR_CODES = {
   DATABASE_UNAVAILABLE: "DATABASE_UNAVAILABLE",
   CACHE_UNAVAILABLE: "CACHE_UNAVAILABLE",
   EMAIL_UNAVAILABLE: "EMAIL_UNAVAILABLE",
+
+  // ═══════════════════════════════════════════════════════════════
+  // 504 — Gateway Timeout
+  // ═══════════════════════════════════════════════════════════════
+  GATEWAY_TIMEOUT: "GATEWAY_TIMEOUT",
 
   // ═══════════════════════════════════════════════════════════════
   // Payment-specific (codes used across status ranges)
@@ -401,6 +413,7 @@ export const ERROR_STATUS: Record<string, number> = {
   INSUFFICIENT_PERMISSIONS: 403,
   INSUFFICIENT_SCOPE: 403,
   ROLE_REQUIRED: 403,
+  SUDO_REQUIRED: 403,
   NOT_OWNER: 403,
   NOT_SIGNER: 403,
   NOT_MEMBER: 403,
@@ -432,6 +445,9 @@ export const ERROR_STATUS: Record<string, number> = {
   FILE_NOT_FOUND: 404,
   EXPORT_NOT_FOUND: 404,
   NOTIFICATION_NOT_FOUND: 404,
+  HOOK_NOT_FOUND: 404,
+  NO_PENDING_OWNER: 404,
+  OWNERSHIP_TRANSFER_NOT_PROPOSED: 404,
   ROUTE_NOT_FOUND: 404,
   PROPOSAL_NOT_FOUND: 404,
 
@@ -564,4 +580,7 @@ export const ERROR_STATUS: Record<string, number> = {
   DATABASE_UNAVAILABLE: 503,
   CACHE_UNAVAILABLE: 503,
   EMAIL_UNAVAILABLE: 503,
+
+  // 504
+  GATEWAY_TIMEOUT: 504,
 };

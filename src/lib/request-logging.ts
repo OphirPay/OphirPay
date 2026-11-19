@@ -3,6 +3,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "@/lib/logger";
 import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
+import { getCurrentSpan, REQUEST_ID_SPAN_ATTRIBUTE } from "@/lib/tracing";
 
 /**
  * Async context carrying the current request's id. The proxy (`src/proxy.ts`)
@@ -17,6 +18,17 @@ export const requestIdContext = new AsyncLocalStorage<string>();
 export function getCurrentRequestId(): string | undefined {
   return requestIdContext.getStore();
 }
+
+// Every logger call made inside a request (including from deep helpers that
+// only import `logger`) picks up the request id from this context. Registering
+// a provider avoids a circular import: the logger never imports
+// `request-logging` (and therefore stays usable from the Edge proxy).
+// Publish the lookup on globalThis rather than importing back into the logger:
+// the logger must stay usable from the Edge proxy (no `node:async_hooks`), and
+// tests commonly replace `@/lib/logger` with a minimal mock.
+(globalThis as typeof globalThis & {
+  __ophirpayRequestIdProvider?: () => string | undefined;
+}).__ophirpayRequestIdProvider = getCurrentRequestId;
 
 /**
  * Loose constraint accepted by every App Router handler shape — zero, one, or
@@ -49,6 +61,11 @@ export function withRequestLogging<T extends RouteHandler>(handler: T): T & Hand
     const requestId = req.headers?.get(REQUEST_ID_HEADER) ?? (await getRequestId());
 
     try {
+      // Stamp the active span (when tracing is enabled) with the request id so
+      // logs and traces correlate (issue #815). The attribute key is part of
+      // the documented allowlist, so it survives the PII filter.
+      getCurrentSpan()?.setAttribute(REQUEST_ID_SPAN_ATTRIBUTE, requestId);
+
       // Concrete handler types are narrower than the internal call signature
       // (e.g. `(request, { params }) => ...`), so invoke through the callable.
       const callable = handler as unknown as HandlerCallable;

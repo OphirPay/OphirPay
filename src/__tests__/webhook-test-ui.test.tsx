@@ -104,7 +104,9 @@ describe("WebhookDetailPage (Send test event)", () => {
     expect(within(resultCard).getByText("test: true")).toBeInTheDocument();
 
     // The test endpoint was actually called with a POST.
-    const testCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/test"));
+    const testCall = fetchMock.mock.calls.find(
+      (c) => String(c[0]).includes("/test") && (c[1] as RequestInit | undefined)?.method === "POST",
+    );
     expect(testCall).toBeDefined();
     expect((testCall![1] as RequestInit).method).toBe("POST");
   });

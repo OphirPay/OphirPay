@@ -1,0 +1,337 @@
+name: "🐳 Docker Multi-Arch (amd64 + arm64)"
+
+# Issue #1438 — the Dockerfile used to be published for linux/amd64 only, so
+# every Apple Silicon developer (M1–M4) and every Graviton/Ampere host had to
+# build under emulation locally or run an emulated image in production. This
+# workflow builds, verifies and publishes a multi-architecture image:
+#
+#   1. `build-arch` (matrix) builds the image for EACH architecture with
+#      `docker buildx --load` and starts it on the runner. Because the runner is
+#      amd64, the arm64 build and container run through QEMU — which is exactly
+#      the proof we need: the arm64 image really boots.
+#   2. `publish-manifest` (push to main / integration/staging only) builds both
+#      platforms again with shared BuildKit cache and pushes ONE tag whose
+#      manifest lists linux/amd64 and linux/arm64. `docker pull` on either
+#      architecture then resolves the matching image automatically, so
+#      docker-compose.yml needs no `platform:` directive.
+#
+# Build-time cost and how it is justified are documented in
+# docs/DEPLOYMENT.md → "Multi-architecture images". In short: the arm64 leg is
+# roughly 2–3× the amd64 leg under QEMU, but it is fully cached (BuildKit GHA
+# cache, per-arch scope) and only reruns when Dockerfile/deps change.
+
+on:
+  push:
+    branches: [main, integration/staging]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "docker-compose.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.ts"
+      - "prisma/**"
+      - "scripts/check-node.mjs"
+      - ".github/workflows/docker-multiarch.yml"
+  pull_request:
+    branches: [main, integration/staging]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "docker-compose.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.ts"
+      - "prisma/**"
+      - "scripts/check-node.mjs"
+      - ".github/workflows/docker-multiarch.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-multiarch-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── 1. Build + boot-test each architecture ──────────────────────────────
+  build-arch:
+    name: "🧱 Build & health-check ${{ matrix.platform }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert docker-compose.yml stays platform-agnostic
+        # A multi-arch image is useless if Compose pins one architecture for
+        # everybody. The manifest is what lets Compose pick the host's.
+        run: |
+          set -euo pipefail
+          if grep -nE '^[[:space:]]*platform:[[:space:]]*' docker-compose.yml; then
+            echo "::error::docker-compose.yml must not pin a platform (issue #1438)"
+            exit 1
+          fi
+          echo "✅ docker-compose.yml has no platform-specific directives"
+
+      - name: Set up QEMU
+        # Required so the amd64 runner can execute the arm64 build stages and
+        # the arm64 container in the health check below.
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: "amd64,arm64"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.arch }} image (loaded into the local daemon)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          # One platform per build: `--load` cannot import a multi-platform
+          # manifest, and this is the leg that actually runs the image.
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: ophirpay:${{ matrix.arch }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=migrator-${{ matrix.arch }}
+
+      - name: Build and verify the ${{ matrix.arch }} migrator target
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: migrator
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: ophirpay-migrator:${{ matrix.arch }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+      - name: Assert the migrator includes the Prisma CLI
+        run: docker run --rm ophirpay-migrator:${{ matrix.arch }} --version
+
+      - name: Assert the image targets ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          got=$(docker image inspect ophirpay:${{ matrix.arch }} --format '{{.Architecture}}')
+          echo "image architecture: ${got}"
+          if [ "${got}" != "${{ matrix.arch }}" ]; then
+            echo "::error::built image is ${got}, expected ${{ matrix.arch }}"
+            exit 1
+          fi
+
+      - name: Start the container and wait for /api/health/live
+        run: |
+          set -euo pipefail
+          arch="${{ matrix.arch }}"
+          # The probe route is dependency-free by design (see
+          # docs/DEPLOYMENT.md → "Liveness vs readiness"), so no Postgres or
+          # Redis is needed here. The env vars below are the minimum the
+          # standalone server validates at boot: DATABASE_URL,
+          # AUTH_SECRET (production strength) and both contract IDs.
+          docker run -d --name "ophirpay-${arch}" -p 3000:3000 \
+            -e NODE_ENV=production \
+            -e DATABASE_URL="postgresql://ophirpay:ophirpay@127.0.0.1:5432/ophirpay" \
+            -e AUTH_SECRET="multiarch-ci-secret-0123456789abcdef0123456789" \
+            -e NEXT_PUBLIC_CONTRACT_ID="CCQGGUJRRVXMHNEX2RYPODGJE2YRMYY4Y7A3KTJH3QP2LWZLTCOPRPET" \
+            -e NEXT_PUBLIC_EMITTER_CONTRACT_ID="CDAVU2XJ7C2Y52GRJZKRG3HDI7AJ2K2FHAFH5FPDTSUQAV7XNBQNNVAN" \
+            "ophirpay:${arch}"
+
+          status=""
+          for _ in $(seq 1 60); do
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/api/health/live || true)
+            if [ "$status" = "200" ]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$status" != "200" ]; then
+            echo "::error::/api/health/live did not return 200 on ${arch} (last status: ${status:-<none>})"
+            docker logs "ophirpay-${arch}" || true
+            exit 1
+          fi
+          echo "✅ ${arch} container answered /api/health/live with 200"
+
+      - name: Assert the image's own HEALTHCHECK reports healthy
+        # The Dockerfile HEALTHCHECK is what docker-compose and Kubernetes
+        # consumers rely on; a runtime that starts but never turns healthy is
+        # still a broken image.
+        run: |
+          set -euo pipefail
+          arch="${{ matrix.arch }}"
+          status=""
+          for _ in $(seq 1 45); do
+            status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}<none>{{end}}' "ophirpay-${arch}")
+            if [ "$status" = "healthy" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$status" != "healthy" ]; then
+            echo "::error::container health never reported healthy on ${arch} (last: ${status})"
+            docker inspect "ophirpay-${arch}" || true
+            docker logs "ophirpay-${arch}" || true
+            exit 1
+          fi
+          echo "✅ ${arch} image HEALTHCHECK reports healthy"
+
+      - name: Dump container logs
+        if: always()
+        run: docker logs "ophirpay-${{ matrix.arch }}" || true
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f "ophirpay-${{ matrix.arch }}" || true
+
+  # ── 2. Publish ONE manifest covering both architectures ────────────────
+  publish-manifest:
+    name: "📦 Publish multi-arch manifest"
+    needs: build-arch
+    # PRs build and boot-test both architectures but never push.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: "amd64,arm64"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,format=long
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+
+      - name: Derive migration image tags
+        id: migrator-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch,suffix=-migrator
+            type=sha,format=long,suffix=-migrator
+            type=raw,value=latest-migrator,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+
+      - name: Build and push the multi-arch manifest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          # Both architectures in one build => one image index whose
+          # manifests point at the two platform-specific images.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          # The per-arch scopes are the same ones the boot-test above warmed,
+          # so this leg is almost entirely cache hits.
+          cache-from: |
+            type=gha,scope=amd64
+            type=gha,scope=arm64
+          cache-to: type=gha,mode=max,scope=manifest
+
+      - name: Build and push the multi-arch migrator image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: migrator
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.migrator-meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          cache-from: |
+            type=gha,scope=amd64
+            type=gha,scope=arm64
+          cache-to: type=gha,mode=max,scope=migrator-manifest
+
+      - name: Verify the pushed manifest lists both platforms
+        run: |
+          set -euo pipefail
+          # GHCR requires a lowercase repository and tags cannot contain `/`,
+          # so use the sanitised tag metadata-action derived (e.g. the branch
+          # `integration/staging` becomes `integration-staging`).
+          image=$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
+          ref="${REGISTRY}/${image}:${{ steps.meta.outputs.version }}"
+          platforms=$(docker buildx imagetools inspect "${ref}" --format '{{json .Manifest}}' \
+            | jq -r '.manifests[].platform | "\(.os)/\(.architecture)"' | sort -u)
+          echo "manifest platforms:"
+          echo "${platforms}"
+          for expected in linux/amd64 linux/arm64; do
+            if ! grep -qx "${expected}" <<< "${platforms}"; then
+              echo "::error::published manifest for ${ref} is missing ${expected}"
+              exit 1
+            fi
+          done
+          echo "✅ ${ref} is a multi-arch manifest (linux/amd64 + linux/arm64)"
+
+      - name: Verify the migrator manifest lists both platforms
+        run: |
+          set -euo pipefail
+          image=$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
+          ref="${REGISTRY}/${image}:${{ steps.migrator-meta.outputs.version }}"
+          platforms=$(docker buildx imagetools inspect "${ref}" --format '{{json .Manifest}}' \
+            | jq -r '.manifests[].platform | "\(.os)/\(.architecture)"' | sort -u)
+          echo "migrator manifest platforms:"
+          echo "${platforms}"
+          for expected in linux/amd64 linux/arm64; do
+            if ! grep -qx "${expected}" <<< "${platforms}"; then
+              echo "::error::published migrator manifest for ${ref} is missing ${expected}"
+              exit 1
+            fi
+          done
+          echo "✅ ${ref} is a multi-arch migration image"
+
+      - name: Write the build summary
+        if: always()
+        run: |
+          {
+            echo "### 🐳 Multi-arch image"
+            echo
+            echo "| Architecture | Result |"
+            echo "|---|---|"
+            echo "| linux/amd64 | build + boot-test passed |"
+            echo "| linux/arm64 | build + boot-test passed (QEMU) |"
+            echo
+            echo "Tags: \`${{ steps.meta.outputs.tags }}\`"
+            echo "Migrator tags: \`${{ steps.migrator-meta.outputs.tags }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

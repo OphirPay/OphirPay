@@ -24,6 +24,19 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.service.targetPort }}
+    {{- if .Values.networkPolicy.metrics.enabled }}
+    # Allow Prometheus metrics scraping from designated monitoring namespace/pods (issue #1344).
+    - from:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.metrics.namespaceSelector | nindent 12 }}
+          {{- if .Values.networkPolicy.metrics.podSelector }}
+          podSelector:
+            {{- toYaml .Values.networkPolicy.metrics.podSelector | nindent 12 }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+    {{- end }}
   egress:
     # Cluster DNS — without this every in-cluster name fails to resolve.
     - to:
@@ -43,4 +56,26 @@ spec:
     - ports:
         - protocol: TCP
           port: 5432
+    {{- if .Values.networkPolicy.redis.enabled }}
+    # Redis for distributed rate limiting over TCP (issue #1345).
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.redis.port | default 6379 }}
+      {{- if or .Values.networkPolicy.redis.namespaceSelector .Values.networkPolicy.redis.podSelector }}
+      to:
+        - {{- if .Values.networkPolicy.redis.namespaceSelector }}
+          namespaceSelector:
+            {{- toYaml .Values.networkPolicy.redis.namespaceSelector | nindent 12 }}
+          {{- end }}
+          {{- if .Values.networkPolicy.redis.podSelector }}
+          podSelector:
+            {{- toYaml .Values.networkPolicy.redis.podSelector | nindent 12 }}
+          {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- range .Values.networkPolicy.egress.extraPorts }}
+    - ports:
+        - protocol: TCP
+          port: {{ . }}
+    {{- end }}
 {{- end }}

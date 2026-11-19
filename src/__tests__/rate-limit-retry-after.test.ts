@@ -12,6 +12,7 @@ describe("getRetryAfterSeconds", () => {
     const resetAt = Date.now() + 1500;
     const result: RateLimitResult = {
       allowed: false,
+      limit: 10,
       remaining: 0,
       resetAt,
     };
@@ -23,6 +24,7 @@ describe("getRetryAfterSeconds", () => {
   it("clamps to 0 when the window has already reset", () => {
     const result: RateLimitResult = {
       allowed: true,
+      limit: 10,
       remaining: 5,
       resetAt: Date.now() - 1000,
     };

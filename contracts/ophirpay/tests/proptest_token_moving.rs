@@ -9,7 +9,9 @@
 //! 2. Include reentrancy-shaped call sequences asserting ReentrantCall rejection.
 //! 3. Runs in CI with bounded iterations (ProptestConfig::with_cases(64)).
 
-use ophirpay_contract::{OphirPayContract, OphirPayContractClient, PaymentError};
+use ophirpay_contract::{
+    compute_vested, OphirPayContract, OphirPayContractClient, PaymentError, MIN_STREAM_DURATION,
+};
 use proptest::prelude::*;
 use proptest::test_runner::Config as ProptestConfig;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -55,6 +57,7 @@ impl<'a> PropHarness<'a> {
         let contract_id = env.register(OphirPayContract, ());
         let client = OphirPayContractClient::new(&env, &contract_id);
         client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
 
         PropHarness {
             env,
@@ -283,7 +286,7 @@ proptest! {
     #[test]
     fn prop_stream_full_vesting_conservation(
         total_amount in 1_000i128..=500_000_000i128,
-        duration in 50u64..=5_000u64,
+        duration in 60u64..=5_000u64,
     ) {
         let h = PropHarness::new();
         let creator = Address::generate(&h.env);
@@ -315,6 +318,54 @@ proptest! {
         prop_assert_eq!(h.client.get_locked_balance(), 0);
         prop_assert_eq!(h.token_client.balance(&h.contract_id), 0);
         prop_assert_eq!(h.token_client.balance(&recipient), total_amount);
+    }
+
+    /// Solvency and exact conservation verification across arbitrary start times,
+    /// durations, and elapsed cancellation points (Issue #1357).
+    #[test]
+    fn prop_stream_cancellation_prorata_solvency(
+        total_amount in 100i128..=1_000_000_000i128,
+        // `create_stream` rejects durations below MIN_STREAM_DURATION (60), so
+        // generating anything shorter only exercises the validation guard and
+        // makes the property fail on inputs that can never produce a stream.
+        duration in MIN_STREAM_DURATION..=100_000u64,
+        elapsed in 0u64..=150_000u64,
+    ) {
+        let h = PropHarness::new();
+        let creator = Address::generate(&h.env);
+        let recipient = Address::generate(&h.env);
+
+        h.mint(&creator, total_amount);
+
+        let start_time = h.env.ledger().timestamp();
+        let end_time = start_time + duration;
+        let memo = String::from_str(&h.env, "prop_cancel_solvency");
+
+        let stream_id = h.client.create_stream(
+            &creator,
+            &recipient,
+            &total_amount,
+            &h.token_id,
+            &start_time,
+            &end_time,
+            &memo,
+        );
+
+        let cancel_time = start_time + elapsed;
+        h.env.ledger().set_timestamp(cancel_time);
+
+        let split = h.client.get_stream_cancel_split(&stream_id);
+        prop_assert_eq!(split.0 + split.1 + split.2, total_amount);
+        prop_assert!(split.1 >= 0);
+        prop_assert!(split.2 >= 0);
+
+        let unvested = h.client.cancel_stream(&creator, &stream_id);
+        prop_assert_eq!(unvested, split.2);
+
+        let stream = h.client.get_stream(&stream_id);
+        prop_assert!(stream.cancelled);
+        prop_assert_eq!(stream.claimed_amount + unvested, total_amount);
+        prop_assert_eq!(h.client.get_locked_balance(), 0);
     }
 }
 
@@ -606,6 +657,172 @@ fn test_reentrancy_lock_active_state_blocks_all_token_paths() {
 
     // Invariant: locked balance remained 0 throughout all rejected calls
     assert_eq!(h.client.get_locked_balance(), 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. VESTING INVARIANTS: compute_vested across arbitrary parameter ranges
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// `compute_vested` is the single source of truth for how much of a stream has
+// been earned at a point in time. A bug here does not merely display a wrong
+// number: it can under-pay a recipient, let a claim exceed the stream total,
+// or make the vesting curve decrease as time advances. These properties pin
+// the curve directly, over the full `i128` amount range and the full `u64`
+// timestamp range — far beyond what hand-written examples cover.
+//
+// The suite deliberately uses 10,000 cases (the issue's minimum) even though
+// the rest of this file stays at the bounded 64-case CI profile: the function
+// is branchy integer arithmetic with no I/O, so 10k cases cost milliseconds.
+
+const VESTING_PROPTEST_CASES: u32 = 10_000;
+
+fn get_vesting_proptest_config() -> ProptestConfig {
+    ProptestConfig {
+        cases: VESTING_PROPTEST_CASES,
+        max_shrink_iters: 100,
+        ..ProptestConfig::default()
+    }
+}
+
+proptest! {
+    #![proptest_config(get_vesting_proptest_config())]
+
+    /// Monotonicity + boundedness + claimed ceiling over arbitrary streams.
+    ///
+    /// `now_a` / `now_b` are both mapped into `[start_time, end_time]` (with
+    /// saturating arithmetic so the u64 extremes cannot panic) and then sorted,
+    /// so the assertion is always "vested never decreases as time advances".
+    #[test]
+    fn prop_vesting_monotonic_bounded_and_claimable(
+        total_amount in 0i128..=i128::MAX,
+        start_time in 0u64..=u64::MAX,
+        duration in 0u64..=u64::MAX,
+        offset_a in 0u64..=u64::MAX,
+        offset_b in 0u64..=u64::MAX,
+        claimed_percent in 0u32..=100u32,
+    ) {
+        let end_time = start_time.saturating_add(duration);
+        let span = duration.saturating_add(1);
+        let now_a = start_time.saturating_add(offset_a % span);
+        let now_b = start_time.saturating_add(offset_b % span);
+        let (earlier, later) = if now_a <= now_b {
+            (now_a, now_b)
+        } else {
+            (now_b, now_a)
+        };
+
+        let vested_earlier = compute_vested(total_amount, start_time, end_time, earlier);
+        let vested_later = compute_vested(total_amount, start_time, end_time, later);
+
+        // ── Boundedness: 0 <= vested <= total_amount ─────────────────────
+        prop_assert!(
+            vested_earlier >= 0,
+            "vested {vested_earlier} must not be negative (total {total_amount})"
+        );
+        prop_assert!(
+            vested_later <= total_amount,
+            "vested {vested_later} exceeded total {total_amount}"
+        );
+        prop_assert!(vested_earlier <= vested_later);
+
+        // ── Boundary behaviour ────────────────────────────────────────────
+        // At (or before) the start nothing has vested; at (or after) the end
+        // the whole stream has. `end_time == start_time` is the zero-duration
+        // case, where the contract's convention is "fully vested at end".
+        if earlier <= start_time && start_time < end_time {
+            prop_assert_eq!(vested_earlier, 0);
+        }
+        if later >= end_time {
+            prop_assert_eq!(vested_later, total_amount);
+        }
+
+        // ── Claimed ceiling: claimable = vested - claimed >= 0 ────────────
+        // `claimed` is a fraction of the vested amount, so this models any
+        // legal sequence of prior claims without ever exceeding the curve.
+        let claimed = vested_later / 100 * claimed_percent as i128;
+        let claimable = vested_later
+            .checked_sub(claimed)
+            .expect("vested - claimed must never underflow");
+        prop_assert!(claimable >= 0);
+        prop_assert_eq!(claimed + claimable, vested_later);
+
+        // A later claim can never be smaller than an earlier one at the same
+        // (or a later) point in the schedule.
+        prop_assert!(vested_later >= claimed);
+    }
+
+    /// Arbitrary — including negative — inputs must return an amount, never
+    /// panic. `create_stream` rejects non-positive totals, but `compute_vested`
+    /// is a public helper and must stay total over its declared domain.
+    #[test]
+    fn prop_compute_vested_never_panics(
+        total_amount in proptest::arbitrary::any::<i128>(),
+        start_time in 0u64..=u64::MAX,
+        duration in 0u64..=u64::MAX,
+        now in 0u64..=u64::MAX,
+    ) {
+        let end_time = start_time.saturating_add(duration);
+        let _ = compute_vested(total_amount, start_time, end_time, now);
+    }
+}
+
+/// Explicit edge cases the random generator will hit rarely (or never):
+/// zero duration, `i128::MAX`, `start_time == current_time`, and u64 extremes.
+#[test]
+fn vesting_edge_cases_are_bounded_and_monotonic() {
+    let cases: &[(i128, u64, u64)] = &[
+        (0, 0, 0),                   // zero total, zero duration
+        (i128::MAX, 0, 0),           // max amount, zero duration
+        (i128::MAX, 1_000, 1_004),   // max amount, 50% elapsed
+        (1, u64::MAX - 1, u64::MAX), // amount 1 at the u64 boundary
+        (i128::MAX, 0, u64::MAX),    // max amount over max duration
+        (7, 42, 42),                 // start == end == now below
+    ];
+
+    for &(total, start, end) in cases {
+        let mut timestamps = std::vec![
+            0u64,
+            start.saturating_sub(1),
+            start,
+            start.saturating_add(1),
+            end.saturating_sub(1),
+            end,
+            end.saturating_add(1),
+            u64::MAX,
+        ];
+        timestamps.sort_unstable();
+
+        let mut previous = 0i128;
+        for now in timestamps {
+            let vested = compute_vested(total, start, end, now);
+
+            assert!(vested >= 0, "vested must not be negative");
+            assert!(
+                vested <= total,
+                "vested {vested} exceeded total {total} at now={now}"
+            );
+            assert!(
+                vested >= previous,
+                "vesting decreased from {previous} to {vested} at now={now}"
+            );
+            previous = vested;
+        }
+
+        // start_time == current_time is the explicit edge case: nothing has
+        // vested yet unless the stream is also zero-duration.
+        if start < end {
+            assert_eq!(compute_vested(total, start, end, start), 0);
+        }
+        // At the end the whole amount is available, including with a zero
+        // duration (the contract's explicit convention).
+        assert_eq!(compute_vested(total, start, end, end), total);
+
+        // Claimed ceiling: subtracting any legally claimed prefix never
+        // underflows.
+        let vested = compute_vested(total, start, end, end);
+        let claimable = vested.checked_sub(vested / 2).expect("no underflow");
+        assert!(claimable >= 0);
+    }
 }
 
 #[test]

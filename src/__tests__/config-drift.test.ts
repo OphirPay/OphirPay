@@ -112,6 +112,24 @@ describe("Vercel rewrites (vercel.json) — #682", () => {
     expect(exists(".well-known/security.txt")).toBe(true);
     expect(read(".well-known/security.txt")).toMatch(/^Contact:/m);
   });
+
+  it("security.txt and the serving route expose working private channels (#1280)", () => {
+    const file = read(".well-known/security.txt");
+    expect(file).toContain("https://github.com/OphirPay/OphirPay/security/advisories/new");
+    // Neither domain accepts security mail yet (.com has no MX, .dev does not
+    // resolve), so no mailto contact may be advertised.
+    expect(file).not.toMatch(/^Contact: *mailto:/m);
+    expect(exists("src/app/.well-known/security.txt/route.ts")).toBe(true);
+  });
+
+  it("serves stellar.toml from environment-backed network and contract configuration", () => {
+    const route = read("src/app/.well-known/stellar.toml/route.ts");
+    expect(route).toContain("NETWORK_PASSPHRASE");
+    expect(route).toContain("DEFAULT_CONTRACT_ID");
+    expect(route).toContain("EMITTER_CONTRACT_ID");
+    expect(route).toContain("[[CURRENCIES]]");
+    expect(read("docs/DEPLOYMENT.md")).toContain("/.well-known/stellar.toml");
+  });
 });
 
 describe("CSP documentation (next.config.ts) — #679", () => {
@@ -121,12 +139,39 @@ describe("CSP documentation (next.config.ts) — #679", () => {
     expect(config).toContain("src/proxy.ts");
   });
 
-  it("keeps the documented policy in sync with src/proxy.ts (unsafe-inline retained)", () => {
-    // src/proxy.ts keeps 'unsafe-inline' because the per-request nonce never
-    // reaches the App Router renderer; the comment must not overstate the
-    // policy by claiming a nonce-based CSP that is not in place.
-    expect(read("src/proxy.ts")).toContain("'unsafe-inline'");
-    expect(config).toContain("unsafe-inline");
+  it("keeps the documented policy in sync with the proxy (nonce-based, no unsafe-inline) — #1257", () => {
+    // The CSP is assembled in src/lib/proxy-config.ts (extracted from
+    // src/proxy.ts in #1248); src/proxy.ts is what mints the nonce and hands it
+    // to that builder on the *request* headers so the App Router renderer
+    // stamps it on framework scripts. 'unsafe-inline' must be gone from
+    // script-src and the docs must say so.
+    const proxy = read("src/proxy.ts");
+    const proxyConfig = read("src/lib/proxy-config.ts");
+
+    expect(proxyConfig).toMatch(/'nonce-\$\{nonce\}'/);
+    // Line-ending agnostic: checkouts on Windows hand the suite CRLF, so a
+    // `;\n` anchored regex silently matches nothing there.
+    const scriptSrcDecl = proxyConfig.match(/const scriptSrc = [^;]*;/)?.[0] ?? "";
+    expect(scriptSrcDecl).toContain("'nonce-");
+    expect(scriptSrcDecl).not.toContain("'unsafe-inline'");
+
+    // 'unsafe-inline' is gone from the script-src templates (style-src keeps
+    // it deliberately, so scope the check to the scriptSrc block).
+    const scriptSrcPolicy =
+      proxyConfig.match(/scriptSrc: \{[^}]*\}/)?.[0] ?? "";
+    expect(scriptSrcPolicy).not.toBe("");
+    expect(scriptSrcPolicy).not.toContain("'unsafe-inline'");
+    expect(scriptSrcPolicy).toContain("'strict-dynamic'");
+
+    // The nonce has to reach the renderer on the request headers, not just the
+    // response, and CSP_POLICY.scriptSrc must not reintroduce 'unsafe-inline'.
+    expect(proxy).toContain("buildCsp(nonce)");
+    expect(proxy).toMatch(/Content-Security-Policy[\s\S]{0,200}pageRequestHeaders/);
+    expect(proxy).toContain('set("x-nonce", nonce)');
+    expect(proxy).not.toContain("'unsafe-inline'");
+
+    expect(config).toContain("no 'unsafe-inline'");
+    expect(read("src/app/layout.tsx")).toContain('get("x-nonce")');
   });
 });
 

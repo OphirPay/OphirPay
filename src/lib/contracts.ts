@@ -9,6 +9,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import { getHorizonServer, getSorobanServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import { isTimeoutError } from "@/lib/timeout";
 
 // ── Contract Configuration ─────────────────────────────────────
 
@@ -52,6 +53,17 @@ export const CHAIN_READ_SOURCE =
 // Legacy alias
 export const DEFAULT_CONTRACT_ID = OPHIRPAY_CONTRACT_ID;
 
+/**
+ * Maximum entries an enumerating contract reader returns in a single call.
+ *
+ * Mirrors `MAX_READER_ENTRIES` in `contracts/ophirpay/src/lib.rs` (issue #742,
+ * SPEC.md INV-11): `get_payments_by_batch` and `get_subscriber_hooks` return
+ * `{ items, total, truncated }` capped at this many entries. API routes that
+ * expose the same data apply the identical ceiling and surface the same
+ * truncation flag, so a client never mistakes a capped list for a complete one.
+ */
+export const CONTRACT_READER_ENTRY_CAP = 100;
+
 // ── 3 Error Types ──────────────────────────────────────────────
 
 export enum ContractErrorType {
@@ -74,6 +86,14 @@ export class ContractError extends Error {
 
 /** Classify any thrown error into one of three contract error types */
 export function classifyContractError(err: unknown): ContractError {
+  // A timeout is a network failure with a distinct, actionable message —
+  // check it before the generic branches (issue #747).
+  if (isTimeoutError(err)) {
+    return new ContractError(
+      "The Stellar network did not respond in time. Please check your connection and try again.",
+      ContractErrorType.NETWORK
+    );
+  }
   const msg = err instanceof Error ? err.message : String(err);
   if (
     msg.includes("declined") ||
@@ -426,13 +446,28 @@ export interface OnChainPayment {
   assetCode?: string;
 }
 
+export interface FetchOnChainPaymentsOptions {
+  /**
+   * Keyset (cursor) anchor: return only records whose on-chain id is strictly
+   * *older* than this value (i.e. `id < beforeId`). The record set is still
+   * returned newest-first, so a caller walks the history back in stable
+   * `id DESC` order without re-reading or skipping rows.
+   */
+  beforeId?: number;
+}
+
 /**
  * Read the most recent on-chain payment records from OphirPayContract.
  * Public chain data — reads via Soroban simulation, no wallet signature required.
+ *
+ * Without `options.beforeId` this returns the `limit` newest records. With a
+ * `beforeId` anchor it returns the `limit` newest records strictly older than
+ * that id, which is the keyset continuation used by `GET /api/events/history`.
  */
 export async function fetchOnChainPayments(
   limit = 20,
-  sourcePublicKey?: string
+  sourcePublicKey?: string,
+  options: FetchOnChainPaymentsOptions = {}
 ): Promise<{ payments: OnChainPayment[]; total: number }> {
   const src = sourcePublicKey || CHAIN_READ_SOURCE;
   const contractId = OPHIRPAY_CONTRACT_ID;
@@ -459,8 +494,19 @@ export async function fetchOnChainPayments(
 
   const total = await readCount();
   const payments: OnChainPayment[] = [];
-  const start = Math.max(1, total - limit + 1);
-  const ids = Array.from({ length: total - start + 1 }, (_, i) => start + i);
+
+  // Keyset window: default to the newest `limit` ids; with a `beforeId`
+  // anchor, end the window just below that id (exclusive) so the caller
+  // resumes exactly where the previous page stopped.
+  const end =
+    options.beforeId !== undefined
+      ? Math.min(total, options.beforeId - 1)
+      : total;
+  const start = Math.max(1, end - limit + 1);
+  if (end < 1 || start > end) {
+    return { payments: [], total };
+  }
+  const ids = Array.from({ length: end - start + 1 }, (_, i) => start + i);
 
   const readPayment = async (id: number): Promise<OnChainPayment | null> => {
     const tx = new TransactionBuilder(account, {

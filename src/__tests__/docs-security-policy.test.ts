@@ -26,12 +26,28 @@ describe("SECURITY.md (responsible disclosure policy)", () => {
 
   const doc = existsSync(securityPath) ? readFileSync(securityPath, "utf8") : "";
 
-  it("documents how to report via email, PGP, and a private channel", () => {
-    expect(doc).toMatch(/security@ophirpay\.com/);
+  it("documents how to report via a private channel, the fallback, and PGP", () => {
     expect(doc).toMatch(/PGP-encrypted email/);
-    expect(doc).toMatch(/private vulnerability reporting/);
-    expect(doc).toMatch(/open a public\s+issue/);
+    expect(doc).toMatch(/private vulnerability reporting/i);
     expect(doc).toMatch(/do\s+not[\s\S]*open a public\s+issue/i);
+    expect(doc).toMatch(/no-details issue/i);
+  });
+
+  // Issue #1280 — mail to the documented address bounced, so the policy must
+  // lead with the GitHub advisory flow and state plainly that email is not a
+  // working channel until a monitored mailbox exists.
+  it("leads with the GitHub advisory form and does not advertise a dead mailbox", () => {
+    expect(doc).toMatch(/security\/advisories/);
+    expect(doc).toMatch(/GitHub private vulnerability reporting[^\n]*preferred/);
+    expect(doc).toMatch(/Email is not a supported channel/i);
+    expect(doc).toMatch(/security@ophirpay\.com[\s\S]{0,200}(no MX|bounce)/i);
+    // No live mailto instructions in the reporting section.
+    expect(doc).not.toMatch(/Send your report to \*\*security@/);
+  });
+
+  it("tells maintainers how to keep the channel working", () => {
+    expect(doc).toMatch(/## Maintainer checklist/);
+    expect(doc).toMatch(/Private vulnerability reporting/);
   });
 
   it("documents expected response times", () => {
@@ -82,8 +98,10 @@ describe(".github/ISSUE_TEMPLATE/security_vulnerability.yml", () => {
   it("warns that the form creates a public issue and forbids exploit details", () => {
     expect(template).toMatch(/creates a PUBLIC issue/);
     expect(template).toMatch(/Do NOT include exploit details/);
-    expect(template).toMatch(/security@ophirpay\.com/);
     expect(template).toMatch(/private vulnerability reporting/);
+    expect(template).toMatch(/security\/advisories/);
+    expect(template).toMatch(/Email is NOT a supported channel/);
+    expect(template).toMatch(/no-details issue is the fallback/);
   });
 
   it("collects severity, affected component, and affected version", () => {

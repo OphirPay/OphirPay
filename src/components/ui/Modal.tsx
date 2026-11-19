@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { trapFocus } from "@/lib/focus-trap";
@@ -40,6 +40,14 @@ export function Modal({
   size = "md",
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  // WAI-ARIA pattern: the dialog's accessible name should come from the
+  // rendered heading (aria-labelledby) rather than a duplicate aria-label.
+  // Screen readers then announce the heading's actual text, and any consumer
+  // that changes the title mid-open is reflected without a second attribute to
+  // keep in sync. `useId` keeps the ids unique when several dialogs mount.
+  const titleId = useId();
+  const descriptionId = useId();
 
   // Keep the latest `onClose` in a ref so the popstate listener below always
   // invokes the current handler without re-subscribing on every render.
@@ -143,7 +151,11 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6"
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-labelledby={title ? titleId : undefined}
+      aria-describedby={description ? descriptionId : undefined}
+      // Fallback for a titleless dialog so it never reaches assistive tech as
+      // an unnamed `role="dialog"` (axe rule `aria-dialog-name`).
+      aria-label={title ? undefined : "Dialog"}
     >
       {/* Backdrop */}
       <div
@@ -168,12 +180,18 @@ export function Modal({
           <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-gray-100 dark:border-gray-800">
             <div>
               {title && (
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h2
+                  id={titleId}
+                  className="text-lg font-semibold text-gray-900 dark:text-white"
+                >
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p
+                  id={descriptionId}
+                  className="text-sm text-gray-500 dark:text-gray-400 mt-1"
+                >
                   {description}
                 </p>
               )}

@@ -3,11 +3,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { MultiWalletProvider, useWallet } from "@/hooks/useMultiWallet";
 import { WalletButton } from "@/components/WalletButton";
 import TreasuryDashboard from "@/app/(dashboard)/page";
 import { fetchXlmBalance } from "@/lib/stellar";
+import {
+  notifySessionRevoked,
+  onSessionRevoked,
+  setUnsavedDrafts,
+} from "@/lib/session-lifecycle";
+import { QueryProvider } from "@/components/QueryProvider";
+import { useEffect } from "react";
 
 // ── Mocks ──────────────────────────────────────────────────────
 //
@@ -90,7 +101,7 @@ function renderApp() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const utils = render(
     <QueryClientProvider client={queryClient}>
       <MultiWalletProvider>
         <StateProbe />
@@ -99,6 +110,7 @@ function renderApp() {
       </MultiWalletProvider>
     </QueryClientProvider>
   );
+  return { ...utils, queryClient };
 }
 
 /** Connect through the real header UI: Connect Wallet → Freighter. */
@@ -227,5 +239,82 @@ describe("wallet disconnect clears cached balance", () => {
       expect(screen.getByTestId("probe-balance")).toHaveTextContent("null"),
     );
     expect(screen.getByText("Connect wallet")).toBeInTheDocument();
+  });
+
+  it("announces session revocation on disconnect so caches can be purged", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    // The QueryProvider (and anything else that must forget account data)
+    // subscribes to this event; disconnect must fire it.
+    const onRevoked = vi.fn();
+    const unsubscribe = onSessionRevoked(onRevoked);
+    try {
+      await connectFreighter(user);
+      await user.click(screen.getByRole("button", { name: "Disconnect wallet" }));
+      expect(onRevoked).toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("purges the React Query cache when the session is revoked (issue #1379)", async () => {
+    // Mount the app's real QueryProvider so its revocation subscription is live.
+    let client: QueryClient | undefined;
+    function ClientProbe() {
+      const qc = useQueryClient();
+      useEffect(() => {
+        client = qc;
+      }, [qc]);
+      return null;
+    }
+
+    render(
+      <QueryProvider>
+        <ClientProbe />
+      </QueryProvider>
+    );
+    await waitFor(() => expect(client).toBeDefined());
+
+    // Seed a per-account cache entry, then revoke the session.
+    client!.setQueryData(["account-balance"], { amount: "123.45" });
+    expect(client!.getQueryData(["account-balance"])).toEqual({ amount: "123.45" });
+
+    act(() => notifySessionRevoked());
+
+    await waitFor(() =>
+      expect(client!.getQueryData(["account-balance"])).toBeUndefined()
+    );
+  });
+
+  it("warns before discarding unsaved drafts / in-flight work", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await connectFreighter(user);
+
+    // A form somewhere registered an unsaved draft.
+    act(() => setUnsavedDrafts(1));
+
+    await user.click(screen.getByRole("button", { name: "Disconnect wallet" }));
+
+    // Confirmation dialog appears; the session is NOT torn down yet.
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(/unsaved draft/i)).toBeInTheDocument();
+    expect(screen.getByTestId("probe-connected")).toHaveTextContent("true");
+
+    // "Keep working" dismisses the dialog and keeps the wallet connected.
+    await user.click(screen.getByRole("button", { name: "Keep working" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByTestId("probe-connected")).toHaveTextContent("true");
+
+    // Confirming disconnects and revokes the session.
+    await user.click(screen.getByRole("button", { name: "Disconnect wallet" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Disconnect anyway" })
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("probe-connected")).toHaveTextContent("false")
+    );
   });
 });

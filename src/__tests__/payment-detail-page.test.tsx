@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import PaymentDetailPage from "@/app/payments/[id]/page";
 import type { OnChainPayment } from "@/lib/contracts";
@@ -88,6 +88,18 @@ describe("PaymentDetailPage", () => {
     expect(screen.getByText("Lifecycle")).toBeInTheDocument();
     expect(screen.getByText("Confirmed")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /view on explorer/i })).toBeInTheDocument();
+  });
+
+  it("offers browser printing for the printable payment record", async () => {
+    fetchOnChainPaymentMock.mockResolvedValue(CONFIRMED_PAYMENT);
+    const print = vi.spyOn(window, "print").mockImplementation(() => {});
+    renderPage();
+
+    await screen.findByText("1.50 XLM");
+    expect(document.querySelector(".payment-print-page")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Print" }));
+    expect(print).toHaveBeenCalledOnce();
+    print.mockRestore();
   });
 
   it("renders the DB memo when an authenticated session provides it", async () => {

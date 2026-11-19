@@ -321,8 +321,19 @@ fn all_variants() -> Vec<(&'static str, u32)> {
         ("RevocationAlreadyExecuted", PaymentError::RevocationAlreadyExecuted as u32),
         ("CannotRevokeSelf", PaymentError::CannotRevokeSelf as u32),
         ("NoPendingOwner", PaymentError::NoPendingOwner as u32),
-        ("MathOverflow", PaymentError::MathOverflow as u32),
+        ("ArithmeticOverflow", PaymentError::ArithmeticOverflow as u32),
         ("StreamInvariantViolated", PaymentError::StreamInvariantViolated as u32),
+        ("InvalidPauseScope", PaymentError::InvalidPauseScope as u32),
+        ("PaymentIdempotencyConflict", PaymentError::PaymentIdempotencyConflict as u32),
+        ("StreamDurationTooShort", PaymentError::StreamDurationTooShort as u32),
+        ("StreamDurationTooLong", PaymentError::StreamDurationTooLong as u32),
+        ("InvalidDecimalPrecision", PaymentError::InvalidDecimalPrecision as u32),
+        ("MemoTooLong", PaymentError::MemoTooLong as u32),
+        ("InvalidThreshold", PaymentError::InvalidThreshold as u32),
+        ("EmptySignersList", PaymentError::EmptySignersList as u32),
+        ("DisputeCoolingOffActive", PaymentError::DisputeCoolingOffActive as u32),
+        ("SpendingLimitExceeded", PaymentError::SpendingLimitExceeded as u32),
+        ("DuplicateSigner", PaymentError::DuplicateSigner as u32),
     ]
 }
 
@@ -372,9 +383,79 @@ fn variant_count_matches_catalog() {
     let variants = all_variants();
     // The TypeScript catalog should have exactly as many entries as Rust variants.
     // This is verified by the TS-side test; here we just record the count.
+    // PaymentIdempotencyConflict = 309 (#804) was added without bumping this,
+    // which is what the sibling `max_code == variants.len()` assertion catches.
     assert_eq!(
         variants.len(),
-        307,
-        "Expected 307 PaymentError variants (codes 1..=307)"
+        318,
+        "Expected 318 PaymentError variants (codes 1..=318)"
     );
 }
+
+#[test]
+fn rust_source_discriminants_are_unique_and_match_variant_list() {
+    let source = include_str!("../src/errors.rs");
+    let mut parsed_variants: Vec<(String, u32)> = Vec::new();
+    let mut in_enum = false;
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("pub enum PaymentError {") {
+            in_enum = true;
+            continue;
+        }
+        if in_enum && trimmed == "}" {
+            break;
+        }
+        if in_enum && !trimmed.starts_with("//") && trimmed.contains('=') {
+            let parts: Vec<&str> = trimmed.split('=').collect();
+            if parts.len() == 2 {
+                let name = parts[0].trim().to_string();
+                let code_part = parts[1].trim().trim_end_matches(',').trim();
+                if let Ok(code) = code_part.parse::<u32>() {
+                    parsed_variants.push((name, code));
+                }
+            }
+        }
+    }
+
+    assert!(
+        parsed_variants.len() >= 300,
+        "Expected at least 300 variants parsed from errors.rs, found {}",
+        parsed_variants.len()
+    );
+
+    // Verify uniqueness of parsed source codes
+    let mut seen_codes: HashMap<u32, &str> = HashMap::new();
+    let mut duplicates: Vec<String> = Vec::new();
+    for (name, code) in &parsed_variants {
+        if let Some(existing) = seen_codes.get(code) {
+            duplicates.push(format!(
+                "Source code {} is duplicated in '{}' and '{}'",
+                code, existing, name
+            ));
+        } else {
+            seen_codes.insert(*code, name);
+        }
+    }
+
+    assert!(
+        duplicates.is_empty(),
+        "Duplicate discriminants found directly in src/errors.rs:\n{}",
+        duplicates.join("\n")
+    );
+
+    let declared = all_variants();
+    let declared_map: HashMap<&str, u32> = declared.into_iter().collect();
+
+    for (name, code) in &parsed_variants {
+        assert_eq!(
+            declared_map.get(name.as_str()),
+            Some(code),
+            "Variant '{}' in errors.rs with code {} does not match all_variants()",
+            name,
+            code
+        );
+    }
+}
+

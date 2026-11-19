@@ -69,8 +69,8 @@ describe("docs/API_GUIDE.md", () => {
   it("includes a complete, copy-pasteable worked example", () => {
     expect(guide).toMatch(/Worked example/i);
     // A full route file with handler exports
-    expect(guide).toContain("export async function GET(request: Request)");
-    expect(guide).toContain("export async function POST(request: Request)");
+    expect(guide).toContain("export const GET = apiRoute(");
+    expect(guide).toContain("export const POST = apiRoute(");
     // Copy-pasteable code fence
     expect(guide).toMatch(/```ts[\s\S]*```/);
     expect(guide).toContain("src/app/api/counterparties/route.ts");

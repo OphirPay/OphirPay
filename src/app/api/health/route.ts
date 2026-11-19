@@ -6,28 +6,18 @@ import { STELLAR_NETWORK, SOROBAN_RPC_URL, HORIZON_URL } from "@/lib/stellar";
 import { OPHIRPAY_CONTRACT_ID } from "@/lib/contracts";
 import { successResponse, serverError } from "@/lib/api-response";
 import { withRequestLogging } from "@/lib/request-logging";
+import {
+  getRpcFailoverState,
+  isRpcFailoverDegraded,
+  RPC_FAILOVER_DEGRADED_AFTER_MS,
+} from "@/lib/rpc-failover";
+import { getCircuitBreakerState } from "@/lib/rpc-circuit-breaker";
+import { getAppVersionInfo } from "@/lib/app-version";
+import { getRedisRestConfig } from "@/lib/rate-limit";
 
 // ── Check helpers ──────────────────────────────────────────────
 
 type CheckStatus = "ok" | "error" | "unchecked" | "disabled" | "not_configured";
-
-/** GET a URL and report reachability + latency; null when it errors/times out. */
-async function pingUrl(
-  url: string,
-  timeoutMs: number
-): Promise<{ ok: boolean; latencyMs: number } | null> {
-  const start = Date.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    return { ok: res.ok, latencyMs: Date.now() - start };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 /** POST a JSON-RPC body and report reachability + latency; null on failure. */
 async function pingJsonRpc(
@@ -53,8 +43,124 @@ async function pingJsonRpc(
   }
 }
 
-export const GET = withMetrics("GET /api/health", withRequestLogging(async function GET() {
+/** Ping Redis over its configured REST or TCP transport. */
+async function pingRedis(
+  timeoutMs: number
+): Promise<{ ok: boolean; latencyMs: number } | null> {
+  const start = Date.now();
+  const restConfig = getRedisRestConfig();
+
+  if (restConfig) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(restConfig.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(restConfig.token
+            ? { Authorization: `Bearer ${restConfig.token}` }
+            : {}),
+        },
+        body: JSON.stringify(["PING"]),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        return { ok: false, latencyMs: Date.now() - start };
+      }
+      const payload = (await response.json()) as { result?: unknown; error?: unknown };
+      return {
+        ok: payload.result === "PONG" && !payload.error,
+        latencyMs: Date.now() - start,
+      };
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl || !/^rediss?:\/\//i.test(redisUrl)) {
+    return { ok: false, latencyMs: Date.now() - start };
+  }
+
+  let disconnect = () => {};
   try {
+    const { Redis } = await import("ioredis");
+    const client = new Redis(redisUrl, {
+      lazyConnect: true,
+      connectTimeout: timeoutMs,
+      commandTimeout: timeoutMs,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      retryStrategy: () => null,
+    });
+    client.on("error", () => {});
+    disconnect = () => client.disconnect();
+    await client.connect();
+    const result = await client.ping();
+    return { ok: result === "PONG", latencyMs: Date.now() - start };
+  } catch {
+    return null;
+  } finally {
+    disconnect();
+  }
+}
+
+export const GET = withMetrics("GET /api/health", withRequestLogging(async function GET(request: Request) {
+  try {
+    // ── Lightweight RPC-only probe (`?probe=rpc`) ──────────────
+    // The UI polls this every few seconds to drive the network status banner.
+    // It must not touch the database, Horizon or Redis on every client tick:
+    // only the Soroban RPC reachability and the in-process failover snapshot
+    // are needed to tell the user which provider is active and how slow it is.
+    if (new URL(request.url).searchParams.get("probe") === "rpc") {
+      const rpc = await pingJsonRpc(
+        SOROBAN_RPC_URL,
+        { jsonrpc: "2.0", id: 1, method: "getHealth" },
+        5000
+      );
+      const failover = getRpcFailoverState();
+      const circuitBreaker = getCircuitBreakerState();
+      const rpcStatus: CheckStatus = rpc?.ok ? "ok" : "error";
+      const isProbeDegraded = rpcStatus !== "ok" || circuitBreaker.state !== "CLOSED";
+
+      return successResponse(
+        {
+          status: isProbeDegraded ? "degraded" : "ok",
+          services: {
+            stellar: {
+              network: STELLAR_NETWORK,
+              rpcUrl: SOROBAN_RPC_URL,
+              rpc: { status: rpcStatus, latencyMs: rpc?.latencyMs ?? null },
+            },
+          },
+          circuitBreaker,
+          rpcFailover: {
+            activeEndpoint: failover.activeEndpoint,
+            primaryEndpoint: failover.primaryEndpoint,
+            activeProviderName: failover.activeProviderName,
+            primaryProviderName: failover.primaryProviderName,
+            usingFallback: failover.usingFallback,
+            failoverCount: failover.failoverCount,
+            recoveryCount: failover.recoveryCount,
+            currentFallbackDurationMs: failover.currentFallbackDurationMs,
+            longestFallbackDurationMs: failover.longestFallbackDurationMs,
+            lastTransitionAt: failover.lastTransitionAt,
+            degradedAfterMs: RPC_FAILOVER_DEGRADED_AFTER_MS,
+            degraded: isRpcFailoverDegraded(),
+            lastFailureReasons: failover.lastFailureReasons,
+          },
+        },
+        { timestamp: new Date().toISOString() },
+        // A degraded upstream RPC is reported in the body, not as a 5xx: the
+        // app itself is healthy and the client wants the latency/provider
+        // details in the same shape either way.
+        200
+      );
+    }
+
     // Critical check: database connectivity
     let dbStatus: "ok" | "error" = "ok";
     let dbLatency: number | null = null;
@@ -62,7 +168,8 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
       const start = Date.now();
       await prisma.$queryRaw`SELECT 1`;
       dbLatency = Date.now() - start;
-    } catch {
+    } catch (err) {
+      console.error("[HealthCheck] Database connection failed:", err);
       dbStatus = "error";
     }
 
@@ -81,9 +188,14 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
       rpcStatus = "error";
     }
 
-    // Check Horizon reachability
+    // Check Horizon reachability and ledger sync status (issue #1950)
     let horizonStatus: "ok" | "error" | "unchecked" = "unchecked";
     let horizonLatency: number | null = null;
+    let horizonSync: {
+      coreLatestLedger?: number;
+      historyLatestLedger?: number;
+      synced?: boolean;
+    } | undefined = undefined;
     try {
       const start = Date.now();
       const controller = new AbortController();
@@ -91,7 +203,38 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
       const res = await fetch(HORIZON_URL, { signal: controller.signal });
       clearTimeout(timeout);
       horizonLatency = Date.now() - start;
-      horizonStatus = res.ok ? "ok" : "error";
+      if (res.ok) {
+        horizonStatus = "ok";
+        try {
+          if (typeof res.json === "function") {
+            const data = (await res.json()) as Record<string, unknown>;
+            if (data && typeof data === "object") {
+              const core =
+                typeof data.core_latest_ledger === "number"
+                  ? data.core_latest_ledger
+                  : undefined;
+              const history =
+                typeof data.history_latest_ledger === "number"
+                  ? data.history_latest_ledger
+                  : undefined;
+              if (core !== undefined || history !== undefined) {
+                horizonSync = {
+                  coreLatestLedger: core,
+                  historyLatestLedger: history,
+                  synced:
+                    core !== undefined && history !== undefined
+                      ? Math.abs(core - history) <= 1
+                      : true,
+                };
+              }
+            }
+          }
+        } catch {
+          // If body parsing fails, reachability status is still ok
+        }
+      } else {
+        horizonStatus = "error";
+      }
     } catch {
       horizonStatus = "error";
     }
@@ -99,12 +242,8 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
     // Check Redis connectivity (if configured)
     let redisStatus: "ok" | "error" | "disabled" = "disabled";
     let redisLatency: number | null = null;
-    const redisUrl = process.env.REDIS_URL;
-    if (redisUrl) {
-      const pingUrlStr =
-        redisUrl.replace(/\/\/.*@/, "//health:@").replace(/\/\d+$/, "") +
-        "/ping";
-      const redis = await pingUrl(pingUrlStr, 3000);
+    if (process.env.REDIS_URL || getRedisRestConfig()) {
+      const redis = await pingRedis(3000);
       if (redis) {
         redisStatus = redis.ok ? "ok" : "error";
         redisLatency = redis.latencyMs;
@@ -119,17 +258,30 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
         ? "ok"
         : "error";
 
+    // ── RPC failover state (issue #820) ─────────────────────
+    // Which endpoint is currently serving, whether we are on a fallback,
+    // and how many failovers have occurred — the first questions an
+    // operator asks during an upstream RPC incident.
+    const failover = getRpcFailoverState();
+    const failoverDegraded = isRpcFailoverDegraded();
+    const circuitBreaker = getCircuitBreakerState();
+
     const optionalChecks = [rpcStatus, horizonStatus, contractStatus, redisStatus].filter(
       (s: string) => s !== "disabled" && s !== "unchecked"
     );
-    const hasOptionalError = optionalChecks.includes("error");
-    const isDegraded = dbStatus === "ok" && hasOptionalError;
+    const hasOptionalError =
+      optionalChecks.includes("error") || horizonSync?.synced === false;
+    const isDegraded =
+      dbStatus === "ok" &&
+      (hasOptionalError || failoverDegraded || circuitBreaker.state !== "CLOSED");
     const overallStatus = dbStatus === "error" ? "error" : isDegraded ? "degraded" : "ok";
+    const { version, commit } = getAppVersionInfo();
 
     return successResponse(
       {
         status: overallStatus,
-        version: "0.1.0",
+        version,
+        commit,
         services: {
           database: { status: dbStatus, latencyMs: dbLatency },
           redis: { status: redisStatus, latencyMs: redisLatency },
@@ -138,12 +290,32 @@ export const GET = withMetrics("GET /api/health", withRequestLogging(async funct
             rpcUrl: SOROBAN_RPC_URL,
             horizonUrl: HORIZON_URL,
             rpc: { status: rpcStatus, latencyMs: rpcLatency },
-            horizon: { status: horizonStatus, latencyMs: horizonLatency },
+            horizon: {
+              status: horizonStatus,
+              latencyMs: horizonLatency,
+              ...(horizonSync ? { sync: horizonSync } : {}),
+            },
           },
           contract: {
             id: OPHIRPAY_CONTRACT_ID || null,
             status: contractStatus,
           },
+        },
+        circuitBreaker,
+        rpcFailover: {
+          activeEndpoint: failover.activeEndpoint,
+          primaryEndpoint: failover.primaryEndpoint,
+          activeProviderName: failover.activeProviderName,
+          primaryProviderName: failover.primaryProviderName,
+          usingFallback: failover.usingFallback,
+          failoverCount: failover.failoverCount,
+          recoveryCount: failover.recoveryCount,
+          currentFallbackDurationMs: failover.currentFallbackDurationMs,
+          longestFallbackDurationMs: failover.longestFallbackDurationMs,
+          lastTransitionAt: failover.lastTransitionAt,
+          degradedAfterMs: RPC_FAILOVER_DEGRADED_AFTER_MS,
+          degraded: failoverDegraded,
+          lastFailureReasons: failover.lastFailureReasons,
         },
         uptime: process.uptime(),
       },

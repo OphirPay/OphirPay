@@ -10,6 +10,7 @@ import {
   MAX_BATCH_RECIPIENTS,
   type CsvImportRow,
 } from "@/lib/csv-import";
+import { BatchDropzone, formatFileSize } from "@/components/batch/BatchDropzone";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -41,12 +42,21 @@ export function CsvBatchImport({
   const [rows, setRows] = useState<CsvImportRow[]>([]);
   const [fileErrors, setFileErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [isDragActive, setIsDragActive] = useState(false);
+  const [fileSize, setFileSize] = useState<number | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [parseProgress, setParseProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const errorCount = rows.filter(
     (r) => Object.keys(r.errors).length > 0
   ).length;
+  /** Source row number + human-readable messages for every failing row. */
+  const invalidRows = rows
+    .filter((r) => Object.keys(r.errors).length > 0)
+    .map((r) => ({
+      sourceRow: r.sourceRow,
+      messages: Object.values(r.errors),
+    }));
   const isValid =
     rows.length > 0 &&
     fileErrors.length === 0 &&
@@ -65,15 +75,27 @@ export function CsvBatchImport({
     onValidityChange(isValid);
   }, [rows, fileErrors, isValid, onRowsChange, onValidityChange]);
 
-  const handleFiles = useCallback(
-    async (files: FileList | File[] | null) => {
-      const file = files?.[0];
-      if (!file) return;
-      const result = await parseRecipientsCsvToRows(file, { selfAddress });
-      setRows(result.rows);
-      setFileErrors(result.fileErrors);
-      setFileName(file.name);
-      setIsDragActive(false);
+  const handleFileSelect = useCallback(
+    async (file: File) => {
+      setIsParsing(true);
+      setParseProgress(30);
+      setFileSize(file.size);
+      try {
+        setParseProgress(70);
+        const result = await parseRecipientsCsvToRows(file, { selfAddress });
+        setRows(result.rows);
+        setFileErrors(result.fileErrors);
+        setFileName(file.name);
+        setParseProgress(100);
+      } catch {
+        // An unreadable file used to reject silently, leaving the dropzone
+        // stuck with no explanation of why the import never started.
+        setRows([]);
+        setFileErrors(["Could not read the CSV file. Please check the format and try again."]);
+        setFileName(file.name);
+      } finally {
+        setIsParsing(false);
+      }
     },
     [selfAddress]
   );
@@ -111,95 +133,46 @@ export function CsvBatchImport({
     setRows([]);
     setFileErrors([]);
     setFileName(null);
+    setFileSize(null);
+    setIsParsing(false);
+    setParseProgress(0);
     if (inputRef.current) inputRef.current.value = "";
   };
 
   return (
     <div className="space-y-4" data-testid="csv-batch-import">
       {/* Dropzone */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Upload CSV file"
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragActive(true);
-        }}
-        onDragLeave={() => setIsDragActive(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          handleFiles(e.dataTransfer.files);
-        }}
-        className={cn(
-          "border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-ophir-500/40",
-          isDragActive
-            ? "border-ophir-500 bg-ophir-50 dark:bg-ophir-950/30"
-            : "border-gray-300 dark:border-gray-700 hover:border-ophir-400 dark:hover:border-ophir-600"
-        )}
-        data-testid="csv-dropzone"
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".csv,text/csv"
-          className="hidden"
-          data-testid="csv-file-input"
-          onChange={(e) => handleFiles(e.target.files)}
-        />
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
-          className={cn(
-            "w-10 h-10 mx-auto mb-3",
-            isDragActive
-              ? "text-ophir-600 dark:text-ophir-400"
-              : "text-gray-400 dark:text-gray-500"
-          )}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-          />
-        </svg>
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {isDragActive
-            ? "Drop your CSV here"
-            : "Drag & drop your CSV file here, or click to browse"}
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Columns: <span className="font-mono">address,amount,memo</span> — up
-          to {MAX_BATCH_RECIPIENTS} recipients
-        </p>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            downloadCsvTemplate();
-          }}
-          className="mt-3 text-sm text-ophir-600 dark:text-ophir-400 hover:underline"
-        >
-          Download template
-        </button>
-      </div>
+      <BatchDropzone
+        onFileSelect={handleFileSelect}
+        isParsing={isParsing}
+        parseProgress={parseProgress}
+        fileName={fileName}
+        fileSize={fileSize}
+        rowCount={rows.length > 0 ? rows.length : null}
+        onClear={clearFile}
+        onTemplateDownload={downloadCsvTemplate}
+        maxRecipients={MAX_BATCH_RECIPIENTS}
+        showMetadataCard={false}
+        inputRef={inputRef}
+      />
 
       {/* File summary / actions */}
       {fileName && (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-              {fileName}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                {fileName}
+              </p>
+              {fileSize !== null && (
+                <span
+                  data-testid="file-size-badge"
+                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-mono"
+                >
+                  {formatFileSize(fileSize)}
+                </span>
+              )}
+            </div>
             <p
               className={cn(
                 "text-xs mt-0.5",
@@ -210,7 +183,9 @@ export function CsvBatchImport({
               data-testid="csv-summary"
             >
               {rows.length} row{rows.length !== 1 ? "s" : ""}
-              {errorCount > 0
+              {fileErrors.length > 0
+                ? " · import blocked"
+                : errorCount > 0
                 ? ` · ${errorCount} with error${errorCount !== 1 ? "s" : ""}`
                 : " · all rows valid"}
             </p>
@@ -244,6 +219,35 @@ export function CsvBatchImport({
           {msg}
         </div>
       ))}
+
+      {/* Row-level error summary — pins down exactly which source rows fail,
+          so one bad row never fails the import anonymously. */}
+      {invalidRows.length > 0 && (
+        <div
+          role="status"
+          data-testid="csv-row-errors"
+          className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400"
+        >
+          <p className="font-medium">
+            Fix {invalidRows.length} row{invalidRows.length !== 1 ? "s" : ""} to
+            continue:
+          </p>
+          <ul className="mt-1.5 space-y-1">
+            {invalidRows.map((r) => (
+              <li
+                key={r.sourceRow}
+                data-testid={`csv-row-error-${r.sourceRow}`}
+              >
+                {/* One element holding the whole sentence: testing-library's
+                    text queries read an element's direct text nodes, so a bare
+                    text node here would make every inline cell error resolve to
+                    two elements. */}
+                <span>{`Row ${r.sourceRow}: ${r.messages.join(" ")}`}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Row preview */}
       {rows.length > 0 && (

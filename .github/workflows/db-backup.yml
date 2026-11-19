@@ -2,12 +2,16 @@ name: Database Backup
 
 on:
   schedule:
-    - cron: "0 3 * * *"  # Daily at 3 AM UTC
-  workflow_dispatch:      # Manual trigger
+    - cron: "0 3 * * *" # Daily at 3 AM UTC
+  workflow_dispatch: # Manual trigger
 
 env:
   BACKUP_BUCKET: ophirpay-backups
   BACKUP_RETENTION_DAYS: 30
+
+# -- Global Concurrency � singleton group for scheduled runs --------
+concurrency:
+  group: ${{ github.workflow }}
 
 jobs:
   backup:

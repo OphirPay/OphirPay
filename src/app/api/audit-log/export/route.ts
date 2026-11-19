@@ -130,6 +130,10 @@ async function _GET(request: Request) {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="${buildAuditExportFilename()}"`,
         "Cache-Control": "no-store",
+        // Rows are flushed as they are read (issue #1369). HTTP/1.1 servers
+        // frame a streamed body as chunked anyway; declaring it makes the
+        // streaming contract explicit for clients and proxies.
+        "Transfer-Encoding": "chunked",
       },
     });
   } catch (error) {

@@ -187,107 +187,115 @@ erDiagram
 
 ### PaymentStatus
 
-| Value | Description |
-|---|---|
-| `CREATED` | Initial state — payment record created, not yet signed |
-| `SIGNED` | Transaction signed by wallet, awaiting submission |
-| `SUBMITTED` | Submitted to Stellar network, awaiting confirmation |
-| `CONFIRMED` | Confirmed on-chain, awaiting final processing |
-| `PENDING` | Awaiting manual approval (multisig) |
-| `PROCESSING` | Actively being processed |
-| `COMPLETED` | Successfully completed |
-| `FAILED` | Failed — check `errorMessage` for details |
-| `CANCELLED` | Cancelled by user or system |
+| Value        | Description                                            |
+| ------------ | ------------------------------------------------------ |
+| `CREATED`    | Initial state — payment record created, not yet signed |
+| `SIGNED`     | Transaction signed by wallet, awaiting submission      |
+| `SUBMITTED`  | Submitted to Stellar network, awaiting confirmation    |
+| `CONFIRMED`  | Confirmed on-chain, awaiting final processing          |
+| `PENDING`    | Awaiting manual approval (multisig)                    |
+| `PROCESSING` | Actively being processed                               |
+| `COMPLETED`  | Successfully completed                                 |
+| `FAILED`     | Failed — check `errorMessage` for details              |
+| `CANCELLED`  | Cancelled by user or system                            |
 
 ### BatchStatus
 
-| Value | Description |
-|---|---|
-| `CREATED` | Batch created, payments not yet processed |
-| `PROCESSING` | Payments being processed in sequence |
-| `COMPLETED` | All payments completed successfully |
-| `PARTIALLY_COMPLETED` | Some payments succeeded, some failed |
-| `FAILED` | Batch processing failed |
+| Value                 | Description                               |
+| --------------------- | ----------------------------------------- |
+| `CREATED`             | Batch created, payments not yet processed |
+| `PROCESSING`          | Payments being processed in sequence      |
+| `COMPLETED`           | All payments completed successfully       |
+| `PARTIALLY_COMPLETED` | Some payments succeeded, some failed      |
+| `FAILED`              | Batch processing failed                   |
 
 ### Frequency
 
-| Value | Description |
-|---|---|
-| `DAILY` | Every day |
-| `WEEKLY` | Once per week |
-| `BIWEEKLY` | Every two weeks |
-| `MONTHLY` | Once per month |
-| `QUARTERLY` | Every 3 months |
-| `YEARLY` | Once per year |
+| Value       | Description     |
+| ----------- | --------------- |
+| `DAILY`     | Every day       |
+| `WEEKLY`    | Once per week   |
+| `BIWEEKLY`  | Every two weeks |
+| `MONTHLY`   | Once per month  |
+| `QUARTERLY` | Every 3 months  |
+| `YEARLY`    | Once per year   |
 
 ### ScheduledPaymentStatus
 
 Lifecycle of a one-off scheduled payment, driven by the cron endpoint
 (`/api/cron` — see [Scheduled Payment Cron](scheduled-payment-cron.md)).
 
-| Value | Description |
-|---|---|
-| `SCHEDULED` | Queued — waiting for `scheduledAt` to pass, or awaiting a retry |
+| Value        | Description                                                          |
+| ------------ | -------------------------------------------------------------------- |
+| `SCHEDULED`  | Queued — waiting for `scheduledAt` to pass, or awaiting a retry      |
 | `PROCESSING` | Claimed by a cron run and being submitted (lease held in `lockedAt`) |
-| `EXECUTED` | Submitted to Stellar — `transactionHash` is set |
-| `FAILED` | Gave up after the attempt cap — check `errorMessage` |
-| `CANCELLED` | Cancelled before it ran |
+| `EXECUTED`   | Submitted to Stellar — `transactionHash` is set                      |
+| `FAILED`     | Gave up after the attempt cap — check `errorMessage`                 |
+| `CANCELLED`  | Cancelled before it ran                                              |
 
 ### RequestStatus
 
-| Value | Description |
-|---|---|
-| `PENDING` | Awaiting payment |
-| `PAID` | Payment received |
-| `EXPIRED` | Request expired before payment |
-| `CANCELLED` | Cancelled by creator |
+| Value       | Description                    |
+| ----------- | ------------------------------ |
+| `PENDING`   | Awaiting payment               |
+| `PAID`      | Payment received               |
+| `EXPIRED`   | Request expired before payment |
+| `CANCELLED` | Cancelled by creator           |
 
 ### RefundStatus
 
-| Value | Description |
-|---|---|
-| `REQUESTED` | Refund requested, awaiting approval |
-| `APPROVED` | Refund approved, awaiting processing |
-| `REJECTED` | Refund rejected |
-| `PROCESSED` | Refund processed on-chain |
+| Value       | Description                          |
+| ----------- | ------------------------------------ |
+| `REQUESTED` | Refund requested, awaiting approval  |
+| `APPROVED`  | Refund approved, awaiting processing |
+| `REJECTED`  | Refund rejected                      |
+| `PROCESSED` | Refund processed on-chain            |
 
 ---
 
 ## Key Relationships
 
-| Relationship | Type | Description |
-|---|---|---|
-| User → Account | 1:N | A user owns multiple Stellar accounts |
-| User → Payment | 1:N | A user creates multiple payments |
-| User → Batch | 1:N | A user owns multiple batch groups |
-| User → Recurrence | 1:N | A user has multiple recurring schedules |
-| User → ScheduledPayment | 1:N | A user schedules multiple future payments |
-| User → PaymentRequest | 1:N | A user creates multiple payment requests |
-| User → Webhook | 1:N | A user configures multiple webhooks |
-| User → ApiKey | 1:N | A user creates multiple API keys |
-| User → Refund | 1:N | A user requests multiple refunds |
-| User → NotificationHook | 1:N | A user registers multiple notification hooks |
-| Account → Payment (source) | 1:N | An account is the source of multiple payments |
-| Account → Payment (dest) | 1:N | An account is the destination of multiple payments |
-| Batch → Payment | 1:N | A batch contains multiple payments |
-| Recurrence → Payment | 1:N | A recurrence schedule generates multiple payments |
-| Payment → Refund | 1:N | A payment may have multiple refund requests |
+| Relationship               | Type | Description                                        |
+| -------------------------- | ---- | -------------------------------------------------- |
+| User → Account             | 1:N  | A user owns multiple Stellar accounts              |
+| User → Payment             | 1:N  | A user creates multiple payments                   |
+| User → Batch               | 1:N  | A user owns multiple batch groups                  |
+| User → Recurrence          | 1:N  | A user has multiple recurring schedules            |
+| User → ScheduledPayment    | 1:N  | A user schedules multiple future payments          |
+| User → PaymentRequest      | 1:N  | A user creates multiple payment requests           |
+| User → Webhook             | 1:N  | A user configures multiple webhooks                |
+| User → ApiKey              | 1:N  | A user creates multiple API keys                   |
+| User → Refund              | 1:N  | A user requests multiple refunds                   |
+| User → NotificationHook    | 1:N  | A user registers multiple notification hooks       |
+| Account → Payment (source) | 1:N  | An account is the source of multiple payments      |
+| Account → Payment (dest)   | 1:N  | An account is the destination of multiple payments |
+| Batch → Payment            | 1:N  | A batch contains multiple payments                 |
+| Recurrence → Payment       | 1:N  | A recurrence schedule generates multiple payments  |
+| Payment → Refund           | 1:N  | A payment may have multiple refund requests        |
 
 ---
 
 ## Database Providers
 
-OphirPay supports two database providers, switchable via the `DATABASE_PROVIDER` environment variable:
+PostgreSQL is the canonical provider for CI and production. `DATABASE_PROVIDER`
+does not switch Prisma's datasource: the committed `prisma/schema.prisma`
+selects PostgreSQL, and SQLite requires local, uncommitted schema edits.
+SQLite also does not support every production type or migration. See the
+[Database Provider Compatibility guide](DATABASE_PROVIDERS.md) for feature
+differences, the status of all 18 migrations, and data-transfer guidance.
 
-| Provider | Use Case | Connection |
-|---|---|---|
-| **SQLite** | Local development | `file:./dev.db` |
+| Provider       | Use Case                         | Connection                     |
+| -------------- | -------------------------------- | ------------------------------ |
+| **SQLite**     | Local experiments only           | `file:./dev.db`                |
 | **PostgreSQL** | Production (Neon, Supabase, RDS) | Connection string with pooling |
 
 ### Provider-specific notes
 
-- **SQLite**: Used for local development with `npx prisma db push`. No migrations needed.
-- **PostgreSQL**: Used in production with `npx prisma migrate deploy`. Supports connection pooling via `DIRECT_DATABASE_URL`.
+- **SQLite**: Local schema changes use `npx prisma db push`; the PostgreSQL
+  migration history does not apply.
+- **PostgreSQL**: CI and production use `npx prisma migrate deploy`. The
+  committed datasource currently reads `DATABASE_URL`; setting
+  `DIRECT_DATABASE_URL` alone does not redirect Prisma CLI commands.
 
 ---
 
@@ -314,18 +322,18 @@ npx prisma studio
 
 The schema defines the following indexes for query performance:
 
-| Model | Indexed Fields | Purpose |
-|---|---|---|
-| Account | `userId` | Fast lookup of accounts per user |
-| Payment | `userId`, `status`, `batchId`, `recurrenceId`, `sourceAccountId`, `destAccountId` | Filter by user, status, batch, recurrence, or account |
-| Batch | `userId`, `status` | Filter by user or status |
-| Recurrence | `userId`, `nextRunAt` | Scheduler query for next execution |
-| ScheduledPayment | `userId`, (`status`, `scheduledAt`) | Fast lookup per user; the composite serves the cron's due-selection query |
-| PaymentRequest | `userId` | Fast lookup per user |
-| Webhook | `userId` | Fast lookup per user |
-| Refund | `userId`, `status`, `paymentId` | Filter by user, status, or parent payment |
-| NotificationHook | `userId`, `eventType` | Filter by user or event type |
-| ApiKey | `userId`, `prefix` | Fast lookup by user or key prefix |
+| Model            | Indexed Fields                                                                    | Purpose                                                                   |
+| ---------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Account          | `userId`                                                                          | Fast lookup of accounts per user                                          |
+| Payment          | `userId`, `status`, `batchId`, `recurrenceId`, `sourceAccountId`, `destAccountId` | Filter by user, status, batch, recurrence, or account                     |
+| Batch            | `userId`, `status`                                                                | Filter by user or status                                                  |
+| Recurrence       | `userId`, `nextRunAt`                                                             | Scheduler query for next execution                                        |
+| ScheduledPayment | `userId`, (`status`, `scheduledAt`)                                               | Fast lookup per user; the composite serves the cron's due-selection query |
+| PaymentRequest   | `userId`                                                                          | Fast lookup per user                                                      |
+| Webhook          | `userId`                                                                          | Fast lookup per user                                                      |
+| Refund           | `userId`, `status`, `paymentId`                                                   | Filter by user, status, or parent payment                                 |
+| NotificationHook | `userId`, `eventType`                                                             | Filter by user or event type                                              |
+| ApiKey           | `userId`, `prefix`                                                                | Fast lookup by user or key prefix                                         |
 
 ---
 

@@ -9,6 +9,23 @@ data:
   {{- range $key, $val := .Values.config }}
   {{ $key }}: {{ $val | quote }}
   {{- end }}
+{{- /*
+  Issue #1334 — secrets handling.
+
+  `secrets.existingSecret` makes the chart use a Secret that already exists in
+  the namespace (managed by External Secrets, Sealed Secrets, Vault, or the
+  platform team) instead of rendering one from plain-text values. `existingSecret`
+  itself is a chart option, not an environment variable, so it is stripped from
+  the rendered data.
+
+  Without it the chart renders the Secret from `.Values.secrets` and fails
+  fast — with a message that names the missing value — when DATABASE_URL or
+  AUTH_SECRET is empty. A helm install that would otherwise succeed and then
+  crash-loop the pod now stops before anything reaches the cluster.
+*/}}
+{{- if not .Values.secrets.existingSecret }}
+{{- $_ := required "secrets.DATABASE_URL is required (e.g. --set secrets.DATABASE_URL=postgresql://user:pass@host:5432/db) unless secrets.existingSecret names a pre-existing Secret" .Values.secrets.DATABASE_URL }}
+{{- $_ := required "secrets.AUTH_SECRET is required (generate with: openssl rand -hex 32) unless secrets.existingSecret names a pre-existing Secret" .Values.secrets.AUTH_SECRET }}
 ---
 apiVersion: v1
 kind: Secret
@@ -19,6 +36,9 @@ metadata:
     {{- include "ophirpay.labels" . | nindent 4 }}
 type: Opaque
 stringData:
-  {{- range $key, $val := .Values.secrets }}
+  {{- range $key, $val := omit .Values.secrets "existingSecret" }}
+  {{- if ne ($val | toString) "" }}
   {{ $key }}: {{ $val | quote }}
   {{- end }}
+  {{- end }}
+{{- end }}

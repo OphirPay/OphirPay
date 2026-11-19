@@ -12,6 +12,14 @@ vi.mock("@/lib/contracts", () => ({
   simulateContractCall: vi.fn(),
 }));
 
+// The lease itself is covered in idempotency-routes.test.ts; here it is
+// "no broker" so each request runs the handler exactly once.
+vi.mock("@/lib/idempotency", () => ({
+  claimIdempotencyKey: vi.fn().mockResolvedValue({ status: "unavailable" }),
+  IDEMPOTENCY_RESPONSE_TTL_SECONDS: 24 * 60 * 60,
+  IDEMPOTENCY_LOCK_TTL_SECONDS: 120,
+}));
+
 import * as authSession from "@/lib/auth-session";
 import * as contracts from "@/lib/contracts";
 import { generateCsrfToken } from "@/lib/csrf";
@@ -30,10 +38,17 @@ function csrfHeaders(): Record<string, string> {
   return { "x-csrf-token": token, cookie: `__Host-csrf=${token}` };
 }
 
+let idempotencyCounter = 0;
+
 function postRequest(url: string, body?: unknown): Request {
+  idempotencyCounter += 1;
   return new Request(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...csrfHeaders() },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `test-idempotency-key-${idempotencyCounter}`,
+      ...csrfHeaders(),
+    },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 }

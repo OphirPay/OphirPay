@@ -27,8 +27,18 @@ interface Operation {
   operation: Record<string, unknown>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let spec: any;
+interface OpenApiSpec {
+  openapi?: string;
+  info?: { title?: string };
+  paths?: Record<string, unknown>;
+  components?: {
+    schemas?: Record<string, unknown>;
+    securitySchemes?: Record<string, unknown>;
+  };
+  security?: Array<Record<string, unknown>>;
+}
+
+let spec: OpenApiSpec;
 let operations: Operation[];
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -58,6 +68,49 @@ function exportedHandlers(source: string): string[] {
   return [...source.matchAll(re)].map((m) => m[1]);
 }
 
+/** Narrow a documented operation to the shape the example assertions walk. */
+function operationFor(
+  specPath: string,
+  method: string
+): Record<string, Record<string, unknown>> {
+  const item = spec.paths?.[specPath];
+  expect(item, `${specPath} is not documented in the spec`).toBeTruthy();
+  const pathItem = (item ?? {}) as Record<string, unknown>;
+  const operation = pathItem[method];
+  expect(
+    operation,
+    `${method.toUpperCase()} ${specPath} is not documented in the spec`
+  ).toBeTruthy();
+  return operation as Record<string, Record<string, unknown>>;
+}
+
+/**
+ * Pull `content["application/json"].examples[<name>].value` out of a request
+ * body or response object. Going through here means a spec that drops or
+ * renames an example fails with the path/method that lost it, instead of an
+ * opaque `undefined` dereference further down the assertion chain.
+ */
+function jsonExample(
+  container: unknown,
+  exampleName: string,
+  specPath: string,
+  method: string
+): Record<string, unknown> {
+  const body = (container ?? {}) as Record<string, unknown>;
+  const json = (body["content"] as
+    | Record<string, Record<string, unknown>>
+    | undefined)?.["application/json"];
+  const examples = json?.["examples"] as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  const value = examples?.[exampleName]?.["value"];
+  expect(
+    value,
+    `${method.toUpperCase()} ${specPath} is missing the '${exampleName}' example`
+  ).toBeTruthy();
+  return (value ?? {}) as Record<string, unknown>;
+}
+
 /** Recursively list every `route.ts` under src/app/api (as API-relative paths). */
 function listRouteFiles(dir = API_DIR): string[] {
   const out: string[] = [];
@@ -71,15 +124,14 @@ function listRouteFiles(dir = API_DIR): string[] {
 }
 
 /** Collect every `$ref` value in a spec subtree. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function collectRefs(node: any, out: string[] = []): string[] {
+function collectRefs(node: unknown, out: string[] = []): string[] {
   if (Array.isArray(node)) {
     for (const n of node) collectRefs(n, out);
     return out;
   }
   if (node && typeof node === "object") {
     for (const [k, v] of Object.entries(node)) {
-      if (k === "$ref") out.push(v as string);
+      if (k === "$ref" && typeof v === "string") out.push(v);
       else collectRefs(v, out);
     }
   }
@@ -92,30 +144,51 @@ function resolveRef(ref: string): unknown {
     .replace(/^#\//, "")
     .split("/")
     .reduce<unknown>((cur, part) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (cur as any)?.[part];
+      if (cur === null || typeof cur !== "object" || Array.isArray(cur)) {
+        return undefined;
+      }
+      return (cur as Record<string, unknown>)[part];
     }, spec);
 }
 
 /** Path parameters declared (path-level + operation-level) for an operation. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function declaredPathParams(op: any, pathItem: any): string[] {
+function parameters(value: unknown): Array<Record<string, unknown>> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+  const parameterValues = (value as Record<string, unknown>).parameters;
+  if (!Array.isArray(parameterValues)) return [];
+  return parameterValues.filter(
+    (parameter): parameter is Record<string, unknown> =>
+      parameter !== null && typeof parameter === "object" && !Array.isArray(parameter)
+  );
+}
+
+function declaredPathParams(op: unknown, pathItem: unknown): string[] {
   const all = [
-    ...(pathItem.parameters ?? []),
-    ...(op.parameters ?? []),
-  ] as Array<{ name?: string; in?: string; required?: boolean }>;
+    ...parameters(pathItem),
+    ...parameters(op),
+  ];
   return all
     .filter((p) => p.in === "path" && p.required === true)
     .map((p) => String(p.name));
 }
 
 beforeAll(() => {
-  spec = load(readFileSync(SPEC_PATH, "utf8"));
+  spec = load(readFileSync(SPEC_PATH, "utf8")) as OpenApiSpec;
   operations = [];
   for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
-    const item = (pathItem ?? {}) as Record<string, unknown>;
+    const item =
+      pathItem !== null && typeof pathItem === "object" && !Array.isArray(pathItem)
+        ? (pathItem as Record<string, unknown>)
+        : {};
     for (const [method, op] of Object.entries(item)) {
-      if ((DATA_METHODS as readonly string[]).includes(method)) {
+      if (
+        (DATA_METHODS as readonly string[]).includes(method) &&
+        op !== null &&
+        typeof op === "object" &&
+        !Array.isArray(op)
+      ) {
         operations.push({
           method: method.toUpperCase(),
           path,
@@ -162,7 +235,7 @@ describe("OpenAPI schema-conformance", () => {
     const failures: string[] = [];
     for (const rel of listRouteFiles()) {
       const specPath = specPathForRouteFile(rel);
-      const pathItem = (spec.paths ?? {})[specPath] as
+      const pathItem = spec.paths?.[specPath] as
         | Record<string, unknown>
         | undefined;
       if (!pathItem) {
@@ -194,7 +267,7 @@ describe("OpenAPI schema-conformance", () => {
 
       const declared = declaredPathParams(
         operation,
-        (spec.paths as Record<string, unknown>)[path]
+        spec.paths?.[path]
       );
       for (const param of templated) {
         if (!declared.includes(param)) {
@@ -229,9 +302,12 @@ describe("OpenAPI schema-conformance", () => {
   it("declares complete request/response shapes for every operation", () => {
     const failures: string[] = [];
     for (const { method, path, operation } of operations) {
-      const responses = operation.responses as
-        | Record<string, { description?: string; $ref?: string }>
-        | undefined;
+      const responses =
+        operation.responses !== null &&
+        typeof operation.responses === "object" &&
+        !Array.isArray(operation.responses)
+          ? (operation.responses as Record<string, unknown>)
+          : undefined;
 
       if (!responses || Object.keys(responses).length === 0) {
         failures.push(`${method} ${path}: no responses declared`);
@@ -243,22 +319,108 @@ describe("OpenAPI schema-conformance", () => {
       if (!hasSuccess) {
         failures.push(`${method} ${path}: no 2xx (or default) success response`);
       }
-      for (const [code, resp] of Object.entries(responses)) {
+      for (const [code, response] of Object.entries(responses)) {
+        const resp =
+          response !== null && typeof response === "object" && !Array.isArray(response)
+            ? (response as Record<string, unknown>)
+            : {};
         if (resp.$ref === undefined && !resp.description) {
           failures.push(`${method} ${path} ${code}: response missing description`);
         }
       }
 
-      const requestBody = operation.requestBody as
-        | { content?: Record<string, unknown>; $ref?: string }
-        | undefined;
+      const requestBody =
+        operation.requestBody !== null &&
+        typeof operation.requestBody === "object" &&
+        !Array.isArray(operation.requestBody)
+          ? (operation.requestBody as Record<string, unknown>)
+          : undefined;
       if (requestBody && requestBody.$ref === undefined) {
         const content = requestBody.content;
-        if (!content || Object.keys(content).length === 0) {
+        if (
+          content === null ||
+          typeof content !== "object" ||
+          Array.isArray(content) ||
+          Object.keys(content).length === 0
+        ) {
           failures.push(`${method} ${path}: requestBody declares no content type`);
         }
       }
     }
     expect(failures).toEqual([]);
+  });
+
+  it("provides usable request and response examples for payment and batch creation", () => {
+    const paymentOp = operationFor("/api/payments", "post");
+    const paymentRequest = jsonExample(
+      paymentOp["requestBody"],
+      "validPayment",
+      "/api/payments",
+      "post"
+    );
+    const paymentResponse = jsonExample(
+      paymentOp["responses"]?.["201"],
+      "createdPayment",
+      "/api/payments",
+      "post"
+    );
+
+    expect(paymentRequest).toMatchObject({
+      amount: expect.any(Number),
+      sourceAccountId: expect.any(String),
+      destAddress: expect.any(String),
+    });
+    expect(paymentResponse).toMatchObject({
+      success: true,
+      data: {
+        amount: paymentRequest["amount"],
+        sourceAccountId: paymentRequest["sourceAccountId"],
+        status: "CREATED",
+      },
+      meta: { timestamp: expect.any(String) },
+    });
+
+    const batchOp = operationFor("/api/batches", "post");
+    const batchRequest = jsonExample(
+      batchOp["requestBody"],
+      "validBatch",
+      "/api/batches",
+      "post"
+    );
+    const batchResponse = jsonExample(
+      batchOp["responses"]?.["201"],
+      "createdBatch",
+      "/api/batches",
+      "post"
+    );
+
+    const recipients = batchRequest["recipients"] as Array<
+      Record<string, unknown>
+    >;
+
+    expect(batchRequest).toMatchObject({
+      name: expect.any(String),
+      sourceAccountId: expect.any(String),
+      recipients: expect.arrayContaining([
+        expect.objectContaining({
+          address: expect.any(String),
+          amount: expect.any(Number),
+        }),
+      ]),
+    });
+    expect(batchResponse).toMatchObject({
+      success: true,
+      data: {
+        name: batchRequest["name"],
+        status: "CREATED",
+        payments: expect.arrayContaining([
+          expect.objectContaining({
+            amount: recipients[0]["amount"],
+            memo: recipients[0]["memo"],
+          }),
+        ]),
+      },
+      meta: { timestamp: expect.any(String) },
+    });
   });
 });

@@ -1,0 +1,13 @@
+{
+  "event": "recurrence.triggered",
+  "timestamp": "2026-09-01T08:00:00.000Z",
+  "data": {
+    "recurrenceId": "r_5d31ee77b2c9",
+    "paymentId": "p_7a11cc02f9e8",
+    "amount": "10.00",
+    "assetCode": "XLM",
+    "interval": "monthly",
+    "triggeredAt": "2026-09-01T08:00:00.000Z"
+  },
+  "signature": "2b7f8d6d53d143cfd7f743e7fd2711e67c25d5c9865f4c910fb85ef92aec5e50"
+}

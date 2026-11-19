@@ -159,3 +159,61 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  body:has(.payment-print-page) * {
+    visibility: hidden !important;
+  }
+
+  body:has(.payment-print-page) .payment-print-page,
+  body:has(.payment-print-page) .payment-print-page * {
+    visibility: visible !important;
+  }
+
+  body:has(.payment-print-page) .payment-print-page {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    animation: none !important;
+    color: #111827 !important;
+    background: #fff !important;
+  }
+
+  .payment-print-page,
+  .payment-print-page * {
+    color: #111827 !important;
+    background-color: transparent !important;
+    border-color: #d1d5db !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .payment-print-page button,
+  .payment-print-page nav,
+  .payment-print-page a[href="/payments"] {
+    display: none !important;
+  }
+
+  .payment-print-page a {
+    color: #111827 !important;
+    text-decoration: none !important;
+  }
+
+  .payment-print-page dl > div,
+  .payment-print-page article,
+  .payment-print-page section {
+    break-inside: avoid;
+  }
+}

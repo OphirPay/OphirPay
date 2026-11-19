@@ -80,6 +80,55 @@
       "targets": [
         { "expr": "rate(ophirpay_batches_processed_total[5m])", "legendFormat": "Batches/min" }
       ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 7,
+      "options": {},
+      "title": "Active SSE Client Connections",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "ophirpay_sse_active_connections", "legendFormat": "{{route}}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 8,
+      "options": {},
+      "title": "SSE Client Session Duration",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(ophirpay_sse_connection_duration_seconds_sum[5m]) / rate(ophirpay_sse_connection_duration_seconds_count[5m])", "legendFormat": "{{route}} avg duration" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 9,
+      "options": {},
+      "title": "Active WebSocket Connections",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "ophirpay_ws_active_connections", "legendFormat": "Active Connections" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "id": 10,
+      "options": {},
+      "title": "WebSocket Disconnections & Drops",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(ophirpay_ws_disconnections_total[5m])", "legendFormat": "{{reason}}" },
+        { "expr": "rate(ophirpay_ws_broadcast_frames_total[5m])", "legendFormat": "Broadcast frames/s" }
+      ]
     }
   ],
   "refresh": "30s",

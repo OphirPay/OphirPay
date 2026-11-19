@@ -1,0 +1,14 @@
+{
+  "event": "batch.failed",
+  "timestamp": "2026-09-01T09:31:02.000Z",
+  "data": {
+    "batchId": "b_71c0aa9e55d2",
+    "itemCount": 25,
+    "succeeded": 3,
+    "failed": 22,
+    "assetCode": "USDC",
+    "errorMessage": "Batch aborted: 88% of items failed validation",
+    "failedAt": "2026-09-01T09:31:02.000Z"
+  },
+  "signature": "fb972a142289eb943bfb8ac0d74c651084a997f39a7c9e1b8a56d3212ce95262"
+}

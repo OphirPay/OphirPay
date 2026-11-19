@@ -26,7 +26,9 @@ metadata:
   labels:
     app: ophirpay
 spec:
-  replicas: 2
+  # No `replicas` here on purpose: the HorizontalPodAutoscaler below owns the
+  # replica count (issue #1331). Setting `spec.replicas` alongside an HPA makes
+  # every `kubectl apply` reset whatever the autoscaler had scaled to.
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -43,8 +45,13 @@ spec:
       serviceAccountName: ophirpay
       containers:
         - name: ophirpay
-          image: ghcr.io/ophirpay/ophirpay:latest
-          imagePullPolicy: Always
+          # Pinned to the chart's appVersion, matching
+          # helm/ophirpay/values.yaml (image.tag defaults to
+          # Chart.appVersion). Never use `:latest` here: a mutable tag lets two
+          # pods of the same release run different builds and makes rollbacks
+          # meaningless (issue #1333). Bump this tag together with the chart.
+          image: ghcr.io/ophirpay/ophirpay:1.0.0
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
               name: http
@@ -60,31 +67,50 @@ spec:
             limits:
               cpu: 1000m
               memory: 512Mi
+          # ── Probes (issue #738) ──────────────────────────────
+          # Liveness must NOT depend on a backing service: /api/health/live
+          # only proves the process is serving, so a Postgres/Soroban/Redis
+          # outage cannot restart-loop a healthy pod.
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /api/health/live
               port: 3000
             initialDelaySeconds: 30
-            periodSeconds: 15
+            periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
+          # Readiness checks only the database; slow public Stellar or Redis
+          # endpoints must not remove an otherwise usable pod from service.
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /api/health/ready
               port: 3000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 2
+            timeoutSeconds: 5
+            failureThreshold: 3
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 1001
             capabilities:
               drop:
                 - ALL
+          volumeMounts:
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
       securityContext:
         fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: next-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -207,7 +233,7 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
-    - to:  # Allow outbound to Stellar network
+    - to: # Allow outbound to Stellar network
       ports:
         - protocol: TCP
           port: 443

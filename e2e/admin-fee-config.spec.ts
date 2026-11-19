@@ -28,8 +28,9 @@ test.describe("Fee configuration admin page", () => {
       .getByRole("button", { name: "Save Fee Configuration" })
       .click();
 
+    // The page shows the result both inline and as a toast.
     await expect(
-      page.getByText("Fee configuration saved on-chain")
+      page.getByText("Fee configuration saved on-chain").first()
     ).toBeVisible({ timeout: 20000 });
   });
 
@@ -65,7 +66,7 @@ test.describe("Fee configuration admin page", () => {
     await dialog.getByRole("button", { name: "Set Fee Collector" }).click();
 
     await expect(
-      page.getByText("Fee collector updated on-chain")
+      page.getByText("Fee collector updated on-chain").first()
     ).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(VALID_ADDRESS_B)).toBeVisible({
       timeout: 15000,

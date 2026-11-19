@@ -8,6 +8,12 @@ import {
   validateStellarMemo,
   type StellarMemoType,
 } from "@/lib/validation/stellar";
+import { paymentAmountSchema } from "@/lib/validation/payment";
+import {
+  BATCH_RECIPIENTS_MAX_MESSAGE,
+  BATCH_RECIPIENTS_MIN_MESSAGE,
+  MAX_BATCH_RECIPIENTS,
+} from "@/lib/validation/batch";
 
 // ── Address / Identifier Schemas ──────────────────────────────
 
@@ -76,7 +82,7 @@ function refineMemo(
 
 export const createPaymentSchema = z
   .object({
-    amount: z.number().positive("Amount must be greater than zero"),
+    amount: paymentAmountSchema,
     sourceAccountId: z.string().min(1, "Source account is required"),
     destAddress: stellarAddress,
     assetCode: z.string().default("XLM"),
@@ -175,7 +181,7 @@ export const idempotencyKeySchema = z
 export const batchRecipientSchema = z
   .object({
     address: stellarAddress,
-    amount: z.number().positive("Amount must be greater than zero"),
+    amount: paymentAmountSchema,
     assetCode: z.string().default("XLM"),
     memo: memoValueField,
     memoType: memoTypeField,
@@ -187,7 +193,10 @@ export const batchRecipientSchema = z
 export const createBatchSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  recipients: z.array(batchRecipientSchema).min(1).max(100),
+  recipients: z
+    .array(batchRecipientSchema)
+    .min(1, BATCH_RECIPIENTS_MIN_MESSAGE)
+    .max(MAX_BATCH_RECIPIENTS, BATCH_RECIPIENTS_MAX_MESSAGE),
   sourceAccountId: z.string().min(1),
   idempotencyKey: idempotencyKeySchema.optional(),
 });

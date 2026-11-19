@@ -23,6 +23,12 @@ export default defineConfig({
     // fetch(), so Playwright's page.route() (used by the SSE mock) never sees
     // the request. Block it for E2E so network interception is deterministic.
     serviceWorkers: "block",
+    // The app animates dialogs in (`animate-fade-in-up`) and smooth-scrolls the
+    // page. Playwright can hit-test a target mid-animation and then see a
+    // sibling "intercept pointer events" — worst on the small mobile viewport,
+    // where dialogs are bottom sheets that scroll. Reduced motion switches both
+    // off through the app's own `prefers-reduced-motion` rules.
+    reducedMotion: "reduce",
   },
   projects: OFFLINE
     ? [

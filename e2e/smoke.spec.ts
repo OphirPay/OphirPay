@@ -12,8 +12,9 @@ test.describe("Staging Smoke Tests", () => {
     expect(response.status()).toBe(200);
 
     const body = await response.json();
-    expect(body).toBeDefined();
-    expect(body.status).toBeDefined();
+    // Responses use the { success, data } envelope.
+    expect(body.success).toBe(true);
+    expect(body.data.status).toBeDefined();
   });
 
   test("2. Liveness endpoint responds with 200 OK", async ({ request }) => {
@@ -21,7 +22,8 @@ test.describe("Staging Smoke Tests", () => {
     expect(response.status()).toBe(200);
 
     const body = await response.json();
-    expect(body.status).toBe("ok");
+    expect(body.success).toBe(true);
+    expect(body.data.status).toBe("ok");
   });
 
   test("3. Core dashboard navigation loads without critical errors", async ({ page }) => {

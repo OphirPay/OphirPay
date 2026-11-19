@@ -83,7 +83,7 @@ export function CurrencyToggle({
         )}
         {showPrice && isUnavailable && (
           <span
-            className="text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            className="text-[10px] font-medium text-amber-700 dark:text-amber-400"
             title="Price feed unavailable"
           >
             Price unavailable
@@ -91,7 +91,7 @@ export function CurrencyToggle({
         )}
         {showPrice && isStale && !isUnavailable && (
           <span
-            className="text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            className="text-[10px] font-medium text-amber-700 dark:text-amber-400"
             title="Using last known price because price feeds are unavailable"
           >
             Stale price

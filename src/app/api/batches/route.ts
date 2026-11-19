@@ -13,6 +13,7 @@ import {
   conflictError,
   handleApiError,
 } from "@/lib/api-response";
+import { problemFromZodError } from "@/lib/api-errors";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
 import { requireScope } from "@/lib/api-route";
@@ -201,7 +202,11 @@ export const POST = withMetrics("POST /api/batches", withRequestLogging(async fu
 
     const parsed = createBatchSchema.safeParse(body);
     if (!parsed.success) {
-      return validationError(parsed.error);
+      // RFC 7807 problem document: the per-field `errors` member carries the
+      // descriptive message (e.g. the 100-recipient cap) next to its field.
+      return problemFromZodError(parsed.error, {
+        instance: new URL(request.url).pathname,
+      });
     }
 
     const { name, description, recipients: payments } =

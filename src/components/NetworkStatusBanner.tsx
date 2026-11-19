@@ -58,7 +58,7 @@ export function NetworkStatusBanner() {
           className="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-500"
         />
         <span className="font-medium">{headline}</span>
-        <span className="text-amber-800/80 dark:text-amber-300/80">
+        <span className="text-amber-900 dark:text-amber-200">
           via <span data-testid="network-status-endpoint">{provider}</span>
           {" · "}
           <span data-testid="network-status-latency">{latencyLabel}</span>

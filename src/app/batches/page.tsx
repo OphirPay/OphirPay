@@ -251,7 +251,7 @@ export default function BatchesPage() {
       {/* ── Global progress across all batches ──────────────────── */}
       <Card title="Batch Progress" subtitle={`${totalPayments} payments across ${totalBatches} batch${totalBatches !== 1 ? "es" : ""}`} padding="md">
         <div className="space-y-3">
-          <ProgressBar value={completedPct} max={100} variant="success" showLabel />
+          <ProgressBar value={completedPct} max={100} variant="success" showLabel label="Overall batch completion" />
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
             <span><span className="font-semibold text-green-600 dark:text-green-400">{progress?.completed ?? 0}</span> completed</span>
             <span><span className="font-semibold text-red-600 dark:text-red-400">{progress?.failed ?? 0}</span> failed</span>
@@ -332,7 +332,7 @@ export default function BatchesPage() {
                       <td className="py-3 px-4 min-w-[160px]">
                         {paymentCount > 0 ? (
                           <>
-                            <ProgressBar value={pct} max={100} variant={completed === paymentCount ? "success" : failed > 0 ? "warning" : "default"} />
+                            <ProgressBar value={pct} max={100} label="Batch completion" variant={completed === paymentCount ? "success" : failed > 0 ? "warning" : "default"} />
                             <div className="mt-1 flex gap-x-3 text-xs text-gray-500 dark:text-gray-400">
                               <span className="text-green-600 dark:text-green-400">{completed} ok</span>
                               {failed > 0 && <span className="text-red-600 dark:text-red-400">{failed} failed</span>}

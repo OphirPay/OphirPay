@@ -171,7 +171,7 @@ export default function RBACPage() {
           <span className="text-amber-500 text-lg">⚠️</span>
           <div>
             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Wallet not connected</p>
-            <p className="text-xs text-amber-600 dark:text-amber-400">
+            <p className="text-xs text-amber-700 dark:text-amber-400">
               Connect your wallet to manage role-based access on-chain.
             </p>
           </div>

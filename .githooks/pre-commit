@@ -1,13 +1,36 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 #
-# Committed pre-commit hook (issue #1398). Git discovers it via
+# Committed pre-commit hook (issue #1398, #1980). Git discovers it via
 # `core.hooksPath=.githooks`, which `npm run prepare` sets
 # (scripts/install-git-hooks.mjs). Keeping the hook in the repo — rather than
 # in .git/hooks — means it is versioned, reviewable and installed for everyone.
 #
-# Add further pre-commit steps here; keep each one fast and focused.
+# Checks staged files to prevent accidental commitment of secret/environment
+# files, then runs the gitleaks secret scanner.
 set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# ── 1. Accidental .env commit guard (issue #1980) ───────────────
+# Block any staged file matching .env* (e.g., .env, .env.local, .env.production),
+# while allowing non-secret templates such as .env.example.
+BLOCKED_ENV_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)\.env' | grep -v -E '(^|/)\.env\.example$' || true)
+
+if [ -n "${BLOCKED_ENV_FILES}" ]; then
+  echo "" >&2
+  echo "[pre-commit] ❌ Attempting to commit environment / secret configuration file(s):" >&2
+  echo "${BLOCKED_ENV_FILES}" | while IFS= read -r file; do
+    echo "  - ${file}" >&2
+  done
+  echo "" >&2
+  echo "Accidental commitment of .env files can expose sensitive credentials." >&2
+  echo "Only template files such as .env.example are allowed to be committed." >&2
+  echo "To unstage these files, run:" >&2
+  echo "  git reset HEAD <file>... (or: git restore --staged <file>...)" >&2
+  echo "" >&2
+  exit 1
+fi
+
+# ── 2. Gitleaks secret scan (issue #1398) ───────────────────────
 exec bash "${REPO_ROOT}/scripts/pre-commit-secrets.sh" "$@"

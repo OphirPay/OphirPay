@@ -75,6 +75,18 @@ export default function ScheduledPaymentsList() {
         )}
       </div>
 
+      {payments.length > 0 && (
+        <div className="mb-3">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search addresses or memos..."
+            className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">
           {[1, 2].map((i) => (
@@ -86,13 +98,11 @@ export default function ScheduledPaymentsList() {
         </div>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          No scheduled payments yet. Use the schedule toggle above to send at
-          a future date.
-        </p>
-      ) : payments.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          No scheduled payments yet. Use the schedule toggle above to send at
-          a future date.
+          {payments.length === 0 ? (
+            <>No scheduled payments yet. Use the schedule toggle above to send at a future date.</>
+          ) : (
+            <>No payments match your search.</>
+          )}
         </p>
       ) : (
         <ul className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -137,17 +147,7 @@ export default function ScheduledPaymentsList() {
               </div>
             </li>
           ))}
-          {filtered.length !== payments.length && (
-            <li className="py-2 text-sm text-gray-500 dark:text-gray-400">
-              <em>Search: {"<input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="border rounded p-1"
-                placeholder="Search addresses/memos..."
-              />"}</em>
-            </li>
-          )}
+
         </ul>
       )}
     </div>

@@ -65,3 +65,40 @@ pub fn compute_vested(total_amount: i128, start_time: u64, end_time: u64, now: u
     (whole + fractional) as i128
 }
 
+/// Ten raised to the power of `exp` as an `i128`.
+pub fn pow10(exp: u32) -> Result<i128, PaymentError> {
+    if exp > MAX_TOKEN_DECIMALS {
+        return Err(PaymentError::InvalidDecimalPrecision);
+    }
+    let mut val: i128 = 1;
+    for _ in 0..exp {
+        val = val.checked_mul(10).ok_or(PaymentError::ArithmeticOverflow)?;
+    }
+    Ok(val)
+}
+
+/// Convert a token amount between different decimal precisions.
+///
+/// Supports precisions from 0 up to `MAX_TOKEN_DECIMALS` (18).
+/// - When `to_decimals > from_decimals`, scales up by 10^(to_decimals - from_decimals).
+/// - When `to_decimals < from_decimals`, scales down by 10^(from_decimals - to_decimals) using integer truncation.
+/// - When `to_decimals == from_decimals`, returns `amount` unchanged.
+pub fn convert_token_decimals(
+    amount: i128,
+    from_decimals: u32,
+    to_decimals: u32,
+) -> Result<i128, PaymentError> {
+    if from_decimals > MAX_TOKEN_DECIMALS || to_decimals > MAX_TOKEN_DECIMALS {
+        return Err(PaymentError::InvalidDecimalPrecision);
+    }
+    if amount == 0 || from_decimals == to_decimals {
+        return Ok(amount);
+    }
+    if to_decimals > from_decimals {
+        let factor = pow10(to_decimals - from_decimals)?;
+        amount.checked_mul(factor).ok_or(PaymentError::ArithmeticOverflow)
+    } else {
+        let divisor = pow10(from_decimals - to_decimals)?;
+        Ok(amount / divisor)
+    }
+}

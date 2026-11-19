@@ -730,6 +730,16 @@ impl OphirPayContract {
         Ok(())
     }
 
+    /// Convert a token amount between different decimal precisions (0 to 18 decimals).
+    pub fn convert_token_decimals(
+        _env: Env,
+        amount: i128,
+        from_decimals: u32,
+        to_decimals: u32,
+    ) -> Result<i128, PaymentError> {
+        convert_token_decimals(amount, from_decimals, to_decimals)
+    }
+
     // ═══════════════════════════════════════════════════════════
     //  TIMELOCKED ACTIONS — 24h delay on sensitive admin ops
     // ═══════════════════════════════════════════════════════════

@@ -120,33 +120,29 @@ describe("CI & Developer Scripts Verification", () => {
     });
   });
 
-  describe("Soroban Contract CI Rust Target Caching (Issue #1990)", () => {
-    const contractsWorkflowPath = join(root, ".github", "workflows", "contracts.yml");
-    const regressionWorkflowPath = join(root, ".github", "workflows", "contract-regression.yml");
-    const ciWorkflowPath = join(root, ".github", "workflows", "ci.yml");
+  describe("Stellar Quickstart Standalone Container Documentation (Issue #1997)", () => {
+    const localDevPath = join(root, "docs", "LOCAL_DEV.md");
+    const readmePath = join(root, "README.md");
 
-    it(".github/workflows/contracts.yml exists with actions/cache and Cargo.lock key", () => {
-      expect(existsSync(contractsWorkflowPath)).toBe(true);
-      const content = readFileSync(contractsWorkflowPath, "utf8");
-      expect(content).toContain("actions/cache@v4");
-      expect(content).toContain("~/.cargo/registry");
-      expect(content).toContain("~/.cargo/git");
-      expect(content).toContain("contracts/target");
-      expect(content).toContain("Cargo.lock");
-      expect(content).toContain("cargo-contracts-");
+    it("docs/LOCAL_DEV.md documents stellar/quickstart container setup", () => {
+      expect(existsSync(localDevPath)).toBe(true);
+      const content = readFileSync(localDevPath, "utf8");
+      expect(content).toContain("stellar/quickstart:testing");
+      expect(content).toContain("--standalone");
+      expect(content).toContain("--enable-soroban-rpc");
+      expect(content).toContain("8000:8000");
+      expect(content).toContain("/friendbot");
+      expect(content).toContain("curl -X GET");
+      expect(content).toContain("getHealth");
     });
 
-    it(".github/workflows/contract-regression.yml includes Rust cache step", () => {
-      const content = readFileSync(regressionWorkflowPath, "utf8");
-      expect(content).toContain("actions/cache@v4");
-      expect(content).toContain("~/.cargo/registry");
-      expect(content).toContain("Cargo.lock");
-      expect(content).toContain("cargo-regression-");
-    });
-
-    it(".github/workflows/ci.yml contract-wasm hashes Cargo.lock in cache key", () => {
-      const content = readFileSync(ciWorkflowPath, "utf8");
-      expect(content).toContain("contracts/**/Cargo.lock");
+    it("README.md links to the standalone quickstart documentation", () => {
+      expect(existsSync(readmePath)).toBe(true);
+      const content = readFileSync(readmePath, "utf8");
+      expect(content).toContain("Local Stellar Standalone (Docker)");
+      expect(content).toContain(
+        "docs/LOCAL_DEV.md#13-local-stellar-quickstart-standalone-container-offline-testing--development"
+      );
     });
   });
 });

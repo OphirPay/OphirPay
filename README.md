@@ -70,6 +70,7 @@
 - [🧭 System Architecture](#-system-architecture)
 - [⚡ Quick Start](#-quick-start)
 - [🛠 Local Development Guide](docs/LOCAL_DEV.md)
+- [🐳 Local Stellar Standalone (Docker)](docs/LOCAL_DEV.md#13-local-stellar-quickstart-standalone-container-offline-testing--development)
 - [🔐 Wallet Integration](#-wallet-integration)
 - [📡 Real-Time Events](#-real-time-events)
 - [🧪 Smart Contracts](#-smart-contracts)
@@ -253,6 +254,8 @@ bash scripts/demo-test.sh
 ## ⚡ Quick Start
 
 > **New to Stellar?** Read our [Stellar 101 explainer](docs/STELLAR_101.md) for a concise primer on accounts, transactions, XLM, and Soroban — aimed at web developers new to blockchain.
+>
+> 🐳 **Offline Development:** Want to develop or test smart contracts locally without Testnet friendbot rate limits? See our [Stellar Quickstart Standalone Guide](docs/LOCAL_DEV.md#13-local-stellar-quickstart-standalone-container-offline-testing--development) to run a local container with built-in Soroban RPC and Friendbot on port 8000.
 
 ### Prerequisites
 

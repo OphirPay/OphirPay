@@ -253,6 +253,28 @@ export function badRequestError(message: string) {
   return errorResponse(ERROR_CODES.BAD_REQUEST, message, 400);
 }
 
+export function unsupportedMediaTypeError(
+  message = "Content-Type must be application/json"
+) {
+  return errorResponse(ERROR_CODES.UNSUPPORTED_MEDIA_TYPE, message, 415);
+}
+
+/**
+ * Guard that verifies the incoming request carries a JSON Content-Type.
+ *
+ * Returns a 415 Unsupported Media Type response when the header is missing or
+ * does not start with `application/json`; returns `null` when the request is
+ * acceptable.  Call at the top of POST / PATCH / PUT handlers before reading
+ * the body so malformed requests are rejected early.
+ */
+export function requireJsonContentType(request: Request): NextResponse | null {
+  const ct = (request.headers.get("content-type") ?? "").toLowerCase();
+  if (!ct.startsWith("application/json")) {
+    return unsupportedMediaTypeError();
+  }
+  return null;
+}
+
 // ── Unified Error Handler ──────────────────────────────────────
 
 /**

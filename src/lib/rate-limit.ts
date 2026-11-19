@@ -120,6 +120,16 @@ export class RedisRateLimitStore implements RateLimitStore {
     }
   ) {}
 
+  /**
+   * In-memory fallback used when Redis is temporarily unreachable.
+   * Shared across the lifetime of this store instance so rate-limit
+   * counters survive individual Redis hiccups.
+   */
+  private fallback = new InMemoryRateLimitStore();
+
+  /** Whether the last Redis call failed — used for logging hygiene. */
+  private usingFallback = false;
+
   async increment(
     key: string,
     windowMs: number,

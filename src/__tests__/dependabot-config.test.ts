@@ -63,6 +63,20 @@ describe("Dependabot Configuration (.github/dependabot.yml)", () => {
     expect(groups["utilities"].patterns?.some((p) => p.includes("date-fns"))).toBe(true);
   });
 
+  it("configures npm grouping for @types/* packages into a dedicated weekly group (issue #1983)", () => {
+    const raw = fs.readFileSync(configPath, "utf8");
+    const config = yaml.load(raw) as DependabotConfig;
+    const npmUpdate = config.updates.find((u) => u["package-ecosystem"] === "npm");
+
+    expect(npmUpdate).toBeDefined();
+    expect(npmUpdate?.schedule.interval).toBe("weekly");
+
+    const groups = npmUpdate?.groups ?? {};
+    expect(groups["types"]).toBeDefined();
+    expect(groups["types"].patterns).toContain("@types/*");
+    expect(groups["types"]["update-types"]).toEqual(["minor", "patch"]);
+  });
+
   it("configures cargo grouping for soroban-sdk and rust-tooling (issue #1415)", () => {
     const raw = fs.readFileSync(configPath, "utf8");
     const config = yaml.load(raw) as DependabotConfig;

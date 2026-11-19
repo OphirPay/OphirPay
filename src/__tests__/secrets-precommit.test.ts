@@ -99,6 +99,23 @@ describe("repository wiring (issue #1398)", () => {
   });
 });
 
+describe(".env file commit prevention guard (issue #1980)", () => {
+  const hook = readFileSync(join(REPO_ROOT, ".githooks", "pre-commit"), "utf8");
+
+  it("checks staged files for accidental .env commits", () => {
+    expect(hook).toContain("git diff --cached");
+    expect(hook).toContain(".env");
+  });
+
+  it("permits .env.example while blocking .env* files", () => {
+    expect(hook).toContain(".env.example");
+  });
+
+  it("provides clear guidance on how to unstage blocked files", () => {
+    expect(hook).toContain("git reset HEAD");
+  });
+});
+
 describe("pre-commit hook behaviour (issue #1398)", () => {
   let workdir: string;
   let repo: string;

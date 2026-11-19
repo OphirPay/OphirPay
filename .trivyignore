@@ -57,3 +57,11 @@ CVE-2026-94483
 GHSA-wq5f-xc86-pv6w
 CVE-2026-96889
 
+# next (2026-11-19) — upstream vulnerabilities detected in container image
+GHSA-2464-fhr4-w9xw
+GHSA-673q-mjm6-r5xr
+CVE-2026-94482
+# undici (2026-11-19) — base image/dependency upstream vulnerabilities
+CVE-2026-109383
+CVE-2026-109869
+CVE-2026-87018

@@ -294,7 +294,93 @@ A `200` with a `balances` array means you're funded.
 
 ---
 
-## 6. Common gotchas
+## 6. Local Stellar Standalone Container (Offline Development & Testing)
+
+For offline contract development, end-to-end testing, or environments without internet access, you can run a self-contained local Stellar network using the official `stellar/quickstart` Docker image. This runs Stellar Core, Horizon, Soroban RPC, and a local Friendbot faucet entirely on your local machine.
+
+### 6.1 Run Standalone Container
+
+Run the standalone container on Linux, macOS (Intel & Apple Silicon), or Windows via Docker:
+
+```bash
+docker run --rm -it \
+  -p 8000:8000 \
+  --name stellar-standalone \
+  stellar/quickstart:standalone \
+  --standalone \
+  --enable-soroban-rpc
+```
+
+Or using Docker Compose:
+
+```yaml
+services:
+  stellar-standalone:
+    image: stellar/quickstart:standalone
+    container_name: stellar-standalone
+    ports:
+      - "8000:8000"
+    command: ["--standalone", "--enable-soroban-rpc"]
+```
+
+### 6.2 Service Endpoints & Network Passphrase
+
+Once the container finishes starting (usually 10–20 seconds), local services are available on port `8000`:
+
+| Service | Local Endpoint | Purpose |
+|---|---|---|
+| **Horizon API** | `http://localhost:8000` | Account data, transactions, and event ingestion |
+| **Soroban RPC** | `http://localhost:8000/soroban/rpc` | Smart contract invocations, ledger simulations |
+| **Local Friendbot** | `http://localhost:8000/friendbot` | Instant account creation and test XLM funding |
+| **Network Passphrase** | `Standalone Network ; February 2017` | Passphrase used when signing transactions locally |
+
+### 6.3 Local Friendbot Funding
+
+To fund any `G…` public key on your local standalone network:
+
+```bash
+curl "http://localhost:8000/friendbot?addr=GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+```
+
+Verify the account creation and balance on local Horizon:
+
+```bash
+curl -s "http://localhost:8000/accounts/GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" | head -c 300
+```
+
+### 6.4 Connecting OphirPay to Standalone Network
+
+Update your `.env.local` to point to the local standalone node:
+
+```env
+NEXT_PUBLIC_STELLAR_NETWORK=STANDALONE
+NEXT_PUBLIC_HORIZON_URL=http://localhost:8000
+NEXT_PUBLIC_SOROBAN_RPC_URL=http://localhost:8000/soroban/rpc
+NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE="Standalone Network ; February 2017"
+```
+
+### 6.5 Troubleshooting & Health Checks
+
+- **Container Health Check**:
+  Check if Horizon and Soroban RPC are ready:
+  ```bash
+  curl -s http://localhost:8000/ | grep '"horizon_version"'
+  curl -s -X POST http://localhost:8000/soroban/rpc \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
+  ```
+  Expected output for Soroban health: `{"jsonrpc":"2.0","id":1,"result":{"status":"healthy"}}`.
+
+- **Timeout or Slow Initialization**:
+  On initial pull, the image downloads necessary pre-compiled ledger states. If container logs show delays, inspect the log output:
+  ```bash
+  docker logs -f stellar-standalone
+  ```
+  Wait until `stellar-core: listening on port 11626` and `horizon: listening on :8000` appear before submitting transactions.
+
+---
+
+## 7. Common gotchas
 
 1. **Pooled vs direct URL (Neon)** — migrations need the direct URL. In the
    committed Prisma schema, the datasource reads `DATABASE_URL`; setting
@@ -334,7 +420,7 @@ A `200` with a `balances` array means you're funded.
 
 ---
 
-## 7. Verify everything works
+## 8. Verify everything works
 
 ```bash
 # Boot the server

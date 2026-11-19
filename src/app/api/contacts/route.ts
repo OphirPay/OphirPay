@@ -10,6 +10,7 @@ import {
 } from "@/lib/api-response";
 import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { contactSchema } from "@/lib/validation/contact";
 
 export const GET = withMetrics(
@@ -31,6 +32,9 @@ export const POST = withMetrics(
   "POST /api/contacts",
   withRequestLogging(async function POST(request: Request) {
     try {
+      const csrfError = verifyCsrf(request);
+      if (csrfError) return csrfError;
+
       const auth = await getAuthContext(request);
       if (!auth) {
         return unauthorizedError("Authentication required.");

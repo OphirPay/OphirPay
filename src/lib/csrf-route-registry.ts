@@ -90,6 +90,9 @@ export const MUTATING_ROUTES: CsrfRouteEntry[] = [
   // Settings
   { method: "POST", path: "/api/settings", routeFile: "settings/route.ts", description: "Update application and custom RPC settings" },
 
+  // Contacts
+  { method: "POST", path: "/api/contacts", routeFile: "contacts/route.ts", description: "Create contact" },
+
   // Governance
   { method: "POST", path: "/api/governance/proposals", routeFile: "governance/proposals/route.ts", description: "Create governance proposal" },
   { method: "POST", path: "/api/governance/vote", routeFile: "governance/vote/route.ts", description: "Cast vote" },

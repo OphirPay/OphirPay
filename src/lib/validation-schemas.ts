@@ -315,7 +315,24 @@ export const paginationSchema = z.object({
   search: z.string().optional(),
 });
 
+/**
+ * Pagination schema for transaction history route (issue #1953).
+ * Defaults to 20 when omitted, and clamps limit between 1 and 100.
+ */
+export const transactionPaginationSchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce
+    .number()
+    .int()
+    .default(20)
+    .transform((val) => Math.min(100, Math.max(1, val))),
+  cursor: z.string().min(1).optional(),
+  status: z.string().optional(),
+  search: z.string().optional(),
+});
+
 export type PaginationParams = z.infer<typeof paginationSchema>;
+export type TransactionPaginationParams = z.infer<typeof transactionPaginationSchema>;
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 export type CreateBatchInput = z.infer<typeof createBatchSchema>;
 

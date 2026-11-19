@@ -40,9 +40,28 @@ export function exportToCsv<T extends object>(
   URL.revokeObjectURL(url);
 }
 
-function escapeCsvField(value: string, delimiter: string): string {
-  if (value.includes(delimiter) || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
+/**
+ * Sanitize a field value to protect spreadsheet applications against CSV formula injection (issue #1959).
+ * Cells beginning with =, +, -, @, \t, or \r are prefixed with a single quote (').
+ */
+export function sanitizeCsvField(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const str = String(value);
+  if (/^[=+\-@\t\r]/.test(str)) {
+    return `'${str}`;
   }
-  return value;
+  return str;
+}
+
+export function escapeCsvField(value: string, delimiter: string): string {
+  const sanitized = sanitizeCsvField(value);
+  if (
+    sanitized.includes(delimiter) ||
+    sanitized.includes('"') ||
+    sanitized.includes("\n") ||
+    sanitized.includes("\r")
+  ) {
+    return `"${sanitized.replace(/"/g, '""')}"`;
+  }
+  return sanitized;
 }

@@ -3,11 +3,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handlePrismaError } from "@/lib/prisma-errors";
-import { logger } from "@/lib/logger";
+import { logError } from "@/lib/logger";
 import { getCurrentRequestId } from "@/lib/request-logging";
 import { ERROR_CODES } from "@/lib/error-codes";
 import { captureError } from "@/lib/sentry";
 import { isTimeoutError } from "@/lib/timeout";
+
+export { logError };
 
 // ── Standard Response Types ────────────────────────────────────
 
@@ -261,14 +263,10 @@ export function badRequestError(message: string) {
  * produce identical observability: one structured log line, plus a Sentry
  * capture for anything that is not a client validation error.
  */
-export function logApiError(err: unknown, context?: string): void {
-  // Log the real error for debugging — the request id (set by the request
-  // logging middleware) lets operators correlate the log with the
-  // X-Request-Id returned to the client.
-  logger.error(context ?? "API error", {
+export function logApiError(err: unknown, context?: string, request?: Request): void {
+  // Centralized structured logger (issue #1955)
+  logError(err, request ?? context, {
     requestId: getCurrentRequestId(),
-    error: err instanceof Error ? err.message : String(err),
-    stack: err instanceof Error ? err.stack : undefined,
   });
 
   if (process.env.NEXT_PUBLIC_SENTRY_DSN && !(err instanceof z.ZodError)) {
@@ -361,8 +359,8 @@ export function classifyApiError(err: unknown): ClassifiedApiError {
  * Kept for the routes that have not migrated to RFC 7807 yet; new payment
  * mutation routes use `problemFromError` in `src/lib/api-errors.ts`.
  */
-export function handleApiError(err: unknown, context?: string): NextResponse {
-  logApiError(err, context);
+export function handleApiError(err: unknown, context?: string, request?: Request): NextResponse {
+  logApiError(err, context, request);
   const { code, message, status, details } = classifyApiError(err);
   return errorResponse(code, message, status, details);
 }

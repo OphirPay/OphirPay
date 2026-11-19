@@ -119,4 +119,34 @@ describe("CI & Developer Scripts Verification", () => {
       expect(content).toContain("npm run format:check");
     });
   });
+
+  describe("Soroban Contract CI Rust Target Caching (Issue #1990)", () => {
+    const contractsWorkflowPath = join(root, ".github", "workflows", "contracts.yml");
+    const regressionWorkflowPath = join(root, ".github", "workflows", "contract-regression.yml");
+    const ciWorkflowPath = join(root, ".github", "workflows", "ci.yml");
+
+    it(".github/workflows/contracts.yml exists with actions/cache and Cargo.lock key", () => {
+      expect(existsSync(contractsWorkflowPath)).toBe(true);
+      const content = readFileSync(contractsWorkflowPath, "utf8");
+      expect(content).toContain("actions/cache@v4");
+      expect(content).toContain("~/.cargo/registry");
+      expect(content).toContain("~/.cargo/git");
+      expect(content).toContain("contracts/target");
+      expect(content).toContain("Cargo.lock");
+      expect(content).toContain("cargo-contracts-");
+    });
+
+    it(".github/workflows/contract-regression.yml includes Rust cache step", () => {
+      const content = readFileSync(regressionWorkflowPath, "utf8");
+      expect(content).toContain("actions/cache@v4");
+      expect(content).toContain("~/.cargo/registry");
+      expect(content).toContain("Cargo.lock");
+      expect(content).toContain("cargo-regression-");
+    });
+
+    it(".github/workflows/ci.yml contract-wasm hashes Cargo.lock in cache key", () => {
+      const content = readFileSync(ciWorkflowPath, "utf8");
+      expect(content).toContain("contracts/**/Cargo.lock");
+    });
+  });
 });

@@ -2,7 +2,7 @@
 // GENERATED FROM docs/openapi.yaml — DO NOT EDIT BY HAND.
 // Regenerate with: npm run generate:sdk
 //
-// 100 operations and 17 component schemas from
+// 107 operations and 17 component schemas from
 // the committed OpenAPI document. Regenerate after editing the spec.
 
 // ── Component schemas ─────────────────────────────────────────
@@ -239,9 +239,11 @@ export interface ApiRequestBodies {
   getApiAuditLogExport: undefined;
   getApiAuditLogSse: undefined;
   getApiAuthChallenge: undefined;
+  getApiAuthSession: undefined;
   getApiBatches: undefined;
   getApiBatchesId: undefined;
   getApiBatchesSummary: undefined;
+  getApiContacts: undefined;
   getApiContracts: undefined;
   getApiCron: undefined;
   getApiCsrf: undefined;
@@ -249,6 +251,7 @@ export interface ApiRequestBodies {
   getApiEscrowsId: undefined;
   getApiEvents: undefined;
   getApiEventsHistory: undefined;
+  getApiExportCsv: undefined;
   getApiFeeConfig: undefined;
   getApiFeeConfigCollector: undefined;
   getApiFeeConfigHistory: undefined;
@@ -277,10 +280,12 @@ export interface ApiRequestBodies {
   getApiRequestsExpire: undefined;
   getApiScheduled: undefined;
   getApiScheduledRun: undefined;
+  getApiSettings: undefined;
   getApiStats: undefined;
   getApiStreams: undefined;
   getApiStreamsId: undefined;
   getApiTimelock: undefined;
+  getApiTransactions: undefined;
   getApiWebhooks: undefined;
   getApiWebhooksId: undefined;
   getApiWebhooksIdDeliveries: undefined;
@@ -313,6 +318,13 @@ export interface ApiRequestBodies {
     };
   postApiBatches: CreateBatchRequest;
   postApiBatchesId: undefined;
+  postApiContacts: {
+      name?: string;
+      label?: string;
+      address?: string;
+      publicKey?: string;
+      memo?: string;
+    };
   postApiCron: undefined;
   postApiCspReport: undefined;
   postApiEscrows: {
@@ -420,6 +432,9 @@ export interface ApiRequestBodies {
       scheduledAt: string;
     };
   postApiScheduledRun: undefined;
+  postApiSettings: {
+      rpcUrl?: string;
+    };
   postApiStreams: {
       payee: string;
       amount: number;
@@ -513,6 +528,13 @@ export interface ApiResponseBodies {
     };
     "400": unknown;
   };
+  getApiAuthSession: {
+    "200": {
+      authenticated?: boolean;
+      publicKey?: string;
+      network?: string;
+    };
+  };
   getApiBatches: {
     "200": PaginatedBatches;
     "401": ErrorResponse;
@@ -523,6 +545,13 @@ export interface ApiResponseBodies {
   };
   getApiBatchesSummary: {
     "200": unknown;
+    "401": ErrorResponse;
+  };
+  getApiContacts: {
+    "200": {
+      success?: boolean;
+      data?: Array<Record<string, unknown>>;
+    };
     "401": ErrorResponse;
   };
   getApiContracts: {
@@ -551,6 +580,10 @@ export interface ApiResponseBodies {
   getApiEventsHistory: {
     "200": unknown;
     "400": ErrorResponse;
+  };
+  getApiExportCsv: {
+    "200": string;
+    "401": ErrorResponse;
   };
   getApiFeeConfig: {
     "200": unknown;
@@ -710,6 +743,16 @@ export interface ApiResponseBodies {
     "401": ErrorResponse;
     "503": unknown;
   };
+  getApiSettings: {
+    "200": {
+      success?: boolean;
+      data?: {
+        rpcUrl?: string;
+        network?: string;
+        permittedSchemes?: Array<string>;
+      };
+    };
+  };
   getApiStats: {
     "200": unknown;
     "401": ErrorResponse;
@@ -724,6 +767,14 @@ export interface ApiResponseBodies {
   };
   getApiTimelock: {
     "200": unknown;
+    "400": ErrorResponse;
+    "401": ErrorResponse;
+  };
+  getApiTransactions: {
+    "200": {
+      success?: boolean;
+      data?: Array<Record<string, unknown>>;
+    };
     "400": ErrorResponse;
     "401": ErrorResponse;
   };
@@ -805,6 +856,14 @@ export interface ApiResponseBodies {
     "200": BulkCancelBatchResponse;
     "401": ErrorResponse;
     "404": ErrorResponse;
+  };
+  postApiContacts: {
+    "201": {
+      success?: boolean;
+      data?: Record<string, unknown>;
+    };
+    "400": ErrorResponse;
+    "401": ErrorResponse;
   };
   postApiCron: {
     "200": unknown;
@@ -956,6 +1015,14 @@ export interface ApiResponseBodies {
     "401": ErrorResponse;
     "503": unknown;
   };
+  postApiSettings: {
+    "200": {
+      success?: boolean;
+      data?: Record<string, unknown>;
+    };
+    "400": ErrorResponse;
+    "401": ErrorResponse;
+  };
   postApiStreams: {
     "201": unknown;
     "400": ErrorResponse;
@@ -1008,11 +1075,13 @@ export interface ApiPathParams {
   getApiAuditLogExport: Record<string, never>;
   getApiAuditLogSse: Record<string, never>;
   getApiAuthChallenge: Record<string, never>;
+  getApiAuthSession: Record<string, never>;
   getApiBatches: Record<string, never>;
   getApiBatchesId: {
     id: string;
   };
   getApiBatchesSummary: Record<string, never>;
+  getApiContacts: Record<string, never>;
   getApiContracts: Record<string, never>;
   getApiCron: Record<string, never>;
   getApiCsrf: Record<string, never>;
@@ -1022,6 +1091,7 @@ export interface ApiPathParams {
   };
   getApiEvents: Record<string, never>;
   getApiEventsHistory: Record<string, never>;
+  getApiExportCsv: Record<string, never>;
   getApiFeeConfig: Record<string, never>;
   getApiFeeConfigCollector: Record<string, never>;
   getApiFeeConfigHistory: Record<string, never>;
@@ -1056,12 +1126,14 @@ export interface ApiPathParams {
   getApiRequestsExpire: Record<string, never>;
   getApiScheduled: Record<string, never>;
   getApiScheduledRun: Record<string, never>;
+  getApiSettings: Record<string, never>;
   getApiStats: Record<string, never>;
   getApiStreams: Record<string, never>;
   getApiStreamsId: {
     id: number;
   };
   getApiTimelock: Record<string, never>;
+  getApiTransactions: Record<string, never>;
   getApiWebhooks: Record<string, never>;
   getApiWebhooksId: {
     id: string;
@@ -1096,6 +1168,7 @@ export interface ApiPathParams {
   postApiBatchesId: {
     id: string;
   };
+  postApiContacts: Record<string, never>;
   postApiCron: Record<string, never>;
   postApiCspReport: Record<string, never>;
   postApiEscrows: Record<string, never>;
@@ -1128,6 +1201,7 @@ export interface ApiPathParams {
   };
   postApiScheduled: Record<string, never>;
   postApiScheduledRun: Record<string, never>;
+  postApiSettings: Record<string, never>;
   postApiStreams: Record<string, never>;
   postApiWebhooks: Record<string, never>;
   postApiWebhooksIdDeliveriesDeliveryIdRedeliver: {
@@ -1187,6 +1261,7 @@ export interface ApiQueryParams {
   getApiAuthChallenge: {
     publicKey: string;
   };
+  getApiAuthSession: Record<string, never>;
   getApiBatches: {
     page?: number;
     limit?: number;
@@ -1198,6 +1273,7 @@ export interface ApiQueryParams {
   getApiBatchesSummary: {
     drillDown?: boolean;
   };
+  getApiContacts: Record<string, never>;
   getApiContracts: Record<string, never>;
   getApiCron: Record<string, never>;
   getApiCsrf: Record<string, never>;
@@ -1210,6 +1286,7 @@ export interface ApiQueryParams {
     limit?: number;
     cursor?: string;
   };
+  getApiExportCsv: Record<string, never>;
   getApiFeeConfig: Record<string, never>;
   getApiFeeConfigCollector: Record<string, never>;
   getApiFeeConfigHistory: Record<string, never>;
@@ -1266,6 +1343,7 @@ export interface ApiQueryParams {
     limit?: number;
   };
   getApiScheduledRun: Record<string, never>;
+  getApiSettings: Record<string, never>;
   getApiStats: Record<string, never>;
   getApiStreams: {
     id?: number;
@@ -1273,6 +1351,14 @@ export interface ApiQueryParams {
   getApiStreamsId: Record<string, never>;
   getApiTimelock: {
     id?: number;
+  };
+  getApiTransactions: {
+    page?: number;
+    limit?: number;
+    cursor?: string;
+    status?: string;
+    search?: string;
+    includeDeleted?: boolean;
   };
   getApiWebhooks: Record<string, never>;
   getApiWebhooksId: Record<string, never>;
@@ -1296,6 +1382,7 @@ export interface ApiQueryParams {
   postApiAuthSession: Record<string, never>;
   postApiBatches: Record<string, never>;
   postApiBatchesId: Record<string, never>;
+  postApiContacts: Record<string, never>;
   postApiCron: Record<string, never>;
   postApiCspReport: Record<string, never>;
   postApiEscrows: Record<string, never>;
@@ -1322,6 +1409,7 @@ export interface ApiQueryParams {
   postApiRequestsIdRemind: Record<string, never>;
   postApiScheduled: Record<string, never>;
   postApiScheduledRun: Record<string, never>;
+  postApiSettings: Record<string, never>;
   postApiStreams: Record<string, never>;
   postApiWebhooks: Record<string, never>;
   postApiWebhooksIdDeliveriesDeliveryIdRedeliver: Record<string, never>;
@@ -1344,9 +1432,11 @@ export interface ApiHeaderParams {
   getApiAuditLogExport: Record<string, never>;
   getApiAuditLogSse: Record<string, never>;
   getApiAuthChallenge: Record<string, never>;
+  getApiAuthSession: Record<string, never>;
   getApiBatches: Record<string, never>;
   getApiBatchesId: Record<string, never>;
   getApiBatchesSummary: Record<string, never>;
+  getApiContacts: Record<string, never>;
   getApiContracts: Record<string, never>;
   getApiCron: Record<string, never>;
   getApiCsrf: Record<string, never>;
@@ -1354,6 +1444,7 @@ export interface ApiHeaderParams {
   getApiEscrowsId: Record<string, never>;
   getApiEvents: Record<string, never>;
   getApiEventsHistory: Record<string, never>;
+  getApiExportCsv: Record<string, never>;
   getApiFeeConfig: Record<string, never>;
   getApiFeeConfigCollector: Record<string, never>;
   getApiFeeConfigHistory: Record<string, never>;
@@ -1382,10 +1473,12 @@ export interface ApiHeaderParams {
   getApiRequestsExpire: Record<string, never>;
   getApiScheduled: Record<string, never>;
   getApiScheduledRun: Record<string, never>;
+  getApiSettings: Record<string, never>;
   getApiStats: Record<string, never>;
   getApiStreams: Record<string, never>;
   getApiStreamsId: Record<string, never>;
   getApiTimelock: Record<string, never>;
+  getApiTransactions: Record<string, never>;
   getApiWebhooks: Record<string, never>;
   getApiWebhooksId: Record<string, never>;
   getApiWebhooksIdDeliveries: Record<string, never>;
@@ -1403,6 +1496,7 @@ export interface ApiHeaderParams {
     "Idempotency-Key": string;
   };
   postApiBatchesId: Record<string, never>;
+  postApiContacts: Record<string, never>;
   postApiCron: Record<string, never>;
   postApiCspReport: Record<string, never>;
   postApiEscrows: {
@@ -1433,6 +1527,7 @@ export interface ApiHeaderParams {
   postApiRequestsIdRemind: Record<string, never>;
   postApiScheduled: Record<string, never>;
   postApiScheduledRun: Record<string, never>;
+  postApiSettings: Record<string, never>;
   postApiStreams: {
     "Idempotency-Key": string;
   };

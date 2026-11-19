@@ -2,7 +2,7 @@
 // GENERATED FROM docs/openapi.yaml — DO NOT EDIT BY HAND.
 // Regenerate with: npm run generate:sdk
 //
-// 100 operations extracted from the committed OpenAPI spec.
+// 107 operations extracted from the committed OpenAPI spec.
 
 /** @typedef {{ name: string, method: string, path: string, summary: string, tags: string[], requestBody: boolean }} ApiOperation */
 
@@ -119,6 +119,16 @@ export const API_OPERATIONS = [
     "requestBody": false
   },
   {
+    "name": "getApiAuthSession",
+    "method": "GET",
+    "path": "/api/auth/session",
+    "summary": "Retrieve the current wallet session state",
+    "tags": [
+      "Session"
+    ],
+    "requestBody": false
+  },
+  {
     "name": "getApiBatches",
     "method": "GET",
     "path": "/api/batches",
@@ -145,6 +155,16 @@ export const API_OPERATIONS = [
     "summary": "Batch status summary for the authenticated user",
     "tags": [
       "Batches"
+    ],
+    "requestBody": false
+  },
+  {
+    "name": "getApiContacts",
+    "method": "GET",
+    "path": "/api/contacts",
+    "summary": "List address book contacts",
+    "tags": [
+      "Contacts"
     ],
     "requestBody": false
   },
@@ -215,6 +235,16 @@ export const API_OPERATIONS = [
     "summary": "Fetch on-chain payment event history (cursor paginated)",
     "tags": [
       "Events"
+    ],
+    "requestBody": false
+  },
+  {
+    "name": "getApiExportCsv",
+    "method": "GET",
+    "path": "/api/export/csv",
+    "summary": "Export payments to CSV",
+    "tags": [
+      "Payments"
     ],
     "requestBody": false
   },
@@ -499,6 +529,16 @@ export const API_OPERATIONS = [
     "requestBody": false
   },
   {
+    "name": "getApiSettings",
+    "method": "GET",
+    "path": "/api/settings",
+    "summary": "Retrieve application and RPC settings",
+    "tags": [
+      "Settings"
+    ],
+    "requestBody": false
+  },
+  {
     "name": "getApiStats",
     "method": "GET",
     "path": "/api/stats",
@@ -535,6 +575,16 @@ export const API_OPERATIONS = [
     "summary": "List pending timelocked actions",
     "tags": [
       "Timelock"
+    ],
+    "requestBody": false
+  },
+  {
+    "name": "getApiTransactions",
+    "method": "GET",
+    "path": "/api/transactions",
+    "summary": "List transaction history with pagination",
+    "tags": [
+      "Payments"
     ],
     "requestBody": false
   },
@@ -687,6 +737,16 @@ export const API_OPERATIONS = [
       "Batches"
     ],
     "requestBody": false
+  },
+  {
+    "name": "postApiContacts",
+    "method": "POST",
+    "path": "/api/contacts",
+    "summary": "Create an address book contact",
+    "tags": [
+      "Contacts"
+    ],
+    "requestBody": true
   },
   {
     "name": "postApiCron",
@@ -947,6 +1007,16 @@ export const API_OPERATIONS = [
       "Scheduled Payments"
     ],
     "requestBody": false
+  },
+  {
+    "name": "postApiSettings",
+    "method": "POST",
+    "path": "/api/settings",
+    "summary": "Update application and RPC settings",
+    "tags": [
+      "Settings"
+    ],
+    "requestBody": true
   },
   {
     "name": "postApiStreams",

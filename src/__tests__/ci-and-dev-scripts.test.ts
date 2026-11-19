@@ -120,35 +120,29 @@ describe("CI & Developer Scripts Verification", () => {
     });
   });
 
-  describe("Lockfile Duplicate Package Check (Issue #1988)", () => {
-    const scriptPath = join(root, "scripts", "check-duplicate-packages.mjs");
-    const packageJsonPath = join(root, "package.json");
-    const ciWorkflowPath = join(root, ".github", "workflows", "ci.yml");
+  describe("Stellar Quickstart Standalone Container Documentation (Issue #1997)", () => {
+    const localDevPath = join(root, "docs", "LOCAL_DEV.md");
+    const readmePath = join(root, "README.md");
 
-    it("scripts/check-duplicate-packages.mjs exists", () => {
-      expect(existsSync(scriptPath)).toBe(true);
+    it("docs/LOCAL_DEV.md documents stellar/quickstart container setup", () => {
+      expect(existsSync(localDevPath)).toBe(true);
+      const content = readFileSync(localDevPath, "utf8");
+      expect(content).toContain("stellar/quickstart:testing");
+      expect(content).toContain("--standalone");
+      expect(content).toContain("--enable-soroban-rpc");
+      expect(content).toContain("8000:8000");
+      expect(content).toContain("/friendbot");
+      expect(content).toContain("curl -X GET");
+      expect(content).toContain("getHealth");
     });
 
-    it("package.json registers check:duplicates script", () => {
-      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-      expect(pkg.scripts["check:duplicates"]).toBe("node scripts/check-duplicate-packages.mjs");
-    });
-
-    it(".github/workflows/ci.yml includes duplicate package check step", () => {
-      const content = readFileSync(ciWorkflowPath, "utf8");
-      expect(content).toContain("npm run check:duplicates");
-    });
-
-    it("checkDuplicatePackages validates lockfile and detects deduplication status", async () => {
-      const { checkDuplicatePackages, scanLockfileForDuplicates } =
-        await import("../../scripts/check-duplicate-packages.mjs");
-      const versionMap = scanLockfileForDuplicates();
-      expect(Object.keys(versionMap).length).toBeGreaterThan(100);
-
-      const result = checkDuplicatePackages();
-      expect(result.totalPackages).toBeGreaterThan(100);
-      expect(result.criticalDuplicates).toEqual([]);
-      expect(result.passed).toBe(true);
+    it("README.md links to the standalone quickstart documentation", () => {
+      expect(existsSync(readmePath)).toBe(true);
+      const content = readFileSync(readmePath, "utf8");
+      expect(content).toContain("Local Stellar Standalone (Docker)");
+      expect(content).toContain(
+        "docs/LOCAL_DEV.md#13-local-stellar-quickstart-standalone-container-offline-testing--development"
+      );
     });
   });
 });

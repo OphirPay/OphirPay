@@ -330,6 +330,77 @@ mod tests {
     }
 
     #[test]
+    fn test_dispute_cooling_off_period_enforcement() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(100_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        let token_client = token::Client::new(&env, &sac);
+        sac_client.mint(&depositor, &10_000i128);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Set cooling-off period to 3600 seconds (1 hour)
+        client.set_min_dispute_period(&owner, &3600u64);
+        assert_eq!(client.get_min_dispute_period(), 3600u64);
+
+        let escrow_id = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Option::<Address>::Some(arbiter.clone()),
+            &1000i128,
+            &sac,
+            &(env.ledger().timestamp() + 86400),
+            &String::from_str(&env, "cooling-off test"),
+        );
+
+        // 2. Initiate dispute
+        client.initiate_dispute(&depositor, &escrow_id);
+        let dispute_time = env.ledger().timestamp();
+
+        // 3. Attempt resolution before cooling-off period elapses (mutual_agreement = false)
+        // Advance only 1800s (30 mins < 1 hour)
+        env.ledger().set_timestamp(dispute_time + 1800);
+        let early_res = client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+        assert_eq!(early_res, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+
+        // 4. Mutual agreement bypasses cooling-off period
+        let escrow_id_mutual = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Option::<Address>::Some(arbiter.clone()),
+            &500i128,
+            &sac,
+            &(env.ledger().timestamp() + 86400),
+            &String::from_str(&env, "mutual agreement test"),
+        );
+        client.initiate_dispute(&depositor, &escrow_id_mutual);
+        let mutual_res = client.resolve_dispute(&arbiter, &escrow_id_mutual, &true, &true);
+        assert_eq!(mutual_res, ());
+        let escrow_mutual = client.get_escrow(&escrow_id_mutual);
+        assert!(escrow_mutual.released);
+        assert_eq!(token_client.balance(&beneficiary), 500i128);
+
+        // 5. Advance timestamp past cooling-off period for the first disputed escrow
+        env.ledger().set_timestamp(dispute_time + 3601);
+        let res = client.resolve_dispute(&arbiter, &escrow_id, &true, &false);
+        assert_eq!(res, ());
+
+        let escrow_final = client.get_escrow(&escrow_id);
+        assert!(escrow_final.released);
+        assert_eq!(token_client.balance(&beneficiary), 1500i128);
+    }
+
+    #[test]
     fn test_claim_escrow_after_deadline() {
         let env = Env::default();
         env.mock_all_auths();

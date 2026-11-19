@@ -3,10 +3,11 @@ version: 2
 # Dependabot configuration for OphirPay
 #
 # Configured with dependency grouping rules to minimize CI overhead and PR noise
-# while keeping security updates isolated and prioritized (issue #1415).
+# while keeping security updates isolated and prioritized (issue #1415, #1983).
 #
 # Ecosystems covered:
 # 1. npm (root):
+#    - types: @types/* TypeScript type definition packages (issue #1983)
 #    - react-ecosystem: next, react, react-dom, and related packages
 #    - dev-tools: eslint, prettier, vitest, playwright, typescript
 #    - utilities: zod, date-fns, qrcode, jspdf, js-yaml
@@ -42,11 +43,17 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
+      types:
+        patterns:
+          - "@types/*"
+        update-types:
+          - "minor"
+          - "patch"
+
       react-ecosystem:
         patterns:
           - "next*"
           - "react*"
-          - "@types/react*"
         update-types:
           - "minor"
           - "patch"
@@ -61,7 +68,6 @@ updates:
           - "playwright*"
           - "@playwright/*"
           - "typescript"
-          - "@types/*"
           - "@testing-library/*"
           - "tailwindcss"
           - "@tailwindcss/*"

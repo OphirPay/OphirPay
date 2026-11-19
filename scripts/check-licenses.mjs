@@ -35,11 +35,14 @@ export const ALLOWED_LICENSES = [
   "CC-BY-4.0",
   "Unlicense",
   "BlueOak-1.0.0",
+  "LGPL-3.0-or-later",
   "Apache-2.0 AND LGPL-3.0-or-later",
+  "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
   "(MPL-2.0 OR Apache-2.0)",
   "(MIT OR CC0-1.0)",
   "(MIT AND Zlib)",
   "(MIT AND BSD-3-Clause)",
+  "MIT OR SEE LICENSE IN FEEL-FREE.md",
 ];
 
 /**

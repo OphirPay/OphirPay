@@ -36,6 +36,13 @@ cargo test --manifest-path contracts/ophirpay/Cargo.toml
 # Single test
 cargo test --manifest-path contracts/ophirpay/Cargo.toml escrow_release_moves_tokens
 
+# Property-based (proptest) suites
+cargo test --manifest-path contracts/ophirpay/Cargo.toml --test proptest_token_moving
+cargo test --manifest-path contracts/ophirpay/Cargo.toml --test proptest_payment_amounts
+# The amount suite honours PROPTEST_CASES (default 64):
+PROPTEST_CASES=1000 cargo test --manifest-path contracts/ophirpay/Cargo.toml \
+  --test proptest_payment_amounts
+
 # Soroban WASM build
 cd contracts/ophirpay && cargo build --release --target wasm32v1-none
 ```

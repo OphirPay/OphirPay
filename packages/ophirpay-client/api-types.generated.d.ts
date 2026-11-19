@@ -2,7 +2,7 @@
 // GENERATED FROM docs/openapi.yaml — DO NOT EDIT BY HAND.
 // Regenerate with: npm run generate:sdk
 //
-// 107 operations and 17 component schemas from
+// 107 operations and 23 component schemas from
 // the committed OpenAPI document. Regenerate after editing the spec.
 
 // ── Component schemas ─────────────────────────────────────────
@@ -99,6 +99,31 @@ export interface ErrorResponse {
   };
 }
 
+export interface EventHistoryItem {
+  id: string;
+  type: "payment.created";
+  payer: string;
+  payee: string;
+  amount: number;
+  txHash: string;
+  timestamp?: number;
+  metadata?: string;
+}
+
+export interface EventHistoryResponse {
+  success: true;
+  data: {
+    events: Array<EventHistoryItem>;
+    total: number;
+  };
+  meta: {
+    timestamp: string;
+    limit: number;
+    nextCursor: string | null;
+    hasMore: boolean;
+  };
+}
+
 export interface HealthResponse {
   success?: boolean;
   data?: {
@@ -147,6 +172,19 @@ export interface HealthResponse {
   meta?: {
     timestamp?: string;
   };
+}
+
+export interface LivePaymentEvent {
+  id: number;
+  event: "payment:created";
+  timestamp: string;
+  paymentId: string;
+  status: "COMPLETED";
+  emitter?: string;
+  payer?: string;
+  payee?: string;
+  amount?: string;
+  txHash?: string;
 }
 
 export interface PaginatedBatches {
@@ -214,6 +252,20 @@ export interface ProblemFieldError {
   field: string;
   message: string;
   code?: string;
+}
+
+export interface SseConnectedEvent {
+  message: "SSE stream connected to emitter contract";
+}
+
+export interface SseErrorEvent {
+  code: "SLOW_CONSUMER";
+  reason: "buffer-overflow" | "idle-timeout" | "slow-consumer";
+  message: string;
+}
+
+export interface SseHeartbeatEvent {
+  timestamp: number;
 }
 
 export interface TestWebhookResponse {
@@ -576,10 +628,12 @@ export interface ApiResponseBodies {
   };
   getApiEvents: {
     "200": string;
+    "429": ErrorResponse;
   };
   getApiEventsHistory: {
-    "200": unknown;
+    "200": EventHistoryResponse;
     "400": ErrorResponse;
+    "429": ErrorResponse;
   };
   getApiExportCsv: {
     "200": string;

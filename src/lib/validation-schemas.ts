@@ -85,7 +85,14 @@ export const createPaymentSchema = z
     memo: memoValueField,
     memoType: memoTypeField,
   })
-  .superRefine(refineMemo);
+  .superRefine(refineMemo)
+  .refine(
+    (data) => data.destAddress !== data.sourceAccountId,
+    {
+      message: "Recipient address cannot be identical to sender address",
+      path: ["destAddress"],
+    }
+  );
 
 /** Body for POST /api/payments/retry — which failed payment to retry. */
 export const retryPaymentSchema = z.object({

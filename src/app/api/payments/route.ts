@@ -9,7 +9,7 @@ import {
   problemFromZodError,
   problemUnauthorized,
 } from "@/lib/api-errors";
-import { successResponse } from "@/lib/api-response";
+import { requireJsonContentType, successResponse } from "@/lib/api-response";
 import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
 import { logger } from "@/lib/logger";
 import { withRequestLogging } from "@/lib/request-logging";

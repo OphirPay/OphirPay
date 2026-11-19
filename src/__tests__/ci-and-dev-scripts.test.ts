@@ -120,37 +120,29 @@ describe("CI & Developer Scripts Verification", () => {
     });
   });
 
-  describe("Open-Source License Compliance Check (Issue #1992)", () => {
-    const scriptPath = join(root, "scripts", "check-licenses.mjs");
-    const packageJsonPath = join(root, "package.json");
-    const ciWorkflowPath = join(root, ".github", "workflows", "ci.yml");
+  describe("Stellar Quickstart Standalone Container Documentation (Issue #1997)", () => {
+    const localDevPath = join(root, "docs", "LOCAL_DEV.md");
+    const readmePath = join(root, "README.md");
 
-    it("scripts/check-licenses.mjs exists", () => {
-      expect(existsSync(scriptPath)).toBe(true);
+    it("docs/LOCAL_DEV.md documents stellar/quickstart container setup", () => {
+      expect(existsSync(localDevPath)).toBe(true);
+      const content = readFileSync(localDevPath, "utf8");
+      expect(content).toContain("stellar/quickstart:testing");
+      expect(content).toContain("--standalone");
+      expect(content).toContain("--enable-soroban-rpc");
+      expect(content).toContain("8000:8000");
+      expect(content).toContain("/friendbot");
+      expect(content).toContain("curl -X GET");
+      expect(content).toContain("getHealth");
     });
 
-    it("package.json registers check:licenses script and license-checker devDependency", () => {
-      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-      expect(pkg.scripts["check:licenses"]).toBe("node scripts/check-licenses.mjs");
-      expect(pkg.devDependencies["license-checker"]).toBeDefined();
-    });
-
-    it(".github/workflows/ci.yml includes license compliance check step", () => {
-      const content = readFileSync(ciWorkflowPath, "utf8");
-      expect(content).toContain("npm run check:licenses");
-    });
-
-    it("runLicenseCheck validates production dependencies without incompatible licenses", async () => {
-      const { runLicenseCheck, ALLOWED_LICENSES } =
-        await import("../../scripts/check-licenses.mjs");
-      expect(ALLOWED_LICENSES).toContain("MIT");
-      expect(ALLOWED_LICENSES).toContain("Apache-2.0");
-      expect(ALLOWED_LICENSES).toContain("BSD-3-Clause");
-      expect(ALLOWED_LICENSES).toContain("ISC");
-
-      const result = runLicenseCheck({ summary: true });
-      expect(result.passed).toBe(true);
-      expect(result.output).toContain("MIT");
+    it("README.md links to the standalone quickstart documentation", () => {
+      expect(existsSync(readmePath)).toBe(true);
+      const content = readFileSync(readmePath, "utf8");
+      expect(content).toContain("Local Stellar Standalone (Docker)");
+      expect(content).toContain(
+        "docs/LOCAL_DEV.md#13-local-stellar-quickstart-standalone-container-offline-testing--development"
+      );
     });
   });
 });

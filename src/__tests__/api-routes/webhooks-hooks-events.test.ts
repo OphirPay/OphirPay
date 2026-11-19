@@ -124,7 +124,7 @@ describe("API Routes: Webhooks, Hooks & Events", () => {
       const res = await postWebhooks(
         new Request("http://localhost/api/webhooks", {
           method: "POST",
-          body: JSON.stringify({ url: "http://localhost:3000/hook", events: ["payment.created"] }),
+          body: JSON.stringify({ url: "https://localhost:3000/hook", events: ["payment.created"] }),
         })
       );
       expect(res.status).toBe(400);

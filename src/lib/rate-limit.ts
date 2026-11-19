@@ -46,11 +46,7 @@ export interface RateLimitStore {
    * @param windowMs   Sliding-window duration in milliseconds
    * @param maxRequests  Maximum allowed requests in the window
    */
-  increment(
-    key: string,
-    windowMs: number,
-    maxRequests: number
-  ): Promise<RateLimitResult>;
+  increment(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult>;
 
   /** Reset the counter for `key` (e.g. on auth success). */
   reset(key: string): Promise<void>;
@@ -71,11 +67,7 @@ export function getRetryAfterSeconds(result: RateLimitResult): number {
 export class InMemoryRateLimitStore implements RateLimitStore {
   private store = new Map<string, { count: number; resetAt: number }>();
 
-  async increment(
-    key: string,
-    windowMs: number,
-    maxRequests: number
-  ): Promise<RateLimitResult> {
+  async increment(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult> {
     const safeKey = sanitizeRateLimitKey(key);
     const now = Date.now();
     let entry = this.store.get(safeKey);
@@ -130,31 +122,47 @@ export class RedisRateLimitStore implements RateLimitStore {
   /** Whether the last Redis call failed — used for logging hygiene. */
   private usingFallback = false;
 
-  async increment(
-    key: string,
-    windowMs: number,
-    maxRequests: number
-  ): Promise<RateLimitResult> {
-    const safeKey = sanitizeRateLimitKey(key);
-    const now = Date.now();
-    const ttl = Math.ceil(windowMs / 1000);
+  async increment(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult> {
+    try {
+      const safeKey = sanitizeRateLimitKey(key);
+      const now = Date.now();
+      const ttl = Math.ceil(windowMs / 1000);
 
-    const count = await this.redis.incr(safeKey);
-    if (count === 1) {
-      await this.redis.expire(safeKey, ttl);
+      const count = await this.redis.incr(safeKey);
+      if (count === 1) {
+        await this.redis.expire(safeKey, ttl);
+      }
+
+      if (this.usingFallback) {
+        this.usingFallback = false;
+        console.log("[rate-limit] Redis connection restored — resuming normal operation");
+      }
+
+      const remaining = Math.max(0, maxRequests - count);
+      return {
+        allowed: count <= maxRequests,
+        limit: maxRequests,
+        remaining,
+        resetAt: now + windowMs,
+      };
+    } catch (err) {
+      if (!this.usingFallback) {
+        this.usingFallback = true;
+        console.warn(
+          "[rate-limit] Redis unavailable — falling back to in-memory store",
+          err instanceof Error ? err.message : String(err)
+        );
+      }
+      return this.fallback.increment(key, windowMs, maxRequests);
     }
-
-    const remaining = Math.max(0, maxRequests - count);
-    return {
-      allowed: count <= maxRequests,
-      limit: maxRequests,
-      remaining,
-      resetAt: now + windowMs,
-    };
   }
 
   async reset(key: string): Promise<void> {
-    await this.redis.del(sanitizeRateLimitKey(key));
+    try {
+      await this.redis.del(sanitizeRateLimitKey(key));
+    } catch {
+      // Silently ignore Redis errors
+    }
   }
 }
 
@@ -209,11 +217,7 @@ export class HttpRedisRateLimitStore implements RateLimitStore {
     return payload.result;
   }
 
-  async increment(
-    key: string,
-    windowMs: number,
-    maxRequests: number
-  ): Promise<RateLimitResult> {
+  async increment(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult> {
     const safeKey = sanitizeRateLimitKey(key);
     const now = Date.now();
     const ttl = Math.ceil(windowMs / 1000);

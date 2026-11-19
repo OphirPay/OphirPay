@@ -1884,6 +1884,23 @@ paths:
 
   # ── Session ───────────────────────────────────────────────
   /api/auth/session:
+    get:
+      tags: [Session]
+      summary: Retrieve the current wallet session state
+      description: |
+        Returns the public key and network associated with the current session cookie,
+        or authenticated: false if no valid session cookie is present.
+      responses:
+        "200":
+          description: Session state retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated: { type: boolean }
+                  publicKey: { type: string }
+                  network: { type: string }
     post:
       tags: [Session]
       summary: Issue a signed session cookie for a connected wallet
@@ -2769,6 +2786,187 @@ paths:
           description: Malformed or unrecognised report body
         "413":
           description: Body exceeds the 16 KiB size limit
+
+  # ── Contacts ──────────────────────────────────────────────
+  /api/contacts:
+    get:
+      tags: [Contacts]
+      summary: List address book contacts
+      description: Returns saved contacts for the authenticated user.
+      responses:
+        "200":
+          description: List of contacts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Contacts]
+      summary: Create an address book contact
+      description: Create a new contact with name/label, Stellar address, and optional memo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, description: Contact name }
+                label: { type: string, description: Contact label }
+                address: { type: string, description: Stellar address }
+                publicKey: { type: string, description: Stellar public key }
+                memo: { type: string, description: Optional memo }
+      responses:
+        "201":
+          description: Contact created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── CSV Export ────────────────────────────────────────────
+  /api/export/csv:
+    get:
+      tags: [Payments]
+      summary: Export payments to CSV
+      description: Export user payment roster to sanitized CSV (issue #1959).
+      responses:
+        "200":
+          description: CSV export file
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Settings ──────────────────────────────────────────────
+  /api/settings:
+    get:
+      tags: [Settings]
+      summary: Retrieve application and RPC settings
+      description: Returns current RPC URL, network, and permitted schemes (issue #1957).
+      responses:
+        "200":
+          description: Settings retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      rpcUrl: { type: string }
+                      network: { type: string }
+                      permittedSchemes:
+                        type: array
+                        items: { type: string }
+    post:
+      tags: [Settings]
+      summary: Update application and RPC settings
+      description: Update RPC URL and application settings with SSRF protections.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rpcUrl: { type: string }
+      responses:
+        "200":
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Transactions ──────────────────────────────────────────
+  /api/transactions:
+    get:
+      tags: [Payments]
+      summary: List transaction history with pagination
+      description: Transaction history route with enforced pagination limit cap (issue #1953).
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            description: Offset page number
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            description: Page size cap (default 20, max 100)
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Opaque cursor for cursor-based pagination
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Filter by payment status
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Search term matching memo, id, or address
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            description: Whether to include soft-deleted records
+      responses:
+        "200":
+          description: Paginated transaction list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      type: object
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ── Documentation ─────────────────────────────────────────
   /api/openapi.json:

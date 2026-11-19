@@ -881,6 +881,43 @@ mod tests {
     // ── Pause Tests ────────────────────────────────────────
 
     #[test]
+    fn test_unauthorized_caller_cannot_pause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let non_admin = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        let subsystem = 1u32;
+        assert!(!client.is_subsystem_paused(&subsystem));
+
+        // 1. Invoke set_subsystem_pause with non-admin caller: fails with PaymentError::Unauthorized
+        let unauthorized_res = client.try_set_subsystem_pause(&non_admin, &subsystem, &true);
+        assert_eq!(unauthorized_res, Err(Ok(PaymentError::Unauthorized)));
+        assert!(!client.is_subsystem_paused(&subsystem));
+
+        // Also test set_scope_paused with non-admin caller: fails with PaymentError::Unauthorized
+        let unauth_scope_res = client.try_set_scope_paused(&non_admin, &0u32, &true);
+        assert_eq!(unauth_scope_res, Err(Ok(PaymentError::Unauthorized)));
+
+        // 2. Invoke with admin caller: succeeds
+        let admin_res = client.set_subsystem_pause(&owner, &subsystem, &true);
+        assert_eq!(admin_res, ());
+
+        // 3. Assert state updates to paused
+        assert!(client.is_subsystem_paused(&subsystem));
+
+        // Unpause with admin caller
+        client.set_subsystem_pause(&owner, &subsystem, &false);
+        assert!(!client.is_subsystem_paused(&subsystem));
+    }
+
+    #[test]
     fn test_pause_blocks_record_payment() {
         let env = Env::default();
         env.mock_all_auths();

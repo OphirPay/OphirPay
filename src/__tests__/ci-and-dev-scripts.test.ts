@@ -119,4 +119,36 @@ describe("CI & Developer Scripts Verification", () => {
       expect(content).toContain("npm run format:check");
     });
   });
+
+  describe("Lockfile Duplicate Package Check (Issue #1988)", () => {
+    const scriptPath = join(root, "scripts", "check-duplicate-packages.mjs");
+    const packageJsonPath = join(root, "package.json");
+    const ciWorkflowPath = join(root, ".github", "workflows", "ci.yml");
+
+    it("scripts/check-duplicate-packages.mjs exists", () => {
+      expect(existsSync(scriptPath)).toBe(true);
+    });
+
+    it("package.json registers check:duplicates script", () => {
+      const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+      expect(pkg.scripts["check:duplicates"]).toBe("node scripts/check-duplicate-packages.mjs");
+    });
+
+    it(".github/workflows/ci.yml includes duplicate package check step", () => {
+      const content = readFileSync(ciWorkflowPath, "utf8");
+      expect(content).toContain("npm run check:duplicates");
+    });
+
+    it("checkDuplicatePackages validates lockfile and detects deduplication status", async () => {
+      const { checkDuplicatePackages, scanLockfileForDuplicates } =
+        await import("../../scripts/check-duplicate-packages.mjs");
+      const versionMap = scanLockfileForDuplicates();
+      expect(Object.keys(versionMap).length).toBeGreaterThan(100);
+
+      const result = checkDuplicatePackages();
+      expect(result.totalPackages).toBeGreaterThan(100);
+      expect(result.criticalDuplicates).toEqual([]);
+      expect(result.passed).toBe(true);
+    });
+  });
 });

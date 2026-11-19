@@ -69,6 +69,7 @@
     "test:watch": "vitest",
     "test:openapi": "vitest run src/__tests__/openapi-conformance.test.ts",
     "check:docs-links": "node scripts/check-markdown-links.mjs",
+    "check:duplicates": "node scripts/check-duplicate-packages.mjs",
     "setup:soroban": "bash scripts/setup-soroban-env.sh",
     "verify:wasm": "bash scripts/verify-wasm-reproducibility.sh",
     "typecheck": "tsc --noEmit && npx tsx scripts/regenerate-errors.ts --check",

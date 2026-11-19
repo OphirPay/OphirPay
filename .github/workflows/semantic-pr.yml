@@ -1,0 +1,53 @@
+name: "📝 Semantic PR Title"
+
+# Issue #1982: Automated check enforcing Conventional Commits format in PR titles.
+# Validates PR titles on open, edit, and synchronization against the
+# Conventional Commits specification to ensure consistent history and automated changelog generation.
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main, integration/staging]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: semantic-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-title:
+    name: "Validate PR Title"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title adheres to Conventional Commits
+        id: check-pr-title
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            test
+            ci
+            refactor
+            chore
+          requireScope: false
+
+      - name: Provide PR title formatting instructions on failure
+        if: failure()
+        run: |
+          echo "::error title=Invalid PR Title Format::PR title does not adhere to the Conventional Commits specification."
+          echo ""
+          echo "Expected format: <type>(<scope>): <description> or <type>: <description>"
+          echo "Allowed types: feat, fix, docs, test, ci, refactor, chore"
+          echo ""
+          echo "Examples:"
+          echo "  - feat(auth): add Stellar wallet signature verification"
+          echo "  - fix(contracts): resolve overflow in escrow release calculation"
+          echo "  - docs: update integration guide with webhook examples"
+          echo ""
+          echo "To fix: Click 'Edit' next to the pull request title at the top of the GitHub page, update it, and save."

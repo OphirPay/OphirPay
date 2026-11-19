@@ -5,6 +5,7 @@ use crate::*;
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
     use soroban_sdk::testutils::{Address as _, Ledger as _};
     use soroban_sdk::{vec, String};
@@ -326,6 +327,77 @@ mod tests {
         assert!(!escrow_after.claimed);
         assert_eq!(escrow_after.amount, 1000i128);
         assert_eq!(token_client.balance(&contract_id), 1000i128);
+    }
+
+    #[test]
+    fn test_dispute_cooling_off_period_enforcement() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().set_timestamp(100_000);
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+        let sac_client = token::StellarAssetClient::new(&env, &sac);
+        let token_client = token::Client::new(&env, &sac);
+        sac_client.mint(&depositor, &10_000i128);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Set cooling-off period to 3600 seconds (1 hour)
+        client.set_min_dispute_period(&owner, &3600u64);
+        assert_eq!(client.get_min_dispute_period(), 3600u64);
+
+        let escrow_id = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Option::<Address>::Some(arbiter.clone()),
+            &1000i128,
+            &sac,
+            &(env.ledger().timestamp() + 86400),
+            &String::from_str(&env, "cooling-off test"),
+        );
+
+        // 2. Initiate dispute
+        client.initiate_dispute(&depositor, &escrow_id);
+        let dispute_time = env.ledger().timestamp();
+
+        // 3. Attempt resolution before cooling-off period elapses (mutual_agreement = false)
+        // Advance only 1800s (30 mins < 1 hour)
+        env.ledger().set_timestamp(dispute_time + 1800);
+        let early_res = client.try_resolve_dispute(&arbiter, &escrow_id, &true, &false);
+        assert_eq!(early_res, Err(Ok(PaymentError::DisputeCoolingOffActive)));
+
+        // 4. Mutual agreement bypasses cooling-off period
+        let escrow_id_mutual = client.create_escrow(
+            &depositor,
+            &beneficiary,
+            &Option::<Address>::Some(arbiter.clone()),
+            &500i128,
+            &sac,
+            &(env.ledger().timestamp() + 86400),
+            &String::from_str(&env, "mutual agreement test"),
+        );
+        client.initiate_dispute(&depositor, &escrow_id_mutual);
+        let mutual_res = client.resolve_dispute(&arbiter, &escrow_id_mutual, &true, &true);
+        assert_eq!(mutual_res, ());
+        let escrow_mutual = client.get_escrow(&escrow_id_mutual);
+        assert!(escrow_mutual.released);
+        assert_eq!(token_client.balance(&beneficiary), 500i128);
+
+        // 5. Advance timestamp past cooling-off period for the first disputed escrow
+        env.ledger().set_timestamp(dispute_time + 3601);
+        let res = client.resolve_dispute(&arbiter, &escrow_id, &true, &false);
+        assert_eq!(res, ());
+
+        let escrow_final = client.get_escrow(&escrow_id);
+        assert!(escrow_final.released);
+        assert_eq!(token_client.balance(&beneficiary), 1500i128);
     }
 
     #[test]
@@ -687,6 +759,97 @@ mod tests {
         assert_eq!(batch_payments.total, 3);
         assert!(!batch_payments.truncated);
         assert_eq!(batch_payments.items.len(), 3);
+    }
+
+    #[test]
+    fn test_batch_payment_gas_benchmark() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Measure gas consumption for a single payment
+        let single_payee = Address::generate(&env);
+        let cpu_before_single = env.budget().cpu_instruction_cost();
+        let mem_before_single = env.budget().memory_bytes_cost();
+
+        let single_id = client.record_payment(
+            &creator,
+            &single_payee,
+            &100i128,
+            &sac,
+            &String::from_str(&env, "tx_single"),
+            &String::from_str(&env, "gas benchmark single"),
+        );
+        assert_eq!(single_id, 1);
+
+        let cpu_after_single = env.budget().cpu_instruction_cost();
+        let mem_after_single = env.budget().memory_bytes_cost();
+        let single_cpu = cpu_after_single - cpu_before_single;
+        let single_mem = mem_after_single - mem_before_single;
+
+        // 2. Measure gas consumption for 10 payments in a single batch
+        let mut payees = Vec::new(&env);
+        let mut amounts = Vec::new(&env);
+        for _ in 0..10 {
+            payees.push_back(Address::generate(&env));
+            amounts.push_back(100i128);
+        }
+
+        let cpu_before_batch = env.budget().cpu_instruction_cost();
+        let mem_before_batch = env.budget().memory_bytes_cost();
+
+        let batch_result = client.create_batch(
+            &creator,
+            &payees,
+            &amounts,
+            &sac,
+            &String::from_str(&env, "tx_batch_10"),
+        );
+        assert_eq!(batch_result.successful, 10);
+
+        let cpu_after_batch = env.budget().cpu_instruction_cost();
+        let mem_after_batch = env.budget().memory_bytes_cost();
+        let batch_cpu = cpu_after_batch - cpu_before_batch;
+        let batch_mem = mem_after_batch - mem_before_batch;
+
+        let per_recipient_batch_cpu = batch_cpu / 10;
+        let per_recipient_batch_mem = batch_mem / 10;
+
+        // 3. Print per-recipient gas savings comparison
+        std::println!("\n================ Gas Benchmark: Single vs 10-Recipient Batch ================");
+        std::println!("Single payment CPU instructions:        {}", single_cpu);
+        std::println!("Single payment Memory bytes:            {}", single_mem);
+        std::println!("10-recipient Batch CPU instructions:    {}", batch_cpu);
+        std::println!("10-recipient Batch Memory bytes:        {}", batch_mem);
+        std::println!("Per-recipient Batch CPU instructions:   {}", per_recipient_batch_cpu);
+        std::println!("Per-recipient Batch Memory bytes:       {}", per_recipient_batch_mem);
+        if single_cpu > per_recipient_batch_cpu {
+            let cpu_savings = (single_cpu - per_recipient_batch_cpu) * 100 / single_cpu;
+            std::println!("CPU Instruction savings per recipient:  {}%", cpu_savings);
+        }
+        std::println!("=============================================================================\n");
+
+        // 4. Assert batching confirms per-payment gas reduction
+        assert!(
+            per_recipient_batch_cpu < single_cpu,
+            "Per-recipient batch CPU ({}) should be less than single payment CPU ({})",
+            per_recipient_batch_cpu,
+            single_cpu
+        );
+        assert!(
+            batch_cpu < single_cpu * 10,
+            "Total 10-recipient batch CPU ({}) should be less than 10x single payment CPU ({})",
+            batch_cpu,
+            single_cpu * 10
+        );
     }
 
     #[test]

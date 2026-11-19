@@ -66,6 +66,21 @@ jobs:
         with:
           toolchain: 1.91.0
           target: wasm32v1-none
+      - name: Cache Cargo & Contract Target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+            contracts/ophirpay/target
+            contracts/emitter/target
+            target
+            ophirpay/target
+            emitter/target
+          key: cargo-regression-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.lock') }}
+          restore-keys: |
+            cargo-regression-${{ runner.os }}-
       - run: cargo build --manifest-path ophirpay/Cargo.toml --target wasm32v1-none --release
       - run: cargo build --manifest-path emitter/Cargo.toml --target wasm32v1-none --release
       - name: Run fee assertions and emit the fee report

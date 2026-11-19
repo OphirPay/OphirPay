@@ -3,6 +3,9 @@
  * Issue #161: Export the filtered payment list to CSV
  */
 
+import { sanitizeCsvField } from "@/lib/csv";
+export { sanitizeCsvField };
+
 export interface PaymentRecord {
   id: string;
   amount: string | number;
@@ -17,11 +20,16 @@ export interface PaymentRecord {
 
 export function escapeCsvField(val: unknown): string {
   if (val === null || val === undefined) return '';
-  const str = String(val);
-  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return `"${str.replace(/"/g, '""')}"`;
+  const sanitized = sanitizeCsvField(val);
+  if (
+    sanitized.includes(',') ||
+    sanitized.includes('"') ||
+    sanitized.includes('\n') ||
+    sanitized.includes('\r')
+  ) {
+    return `"${sanitized.replace(/"/g, '""')}"`;
   }
-  return str;
+  return sanitized;
 }
 
 export function buildPaymentCsv(payments: PaymentRecord[]): string {
@@ -102,23 +110,21 @@ export function toCsvString<T extends object>(
 }
 
 function escapeField(value: string): string {
-  // CSV formula-injection guard (OWASP): spreadsheet apps evaluate cells that
+  // CSV formula-injection guard (issue #1959): spreadsheet apps evaluate cells that
   // begin with = + - @ as formulas (including DDE/UNC paths). Neutralize by
   // prefixing a single quote, which the spreadsheet renders literally.
-  if (/^[=+\-@]/.test(value)) {
-    value = `'${value}`;
-  }
+  const sanitized = sanitizeCsvField(value);
   if (
-    value.includes(",") ||
-    value.includes('"') ||
-    value.includes("\n") ||
+    sanitized.includes(",") ||
+    sanitized.includes('"') ||
+    sanitized.includes("\n") ||
     // RFC 4180 §2.6 — a bare carriage return splits the record in Excel and
     // in any reader that treats CR as a line terminator.
-    value.includes("\r")
+    sanitized.includes("\r")
   ) {
-    return `"${value.replace(/"/g, '""')}"`;
+    return `"${sanitized.replace(/"/g, '""')}"`;
   }
-  return value;
+  return sanitized;
 }
 
 /**

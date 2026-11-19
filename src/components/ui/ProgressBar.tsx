@@ -9,6 +9,8 @@ interface ProgressBarProps {
   max?: number;
   variant?: "default" | "success" | "warning" | "danger";
   showLabel?: boolean;
+  /** Accessible name for the progressbar (required by ARIA). */
+  label?: string;
   className?: string;
 }
 
@@ -27,6 +29,7 @@ export function ProgressBar({
   max = 100,
   variant = "default",
   showLabel = false,
+  label = "Progress",
   className,
 }: ProgressBarProps) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
@@ -36,6 +39,7 @@ export function ProgressBar({
       <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
         <div
           role="progressbar"
+          aria-label={label}
           aria-valuenow={pct}
           aria-valuemin={0}
           aria-valuemax={100}

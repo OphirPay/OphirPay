@@ -98,8 +98,12 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(async () => {
+          // Serve the page itself when it was cached on an earlier visit. A
+          // route that was never visited has no cached HTML, and substituting
+          // the dashboard shell for it would show the wrong page — fall back
+          // to the dedicated offline page instead.
           const cached = await caches.match(request);
-          return cached || (await caches.match("/")) || (await caches.match("/offline.html"));
+          return cached || (await caches.match("/offline.html"));
         })
     );
     return;

@@ -128,6 +128,33 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox
 
+      # e2e/contracts.spec.ts asserts on the compiled contract artifacts. ci.yml
+      # produces them in its `contract-wasm` job, but this workflow runs on its
+      # own schedule and has no access to that artifact, so build them here
+      # (same toolchain and flags as ci.yml) rather than let the suite fail on
+      # a missing file.
+      - uses: dtolnay/rust-toolchain@1.91.0
+        with:
+          targets: wasm32v1-none
+
+      - name: Cache Cargo & contract targets
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/ophirpay/target
+            contracts/emitter/target
+          key: cargo-e2e-${{ runner.os }}-${{ hashFiles('contracts/**/Cargo.lock', 'contracts/**/Cargo.toml') }}
+          restore-keys: cargo-e2e-${{ runner.os }}-
+
+      - name: Build contract WASM artifacts
+        env:
+          RUSTFLAGS: "-C link-arg=-s"
+        run: |
+          (cd contracts/ophirpay && cargo build --target wasm32v1-none --release)
+          (cd contracts/emitter && cargo build --target wasm32v1-none --release)
+
       - name: Build the app
         run: npm run build
 

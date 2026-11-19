@@ -167,14 +167,14 @@ export function ContractsExplorer() {
   if (!wallet.connected) {
     return (
       <div className="max-w-lg mx-auto mt-12">
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 p-10 text-center">
-          <div className="h-16 w-16 mx-auto rounded-full bg-gray-100 flex items-center justify-center mb-4">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-10 text-center">
+          <div className="h-16 w-16 mx-auto rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
             <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12"/>
             </svg>
           </div>
-          <h2 className="text-lg font-semibold text-gray-700">Connect Your Wallet</h2>
-          <p className="text-sm text-gray-500 mt-1">Connect a Stellar wallet to interact with Soroban contracts.</p>
+          <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300">Connect Your Wallet</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Connect a Stellar wallet to interact with Soroban contracts.</p>
           <Link href="/" className="text-sm text-ophir-600 hover:underline mt-4 inline-block">← Back to Dashboard</Link>
         </div>
       </div>

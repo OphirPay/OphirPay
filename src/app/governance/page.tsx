@@ -174,7 +174,7 @@ export default function GovernancePage() {
             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
               Wallet not connected
             </p>
-            <p className="text-xs text-amber-600 dark:text-amber-400">
+            <p className="text-xs text-amber-700 dark:text-amber-400">
               Connect your wallet to create and vote on governance proposals.
             </p>
           </div>

@@ -128,6 +128,9 @@ export const GET = withMetrics("GET /api/payments", withRequestLogging(async fun
 export const POST = withMetrics("POST /api/payments", withRequestLogging(async function POST(request: Request) {
   const instance = new URL(request.url).pathname;
   try {
+    const contentTypeError = requireJsonContentType(request);
+    if (contentTypeError) return contentTypeError;
+
     const csrfError = verifyCsrf(request);
     // The CSRF guard runs before this handler and answers in the legacy
     // envelope; re-render it so no error on this route bypasses RFC 7807.

@@ -49,8 +49,10 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | Endpoint                                               | Methods                  |
 | ------------------------------------------------------ | ------------------------ |
 | `/api/auth/challenge`                                  | GET                      |
-| `/api/auth/session`                                    | POST, DELETE             |
+| `/api/auth/session`                                    | GET, POST, DELETE        |
 | `/api/csrf`                                            | GET                      |
+| `/api/contacts`                                        | GET, POST                |
+| `/api/export/csv`                                      | GET                      |
 | `/api/payments`                                        | GET, POST                |
 | `/api/payments/{id}`                                   | GET, PATCH, DELETE       |
 | `/api/payments/retry`                                  | POST                     |
@@ -115,6 +117,8 @@ Complete list of every endpoint declared in [`docs/openapi.yaml`](openapi.yaml).
 | `/api/cron`                                            | GET, POST                |
 | `/api/jobs/process-due-recurring`                      | POST                     |
 | `/api/pause-state`                                     | GET                      |
+| `/api/settings`                                        | GET, POST                |
+| `/api/transactions`                                    | GET                      |
 | `/api/openapi.json`                                    | GET                      |
 
 ---
@@ -1047,4 +1051,88 @@ curl "https://api.ophirpay.com/api/openapi.json"
   },
   "paths": { ... }
 }
+```
+
+---
+
+## 14. Contacts & Address Book
+
+### List Contacts (`/api/contacts`)
+
+```bash
+curl "https://api.ophirpay.com/api/contacts" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f"
+```
+
+**Response (`200 OK`):**
+
+```json
+{
+  "success": true,
+  "data": []
+}
+```
+
+### Create Contact (`/api/contacts`)
+
+```bash
+curl -X POST "https://api.ophirpay.com/api/contacts" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Treasury Vault",
+    "address": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    "memo": "Treasury"
+  }'
+```
+
+**Response (`201 Created`):**
+
+```json
+{
+  "success": true,
+  "data": {
+    "name": "Treasury Vault",
+    "label": "Treasury Vault",
+    "address": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    "publicKey": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    "memo": "Treasury"
+  }
+}
+```
+
+---
+
+## 15. Export, Settings & Transactions
+
+### Export Payments to CSV (`/api/export/csv`)
+
+```bash
+curl "https://api.ophirpay.com/api/export/csv" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f"
+```
+
+### Retrieve Settings (`/api/settings`)
+
+```bash
+curl "https://api.ophirpay.com/api/settings" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f"
+```
+
+### Update Settings (`/api/settings`)
+
+```bash
+curl -X POST "https://api.ophirpay.com/api/settings" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rpcUrl": "https://soroban-testnet.stellar.org"
+  }'
+```
+
+### List Transaction History (`/api/transactions`)
+
+```bash
+curl "https://api.ophirpay.com/api/transactions?limit=20" \
+  -H "Authorization: Bearer ophir_live_sk_8f7b2c9e4a1d0f"
 ```

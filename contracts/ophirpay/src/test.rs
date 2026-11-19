@@ -3340,4 +3340,113 @@ mod tests {
             "Updated FeeConfigUpdated event not found"
         );
     }
+
+    #[test]
+    fn test_token_decimal_precision_conversion() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let non_owner = Address::generate(&env);
+        let token_asset = Address::generate(&env);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // 1. Test conversion of 1 token with 7 decimals to 10,000,000 stroops
+        // Base unit (0 decimals) -> 7 decimals: 1 whole token becomes 10,000,000 stroops
+        let stroops = client.convert_token_decimals(&1i128, &0u32, &7u32);
+        assert_eq!(stroops, 10_000_000i128);
+
+        // Direct helper invocation
+        assert_eq!(convert_token_decimals(1, 0, 7), Ok(10_000_000i128));
+
+        // Downscale: 10,000,000 stroops (7 decimals) -> base token (0 decimals)
+        let whole_tokens = client.convert_token_decimals(&10_000_000i128, &7u32, &0u32);
+        assert_eq!(whole_tokens, 1i128);
+
+        // Identity: same decimals return identical amount
+        assert_eq!(client.convert_token_decimals(&10_000_000i128, &7u32, &7u32), 10_000_000i128);
+
+        // Zero amount converts to zero
+        assert_eq!(client.convert_token_decimals(&0i128, &7u32, &18u32), 0i128);
+
+        // 2. Test conversion with 18-decimal custom token
+        // 1 whole 18-decimal token = 10^18 base units (e.g. wei)
+        let one_18_dec_token: i128 = 1_000_000_000_000_000_000;
+
+        // Convert 1 18-decimal token to Stellar 7-decimal stroops -> 10,000,000 stroops
+        let converted_to_stroops = client.convert_token_decimals(&one_18_dec_token, &18u32, &7u32);
+        assert_eq!(converted_to_stroops, 10_000_000i128);
+
+        // Convert 10,000,000 stroops (7 decimals) to 18 decimals -> 10^18 units
+        let converted_to_18 = client.convert_token_decimals(&10_000_000i128, &7u32, &18u32);
+        assert_eq!(converted_to_18, one_18_dec_token);
+
+        // Convert 1 base token (0 decimals) to 18 decimals -> 10^18 units
+        assert_eq!(client.convert_token_decimals(&1i128, &0u32, &18u32), one_18_dec_token);
+
+        // Fractional conversion: 0.5 tokens (5,000,000 stroops) <-> 500,000,000,000,000,000 in 18 decimals
+        assert_eq!(
+            client.convert_token_decimals(&5_000_000i128, &7u32, &18u32),
+            500_000_000_000_000_000i128
+        );
+        assert_eq!(
+            client.convert_token_decimals(&500_000_000_000_000_000i128, &18u32, &7u32),
+            5_000_000i128
+        );
+
+        // Test standard 6-decimal token (USDC) to 7-decimal stroops: 1 USDC (1,000,000) -> 10,000,000 stroops
+        assert_eq!(client.convert_token_decimals(&1_000_000i128, &6u32, &7u32), 10_000_000i128);
+        assert_eq!(client.convert_token_decimals(&10_000_000i128, &7u32, &6u32), 1_000_000i128);
+
+        // Truncation on lossy downscale
+        assert_eq!(
+            client.convert_token_decimals(&1_000_000_000_000_000_050i128, &18u32, &7u32),
+            10_000_000i128
+        );
+
+        // 3. Verify error returned if decimal precision exceeds supported limits (> 18)
+        let err_from_exceeds = client.try_convert_token_decimals(&1000i128, &19u32, &7u32);
+        assert_eq!(err_from_exceeds, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+        let err_to_exceeds = client.try_convert_token_decimals(&1000i128, &7u32, &25u32);
+        assert_eq!(err_to_exceeds, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+        let err_both_exceed = client.try_convert_token_decimals(&1000i128, &20u32, &22u32);
+        assert_eq!(err_both_exceed, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+        // Direct helper error asserts
+        assert_eq!(
+            convert_token_decimals(100, 19, 7),
+            Err(PaymentError::InvalidDecimalPrecision)
+        );
+        assert_eq!(
+            convert_token_decimals(100, 7, 20),
+            Err(PaymentError::InvalidDecimalPrecision)
+        );
+
+        // Overflow on extreme scale up
+        assert_eq!(
+            convert_token_decimals(i128::MAX, 0, 18),
+            Err(PaymentError::ArithmeticOverflow)
+        );
+
+        // 4. Verify token decimal configuration on contract
+        // Default decimal precision is 7
+        assert_eq!(client.get_token_decimals(&token_asset), 7u32);
+
+        // Owner can configure custom decimals up to 18
+        client.set_token_decimals(&owner, &token_asset, &18u32);
+        assert_eq!(client.get_token_decimals(&token_asset), 18u32);
+
+        // Setting precision > 18 fails
+        let err_set_invalid = client.try_set_token_decimals(&owner, &token_asset, &19u32);
+        assert_eq!(err_set_invalid, Err(Ok(PaymentError::InvalidDecimalPrecision)));
+
+        // Non-owner cannot configure token decimals
+        let err_unauth = client.try_set_token_decimals(&non_owner, &token_asset, &6u32);
+        assert_eq!(err_unauth, Err(Ok(PaymentError::Unauthorized)));
+    }
 }

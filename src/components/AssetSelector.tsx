@@ -86,12 +86,36 @@ function findAssetBalance(
   );
 }
 
+/**
+ * Filter an asset list by a free-text query.
+ *
+ * Matches (case-insensitively, as a substring) the asset code, the display
+ * label and the issuer address, so users can search by ticker (`USDC`) or by
+ * pasting all or part of an issuer account. A blank query returns every asset.
+ */
+export function filterAssets(
+  assets: AssetInfo[],
+  query: string,
+  labelFor: (asset: AssetInfo) => string = (a) => a.displayName,
+): AssetInfo[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return assets;
+  return assets.filter(
+    (asset) =>
+      asset.code.toLowerCase().includes(q) ||
+      labelFor(asset).toLowerCase().includes(q) ||
+      (asset.issuer ?? "").toLowerCase().includes(q),
+  );
+}
+
 interface AssetSelectorProps {
   publicKey: string | null;
   selectedAsset: AssetInfo;
   onSelect: (asset: AssetInfo) => void;
   className?: string;
   disabled?: boolean;
+  /** Assets offered in the dropdown. Defaults to the built-in known assets. */
+  assets?: AssetInfo[];
 }
 
 // ── Component ──────────────────────────────────────────────────
@@ -102,8 +126,10 @@ export function AssetSelector({
   onSelect,
   className,
   disabled = false,
+  assets = KNOWN_ASSETS,
 }: AssetSelectorProps) {
   const [balances, setBalances] = useState<AssetBalance[]>([]);
+  const [query, setQuery] = useState("");
   const [trustlineStatus, setTrustlineStatus] = useState<
     Record<string, { hasTrustline: boolean; checking: boolean; state?: TrustlineState }>
   >({});
@@ -137,7 +163,7 @@ export function AssetSelector({
   // unreachable TOML just leaves the built-in display name in place.
   useEffect(() => {
     let cancelled = false;
-    const targets = [selectedAsset, ...KNOWN_ASSETS].filter(
+    const targets = [selectedAsset, ...assets].filter(
       (a) => a.type !== "native" && !!a.issuer
     );
     const seen = new Set<string>();
@@ -153,7 +179,12 @@ export function AssetSelector({
     return () => {
       cancelled = true;
     };
-  }, [selectedAsset]);
+  }, [selectedAsset, assets]);
+
+  // Start every open with a fresh, unfiltered list.
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
 
   useEffect(() => {
     if (!publicKey || selectedAsset.type === "native" || !selectedAsset.issuer) return;
@@ -235,6 +266,8 @@ export function AssetSelector({
     return resolved?.name ?? asset.displayName;
   };
 
+  const visibleAssets = filterAssets(assets, query, labelFor);
+
   return (
     <div className={cn("relative", className)}>
       <button
@@ -287,7 +320,29 @@ export function AssetSelector({
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in">
-            {KNOWN_ASSETS.map((asset) => {
+            <div className="px-3 pt-2 pb-1">
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by code or issuer"
+                aria-label="Search assets"
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+              />
+            </div>
+
+            {visibleAssets.length === 0 && (
+              <p
+                role="status"
+                className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400"
+              >
+                No assets found
+              </p>
+            )}
+
+            {visibleAssets.map((asset) => {
               const bal = findAssetBalance(balances, asset);
               const key = `${asset.code}:${asset.issuer}`;
               const tl = trustlineStatus[key];
@@ -296,6 +351,7 @@ export function AssetSelector({
                 <button
                   key={key}
                   type="button"
+                  data-testid="asset-option"
                   onClick={() => handleSelect(asset)}
                   className={cn(
                     "w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors",

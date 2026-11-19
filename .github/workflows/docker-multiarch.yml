@@ -91,7 +91,7 @@ jobs:
       - name: Set up QEMU
         # Required so the amd64 runner can execute the arm64 build stages and
         # the arm64 container in the health check below.
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: "amd64,arm64"
 
@@ -215,7 +215,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         with:
           platforms: "amd64,arm64"
 

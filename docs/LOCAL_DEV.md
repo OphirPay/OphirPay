@@ -77,6 +77,95 @@ If the contract sources were intentionally changed, update the committed expecte
 ./scripts/verify-wasm-reproducibility.sh --update
 ```
 
+### 1.3 Local Stellar Quickstart Standalone Container (Offline Testing & Development)
+
+For offline contract development, rapid test iterations, or testing without reliance on the public Stellar Testnet friendbot rate limits, you can run a local **Stellar Quickstart Docker container** in `--standalone` mode with Soroban RPC enabled.
+
+#### Starting the Standalone Container
+
+Run the official Stellar Quickstart container mapping RPC and Horizon port `8000`:
+
+```bash
+docker run --rm -it \
+  -p 8000:8000 \
+  --name stellar-standalone \
+  stellar/quickstart:testing \
+  --standalone \
+  --enable-soroban-rpc
+```
+
+For background (detached) execution, replace `-it` with `-d`:
+
+```bash
+docker run -d \
+  -p 8000:8000 \
+  --name stellar-standalone \
+  stellar/quickstart:testing \
+  --standalone \
+  --enable-soroban-rpc
+```
+
+#### Endpoints & Network Parameters
+
+When running, the standalone container exposes:
+
+| Component       | Endpoint                             | Description                                    |
+| --------------- | ------------------------------------ | ---------------------------------------------- |
+| **Soroban RPC** | `http://localhost:8000/soroban/rpc`  | JSON-RPC 2.0 endpoint for smart contracts      |
+| **Horizon API** | `http://localhost:8000`              | Horizon REST API for accounts and transactions |
+| **Friendbot**   | `http://localhost:8000/friendbot`    | Local test account funding faucet endpoint     |
+| **Passphrase**  | `Standalone Network ; February 2017` | Network passphrase for transaction signing     |
+
+#### Funding a Test Account with Local Friendbot
+
+To create and fund a test account locally without waiting for Testnet friendbot:
+
+```bash
+# Generate or supply your test public key (e.g. from Freighter or stellar-cli)
+TEST_PUBLIC_KEY="GDJ5J4K7K54P4..."
+
+# Fund with 10,000 local XLM via curl
+curl -X GET "http://localhost:8000/friendbot?addr=${TEST_PUBLIC_KEY}"
+```
+
+A successful response returns JSON with transaction ledger details:
+
+```json
+{
+  "successful": true,
+  "result_meta_xdr": "..."
+}
+```
+
+#### Configuring `.env.local` for Standalone Mode
+
+To connect OphirPay to your local standalone network:
+
+```env
+# Stellar Standalone Network Configuration
+NEXT_PUBLIC_STELLAR_NETWORK="STANDALONE"
+NEXT_PUBLIC_STELLAR_RPC_URL="http://localhost:8000/soroban/rpc"
+NEXT_PUBLIC_STELLAR_HORIZON_URL="http://localhost:8000"
+STELLAR_NETWORK_PASSPHRASE="Standalone Network ; February 2017"
+```
+
+#### Troubleshooting & Healthcheck Tips
+
+- **Container Healthcheck / Startup Delays:** The Soroban RPC service within the quickstart container typically requires 10–25 seconds after container launch to initialize PostgreSQL, core ledgers, and captive core. Verify readiness before deploying contracts:
+  ```bash
+  # Check Soroban RPC health
+  curl -s -X POST "http://localhost:8000/soroban/rpc" \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
+  # Expected response: {"jsonrpc":"2.0","id":1,"result":{"status":"healthy"}}
+  ```
+- **Port 8000 Conflict:** If port 8000 is already occupied on your host machine, map to an alternate port (e.g. `-p 8001:8000`) and update your RPC/Horizon URLs to port `8001`.
+- **Docker Resource Allocation:** On macOS and Linux, ensure Docker is allocated at least 2 CPUs and 2 GB RAM. Low memory limits can cause container core timeouts.
+- **Stopping and Resetting:** To terminate the container:
+  ```bash
+  docker stop stellar-standalone
+  ```
+
 > **Note on `.env` vs `.env.local`:** Next.js loads both, but `.env.local`
 > overrides `.env` and is already git-ignored. Prefer `.env.local` so you never
 > accidentally commit credentials.

@@ -119,4 +119,30 @@ describe("CI & Developer Scripts Verification", () => {
       expect(content).toContain("npm run format:check");
     });
   });
+
+  describe("Stellar Quickstart Standalone Container Documentation (Issue #1997)", () => {
+    const localDevPath = join(root, "docs", "LOCAL_DEV.md");
+    const readmePath = join(root, "README.md");
+
+    it("docs/LOCAL_DEV.md documents stellar/quickstart container setup", () => {
+      expect(existsSync(localDevPath)).toBe(true);
+      const content = readFileSync(localDevPath, "utf8");
+      expect(content).toContain("stellar/quickstart:testing");
+      expect(content).toContain("--standalone");
+      expect(content).toContain("--enable-soroban-rpc");
+      expect(content).toContain("8000:8000");
+      expect(content).toContain("/friendbot");
+      expect(content).toContain("curl -X GET");
+      expect(content).toContain("getHealth");
+    });
+
+    it("README.md links to the standalone quickstart documentation", () => {
+      expect(existsSync(readmePath)).toBe(true);
+      const content = readFileSync(readmePath, "utf8");
+      expect(content).toContain("Local Stellar Standalone (Docker)");
+      expect(content).toContain(
+        "docs/LOCAL_DEV.md#13-local-stellar-quickstart-standalone-container-offline-testing--development"
+      );
+    });
+  });
 });

@@ -8,6 +8,7 @@ import {
   validateStellarMemo,
   type StellarMemoType,
 } from "@/lib/validation/stellar";
+import { paymentAmountSchema } from "@/lib/validation/payment";
 
 // ── Address / Identifier Schemas ──────────────────────────────
 
@@ -76,7 +77,7 @@ function refineMemo(
 
 export const createPaymentSchema = z
   .object({
-    amount: z.number().positive("Amount must be greater than zero"),
+    amount: paymentAmountSchema,
     sourceAccountId: z.string().min(1, "Source account is required"),
     destAddress: stellarAddress,
     assetCode: z.string().default("XLM"),
@@ -175,7 +176,7 @@ export const idempotencyKeySchema = z
 export const batchRecipientSchema = z
   .object({
     address: stellarAddress,
-    amount: z.number().positive("Amount must be greater than zero"),
+    amount: paymentAmountSchema,
     assetCode: z.string().default("XLM"),
     memo: memoValueField,
     memoType: memoTypeField,

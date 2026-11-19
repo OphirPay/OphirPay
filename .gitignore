@@ -79,3 +79,4 @@ test-results/
 
 # Load-test raw results (regenerated locally; baselines live in docs/PERFORMANCE.md)
 tests/load/results/
+.aider*

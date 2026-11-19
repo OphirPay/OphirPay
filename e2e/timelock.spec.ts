@@ -25,7 +25,7 @@ test.describe("Timelocked actions", () => {
       page.getByRole("heading", { level: 1, name: "Timelocked Actions" })
     ).toBeVisible({ timeout: 15000 });
 
-    await expect(page.getByText("Locked")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Locked", { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("#7")).toBeVisible();
     // Unlock countdown renders (e.g. "5h 0m remaining").
     await expect(page.getByText(/\d+h \d+m remaining/)).toBeVisible();
@@ -42,13 +42,13 @@ test.describe("Timelocked actions", () => {
       page.getByRole("heading", { level: 1, name: "Timelocked Actions" })
     ).toBeVisible({ timeout: 15000 });
 
-    await expect(page.getByText("Ready")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText("Ready", { exact: true }).first()).toBeVisible({ timeout: 15000 });
     const execute = page.getByRole("button", { name: "✓ Execute" });
     await expect(execute).toBeEnabled();
     await execute.click();
 
     await expect(
-      page.getByText("Timelocked action executed on-chain")
+      page.getByText("Timelocked action executed on-chain").first()
     ).toBeVisible({ timeout: 20000 });
   });
 
@@ -61,7 +61,7 @@ test.describe("Timelocked actions", () => {
     ).toBeVisible({ timeout: 15000 });
 
     await page.getByRole("button", { name: "Cancel" }).click();
-    await expect(page.getByText("Action cancelled on-chain")).toBeVisible({
+    await expect(page.getByText("Action cancelled on-chain").first()).toBeVisible({
       timeout: 20000,
     });
   });
@@ -80,7 +80,7 @@ test.describe("Timelocked actions", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toContainText("Propose Timelocked Action");
 
-    await dialog.getByRole("button", { name: "pause contract" }).click();
+    await dialog.getByRole("button", { name: "pause contract", exact: true }).click();
     await dialog
       .getByPlaceholder("Contract address or parameter...")
       .fill("GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU");
@@ -90,7 +90,7 @@ test.describe("Timelocked actions", () => {
       .click();
 
     await expect(
-      page.getByText("Timelocked action proposed (24h delay)")
+      page.getByText("Timelocked action proposed (24h delay)").first()
     ).toBeVisible({ timeout: 20000 });
   });
 

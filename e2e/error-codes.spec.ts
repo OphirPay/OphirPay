@@ -27,7 +27,9 @@ test.describe("400 — Bad Request", () => {
     expect([400, 401, 403]).toContain(res.status());
     if (res.status() === 400) {
       const json = await res.json();
-      expect(["BAD_REQUEST", "VALIDATION_ERROR"]).toContain(json.error.code);
+      // /api/payments answers with RFC 7807 problem documents (issue #1364):
+      // the machine-readable code is top-level `code`, not `error.code`.
+      expect(["BAD_REQUEST", "VALIDATION_ERROR"]).toContain(json.code);
     }
   });
 
@@ -51,10 +53,12 @@ test.describe("401 — Unauthorized", () => {
     const res = await request.get(`${BASE_URL}/api/payments?page=1&limit=10`);
     expect(res.status()).toBe(401);
 
+    // RFC 7807 problem document (issue #1364), not the legacy envelope.
+    expect(res.headers()["content-type"]).toContain("application/problem+json");
     const json = await res.json();
-    expect(json.success).toBe(false);
-    expect(json.error.code).toBe("UNAUTHORIZED");
-    expect(json.error.message).toBeDefined();
+    expect(json.status).toBe(401);
+    expect(json.code).toBe("UNAUTHORIZED");
+    expect(json.detail).toBeDefined();
   });
 
   test("POST /api/multisig/execute without auth returns UNAUTHORIZED", async ({
@@ -189,10 +193,10 @@ test.describe("500 — Internal Server Error", () => {
 // ── Response structure consistency ────────────────────────────
 
 test.describe("Error response structure", () => {
-  test("all error responses have { success: false, error: { code, message } }", async ({
+  test("legacy-envelope routes return { success: false, error: { code, message } }", async ({
     request,
   }) => {
-    const res = await request.get(`${BASE_URL}/api/payments?page=1&limit=10`);
+    const res = await request.get(`${BASE_URL}/api/batches?page=1&limit=10`);
     expect(res.status()).toBe(401);
 
     const json = await res.json();
@@ -201,6 +205,21 @@ test.describe("Error response structure", () => {
     expect(typeof json.error.code).toBe("string");
     expect(typeof json.error.message).toBe("string");
     expect(json.timestamp).toBeDefined();
+  });
+
+  test("/api/payments errors are RFC 7807 problem documents", async ({
+    request,
+  }) => {
+    const res = await request.get(`${BASE_URL}/api/payments?page=1&limit=10`);
+    expect(res.status()).toBe(401);
+    expect(res.headers()["content-type"]).toContain("application/problem+json");
+
+    const json = await res.json();
+    expect(typeof json.type).toBe("string");
+    expect(typeof json.title).toBe("string");
+    expect(json.status).toBe(401);
+    expect(typeof json.code).toBe("string");
+    expect(typeof json.detail).toBe("string");
   });
 });
 

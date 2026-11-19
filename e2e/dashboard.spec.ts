@@ -1,4 +1,23 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+/** Below Tailwind's `lg` breakpoint the sidebar is an on-demand drawer. */
+const DESKTOP_SIDEBAR_MIN_WIDTH = 1024;
+
+/**
+ * Click a primary-navigation link on any viewport: the static sidebar on
+ * desktop, the slide-out drawer (opened via "Toggle menu") on phones/tablets.
+ */
+async function clickNavLink(page: Page, href: string): Promise<void> {
+  const isDesktop =
+    (page.viewportSize()?.width ?? DESKTOP_SIDEBAR_MIN_WIDTH) >=
+    DESKTOP_SIDEBAR_MIN_WIDTH;
+  if (isDesktop) {
+    await page.locator(`aside a[href='${href}']`).first().click();
+    return;
+  }
+  await page.getByRole("button", { name: "Toggle menu" }).click();
+  await page.locator(`#mobile-navigation a[href='${href}']`).click();
+}
 
 test.describe("OphirPay Dashboard", () => {
   test("loads dashboard page", async ({ page }) => {
@@ -10,20 +29,33 @@ test.describe("OphirPay Dashboard", () => {
   });
 
   test("sidebar navigation is visible", async ({ page }) => {
+    const width = page.viewportSize()?.width ?? DESKTOP_SIDEBAR_MIN_WIDTH;
+    test.skip(
+      width < DESKTOP_SIDEBAR_MIN_WIDTH,
+      "The sidebar is a drawer below the lg breakpoint"
+    );
     await page.goto("/");
     // Desktop sidebar should be visible on wide viewports
     await expect(page.locator("aside").first()).toBeVisible();
   });
 
+  test("opens the navigation drawer on small viewports", async ({ page }) => {
+    const width = page.viewportSize()?.width ?? DESKTOP_SIDEBAR_MIN_WIDTH;
+    test.skip(width >= DESKTOP_SIDEBAR_MIN_WIDTH, "Desktop uses the static sidebar");
+    await page.goto("/");
+    await page.getByRole("button", { name: "Toggle menu" }).click();
+    await expect(page.locator("#mobile-navigation")).toBeVisible();
+  });
+
   test("navigates to Payments via sidebar", async ({ page }) => {
     await page.goto("/");
-    await page.locator("a[href='/payments']").first().click();
+    await clickNavLink(page, "/payments");
     await expect(page).toHaveURL(/\/payments/);
   });
 
   test("navigates to Send page", async ({ page }) => {
     await page.goto("/");
-    await page.locator("a[href='/send']").first().click();
+    await clickNavLink(page, "/send");
     await expect(page).toHaveURL(/\/send/);
   });
 });

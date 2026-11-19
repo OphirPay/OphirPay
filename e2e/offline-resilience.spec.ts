@@ -20,12 +20,18 @@ test.describe("Offline Resilience & Service Worker Caching (#1410)", () => {
     await page.goto("/");
 
     // Wait for the service worker to become ready and active (if supported in browser context)
+    // Bounded wait: `serviceWorker.ready` never resolves when no worker is
+    // registered, and an unbounded wait would consume the whole test timeout.
     await page
-      .waitForFunction(async () => {
-        if (!("serviceWorker" in navigator)) return true;
-        const registration = await navigator.serviceWorker.ready;
-        return registration.active?.state === "activated";
-      })
+      .waitForFunction(
+        async () => {
+          if (!("serviceWorker" in navigator)) return true;
+          const registration = await navigator.serviceWorker.ready;
+          return registration.active?.state === "activated";
+        },
+        undefined,
+        { timeout: 10_000 }
+      )
       .catch(() => {});
 
     // Verify main content shell rendered
@@ -66,11 +72,15 @@ test.describe("Offline Resilience & Service Worker Caching (#1410)", () => {
 
     // Ensure precaching is loaded
     await page
-      .waitForFunction(async () => {
-        if (!("caches" in window)) return true;
-        const keys = await caches.keys();
-        return keys.some((k) => k.includes("static"));
-      })
+      .waitForFunction(
+        async () => {
+          if (!("caches" in window)) return true;
+          const keys = await caches.keys();
+          return keys.some((k) => k.includes("static"));
+        },
+        undefined,
+        { timeout: 10_000 }
+      )
       .catch(() => {});
 
     // Disconnect

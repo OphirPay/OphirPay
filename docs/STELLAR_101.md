@@ -14,6 +14,7 @@
 - [Signatures & Signing](#signatures--signing)
 - [Memos](#memos)
 - [Testnet & Friendbot](#testnet--friendbot)
+- [Friendbot FAQ & Faucets](#friendbot-faq--faucets)
 - [Horizon — Stellar's REST API](#horizon--stellars-rest-api)
 - [Soroban — Smart Contracts on Stellar](#soroban--smart-contracts-on-stellar)
 - [Minimal Working Example: Send XLM](#minimal-working-example-send-xlm)
@@ -221,6 +222,186 @@ console.log("Account funded:", data);
 **⚠️ Important:** Testnet XLM has no real value. Never send testnet tokens to mainnet addresses or vice versa.
 
 **OphirPay default:** The app runs on testnet. Switch to mainnet by changing `NEXT_PUBLIC_STELLAR_NETWORK="PUBLIC"` in your `.env`.
+
+---
+
+## Friendbot FAQ & Faucets
+
+Faucet problems are the most common "the app is broken" false alarm on
+testnet. Friendbot is a shared, rate-limited service — a `429` means you are
+queued, not blocked.
+
+### Why does Friendbot return `429 Too Many Requests`?
+
+`friendbot.stellar.org` enforces a **per-IP throttle of roughly one request
+every 10 seconds**. The limit is shared by everything behind your IP — your
+browser, the OphirPay dev server, wallet extensions, and any scripts — so a
+quick reload loop, several browser tabs, or a CI job running in parallel can
+exhaust it. The throttle is per _source IP_, not per account, so funding five
+fresh addresses one after another too quickly trips it even though each
+address is new.
+
+| Response                | Meaning                                                                                         | What to do                                              |
+| ----------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `200 OK`                | Account created and funded with 10,000 testnet XLM                                              | Nothing — you're done                                   |
+| `400 Bad Request`       | Address is invalid, or the account already exists (Friendbot does not top up existing accounts) | Fix the key, or fund from another account (below)       |
+| `429 Too Many Requests` | Per-IP throttle is active                                                                       | Wait ~10 s and retry with backoff; see the script below |
+| `5xx`                   | Friendbot is temporarily unavailable                                                            | Treat like `429`: back off, or use a fallback faucet    |
+
+> Friendbot failures never affect real funds — testnet XLM has no value.
+> Never point these commands at a mainnet address.
+
+### Fallback faucets and options
+
+1. **Wait and retry (cheapest).** Sleep ~10 seconds between requests. The
+   `scripts/testnet-integration.mjs` helper already retries with backoff when
+   it funds its throwaway accounts.
+2. **Stellar Laboratory.** Use the graphical
+   [account creator](https://laboratory.stellar.org/#account-creator?network=test)
+   (`Create account` → Testnet). It calls the same faucet, so the same throttle
+   applies — but it retries for you in the UI.
+3. **Local Friendbot via Stellar Quickstart.** Run a standalone container with
+   its own Friendbot on port `8000` and sidestep the public throttle entirely —
+   ideal for offline development, demos, and CI. See
+   [Local Stellar Quickstart Standalone](LOCAL_DEV.md#13-local-stellar-quickstart-standalone-container-offline-testing--development).
+   ```bash
+   # Local faucet endpoint once the quickstart container is healthy
+   curl "http://localhost:8000/friendbot?addr=GABCD...YOUR_PUBLIC_KEY"
+   ```
+4. **Fund from an account you already control.** Any funded testnet account can
+   create and fund a new one with a single `create_account` operation. The new
+   account needs no faucet at all:
+   ```bash
+   stellar tx new create-account \
+     --source-account <FUNDED_SECRET_OR_KEY_NAME> \
+     --destination GABCD...NEW_PUBLIC_KEY \
+     --starting-balance 100 \
+     --network testnet
+   ```
+   This is the most reliable option on a throttled IP: one funded keypair can
+   seed any number of fresh accounts, and the operation costs only the base fee
+   and the new account's reserve.
+5. **OphirPay's in-app button.** When the connected Freighter account has no
+   balance, the app offers a "fund via Friendbot" action that performs the same
+   `GET /friendbot?addr=` call for you.
+
+### Create custom test assets (no external faucet needed)
+
+Friendbot only issues XLM. For USDC-like test tokens, issue your own asset on
+testnet — the whole flow is three CLI calls with the
+[Stellar CLI](https://developers.stellar.org/docs/tools/cli):
+
+```bash
+# 1. Create a keypair for the issuer (stored locally by the CLI)
+stellar keys generate my-issuer --network testnet --fund
+
+# 2. Create a second keypair for the holder, then fund it from the issuer
+stellar keys generate my-holder --network testnet --fund
+
+# 3. Add a trustline to the asset, then issue tokens to the holder
+stellar tx new change-trust \
+  --source-account my-holder \
+  --line "USDC:$(stellar keys address my-issuer)" \
+  --network testnet
+
+stellar tx new payment \
+  --source-account my-issuer \
+  --destination "$(stellar keys address my-holder)" \
+  --asset "USDC:$(stellar keys address my-issuer)" \
+  --amount 1000 \
+  --network testnet
+```
+
+The holder now has a balance of `1000 USDC`. To hand the tokens to other
+test accounts, they each add the same trustline first (step 3); anyone can then
+be funded with `stellar tx new payment` from the issuer. Everything above is
+**testnet only** — see [Horizon](#horizon--stellars-rest-api) for verifying
+balances.
+
+### Fund many accounts sequentially (bash/zsh)
+
+Friendbot's 10-second throttle is per IP, so parallel funding is pointless —
+run the requests one at a time with a gap, and back off on `429`. This script
+works unmodified in **bash** and **zsh**, validates the keys before calling the
+network, and exits non-zero if any account could not be funded:
+
+```bash
+#!/usr/bin/env bash
+# fund-testnet.sh — fund one or more Stellar testnet accounts via Friendbot.
+# Usage: ./fund-testnet.sh G... [G... ...]
+#   FRIENDBOT  override the faucet URL (e.g. http://localhost:8000/friendbot)
+#   THROTTLE   seconds to sleep between requests (default 10)
+set -u
+
+FRIENDBOT="${FRIENDBOT:-https://friendbot.stellar.org}"
+THROTTLE="${THROTTLE:-10}"
+MAX_RETRIES="${MAX_RETRIES:-5}"
+TMP_BODY=$(mktemp 2>/dev/null || echo "/tmp/fund-testnet.$$")
+
+if [ "$#" -eq 0 ]; then
+  echo "usage: $0 <G...public-key> [<G...public-key> ...]" >&2
+  exit 2
+fi
+
+failed=0
+for key in "$@"; do
+  case "$key" in
+    G??????*) ;;
+    *) echo "SKIP $key: not a G... public key" >&2; failed=1; continue ;;
+  esac
+
+  attempt=1
+  while :; do
+    code=$(curl -sS --max-time 30 -o "$TMP_BODY" -w '%{http_code}' \
+      "$FRIENDBOT?addr=$key" 2>/dev/null) || code=000
+
+    case "$code" in
+      200)
+        echo "OK    $key funded"
+        break
+        ;;
+      400)
+        echo "INFO  $key already funded or rejected (HTTP 400)"
+        break
+        ;;
+      429)
+        if [ "$attempt" -ge "$MAX_RETRIES" ]; then
+          echo "FAIL  $key still rate-limited after $attempt attempts" >&2
+          failed=1
+          break
+        fi
+        wait=$((THROTTLE * attempt))
+        echo "WAIT  $key rate-limited; retry $attempt in ${wait}s"
+        sleep "$wait"
+        attempt=$((attempt + 1))
+        ;;
+      *)
+        echo "FAIL  $key: HTTP $code (is Friendbot reachable?)" >&2
+        failed=1
+        break
+        ;;
+    esac
+  done
+
+  sleep "$THROTTLE" # keep the next request under the per-IP throttle
+done
+
+rm -f "$TMP_BODY"
+exit "$failed"
+```
+
+```bash
+chmod +x fund-testnet.sh
+./fund-testnet.sh GABC...KEY1 GABC...KEY2 GABC...KEY3
+
+# Against a local quickstart container (no public throttle):
+FRIENDBOT=http://localhost:8000/friendbot THROTTLE=1 ./fund-testnet.sh GABC...KEY1
+```
+
+> **Why not parallel?** Every request comes from the same IP, so `curl ... &`
+> plus `wait` does not go faster — it produces a burst of `429`s, and requests
+> that fail mid-burst still count against your next window. Sequential +
+> backoff is the only pattern that reliably succeeds.
 
 ---
 

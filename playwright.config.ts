@@ -28,7 +28,7 @@ export default defineConfig({
     // sibling "intercept pointer events" — worst on the small mobile viewport,
     // where dialogs are bottom sheets that scroll. Reduced motion switches both
     // off through the app's own `prefers-reduced-motion` rules.
-    reducedMotion: "reduce",
+    contextOptions: { reducedMotion: "reduce" },
   },
   projects: OFFLINE
     ? [

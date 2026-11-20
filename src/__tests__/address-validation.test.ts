@@ -69,9 +69,6 @@ describe("StrKey address validation", () => {
 
   describe("addresses with single-character typos causing CRC checksum failure", () => {
     it("detects single character difference in valid address", () => {
-      // Start with valid address
-      const valid = VALID_GADDRESS;
-      
       // Change one character in the middle (would corrupt CRC in real StrKey)
       const typo1 = "G" + "A".repeat(10) + "B" + "A".repeat(44);
       

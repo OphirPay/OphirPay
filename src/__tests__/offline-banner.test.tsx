@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import { OfflineBanner } from "@/components/OfflineBanner";
 
 describe("OfflineBanner component", () => {

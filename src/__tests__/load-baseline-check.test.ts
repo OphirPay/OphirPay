@@ -17,11 +17,12 @@
  *      their output in the job summary.
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync,readFileSync } from "node:fs";
 import path from "node:path";
+
 import { load } from "js-yaml";
+import { createRequire } from "node:module";
+import { beforeAll,describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");

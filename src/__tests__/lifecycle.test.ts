@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
-  DEFAULT_SHUTDOWN_GRACE_PERIOD_MS,
-  ShutdownInProgressError,
   areShutdownHandlersInstalled,
   assertAcceptingOperations,
   beginAsyncOperation,
+  DEFAULT_SHUTDOWN_GRACE_PERIOD_MS,
   getInFlightOperationCount,
   getShutdownGracePeriodMs,
   getShutdownTaskNames,
@@ -15,6 +15,7 @@ import {
   registerShutdownTask,
   resetLifecycleForTests,
   shutdown,
+  ShutdownInProgressError,
   unregisterShutdownTask,
   waitForInFlightOperations,
 } from "@/lib/lifecycle";

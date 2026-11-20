@@ -7,6 +7,7 @@
 // the same dimensions as the feed keeps the layout stable — no layout shift.
 
 import dynamic from "next/dynamic";
+
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 const EventFeed = dynamic(

@@ -27,13 +27,13 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { API_SCOPES, hasScope, missingScopes, hashApiKeyV1 } from "@/lib/api-auth";
-import { calculateCrc32 } from "@/lib/api-key-format";
-import { requireScope } from "@/lib/api-route";
-import { createSessionToken } from "@/lib/auth-session";
 import { POST as createBatch } from "@/app/api/batches/route";
 import { POST as createEscrow } from "@/app/api/escrows/route";
 import { POST as createWebhook } from "@/app/api/webhooks/route";
+import { API_SCOPES, hashApiKeyV1,hasScope, missingScopes } from "@/lib/api-auth";
+import { calculateCrc32 } from "@/lib/api-key-format";
+import { requireScope } from "@/lib/api-route";
+import { createSessionToken } from "@/lib/auth-session";
 
 // A valid-format key so authentication reaches the mocked lookup.
 const VALID_PAYLOAD = `op_test_${"a".repeat(64)}`;

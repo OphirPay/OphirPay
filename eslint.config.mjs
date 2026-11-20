@@ -1,6 +1,7 @@
 import { globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import simpleImportSort from "eslint-plugin-simple-import-sort";
 
 // eslint-config-next >= 16 ships native flat config arrays via its
 // `core-web-vitals` and `typescript` subpath exports — no FlatCompat needed.
@@ -8,7 +9,31 @@ const eslintConfig = [
   ...nextVitals,
   ...nextTs,
   {
+    plugins: {
+      "simple-import-sort": simpleImportSort,
+    },
     rules: {
+      "simple-import-sort/imports": [
+        "error",
+        {
+          groups: [
+            // Side effect imports
+            ["^\\u0000"],
+            // Node.js built-ins prefixed with `node:` or standard built-ins
+            ["^(node:)?(assert|buffer|child_process|cluster|crypto|dgram|dns|domain|events|fs|http|https|net|os|path|punycode|querystring|readline|stream|string_decoder|timers|tls|tty|url|util|v8|vm|zlib)(/.*|$)"],
+            // External packages (react, next, @stellar, etc.)
+            ["^@?\\w"],
+            // Internal path aliases (@/...)
+            ["^@/"],
+            // Parent and sibling relative imports
+            ["^\\.\\.(?!/?$)", "^\\.\\./?$"],
+            ["^\\./(?=.*/)(?!/?$)", "^\\.(?!/?$)", "^\\./?$"],
+            // Style imports
+            ["^.+\\.s?css$"],
+          ],
+        },
+      ],
+      "simple-import-sort/exports": "error",
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [
         "warn",

@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { proxy } from "@/proxy";
+import { describe, expect, it, vi } from "vitest";
+
 import {
-  successResponse,
-  errorResponse,
-  rateLimitError,
   conflictError,
+  errorResponse,
   logApiError,
+  rateLimitError,
+  successResponse,
 } from "@/lib/api-response";
-import { requestIdContext } from "@/lib/request-logging";
 import { logger } from "@/lib/logger";
+import { requestIdContext } from "@/lib/request-logging";
+import { proxy } from "@/proxy";
 
 describe("X-Request-ID propagation across all API responses (Issue #1951)", () => {
   describe("Edge Proxy (proxy.ts)", () => {

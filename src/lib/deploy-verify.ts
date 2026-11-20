@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 import { Contract, TransactionBuilder } from "@stellar/stellar-sdk";
-import { getSorobanServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
+
 import { logger } from "@/lib/logger";
+import { getSorobanServer, NETWORK_PASSPHRASE } from "@/lib/stellar";
 
 interface DeployVerification {
   contractId: string;

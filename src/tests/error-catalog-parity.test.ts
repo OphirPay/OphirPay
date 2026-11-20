@@ -9,16 +9,18 @@
  * 3. Human-readable error messages are present for all error codes.
  */
 
-import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+
+import { describe, expect,it } from "vitest";
+
+import { checkParity,parseRustErrors } from "../../scripts/regenerate-errors";
 import {
-  PaymentError,
-  PAYMENT_ERROR_NAMES,
-  PAYMENT_ERROR_DISCRIMINANTS,
   ERROR_MESSAGES,
+  PAYMENT_ERROR_DISCRIMINANTS,
+  PAYMENT_ERROR_NAMES,
+  PaymentError,
 } from "../types/errors";
-import { parseRustErrors, checkParity } from "../../scripts/regenerate-errors";
 
 const ROOT = process.cwd();
 const rustErrorsPath = path.join(ROOT, "contracts/ophirpay/src/errors.rs");

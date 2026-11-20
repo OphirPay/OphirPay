@@ -1,26 +1,25 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { act,render, screen } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
+import { beforeEach,describe, expect, it, vi } from 'vitest';
 
+import { Amount } from '@/components/ui/Amount';
+import { Badge } from '@/components/ui/Badge';
+import { Card } from '@/components/ui/Card';
+import { CopyButton } from '@/components/ui/CopyButton';
+import { ExplorerLink } from '@/components/ui/ExplorerLink';
 // UI Components
 import { Kbd } from '@/components/ui/Kbd';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { Card } from '@/components/ui/Card';
-import { CopyButton } from '@/components/ui/CopyButton';
-import { Amount } from '@/components/ui/Amount';
-import { Badge } from '@/components/ui/Badge';
-import { ExplorerLink } from '@/components/ui/ExplorerLink';
 import { Tooltip } from '@/components/ui/Tooltip';
-
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
+import { useCountdown } from '@/hooks/useCountdown';
 // Hooks
 import { useDebounce } from '@/hooks/useDebounce';
-import { usePrevious } from '@/hooks/usePrevious';
 import { useIsMounted, useMountedRef } from '@/hooks/useIsMounted';
-import { useCountdown } from '@/hooks/useCountdown';
-import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
+import { usePrevious } from '@/hooks/usePrevious';
 
 // ═══════════════════════════════════════════════════════════
 // UI Components

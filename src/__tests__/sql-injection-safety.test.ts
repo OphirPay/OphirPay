@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Issue #1396 — Regression tests for SQL injection prevention, safe analytics date filtering, and CI static analysis.
 
-import { describe, it, expect, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+
 import process from "node:process";
-import { Prisma } from "@/lib/prisma";
+import { describe, expect, it, vi } from "vitest";
+
 import { GET } from "@/app/api/analytics/route";
+import { Prisma } from "@/lib/prisma";
 
 vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(async () => ({ userId: "user-test-sql", publicKey: "GTEST123" })),

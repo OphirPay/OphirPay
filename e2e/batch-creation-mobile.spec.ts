@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { test, expect } from "@playwright/test";
+import { expect,test } from "@playwright/test";
 
 // Mobile viewport (Pixel 5)
 const MOBILE_VIEWPORT = { width: 412, height: 915 };

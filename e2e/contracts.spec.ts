@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import { test, expect } from "@playwright/test";
-import { readFileSync, existsSync } from "fs";
+import { existsSync,readFileSync } from "fs";
 import { join } from "path";
+
+import { expect,test } from "@playwright/test";
 
 const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
 

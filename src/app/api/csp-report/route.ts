@@ -20,17 +20,19 @@
 //     so operators can observe report volume without replaying raw log lines.
 //   • Rate-limiting for this endpoint is enforced per-IP and per-session (#1392).
 
-import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+
+import { NextRequest, NextResponse } from "next/server";
+
 import { logger } from "@/lib/logger";
-import { incMetric, incCspReportsDropped } from "@/lib/metrics-counters";
+import { incCspReportsDropped,incMetric } from "@/lib/metrics-counters";
+import { getClientIp } from "@/lib/proxy-config";
 import {
-  getRateLimitStore,
-  getRetryAfterSeconds,
   CSP_REPORT_RATE_LIMIT_MAX,
   CSP_REPORT_RATE_LIMIT_WINDOW_MS,
+  getRateLimitStore,
+  getRetryAfterSeconds,
 } from "@/lib/rate-limit";
-import { getClientIp } from "@/lib/proxy-config";
 
 /** Maximum accepted request body size in bytes (16 KiB). */
 const MAX_BODY_BYTES = 16 * 1024;

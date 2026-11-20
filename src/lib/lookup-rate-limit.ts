@@ -16,8 +16,8 @@
  *   LOOKUP_RATE_LIMIT_ADDR_RPM — per-address lookups per minute (default: 30)
  */
 
-import { getRateLimitStore } from "@/lib/rate-limit";
 import { ERROR_CODES } from "@/lib/error-codes";
+import { getRateLimitStore } from "@/lib/rate-limit";
 
 const WINDOW_MS = 60_000; // 1 minute sliding window
 

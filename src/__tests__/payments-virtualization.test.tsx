@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ToastProvider } from "@/components/ui/Toast";
+import { render, renderHook, screen, waitFor } from "@testing-library/react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import PaymentsPage from "@/app/payments/page";
+import { ToastProvider } from "@/components/ui/Toast";
 import { useVirtualRows } from "@/hooks/useVirtualRows";
 import type { OnChainPayment } from "@/lib/contracts";
 

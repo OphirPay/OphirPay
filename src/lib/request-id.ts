@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { randomUUID } from "crypto";
+
 import { headers } from "next/headers";
 
 const REQUEST_ID_HEADER = "X-Request-Id";

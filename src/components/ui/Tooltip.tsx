@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useState, useRef, type ReactNode } from "react";
+import { type ReactNode,useRef, useState } from "react";
+
 import { cn } from "@/lib/utils";
 
 interface TooltipProps {

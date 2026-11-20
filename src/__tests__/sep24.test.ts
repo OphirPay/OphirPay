@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
-  fetchAnchorMetadata,
-  initiateInteractiveFlow,
-  fetchAnchorTransaction,
-  pollAnchorTransaction,
-  mapAnchorStatus,
-  isTerminalStatus,
-  getAnchorDomain,
-  getAnchorFiatCurrency,
   AnchorError,
   AnchorPollTimeoutError,
-  resetAnchorCache,
   type AnchorToml,
   type AnchorTransaction,
+  fetchAnchorMetadata,
+  fetchAnchorTransaction,
+  getAnchorDomain,
+  getAnchorFiatCurrency,
+  initiateInteractiveFlow,
+  isTerminalStatus,
+  mapAnchorStatus,
+  pollAnchorTransaction,
+  resetAnchorCache,
   type Sep24Status,
 } from "@/lib/sep24";
 

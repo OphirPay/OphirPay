@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
 
 /**
  * Property-based tests for multisig threshold logic.

@@ -7,6 +7,7 @@
 // layout height stable while it loads — no layout shift.
 
 import dynamic from "next/dynamic";
+
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 

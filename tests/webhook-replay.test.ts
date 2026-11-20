@@ -14,17 +14,19 @@
  * - +10m: future-skew expired (excessive future timestamp, rejected with WebhookTimestampFutureSkew)
  */
 
-import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
-import path from "node:path";
 import { createHmac } from "node:crypto";
+import path from "node:path";
+
+import { describe, expect,it } from "vitest";
+
 import {
-  verifyWebhookSignature,
   assertWebhookSignature,
+  canonicalize,
+  verifyWebhookSignature,
   WebhookErrorCode,
   WebhookTimestampExpired,
   WebhookTimestampFutureSkew,
-  canonicalize,
 } from "../examples/webhook-verification/node-verifier";
 
 const SECRET = "whsec_test_secret_0123456789abcdef";

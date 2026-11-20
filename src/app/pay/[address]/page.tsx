@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 
 import { notFound } from "next/navigation";
+
+import { expireDuePaymentRequests } from "@/lib/payment-request-lifecycle";
+import prisma from "@/lib/prisma";
 import { isValidStellarAddress } from "@/lib/stellar";
 import { buildSep7PayUri } from "@/lib/stellar-uri";
-import prisma from "@/lib/prisma";
-import { expireDuePaymentRequests } from "@/lib/payment-request-lifecycle";
 import { formatAmount } from "@/lib/utils";
-import { RequestPaymentConfirmation } from "./RequestPaymentConfirmation";
+
 import { PayHandoff } from "./PayHandoff";
+import { RequestPaymentConfirmation } from "./RequestPaymentConfirmation";
 
 interface PayPageProps {
   params: Promise<{ address: string }>;

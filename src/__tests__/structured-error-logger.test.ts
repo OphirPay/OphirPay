@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { logError } from "@/lib/logger";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import { handleApiError } from "@/lib/api-response";
+import { logError } from "@/lib/logger";
 
 describe("Issue #1955: Structured JSON error logger for unhandled route exceptions", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;

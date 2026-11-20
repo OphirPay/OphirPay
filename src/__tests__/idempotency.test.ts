@@ -10,19 +10,20 @@
  * another request cannot be deleted by its previous holder.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
+  claimIdempotencyKey,
+  forgetIdempotencyKey,
   IDEMPOTENCY_LOCK_TTL_SECONDS,
   IDEMPOTENCY_RESPONSE_TTL_SECONDS,
   IDEMPOTENCY_RETRY_AFTER_SECONDS,
-  claimIdempotencyKey,
-  forgetIdempotencyKey,
   readIdempotentResponse,
 } from "@/lib/idempotency";
 import {
+  type RedisLike,
   resetRedisClient,
   setRedisClientForTests,
-  type RedisLike,
 } from "@/lib/redis";
 
 interface Entry {

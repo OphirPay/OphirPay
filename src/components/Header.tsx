@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useState, useEffect } from "react";
-import { WalletButton } from "./WalletButton";
-import { NotificationCenter } from "./NotificationCenter";
-import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
+import { useEffect,useState } from "react";
+
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
+
+import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
+import { NotificationCenter } from "./NotificationCenter";
+import { WalletButton } from "./WalletButton";
 
 export function Header() {
   const { toggle, resolved } = useTheme();

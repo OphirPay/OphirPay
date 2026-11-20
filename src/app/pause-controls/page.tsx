@@ -1,23 +1,24 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/Button";
+import Link from "next/link";
+import { useState } from "react";
+
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
-import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import { useWallet } from "@/hooks/useMultiWallet";
 import {
   emergencyPauseAll,
   emergencyUnpauseAll,
-  setScopePaused,
   type PauseScopeValue,
+  setScopePaused,
 } from "@/lib/contract-advanced";
 import { getStellarExplorerUrl } from "@/lib/stellar";
 import { shortenAddress } from "@/lib/utils";
-import Link from "next/link";
 
 interface PauseStateData {
   paused: boolean | "unknown";

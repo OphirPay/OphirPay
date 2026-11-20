@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import {
-  RPC_HEALTH_LATENCY_THRESHOLD_MS,
   formatRpcEndpoint,
+  RPC_HEALTH_LATENCY_THRESHOLD_MS,
   useRpcHealth,
 } from "@/hooks/useRpcHealth";
 

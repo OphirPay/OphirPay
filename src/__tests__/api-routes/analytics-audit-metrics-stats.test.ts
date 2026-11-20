@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock dependencies
 vi.mock("@/lib/prisma", () => ({
@@ -48,14 +48,14 @@ vi.mock("@/lib/contracts", () => ({
   simulateContractCall: vi.fn(),
 }));
 
-import prisma from "@/lib/prisma";
-import * as authSession from "@/lib/auth-session";
-import * as contracts from "@/lib/contracts";
 import { GET as getAnalytics } from "@/app/api/analytics/route";
 import { GET as getAuditLog } from "@/app/api/audit-log/route";
 import { GET as getAuditLogSse } from "@/app/api/audit-log/sse/route";
 import { GET as getMetrics } from "@/app/api/metrics/route";
 import { GET as getStats } from "@/app/api/stats/route";
+import * as authSession from "@/lib/auth-session";
+import * as contracts from "@/lib/contracts";
+import prisma from "@/lib/prisma";
 
 const MOCK_AUTH = {
   userId: "user_123",

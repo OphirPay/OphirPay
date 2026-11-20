@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import { processBatchRecipients } from "@/lib/batch-processor";
 import { validateBatchRecipients } from "@/lib/batch-validator";
 

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
 
-import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Modal } from "@/components/ui/Modal";
 
 function renderDialog(props: {
   open: boolean;

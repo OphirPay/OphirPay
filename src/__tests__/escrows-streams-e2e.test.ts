@@ -5,7 +5,7 @@
 // Drives the four endpoints through the running server with the contract
 // calls mocked at the boundary.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(),
@@ -25,13 +25,13 @@ vi.mock("@/lib/contracts", () => ({
   simulateContractCall: vi.fn(),
 }));
 
+import { GET as getEscrowById } from "@/app/api/escrows/[id]/route";
+import { POST as postEscrows } from "@/app/api/escrows/route";
+import { GET as getStreamById } from "@/app/api/streams/[id]/route";
+import { POST as postStreams } from "@/app/api/streams/route";
 import * as authSession from "@/lib/auth-session";
 import * as contracts from "@/lib/contracts";
 import { generateCsrfToken } from "@/lib/csrf";
-import { POST as postEscrows } from "@/app/api/escrows/route";
-import { GET as getEscrowById } from "@/app/api/escrows/[id]/route";
-import { POST as postStreams } from "@/app/api/streams/route";
-import { GET as getStreamById } from "@/app/api/streams/[id]/route";
 
 const MOCK_AUTH = {
   userId: "user_123",

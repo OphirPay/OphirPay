@@ -13,10 +13,11 @@
  * `.env.example` variable, which is the guard against that class of typo.
  */
 
-import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+
 import { load } from "js-yaml";
+import { describe, expect,it } from "vitest";
 
 const repoRoot = process.cwd();
 const chartDir = join(repoRoot, "helm", "ophirpay");

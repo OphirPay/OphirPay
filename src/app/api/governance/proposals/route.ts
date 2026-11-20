@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
-import { getAuthContext } from "@/lib/auth-session";
-import { simulateContractCall, DEFAULT_CONTRACT_ID, CHAIN_READ_SOURCE } from "@/lib/contracts";
-import { createGovernanceProposal } from "@/lib/contract-advanced";
-import { cachedFetch, cacheDelete } from "@/lib/api-cache";
-import { verifyCsrf } from "@/lib/csrf";
-import { validateBody, createProposalSchema } from "@/lib/validation-schemas";
 import { nativeToScVal } from "@stellar/stellar-sdk";
+
+import { cacheDelete,cachedFetch } from "@/lib/api-cache";
+import { handleApiError, successResponse, unauthorizedError } from "@/lib/api-response";
+import { getAuthContext } from "@/lib/auth-session";
+import { createGovernanceProposal } from "@/lib/contract-advanced";
+import { CHAIN_READ_SOURCE,DEFAULT_CONTRACT_ID, simulateContractCall } from "@/lib/contracts";
+import { verifyCsrf } from "@/lib/csrf";
+import { withMetrics } from "@/lib/metrics-middleware";
 import { withRequestLogging } from "@/lib/request-logging";
+import { createProposalSchema,validateBody } from "@/lib/validation-schemas";
 
 /**
  * GET /api/governance/proposals — list governance proposals

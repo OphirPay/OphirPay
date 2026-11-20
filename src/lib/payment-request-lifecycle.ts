@@ -4,8 +4,8 @@ import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { sendEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 import prisma from "@/lib/prisma";
-import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { getHorizonServer } from "@/lib/stellar";
+import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 
 const appUrl = () =>
   (process.env.NEXT_PUBLIC_APP_URL || "https://ophirpay.vercel.app").replace(/\/$/, "");

@@ -2,25 +2,26 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useState, useEffect } from "react";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
 import { useQueryClient } from "@tanstack/react-query";
+import { useEffect,useState } from "react";
+
 import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import { useWallet } from "@/hooks/useMultiWallet";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import {
-  setMultisigConfig,
-  proposeMultisigPayment,
   approveMultisigPayment,
   executeApprovedPayment,
+  proposeMultisigPayment,
+  setMultisigConfig,
 } from "@/lib/contract-advanced";
 import { DEFAULT_CONTRACT_ID } from "@/lib/contracts";
+import { PAGE_TITLES } from "@/lib/page-titles";
 
 interface MultisigConfig {
   threshold: number;

@@ -5,9 +5,10 @@
 // Changelog conventions with an example for each change type, describe the
 // release flow, and be linked from CONTRIBUTING.md.
 
-import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync,readFileSync } from "node:fs";
 import path from "node:path";
+
+import { describe, expect,it } from "vitest";
 
 const root = path.resolve(__dirname, "../..");
 const guidePath = path.join(root, "docs", "CHANGELOG_GUIDE.md");

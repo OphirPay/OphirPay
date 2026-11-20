@@ -7,7 +7,8 @@
 // through the shared mocked Soroban RPC + Horizon + fake-Freighter stack;
 // `/api/rbac` reports the connected wallet's own role.
 
-import { test, expect } from "@playwright/test";
+import { expect,test } from "@playwright/test";
+
 import {
   installAdminMocks,
   VALID_ADDRESS_A,

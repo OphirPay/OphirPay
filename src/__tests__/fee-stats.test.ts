@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
-  parseFeeStats,
-  recommendFee,
-  congestionFromCapacity,
-  normalizeAggressiveness,
   buildFeeBasis,
-  getRecommendedFee,
+  congestionFromCapacity,
+  getFallbackBaseFee,
   getFeeAggressiveness,
   getFeeStatsTtlMs,
-  getFallbackBaseFee,
-  resetFeeStatsCache,
+  getRecommendedFee,
+  normalizeAggressiveness,
+  parseFeeStats,
   peekFeeStatsCache,
   type RawFeeStats,
+  recommendFee,
+  resetFeeStatsCache,
 } from "@/lib/fee-stats";
 
 /** A representative Horizon `/fee_stats` payload (strings, as emitted). */

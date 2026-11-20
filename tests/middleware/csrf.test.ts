@@ -8,10 +8,11 @@
  * cron secrets travel in custom headers and are exempt.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { proxy } from "@/proxy";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import { generateCsrfToken, validateCsrfToken } from "@/lib/csrf";
+import { proxy } from "@/proxy";
 
 const SESSION = "ophirpay_session=test-session";
 const VALID_API_KEY = `oph_${"a".repeat(64)}`;

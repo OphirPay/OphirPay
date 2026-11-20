@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useState, useEffect } from "react";
+import { useEffect,useState } from "react";
 
 interface WindowSize {
   width: number;

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page,test } from "@playwright/test";
 
 /** Below Tailwind's `lg` breakpoint the sidebar is an on-demand drawer. */
 const DESKTOP_SIDEBAR_MIN_WIDTH = 1024;

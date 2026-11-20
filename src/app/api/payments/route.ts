@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import prisma from "@/lib/prisma";
+import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
+import { invalidateCaches } from "@/lib/api-cache";
 import {
   problemBadRequest,
   problemFromError,
@@ -10,17 +9,12 @@ import {
   problemUnauthorized,
 } from "@/lib/api-errors";
 import { requireJsonContentType, successResponse } from "@/lib/api-response";
-import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
-import { logger } from "@/lib/logger";
-import { withRequestLogging } from "@/lib/request-logging";
+import { requireIdempotencyKey, withIdempotency } from "@/lib/api-route";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
-import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
-import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
+import { logger } from "@/lib/logger";
 import { incMetric } from "@/lib/metrics-counters";
-import { buildPaymentWhere } from "@/lib/payment-filters";
-import { invalidateCaches } from "@/lib/api-cache";
-import { requireIdempotencyKey, withIdempotency } from "@/lib/api-route";
+import { withMetrics } from "@/lib/metrics-middleware";
 import {
   buildCursorWhere,
   computeNextCursor,
@@ -28,6 +22,11 @@ import {
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
+import { buildPaymentWhere } from "@/lib/payment-filters";
+import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
+import { createPaymentSchema, paginationSchema } from "@/lib/validation-schemas";
+import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 
 export const GET = withMetrics("GET /api/payments", withRequestLogging(async function GET(request: Request) {
   // Errors on this endpoint are RFC 7807 problem documents (issue #1364), so

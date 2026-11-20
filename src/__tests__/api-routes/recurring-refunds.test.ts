@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 // Mock dependencies
 vi.mock("@/lib/prisma", () => ({
@@ -37,14 +37,14 @@ vi.mock("@/lib/contracts", () => ({
   simulateContractCall: vi.fn(),
 }));
 
-import prisma from "@/lib/prisma";
-import * as authSession from "@/lib/auth-session";
-import * as csrf from "@/lib/csrf";
-import * as contracts from "@/lib/contracts";
-import { GET as getRecurring, POST as postRecurring } from "@/app/api/recurring/route";
 import { GET as getRecurringById, PATCH as patchRecurringById } from "@/app/api/recurring/[id]/route";
-import { GET as getRefunds, POST as postRefunds } from "@/app/api/refunds/route";
+import { GET as getRecurring, POST as postRecurring } from "@/app/api/recurring/route";
 import { PATCH as patchRefundById } from "@/app/api/refunds/[id]/route";
+import { GET as getRefunds, POST as postRefunds } from "@/app/api/refunds/route";
+import * as authSession from "@/lib/auth-session";
+import * as contracts from "@/lib/contracts";
+import * as csrf from "@/lib/csrf";
+import prisma from "@/lib/prisma";
 
 const MOCK_AUTH = {
   userId: "user_123",

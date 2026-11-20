@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { type ButtonHTMLAttributes, forwardRef, type ReactNode } from "react";
+
 import { Spinner } from "@/components/ui/Spinner";
+import { cn } from "@/lib/utils";
 
 export type ButtonVariant =
   | "primary"

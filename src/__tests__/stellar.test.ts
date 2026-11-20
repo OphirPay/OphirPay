@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
-import { isValidStellarAddress, getStellarExplorerUrl } from "@/lib/stellar";
+import { describe, expect,it } from "vitest";
+
+import { getStellarExplorerUrl,isValidStellarAddress } from "@/lib/stellar";
 
 describe("isValidStellarAddress", () => {
   it("accepts a valid Stellar public key", () => {

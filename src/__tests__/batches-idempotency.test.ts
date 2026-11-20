@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const {
   mockFindFirst,
@@ -38,8 +38,8 @@ vi.mock("@/lib/idempotency", () => ({
   claimIdempotencyKey: vi.fn().mockResolvedValue({ status: "unavailable" }),
 }));
 
-import { generateCsrfToken } from "@/lib/csrf";
 import { POST } from "@/app/api/batches/route";
+import { generateCsrfToken } from "@/lib/csrf";
 
 function csrfHeaders(): Record<string, string> {
   const token = generateCsrfToken();

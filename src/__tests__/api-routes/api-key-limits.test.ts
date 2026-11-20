@@ -44,8 +44,8 @@ vi.mock("@/lib/csrf", () => ({
   verifyCsrf: vi.fn().mockReturnValue(null),
 }));
 
-import { POST as createKey } from "@/app/api/keys/route";
 import { POST as rotateKey } from "@/app/api/keys/[id]/rotate/route";
+import { POST as createKey } from "@/app/api/keys/route";
 import { getAuthContext } from "@/lib/auth-session";
 import {
   consumeApiKeyMutationQuota,

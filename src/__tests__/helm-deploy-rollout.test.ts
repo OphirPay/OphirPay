@@ -25,10 +25,11 @@
  * are asserted end-to-end in the `helm-lint` job (.github/workflows/ci.yml).
  */
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { load, loadAll } from "js-yaml";
+import { describe, expect,it } from "vitest";
 
 const ROOT = process.cwd();
 const CHART = join(ROOT, "helm", "ophirpay");

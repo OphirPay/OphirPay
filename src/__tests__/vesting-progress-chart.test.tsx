@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
 import { VestingProgressChart } from "@/components/streams/VestingProgressChart";
 
 const START = 1_000_000;

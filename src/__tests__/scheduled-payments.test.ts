@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createScheduledPaymentSchema } from "@/lib/validation-schemas";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import {
-  pickDueScheduledPayments,
   executeDueScheduledPayments,
+  pickDueScheduledPayments,
 } from "@/lib/scheduled-payments";
+import { createScheduledPaymentSchema } from "@/lib/validation-schemas";
 
 // ── Prisma mock ────────────────────────────────────────────────
 

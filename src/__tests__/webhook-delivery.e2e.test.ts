@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import http from "http";
+
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/webhook-url-guard", () => ({
   isSafeWebhookUrlAtDelivery: vi.fn(async () => true),

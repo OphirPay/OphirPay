@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
 import { PayHandoff } from "@/app/pay/[address]/PayHandoff";
 
 describe("PayHandoff", () => {

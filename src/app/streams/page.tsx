@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -16,11 +17,11 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { useTableKeyboardNavigation } from "@/hooks/useTableKeyboardNavigation";
 import { cancelStream, claimStream, createStream } from "@/lib/contract-advanced";
 import { fetchRecentContractRecords } from "@/lib/on-chain-records";
-import { formatXlmStroops, parseXlmAmount } from "@/lib/stellar-amount";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { isValidStellarAddress } from "@/lib/stellar";
-import { computeVested, vestingPercent } from "@/lib/vesting";
+import { formatXlmStroops, parseXlmAmount } from "@/lib/stellar-amount";
 import { cn, shortenAddress } from "@/lib/utils";
+import { computeVested, vestingPercent } from "@/lib/vesting";
 import type { StreamData } from "@/types/contract-abi";
 
 function localDateTimeNow(): string {

@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import prisma from "@/lib/prisma";
-import { successResponse, handleApiError, notFoundError, unauthorizedError } from "@/lib/api-response";
+import { handleApiError, notFoundError, successResponse, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
-import { toBatchItemStatus, computeBatchProgress } from "@/lib/batch-progress";
-import { withRequestLogging } from "@/lib/request-logging";
+import { computeBatchProgress,toBatchItemStatus } from "@/lib/batch-progress";
 import { verifyCsrf } from "@/lib/csrf";
 import { logger } from "@/lib/logger";
+import { withMetrics } from "@/lib/metrics-middleware";
+import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/batches/[id] — single batch with per-item progress.

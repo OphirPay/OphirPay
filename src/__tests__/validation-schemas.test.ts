@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Tests for validation-schemas.ts validateBody function
 
-import { describe, it, expect } from 'vitest';
-import { validateBody, createPaymentSchema } from '@/lib/validation-schemas';
+import { describe, expect,it } from 'vitest';
+
+import { createPaymentSchema,validateBody } from '@/lib/validation-schemas';
 
 describe('validation-schemas > validateBody', () => {
   it('returns error for invalid JSON body', async () => {

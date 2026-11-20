@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { createTrustline } = vi.hoisted(() => ({ createTrustline: vi.fn() }));
 
 vi.mock("@/lib/stellar-transactions", () => ({ createTrustline }));
 
-import { TrustlineModal, TRUSTLINE_RESERVE_XLM } from "@/components/wallet/TrustlineModal";
-import { USDC_TESTNET, type AssetInfo } from "@/lib/assets";
+import { TRUSTLINE_RESERVE_XLM,TrustlineModal } from "@/components/wallet/TrustlineModal";
+import { type AssetInfo,USDC_TESTNET } from "@/lib/assets";
 
 const PUBLIC_KEY = "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU";
 

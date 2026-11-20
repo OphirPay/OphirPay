@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import { createScheduledPaymentSchema } from "@/lib/validation-schemas";
 
 const ADDRESS = "GWT7SDH7366X75RZDMUOCSWWRJUF3IJKJI4FYHZAEQSPI626PO4LZZF4";

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 // Mock the contracts module (needed by contract-advanced) — mirrors the
 // existing pause-controls suite so the scoped helpers are exercised through
@@ -27,15 +27,16 @@ vi.mock("@/lib/wallets", () => ({
 }));
 
 // Import after mocks
-import { PauseScope, getPausedScopes, setScopePaused } from "@/lib/contract-advanced";
+import type { xdr } from "@stellar/stellar-sdk";
+
+import { getPausedScopes, PauseScope, setScopePaused } from "@/lib/contract-advanced";
 import {
-  simulateContractCall,
-  invokeContractFunction,
-  submitContractInvocation,
   DEFAULT_CONTRACT_ID,
+  invokeContractFunction,
+  simulateContractCall,
+  submitContractInvocation,
 } from "@/lib/contracts";
 import { getActiveWalletConnector } from "@/lib/wallets";
-import type { xdr } from "@stellar/stellar-sdk";
 
 const OWNER_KEY = "GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU";
 const MOCK_SIGNED_XDR = "AAAAA==";

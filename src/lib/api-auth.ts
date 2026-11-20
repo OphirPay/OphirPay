@@ -1,31 +1,31 @@
 // SPDX-License-Identifier: MIT
 
 import crypto from "crypto";
+
 import argon2 from "argon2";
-import prisma from "@/lib/prisma";
-import { unauthorizedError, forbiddenError } from "@/lib/api-response";
 import { NextResponse } from "next/server";
 
+import { forbiddenError,unauthorizedError } from "@/lib/api-response";
 // ── Scopes ─────────────────────────────────────────────────────
 //
 // Scope constants and hasScope live in @/lib/api-scopes (client-safe — no
 // server-only imports) and are re-exported here so server code keeps a single
 // import site. Client components must import from @/lib/api-scopes directly.
-
 import {
-  API_SCOPES,
   ADMIN_SCOPE,
+  API_SCOPES,
+  type ApiScope,
   hasScope,
   missingScopes,
-  type ApiScope,
 } from "@/lib/api-scopes";
+import prisma from "@/lib/prisma";
 
 export {
-  API_SCOPES,
   ADMIN_SCOPE,
+  API_SCOPES,
+  type ApiScope,
   hasScope,
   missingScopes,
-  type ApiScope,
 };
 
 /**
@@ -43,14 +43,14 @@ export {
 
 export * from "@/lib/api-key-format";
 import {
-  API_KEY_RANDOM_BYTES,
   API_KEY_DIGEST_VERSION,
   API_KEY_LOOKUP_PATTERN,
-  calculateCrc32,
-  assertValidApiKeyFormat,
+  API_KEY_RANDOM_BYTES,
   assertMinimumKeyEntropy,
-  validateKeyFormat,
+  assertValidApiKeyFormat,
+  calculateCrc32,
   deriveKeyPrefix,
+  validateKeyFormat,
 } from "@/lib/api-key-format";
 
 /**

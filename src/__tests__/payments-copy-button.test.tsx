@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ToastProvider } from "@/components/ui/Toast";
+import { describe, expect, it, vi } from "vitest";
+
 import PaymentsPage from "@/app/payments/page";
+import { ToastProvider } from "@/components/ui/Toast";
 
 const { mockSearchParams } = vi.hoisted(() => ({
   mockSearchParams: { current: new URLSearchParams("") },

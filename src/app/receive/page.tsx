@@ -3,16 +3,17 @@
 
 
 import { useEffect, useState } from "react";
+
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { Card } from "@/components/ui/Card";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { QrCode } from "@/components/ui/QrCode";
+import { WalletSelector } from "@/components/WalletSelector";
 import { useWallet } from "@/hooks/useMultiWallet";
-import { buildReceivePayload } from "@/lib/stellar-uri";
 import { getAccountExplorerUrl } from "@/lib/stellar";
+import { buildReceivePayload } from "@/lib/stellar-uri";
 import { shortenAddress } from "@/lib/utils";
 import { getWalletConnector, type WalletId } from "@/lib/wallets";
-import { Breadcrumb } from "@/components/Breadcrumb";
-import { WalletSelector } from "@/components/WalletSelector";
-import { QrCode } from "@/components/ui/QrCode";
-import { CopyButton } from "@/components/ui/CopyButton";
-import { Card } from "@/components/ui/Card";
 
 export default function ReceivePage() {
   const { wallet, connect, isConnecting, error, availableWallets } = useWallet();

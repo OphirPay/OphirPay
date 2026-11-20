@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  encodeCursor,
-  decodeCursor,
   buildCursorWhere,
   computeNextCursor,
+  decodeCursor,
+  encodeCursor,
 } from "@/lib/pagination-utils";
 
 describe("encodeCursor / decodeCursor", () => {

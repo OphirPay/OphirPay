@@ -3,9 +3,9 @@
 import { TransactionBuilder } from "@stellar/stellar-sdk";
 
 import {
+  getHorizonServer,
   NETWORK_PASSPHRASE,
   STELLAR_NETWORK,
-  getHorizonServer,
 } from "@/lib/stellar";
 import {
   buildTrustlineTransaction,
@@ -89,9 +89,9 @@ export async function createTrustline(
   return checkTrustline(publicKey, assetCode, assetIssuer);
 }
 
+export type { TrustlineInfo, TrustlineState } from "@/lib/trustline";
 export {
   buildTrustlineTransaction,
   checkTrustline,
   getTrustlineMessage,
 } from "@/lib/trustline";
-export type { TrustlineInfo, TrustlineState } from "@/lib/trustline";

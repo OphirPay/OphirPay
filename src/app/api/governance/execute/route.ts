@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import { successResponse, handleApiError, unauthorizedError } from "@/lib/api-response";
-import { getAuthContext } from "@/lib/auth-session";
-import { verifyCsrf } from "@/lib/csrf";
-import { validateBody, executeProposalSchema } from "@/lib/validation-schemas";
-import { executeGovernanceProposal } from "@/lib/contract-advanced";
 import { cacheDelete, invalidateCaches } from "@/lib/api-cache";
+import { handleApiError, successResponse, unauthorizedError } from "@/lib/api-response";
+import { getAuthContext } from "@/lib/auth-session";
+import { executeGovernanceProposal } from "@/lib/contract-advanced";
+import { verifyCsrf } from "@/lib/csrf";
+import { withMetrics } from "@/lib/metrics-middleware";
 import { withRequestLogging } from "@/lib/request-logging";
+import { executeProposalSchema,validateBody } from "@/lib/validation-schemas";
 
 /**
  * POST /api/governance/execute

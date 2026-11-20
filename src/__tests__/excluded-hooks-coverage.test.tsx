@@ -15,18 +15,18 @@
 // The wallet providers (useMultiWallet / useFreighter) are covered in
 // `wallet-hooks-coverage.test.tsx`, which mocks the wallet extension surface.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useRetry } from "@/hooks/useRetry";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
-import { useApiQuery, useApiMutation, apiFetch } from "@/hooks/useApiQuery";
-import { useTheme, ThemeProvider } from "@/hooks/useTheme";
-import { useNetworkChange, useNetworkPoller } from "@/hooks/useNetworkChange";
+import { apiFetch,useApiMutation, useApiQuery } from "@/hooks/useApiQuery";
 import { useErrorTracker } from "@/hooks/useErrorTracker";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useNetworkChange, useNetworkPoller } from "@/hooks/useNetworkChange";
+import { useRetry } from "@/hooks/useRetry";
+import { ThemeProvider,useTheme } from "@/hooks/useTheme";
 import { captureError, captureMessage } from "@/lib/sentry";
 
 // ── Module mocks ───────────────────────────────────────────────

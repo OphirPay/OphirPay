@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
   computeAcceptKey,
   encodeFrame,
   FrameDecoder,
-  OPCODE_TEXT,
   OPCODE_CLOSE,
   OPCODE_PING,
+  OPCODE_TEXT,
 } from "@/lib/events/ws-protocol";
 
 describe("computeAcceptKey", () => {

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import {
-  nextRunAfter,
-  scheduleRunKey,
   claimDueRecurrences,
   createRunPayment,
+  nextRunAfter,
+  scheduleRunKey,
 } from "@/lib/recurring-scheduler";
 
 const mocks = vi.hoisted(() => ({

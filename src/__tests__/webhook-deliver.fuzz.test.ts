@@ -25,9 +25,10 @@
  * regression arrives as a small counter-example rather than a 4 KiB blob.
  */
 
-import { describe, it, expect, vi } from "vitest";
-import fc from "fast-check";
 import crypto from "crypto";
+
+import fc from "fast-check";
+import { describe, expect, it, vi } from "vitest";
 
 // `webhook-deliver` pulls in the SSRF guard, which resolves DNS. Nothing in
 // this suite delivers a webhook, so stub the guard to keep the suite hermetic.
@@ -36,13 +37,13 @@ vi.mock("@/lib/webhook-url-guard", () => ({
 }));
 
 import {
-  MAX_WEBHOOK_BODY_BYTES,
   buildSignedPayload,
   canonicalizeWebhookBody,
   constantTimeEqual,
+  MAX_WEBHOOK_BODY_BYTES,
   verifyWebhookSignature,
-  webhookSignedInput,
   type WebhookPayload,
+  webhookSignedInput,
   type WebhookVerificationInput,
 } from "@/lib/webhook-deliver";
 

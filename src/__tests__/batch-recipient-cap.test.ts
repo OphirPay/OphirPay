@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Batch requests are capped at 100 recipients and rejected as RFC 7807 problems.
 
-import { describe, it, expect } from "vitest";
-import { createBatchSchema } from "@/lib/validation-schemas";
+import { describe, expect,it } from "vitest";
+
 import { problemFromZodError } from "@/lib/api-errors";
 import {
   BATCH_RECIPIENTS_MAX_MESSAGE,
   MAX_BATCH_RECIPIENTS,
 } from "@/lib/validation/batch";
+import { createBatchSchema } from "@/lib/validation-schemas";
 
 const ADDRESS = "G" + "A".repeat(55);
 

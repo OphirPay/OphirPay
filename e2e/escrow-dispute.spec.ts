@@ -12,12 +12,13 @@
 
 import { expect, test } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
+
 import {
-  SIGNER_A,
-  SIGNER_B,
   createEscrowState,
   fakeFreighterInitScript,
   installEscrowMocks,
+  SIGNER_A,
+  SIGNER_B,
   switchEscrowActor,
 } from "./helpers/escrow-helper";
 

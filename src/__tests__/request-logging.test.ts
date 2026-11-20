@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { afterEach,describe, expect, it, vi } from "vitest";
+
+import { handleApiError } from "@/lib/api-response";
+import { logger } from "@/lib/logger";
+import { REQUEST_ID_HEADER } from "@/lib/request-id";
 import {
-  withRequestLogging,
   getCurrentRequestId,
   requestIdContext,
+  withRequestLogging,
 } from "@/lib/request-logging";
-import { REQUEST_ID_HEADER } from "@/lib/request-id";
-import { logger } from "@/lib/logger";
-import { handleApiError } from "@/lib/api-response";
 
 afterEach(() => {
   vi.restoreAllMocks();

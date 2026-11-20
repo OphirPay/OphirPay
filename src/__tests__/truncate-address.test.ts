@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import { truncateAddress } from "@/lib/utils";
 
 // 56-character Stellar public key: G + 55 chars. Ends in "...PQRSTUVW".

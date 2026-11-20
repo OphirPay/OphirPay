@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent,render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { AssetSelector, filterAssets } from "@/components/AssetSelector";
 import type { AssetInfo } from "@/lib/assets";

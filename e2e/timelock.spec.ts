@@ -7,7 +7,8 @@
 // propose / execute / cancel mutations run through the shared mocked Soroban
 // RPC + Horizon + fake-Freighter stack (see helpers/stellar-mock.ts).
 
-import { test, expect } from "@playwright/test";
+import { expect,test } from "@playwright/test";
+
 import {
   installAdminMocks,
   lockedAction,

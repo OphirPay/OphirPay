@@ -2,27 +2,28 @@
 // SPDX-License-Identifier: MIT
 
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
+
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
 import { useWallet } from "@/hooks/useMultiWallet";
-import { shortenAddress, formatAmount, timeAgo } from "@/lib/utils";
-import { getAccountExplorerUrl, XLM_STROOPS, STELLAR_NETWORK } from "@/lib/stellar";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { useXlmPrice } from "@/hooks/usePrice";
 import {
   fetchOnChainPayments,
   type OnChainPayment,
 } from "@/lib/contracts";
-import { useApiQuery } from "@/hooks/useApiQuery";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
-import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
-import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { Breadcrumb } from "@/components/Breadcrumb";
-import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
-import { useXlmPrice } from "@/hooks/usePrice";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { convertXlmToUsd, formatFiatAmount } from "@/lib/price";
-import Link from "next/link";
+import { getAccountExplorerUrl, STELLAR_NETWORK,XLM_STROOPS } from "@/lib/stellar";
+import { formatAmount, shortenAddress, timeAgo } from "@/lib/utils";
 
 // ── Page ───────────────────────────────────────────────────────
 

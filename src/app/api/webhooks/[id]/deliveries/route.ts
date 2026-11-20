@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-import prisma from "@/lib/prisma";
 import {
-  successResponse,
   badRequestError,
-  unauthorizedError,
   handleApiError,
+  successResponse,
+  unauthorizedError,
 } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
+import prisma from "@/lib/prisma";
 import { webhookDeliveriesQuerySchema } from "@/lib/validation-schemas";
 
 /**

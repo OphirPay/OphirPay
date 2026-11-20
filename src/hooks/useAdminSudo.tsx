@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 import { useCallback, useRef, useState } from "react";
+
 import { SudoReauthModal } from "@/components/SudoReauthModal";
-import { getActiveWalletConnector } from "@/lib/wallets";
 import type { SudoChallengeDetails } from "@/lib/sudo-client";
+import { getActiveWalletConnector } from "@/lib/wallets";
 
 /**
  * Wires the sudo-mode re-authentication prompt into an admin page

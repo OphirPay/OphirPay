@@ -2,33 +2,34 @@
 // SPDX-License-Identifier: MIT
 
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
-import { useWallet } from "@/hooks/useMultiWallet";
-import { getWalletConnector } from "@/lib/wallets";
+
+import { AddressBookMultiSelect } from "@/components/batches/AddressBookMultiSelect";
 import { CsvBatchImport, type CsvRecipientRow } from "@/components/CsvBatchImport";
-import { parseRecipientsCsvToRows, downloadCsvTemplate } from "@/lib/csv-import";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { useWallet } from "@/hooks/useMultiWallet";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import type { AddressEntry } from "@/lib/address-book";
+import { mergeAddressBookSelections } from "@/lib/address-book";
+import { downloadCsvTemplate,parseRecipientsCsvToRows } from "@/lib/csv-import";
+import { estimateBatchFee, estimateTransactionFee } from "@/lib/fee-estimator";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import {
-  isValidStellarAddress,
+  resetPendingWork,
+  setInFlightTransactions,
+  setUnsavedDrafts,
+} from "@/lib/session-lifecycle";
+import {
   buildBatchPaymentTx,
-  submitSignedTx,
   getStellarExplorerUrl,
+  isValidStellarAddress,
   NETWORK_PASSPHRASE,
+  submitSignedTx,
 } from "@/lib/stellar";
 import { formatAmount, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
-import { estimateBatchFee, estimateTransactionFee } from "@/lib/fee-estimator";
-import { CopyButton } from "@/components/ui/CopyButton";
-import { AddressBookMultiSelect } from "@/components/batches/AddressBookMultiSelect";
-import { mergeAddressBookSelections } from "@/lib/address-book";
-import type { AddressEntry } from "@/lib/address-book";
-import {
-  setInFlightTransactions,
-  setUnsavedDrafts,
-  resetPendingWork,
-} from "@/lib/session-lifecycle";
-import dynamic from "next/dynamic";
+import { getWalletConnector } from "@/lib/wallets";
 
 // The confirmation dialog is only rendered after the user hits "Send", so it is
 // lazy-loaded to keep it out of the initial batch creation bundle.
@@ -40,6 +41,7 @@ const BatchConfirmDialog = dynamic(
   { ssr: false }
 );
 import Link from "next/link";
+
 import type { BatchRecipientInput } from "@/lib/stellar";
 
 // ── Types ─────────────────────────────────────────────────────

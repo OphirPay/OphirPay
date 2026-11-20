@@ -6,9 +6,9 @@
  * and browser notification alerts.
  */
 
-import { STORAGE_KEYS } from "./storage-keys";
-import { shortenAddress, formatAmount } from "./utils";
 import { XLM_STROOPS } from "./stellar";
+import { STORAGE_KEYS } from "./storage-keys";
+import { formatAmount,shortenAddress } from "./utils";
 
 // ── Notification Types ──────────────────────────────────────────
 

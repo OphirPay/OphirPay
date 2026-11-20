@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Issue #1393 — Strict CORS origin allowlist and preflight handler tests.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
+import { afterEach,beforeEach, describe, expect, it } from "vitest";
+
 import {
-  getAllowedOrigins,
-  isOriginAllowed,
-  resolveCorsOrigin,
-  handleCorsPreflight,
   applyCorsHeaders,
-  normalizeOrigin,
-  CORS_ALLOWED_METHODS,
   CORS_ALLOWED_HEADERS,
+  CORS_ALLOWED_METHODS,
   CORS_MAX_AGE_SECONDS,
+  getAllowedOrigins,
+  handleCorsPreflight,
+  isOriginAllowed,
+  normalizeOrigin,
+  resolveCorsOrigin,
 } from "@/lib/cors";
 import proxy from "@/proxy";
 

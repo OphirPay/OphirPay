@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
-import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ToastProvider } from "@/components/ui/Toast";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
 import PaymentsPage from "@/app/payments/page";
+import { ToastProvider } from "@/components/ui/Toast";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), prefetch: vi.fn() }),

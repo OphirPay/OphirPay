@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { Sidebar } from "@/components/Sidebar";
 import type { ReactNode } from "react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
+import { Sidebar } from "@/components/Sidebar";
 
 const pathname = vi.hoisted(() => ({ value: "/" }));
 

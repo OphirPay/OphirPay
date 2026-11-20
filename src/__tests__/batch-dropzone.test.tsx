@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
 import {
   BatchDropzone,
-  validateCsvFile,
   formatFileSize,
+  validateCsvFile,
 } from "@/components/batch/BatchDropzone";
 import { ToastProvider } from "@/components/ui/Toast";
 

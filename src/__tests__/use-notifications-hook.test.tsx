@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { act,renderHook } from "@testing-library/react";
+import { afterEach,beforeEach, describe, expect, it } from "vitest";
+
 import { useNotifications } from "@/hooks/useNotifications";
 import {
-  saveStoredNotifications,
   type PaymentNotification,
+  saveStoredNotifications,
 } from "@/lib/notifications";
 
 // ── Minimal EventSource stand-in so the SSE effect can be exercised ──

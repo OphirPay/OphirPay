@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 
-import { MultiWalletProvider } from "@/hooks/useMultiWallet";
-import { ToastProvider } from "@/components/ui/Toast";
-import { ThemeProvider } from "@/hooks/useTheme";
+import { usePathname } from "next/navigation";
+
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Header } from "@/components/Header";
+import { InstallPrompt } from "@/components/InstallPrompt";
+import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { QueryProvider } from "@/components/QueryProvider";
 import { Sidebar } from "@/components/Sidebar";
-import { Header } from "@/components/Header";
-import { OfflineBanner } from "@/components/OfflineBanner";
-import { NetworkStatusBanner } from "@/components/NetworkStatusBanner";
-import { InstallPrompt } from "@/components/InstallPrompt";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { usePathname } from "next/navigation";
+import { ToastProvider } from "@/components/ui/Toast";
+import { MultiWalletProvider } from "@/hooks/useMultiWallet";
+import { ThemeProvider } from "@/hooks/useTheme";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/";

@@ -8,7 +8,7 @@
 // the underlying lazy component modules export the expected components that are
 // loaded on demand.
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
 
 describe("Issue #98 — dynamic imports and code splitting", () => {
   it("analytics page lazy-loads a named AnalyticsDashboard component", async () => {

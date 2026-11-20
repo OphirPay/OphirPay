@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
+import { GET,POST } from "@/app/api/contacts/route";
 import {
+  CONTACT_NAME_MAX_LENGTH,
   contactNameSchema,
   contactSchema,
   sanitizeContactName,
-  CONTACT_NAME_MAX_LENGTH,
 } from "@/lib/validation/contact";
-import { POST, GET } from "@/app/api/contacts/route";
 
 vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(),
@@ -17,7 +18,7 @@ vi.mock("@/lib/csrf", () => ({
   verifyCsrf: vi.fn().mockReturnValue(null),
 }));
 
-import { getAuthContext, type AuthContext } from "@/lib/auth-session";
+import { type AuthContext,getAuthContext } from "@/lib/auth-session";
 
 const VALID_STELLAR = "GDV4VOJNQL7UAPHPOH7BLFOG3CJZ2A65FCHTYWPHZVMQ3OQG5W757FCE";
 const MOCK_AUTH: AuthContext = { userId: "u1", publicKey: VALID_STELLAR };

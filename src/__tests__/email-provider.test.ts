@@ -6,16 +6,17 @@
 // Every test stubs `fetch`, so no request ever leaves the process and no
 // real message is ever sent.
 
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { logger } from "@/lib/logger";
+import { afterEach,describe, expect, it, vi } from "vitest";
+
 import {
   DEFAULT_EMAIL_FROM,
   EMAIL_TEMPLATES,
   EmailConfigurationError,
+  type EmailPayload,
   EmailSendError,
   sendEmail,
-  type EmailPayload,
 } from "@/lib/email";
+import { logger } from "@/lib/logger";
 
 vi.mock("@/lib/logger", () => ({
   logger: {

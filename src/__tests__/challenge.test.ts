@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Keypair } from "@stellar/stellar-sdk";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
+  challengeMessage,
   createChallengeToken,
   verifyChallengeToken,
-  challengeMessage,
   verifyWalletSignature,
 } from "@/lib/challenge";
 

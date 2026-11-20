@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import net from "node:net";
-import { createBatchSchema } from "@/lib/validation-schemas";
-import { AUDIT_ACTIONS } from "@/lib/audit";
-import type { CsvImportRow } from "@/lib/csv-import";
-import { createSessionToken, getAuthContext } from "@/lib/auth-session";
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
 import { POST as postBatch } from "@/app/api/batches/route";
+import { AUDIT_ACTIONS } from "@/lib/audit";
+import { createSessionToken, getAuthContext } from "@/lib/auth-session";
+import type { CsvImportRow } from "@/lib/csv-import";
 import * as csvImportModule from "@/lib/csv-import";
+import { createBatchSchema } from "@/lib/validation-schemas";
 
 /**
  * The test expects a PostgreSQL instance on localhost:5432, e.g.

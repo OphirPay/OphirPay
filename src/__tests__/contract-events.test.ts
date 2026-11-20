@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
   formatOnChainEvent,
+  type FormattedEvent,
   groupEventsByType,
   sortEventsByDate,
-  type FormattedEvent,
 } from "@/lib/contract-events";
 import type { OnChainPayment } from "@/lib/contracts";
 import { XLM_STROOPS } from "@/lib/stellar";

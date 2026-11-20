@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 
-import type { MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { MouseEvent } from "react";
+
 import { cn } from "@/lib/utils";
 
 interface BreadcrumbItem {

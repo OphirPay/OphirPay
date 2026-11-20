@@ -3,23 +3,24 @@
 
 
 import { useState } from "react";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
+
 import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { useWallet } from "@/hooks/useMultiWallet";
-import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
+import { type ApiError,useApiMutation, useApiQuery } from "@/hooks/useApiQuery";
 import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
+import { useWallet } from "@/hooks/useMultiWallet";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { useXlmPrice } from "@/hooks/usePrice";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { convertXlmToUsd, formatFiatAmount } from "@/lib/price";
-import { formatAmount, shortenAddress } from "@/lib/utils";
+import { type Frequency,FREQUENCY_LABELS, FREQUENCY_OPTIONS, nextRunAt } from "@/lib/recurrence";
 import { isValidStellarAddress } from "@/lib/stellar";
-import { FREQUENCY_OPTIONS, FREQUENCY_LABELS, nextRunAt, type Frequency } from "@/lib/recurrence";
+import { formatAmount, shortenAddress } from "@/lib/utils";
 
 interface Recurrence {
   id: string;

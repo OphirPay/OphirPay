@@ -2,7 +2,8 @@
 
 import { readFileSync } from "fs";
 import path from "path";
-import { describe, it, expect } from "vitest";
+
+import { describe, expect,it } from "vitest";
 
 /**
  * Regression test for the API cookbook (docs/API_COOKBOOK.md): every public

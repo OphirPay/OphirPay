@@ -5,11 +5,13 @@
 // If the CSV format ever changes, this test fails until the docs are
 // updated too.
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseRecipientsCsv } from "@/lib/csv-import";
+
+import { describe, expect,it } from "vitest";
+
 import { validateBatchRecipients } from "@/lib/batch-validator";
+import { parseRecipientsCsv } from "@/lib/csv-import";
 
 // Vitest runs from the project root, so cwd() is the repo root.
 const PROJECT_ROOT = process.cwd();

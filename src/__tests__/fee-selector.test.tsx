@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+
 import {
-  FeeSelector,
   type FeeSelection,
+  FeeSelector,
 } from "@/components/ui/FeeSelector";
 import type { FeeSnapshot } from "@/lib/fee-stats";
 

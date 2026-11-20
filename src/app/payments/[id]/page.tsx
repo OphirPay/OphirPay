@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useMemo } from "react";
+
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { PaymentTimeline } from "@/components/payments/PaymentTimeline";
+import { StatusBadge } from "@/components/ui/Badge";
+import { Card } from "@/components/ui/Card";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import {
   fetchOnChainPayment,
@@ -16,11 +22,6 @@ import {
 } from "@/lib/payment-lifecycle";
 import { getStellarExplorerUrl, XLM_STROOPS } from "@/lib/stellar";
 import { cn, formatAmount, shortenAddress } from "@/lib/utils";
-import { Breadcrumb } from "@/components/Breadcrumb";
-import { PaymentTimeline } from "@/components/payments/PaymentTimeline";
-import { CopyButton } from "@/components/ui/CopyButton";
-import { StatusBadge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
 
 interface DbPayment {
   id: string;

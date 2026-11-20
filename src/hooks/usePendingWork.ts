@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 import { useSyncExternalStore } from "react";
+
 import {
   getPendingWork,
-  subscribePendingWork,
   type PendingWork,
+  subscribePendingWork,
 } from "@/lib/session-lifecycle";
 
 /**

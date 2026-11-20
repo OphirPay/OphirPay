@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect,it } from 'vitest';
+
 import { REQUEST_ID_HEADER, withRequestId } from '@/lib/request-id';
 
 describe('request-id', () => {

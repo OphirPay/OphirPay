@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it } from "vitest";
+
 import {
   getAddressBook,
-  saveAddress,
-  removeAddress,
-  searchAddressBook,
   getRecentAddresses,
   importAddressBookCsv,
+  removeAddress,
+  saveAddress,
+  searchAddressBook,
 } from "@/lib/address-book";
 
 const ADDR_A = "G" + "A".repeat(55);

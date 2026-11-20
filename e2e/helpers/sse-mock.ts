@@ -23,8 +23,9 @@
 //   sse.drop();                        // close the stream → EventSource reconnects
 //   await sse.waitForNextClient(1);    // resolve when the reconnect lands
 
-import type { Page } from "@playwright/test";
 import http from "node:http";
+
+import type { Page } from "@playwright/test";
 import type { AddressInfo } from "node:net";
 
 export interface SseMock {

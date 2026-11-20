@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, afterEach } from "vitest";
-import {
-  TimeoutError,
-  isTimeoutError,
-  withAbortableTimeout,
-  fetchWithTimeout,
-  withStellarTimeoutProxy,
-  getStellarTimeoutMs,
-  getHorizonTimeoutMs,
-} from "@/lib/timeout";
+import { afterEach,describe, expect, it, vi } from "vitest";
+
 import { classifyContractError, ContractErrorType } from "@/lib/contracts";
+import {
+  fetchWithTimeout,
+  getHorizonTimeoutMs,
+  getStellarTimeoutMs,
+  isTimeoutError,
+  TimeoutError,
+  withAbortableTimeout,
+  withStellarTimeoutProxy,
+} from "@/lib/timeout";
 
 afterEach(() => {
   vi.unstubAllGlobals();

@@ -7,7 +7,7 @@
  * failed retry dead-letters the delivery.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
@@ -26,9 +26,9 @@ vi.mock("@/lib/prisma", () => ({
 import {
   deliveryStatusAfterFailure,
   nextWebhookAttemptAt,
-  webhookRetryDelayMs,
   WEBHOOK_MAX_RETRIES,
   WEBHOOK_RETRY_BACKOFF_MS,
+  webhookRetryDelayMs,
 } from "@/lib/webhook-deliver";
 import { processWebhookRetryQueue } from "@/lib/webhook-delivery-service";
 

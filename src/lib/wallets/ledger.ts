@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { StrKey, TransactionBuilder } from "@stellar/stellar-sdk";
-import { NETWORK_PASSPHRASE, STELLAR_NETWORK } from "@/lib/stellar";
 import type StellarApp from "@ledgerhq/hw-app-str";
-import type { WalletConnector, SignOptions } from "./types";
+import { StrKey, TransactionBuilder } from "@stellar/stellar-sdk";
+
+import { NETWORK_PASSPHRASE, STELLAR_NETWORK } from "@/lib/stellar";
+
+import type { SignOptions,WalletConnector } from "./types";
 
 const LEDGER_DERIVATION_PATH = "44'/148'/0'";
 

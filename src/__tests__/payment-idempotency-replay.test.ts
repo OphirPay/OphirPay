@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const {
   mockClaim,
@@ -38,8 +38,8 @@ vi.mock("@/lib/api-cache", () => ({
   invalidateCaches: mockInvalidateCaches,
 }));
 
-import { generateCsrfToken } from "@/lib/csrf";
 import { POST as createPayment } from "@/app/api/payments/route";
+import { generateCsrfToken } from "@/lib/csrf";
 import { IDEMPOTENCY_RESPONSE_TTL_SECONDS } from "@/lib/idempotency";
 
 const USER_ID = "user-test-1961";

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useId, useState } from "react";
-import { cn } from "@/lib/utils";
+
 import { formatXlmStroops } from "@/lib/stellar-amount";
+import { cn } from "@/lib/utils";
 import {
   computeClaimable,
   computeVested,

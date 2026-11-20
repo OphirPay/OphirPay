@@ -15,10 +15,11 @@
  */
 
 import type { Prisma } from "@prisma/client";
+
 import { conflictError, rateLimitError } from "@/lib/api-response";
 import {
-  MAX_ACTIVE_API_KEYS,
   type ApiKeyMutationQuota,
+  MAX_ACTIVE_API_KEYS,
 } from "@/lib/rate-limit";
 
 /**

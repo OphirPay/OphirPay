@@ -10,19 +10,20 @@
  * are pinned explicitly.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { afterEach,describe, expect, it } from "vitest";
+
 import { getStructuredData } from "@/lib/json-ld";
 import {
-  canonicalUrl,
+  DEFAULT_PAGE_DESCRIPTION,
+  DEFAULT_PAGE_TITLE,
+  generateMetadata,
+} from "@/lib/metadata-helpers";
+import {
   baseUrl,
   breadcrumbJsonLd,
+  canonicalUrl,
   DEFAULT_BASE_URL,
 } from "@/lib/seo";
-import {
-  generateMetadata,
-  DEFAULT_PAGE_TITLE,
-  DEFAULT_PAGE_DESCRIPTION,
-} from "@/lib/metadata-helpers";
 
 const ORIGINAL_APP_URL = process.env.NEXT_PUBLIC_APP_URL;
 

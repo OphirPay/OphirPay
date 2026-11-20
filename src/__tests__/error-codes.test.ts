@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { describe, expect,it } from "vitest";
+
 import { ERROR_CODES, ERROR_STATUS } from "@/lib/error-codes";
 
 const API_ERRORS_DOC = readFileSync(

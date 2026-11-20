@@ -14,11 +14,13 @@
  * assertion and still fail every client that switches on Content-Type.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import http from "node:http";
-import type { AddressInfo } from "node:net";
+
 import { Prisma } from "@prisma/client";
+import type { AddressInfo } from "node:net";
+import { afterAll,beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
+
 import {
   formatProblemDetails,
   problemBadRequest,
@@ -31,9 +33,9 @@ import {
   problemUnauthorized,
 } from "@/lib/api-errors";
 import {
-  PROBLEM_CONTENT_TYPE,
   isProblemDetails,
   normalizeApiError,
+  PROBLEM_CONTENT_TYPE,
 } from "@/lib/problem-details";
 
 /** Read the body of a Response as a problem document. */

@@ -2,9 +2,10 @@
 // Tests for mergeAddressBookSelections — deduping address book picks against
 // existing batch rows (manual or CSV-imported).
 
-import { describe, it, expect } from "vitest";
-import { mergeAddressBookSelections } from "@/lib/address-book";
+import { describe, expect,it } from "vitest";
+
 import type { AddressEntry } from "@/lib/address-book";
+import { mergeAddressBookSelections } from "@/lib/address-book";
 
 const ALICE = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const BOB = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";

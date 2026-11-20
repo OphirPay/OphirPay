@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { expect,test } from "@playwright/test";
 import type { Result } from "axe-core";
+
 import playwrightConfig from "../playwright.config";
 
 type Theme = "light" | "dark";

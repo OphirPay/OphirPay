@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
+import { nativeToScVal } from "@stellar/stellar-sdk";
+
+import { cachedFetch } from "@/lib/api-cache";
 import { handleApiError, successResponse, unauthorizedError } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
-import { cachedFetch } from "@/lib/api-cache";
 import { CHAIN_READ_SOURCE, DEFAULT_CONTRACT_ID, simulateContractCall } from "@/lib/contracts";
-import { nativeToScVal } from "@stellar/stellar-sdk";
-import { withRequestLogging } from "@/lib/request-logging";
+import { withMetrics } from "@/lib/metrics-middleware";
 import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
 
 export const GET = withMetrics("GET /api/governance/proposals/[id]", withRequestLogging(async function GET(
   request: Request,

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import {
-  createChallengeToken,
-  challengeMessage,
-} from "@/lib/challenge";
-import { isValidStellarAddress } from "@/lib/stellar";
 import { badRequestError, sensitiveSuccessResponse } from "@/lib/api-response";
-import { withRequestLogging } from "@/lib/request-logging";
 import { enforceAuthRateLimit } from "@/lib/auth-rate-limit";
+import {
+  challengeMessage,
+  createChallengeToken,
+} from "@/lib/challenge";
+import { withMetrics } from "@/lib/metrics-middleware";
+import { withRequestLogging } from "@/lib/request-logging";
+import { isValidStellarAddress } from "@/lib/stellar";
 
 /**
  * GET /api/auth/challenge?publicKey=G... — mint a proof-of-ownership challenge.

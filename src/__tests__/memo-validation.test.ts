@@ -287,3 +287,203 @@ describe("getMemoErrorMessage", () => {
     expect(msg).toContain("too long");
   });
 });
+
+// ─── UTF-8 Byte Length Calculation Tests (Issue #1921) ───────
+
+describe("Stellar memo UTF-8 byte length validation", () => {
+  it("pure ASCII memo up to 28 characters is valid", () => {
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "a".repeat(28),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("pure ASCII memo exceeding 28 characters is rejected", () => {
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "a".repeat(29),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("multi-byte emoji string with 7 emojis (28 bytes total) is valid", () => {
+    // Each emoji is typically 4 UTF-8 bytes
+    // 7 emojis × 4 bytes = 28 bytes (valid)
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "😀".repeat(7),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("multi-byte emoji string with 8 emojis (32 bytes total) is rejected", () => {
+    // 8 emojis × 4 bytes = 32 bytes (exceeds 28-byte limit)
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "😀".repeat(8),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejection of 29-byte UTF-8 string (multibyte)", () => {
+    // 7 emojis (28 bytes) + 1 letter (1 byte) = 29 bytes
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "😀".repeat(7) + "a",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === "memo");
+      expect(issue?.message).toBe(MEMO_ERROR_MESSAGES.tooManyBytes);
+    }
+  });
+
+  it("accented characters count as multiple bytes", () => {
+    // "é" is 2 UTF-8 bytes
+    // 14 × "é" = 28 bytes (valid)
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "é".repeat(14),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accented character exceeding 28 bytes is rejected", () => {
+    // 15 × "é" = 30 bytes (exceeds limit)
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "é".repeat(15),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("mixed ASCII and multibyte characters respect byte limit", () => {
+    // "hello" (5 bytes) + 🎉 (4 bytes) + 🎉 (4 bytes) + 🎉 (4 bytes) + 🎉 (4 bytes) + 🎉 (4 bytes) + a (1 byte) + a (1 byte) = 27 bytes
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "hello🎉🎉🎉🎉🎉aa",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("mixed ASCII and multibyte exceeding 28 bytes is rejected", () => {
+    // "hello" (5) + "world" (5) + 🎉 (4) + 🎉 (4) + 🎉 (4) + 🎉 (4) = 26 bytes, but with more:
+    // "hello world 🎉🎉🎉🎉" = 5 + 1 + 5 + 1 + 4 + 4 + 4 + 4 = 28 bytes
+    // "hello world 🎉🎉🎉🎉x" = 29 bytes (rejected)
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "hello world 🎉🎉🎉🎉x",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("Chinese characters (3-4 bytes each) are counted correctly", () => {
+    // "你好世界" = 4 characters, 12 bytes (3 bytes each in UTF-8)
+    // Should be valid
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "你好世界",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("many Chinese characters exceeding 28 bytes are rejected", () => {
+    // 10 Chinese characters = ~30 bytes
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "你好世界你好世界你好世",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("error message distinguishes between character and byte limits", () => {
+    // Test that when a memo is short in characters but long in bytes, the error mentions bytes
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "😀".repeat(8), // 8 chars, 32 bytes
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === "memo");
+      expect(issue?.message).toContain("28 bytes");
+    }
+  });
+
+  it("exactly 28 bytes of various multibyte sequences is valid", () => {
+    // Mix of different UTF-8 character widths that add up to exactly 28 bytes
+    // 4 emojis (16 bytes) + "hello" (5 bytes) + "●●●" (9 bytes, 3 bullet chars × 3 bytes) = 30 bytes (too much)
+    // Let's use: 6 emojis (24 bytes) + "test" (4 bytes) = 28 bytes
+    const result = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "😀".repeat(6) + "test",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("single byte over 28-byte limit is rejected consistently", () => {
+    // 7 emojis + empty = 28 bytes (valid)
+    const valid = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "😀".repeat(7),
+    });
+    expect(valid.success).toBe(true);
+
+    // 7 emojis + "a" = 29 bytes (invalid)
+    const invalid = createPaymentSchema.safeParse({
+      amount: 10,
+      sourceAccountId: "user-1",
+      destAddress: VALID_STELLAR,
+      memo: "😀".repeat(7) + "a",
+    });
+    expect(invalid.success).toBe(false);
+  });
+
+  it("batch recipients respect memo byte limit", () => {
+    const validBatch = createBatchSchema.safeParse({
+      name: "batch",
+      recipients: [
+        { address: VALID_STELLAR, amount: 5, memo: "😀".repeat(7) },
+      ],
+      sourceAccountId: "user-1",
+    });
+    expect(validBatch.success).toBe(true);
+
+    const invalidBatch = createBatchSchema.safeParse({
+      name: "batch",
+      recipients: [
+        { address: VALID_STELLAR, amount: 5, memo: "😀".repeat(8) },
+      ],
+      sourceAccountId: "user-1",
+    });
+    expect(invalidBatch.success).toBe(false);
+  });
+});

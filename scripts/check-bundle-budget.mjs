@@ -181,6 +181,7 @@ for (const m of measurements) {
 
 const budget = JSON.parse(fs.readFileSync(BUDGET_FILE, "utf8"));
 const defaultBudgetKb = budget.defaultBudgetKb ?? 0;
+const warnThresholdKb = budget.warnThresholdKb ?? 200;
 const routeBudgets = budget.routes ?? {};
 
 const kb = (bytes) => bytes / 1024;
@@ -245,6 +246,33 @@ console.log(
     `${untracked} using default budget (${defaultBudgetKb} KB)\n`
 );
 
+// Check if individual client chunks exceed warning threshold (issue #1987)
+const chunkWarnings = [];
+for (const row of rows) {
+  for (const c of row.chunks) {
+    const chunkKb = kb(c.bytes);
+    if (chunkKb > warnThresholdKb) {
+      chunkWarnings.push({
+        route: row.route,
+        chunk: c.chunk,
+        sizeKb: chunkKb,
+        thresholdKb: warnThresholdKb,
+      });
+    }
+  }
+}
+
+if (chunkWarnings.length > 0) {
+  console.warn(
+    `⚠️  Performance Warning: ${chunkWarnings.length} client chunk(s) exceed the ${warnThresholdKb} KB threshold (issue #1987):`
+  );
+  for (const w of chunkWarnings.slice(0, 5)) {
+    console.warn(
+      `    ${w.route} -> ${w.chunk} (${w.sizeKb.toFixed(1)} KB > ${w.thresholdKb} KB)`
+    );
+  }
+}
+
 // ── Job summary (GitHub Actions) ────────────────────────────────
 const summaryLines = [
   "## 📦 JavaScript bundle budget",
@@ -260,6 +288,12 @@ const summaryLines = [
   }),
   "",
   `_${rows.length} routes measured · budgets are committed in \`bundle-budget.json\`._`,
+  ...(chunkWarnings.length > 0
+    ? [
+        "",
+        `> ⚠️ **Warning**: ${chunkWarnings.length} client chunk(s) exceed the ${warnThresholdKb} KB threshold (issue #1987).`,
+      ]
+    : []),
   "",
 ];
 

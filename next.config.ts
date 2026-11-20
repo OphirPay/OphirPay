@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
+import bundleBudget from "./bundle-budget.json";
 import { SECURITY_HEADERS } from "./src/lib/security-headers";
 
 // NOTE: the Content-Security-Policy is set per-request in src/proxy.ts with a
@@ -90,6 +91,20 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "stellar.expert" },
       { protocol: "https", hostname: "raw.githubusercontent.com" },
     ],
+  },
+
+  // Webpack performance budget configuration (issue #1987):
+  // Warn when initial client JavaScript chunks or entrypoints exceed 200 KB gzipped.
+  webpack: (config, { isServer, dev }) => {
+    if (!isServer && !dev) {
+      const budgetKb = bundleBudget.warnThresholdKb ?? 200;
+      config.performance = {
+        hints: "warning",
+        maxAssetSize: budgetKb * 1024,
+        maxEntrypointSize: budgetKb * 1024,
+      };
+    }
+    return config;
   },
 };
 

@@ -322,7 +322,7 @@ describe("CsvBatchImport (corruption handling)", () => {
       csvContent += `${VALID_ADDRESS},10,memo${i}\n`;
     }
 
-    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+    const { fileErrors } = await csvImport.parseRecipientsCsvToRows(
       csvFile(csvContent)
     );
 

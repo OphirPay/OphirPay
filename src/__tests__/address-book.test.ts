@@ -252,7 +252,7 @@ describe("address-book (duplicate filtering)", () => {
     expect(book[0].lastUsed).toBe(lastUsedTime);
   });
 
-  it("add operation on existing address marks it as updated and sets lastUsed", () => {
+  it("add operation on existing address marks it as updated and sets lastUsed", async () => {
     saveAddress({ publicKey: ADDR_A, label: "Alice" });
     const firstEntry = getAddressBook()[0];
     const firstLastUsed = firstEntry.lastUsed;

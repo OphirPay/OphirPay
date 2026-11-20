@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 describe("LoadingSkeleton pulse animation classes", () => {
@@ -276,7 +276,6 @@ describe("LoadingSkeleton pulse animation classes", () => {
 
       // Each line should have a width style applied
       lines.forEach((line) => {
-        const style = (line as HTMLElement).style.width;
         // Either has inline style or relies on Tailwind class
         expect(line.className).toBeDefined();
       });

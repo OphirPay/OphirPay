@@ -1274,6 +1274,46 @@ mod tests {
         assert!(matches!(result, SpendCheckResult::Escalated));
     }
 
+    #[test]
+    fn test_spending_limit_exceeded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(OphirPayContract, ());
+        let client = OphirPayContractClient::new(&env, &contract_id);
+        let owner = Address::generate(&env);
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let sac = create_token_contract(&env, &owner);
+
+        let _ = client.init(&owner);
+        client.set_timelock_enabled(&owner, &false);
+
+        // Configure 1,000 stroop daily spending limit (and 1,000 monthly)
+        client.set_spending_limit(&owner, &payer, &1000i128, &1000i128, &0u64, &true);
+
+        // Execute payment of 600 stroops
+        let first = client.atomic_spend(
+            &payer,
+            &payee,
+            &600i128,
+            &sac,
+            &String::from_str(&env, "tx_spend_600"),
+            &String::from_str(&env, "first payment"),
+        );
+        assert_eq!(first, 1);
+
+        // Execute payment of 500 stroops (cumulative 1100 > 1000) - must fail
+        let second = client.try_atomic_spend(
+            &payer,
+            &payee,
+            &500i128,
+            &sac,
+            &String::from_str(&env, "tx_spend_500"),
+            &String::from_str(&env, "second payment"),
+        );
+        assert_eq!(second, Err(Ok(PaymentError::SpendingLimitExceeded)));
+    }
+
     // ── RBAC Tests ──────────────────────────────────────────
 
     #[test]

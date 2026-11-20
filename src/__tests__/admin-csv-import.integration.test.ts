@@ -201,3 +201,162 @@ G${"B".repeat(55)},50,
     expect(auditActionsKeys).toContain("batch:create");
   });
 });
+
+// ─── CSV Corruption Handling Tests (Issue #1922) ──────────────
+
+describe("CsvBatchImport (corruption handling)", () => {
+  const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+  function csvFile(content: string): File {
+    return new File([content], "test.csv", { type: "text/csv" });
+  }
+
+  it("empty CSV file returns clear error message", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile("")
+    );
+
+    expect(fileErrors).toEqual(["CSV must have a header row and at least one data row."]);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("CSV with only header row returns clear error message", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile("address,amount,memo\n")
+    );
+
+    expect(fileErrors).toEqual(["CSV must have a header row and at least one data row."]);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("row with missing amount column displays error without stopping parsing", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},,thanks\nGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB,50,memo\n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].errors).toHaveProperty("amount");
+    expect(rows[1].errors).toBeFalsy();
+  });
+
+  it("row with invalid public key flags specific row without stopping parsing", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\nnot-a-valid-key,100,test\n${VALID_ADDRESS},50,\n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].errors).toHaveProperty("address");
+    expect(rows[1].errors).toEqual({});
+  });
+
+  it("malformed rows with extra columns are handled gracefully", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,thanks,extra,columns\n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    // Extra columns should not cause an error, just be ignored
+    expect(rows[0].errors).toEqual({});
+    expect(rows[0].values.memo).toBe("thanks");
+  });
+
+  it("CSV with rows missing columns uses defaults for missing values", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100\n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].values).toEqual({
+      address: VALID_ADDRESS,
+      amount: "100",
+      memo: "",
+    });
+  });
+
+  it("CSV with empty lines between data rows is handled correctly", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,first\n\n${VALID_ADDRESS},50,second\n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(3);
+    // Empty row should produce errors for missing address and amount
+    expect(rows[1].errors).toBeDefined();
+    expect(rows[2].errors).toEqual({});
+  });
+
+  it("CSV with whitespace-only values treats them as empty", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\n   ,   ,   \n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].values.address).toBe("");
+    expect(rows[0].values.amount).toBe("");
+    expect(rows[0].errors).toBeDefined();
+  });
+
+  it("CSV with special characters and quoted fields parses correctly", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\n"${VALID_ADDRESS}","100.50","invoice, #42"\n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].values).toEqual({
+      address: VALID_ADDRESS,
+      amount: "100.50",
+      memo: "invoice, #42",
+    });
+  });
+
+  it("CSV exceeding recipient limit is flagged as file error", async () => {
+    const MAX_RECIPIENTS = 1000; // Based on typical batch limits
+    let csvContent = "address,amount,memo\n";
+    for (let i = 0; i < MAX_RECIPIENTS + 10; i++) {
+      csvContent += `${VALID_ADDRESS},10,memo${i}\n`;
+    }
+
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(csvContent)
+    );
+
+    // File error should be present for exceeding limit
+    expect(fileErrors.some((e) => e.includes("Maximum"))).toBe(true);
+  });
+
+  it("row with amount that is not a valid number produces amount error", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},not-a-number,test\n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].errors).toHaveProperty("amount");
+  });
+
+  it("row with negative amount produces error", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},-100,test\n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].errors).toHaveProperty("amount");
+  });
+
+  it("multiple validation errors on a single row are all captured", async () => {
+    const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
+      csvFile(`address,amount,memo\ninvalid-address,invalid-amount,memo\n`)
+    );
+
+    expect(fileErrors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(Object.keys(rows[0].errors).length).toBeGreaterThan(1);
+  });
+});

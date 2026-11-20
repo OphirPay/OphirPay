@@ -4,6 +4,7 @@
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatAmount, shortenAddress } from "@/lib/utils";
+import { useState, useEffect } from "react";
 
 interface BatchRecipient {
   address: string;
@@ -15,19 +16,14 @@ interface BatchConfirmDialogProps {
   recipients: BatchRecipient[];
   totalAmount: number;
   estimatedFee: string;
-  /**
-   * Why the quoted fee is what it is (e.g. "p90 of recently charged fees ·
-   * ledger 62% full (medium congestion)"). Comes from Horizon fee statistics
-   * (issue #825); omitted when no recommendation was fetched.
-   */
   feeBasis?: string;
-  /** True when the quoted fee is cached/fallback rather than freshly fetched. */
   feeStale?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 const MAX_VISIBLE = 5;
+const COPY_FEEDBACK_MS = 2000;
 
 export function BatchConfirmDialog({
   open,
@@ -39,9 +35,42 @@ export function BatchConfirmDialog({
   onConfirm,
   onCancel,
 }: BatchConfirmDialogProps) {
+  const [copiedTooltip, setCopiedTooltip] = useState(false);
+  const [clipboardDenied, setClipboardDenied] = useState(false);
+
   const visibleRecipients = recipients.slice(0, MAX_VISIBLE);
   const remainingCount = recipients.length - MAX_VISIBLE;
   const feeXlm = formatAmount(parseFloat(estimatedFee) / 10000000, "XLM");
+
+  useEffect(() => {
+    if (!copiedTooltip) return;
+    const t = setTimeout(() => setCopiedTooltip(false), COPY_FEEDBACK_MS);
+    return () => clearTimeout(t);
+  }, [copiedTooltip]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(visibleRecipients[0].address);
+      setCopiedTooltip(true);
+      setClipboardDenied(false);
+    } catch (err) {
+      setClipboardDenied(true);
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = visibleRecipients[0].address;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setCopiedTooltip(true);
+        setClipboardDenied(false);
+      } catch (fallbackErr) {
+        setClipboardDenied(true);
+      }
+    }
+  };
 
   return (
     <Modal open={open} onClose={onCancel} title="Confirm Batch Payment" size="md">
@@ -96,12 +125,39 @@ export function BatchConfirmDialog({
           )}
         </div>
 
+        {/* Tooltip */}
+        {copiedTooltip && (
+          <div
+            data-testid="copy-tooltip"
+            className="fixed top-0 left-0 w-full bg-gray-600 dark:bg-gray-800 text-white text-sm text-center py-2 rounded"
+            role="status"
+            aria-live="polite"
+          >
+            Copied!
+          </div>
+        )}
+
+        {clipboardDenied && (
+          <div
+            data-testid="copy-denied"
+            className="text-xs text-red-600 dark:text-red-400"
+            role="alert"
+          >
+            Clipboard access denied. Please copy manually.
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
           <Button variant="outline" onClick={onCancel} className="w-full sm:w-auto min-h-[44px]">
             Back
           </Button>
-          <Button variant="primary" onClick={onConfirm} data-testid="batch-confirm-send" className="w-full sm:w-auto min-h-[44px]">
+          <Button
+            variant="primary"
+            onClick={handleCopy}
+            data-testid="batch-confirm-send"
+            className="w-full sm:w-auto min-h-[44px]"
+          >
             Confirm & Sign
           </Button>
         </div>

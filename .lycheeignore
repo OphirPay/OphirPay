@@ -1,0 +1,11 @@
+# Local testnet and development servers
+http://localhost(:[0-9]+)?
+http://127\.0\.0\.1(:[0-9]+)?
+https://localhost(:[0-9]+)?
+https://127\.0\.0\.1(:[0-9]+)?
+http://\[::1\](:[0-9]+)?
+
+# Documentation placeholders and invalid test domains
+https://example.com
+https://ophirpay\.ci\.invalid
+mailto:.*

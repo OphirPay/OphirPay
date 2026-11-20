@@ -1,6 +1,8 @@
-"use client";
 // SPDX-License-Identifier: MIT
 
+"use client";
+
+import { useState } from "react";
 import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
 import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
@@ -22,15 +24,16 @@ const STATUS_STYLES: Record<ScheduledPaymentRow["status"], string> = {
   SCHEDULED: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   PROCESSING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
   EXECUTED: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  FAILED: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  FAILED: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400",
   CANCELLED: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
 };
 
 /**
  * List of the user's upcoming (and recently processed) scheduled payments,
- * with a cancel action for those still waiting to be sent.
+ * with a cancel action and real-time search/memo filter for those still waiting.
  */
 export default function ScheduledPaymentsList() {
+  const [search, setSearch] = useState("");
   const toast = useToast();
   const { data, isLoading } = useApiQuery<ScheduledPaymentRow[]>(
     ["scheduled"],
@@ -42,6 +45,13 @@ export default function ScheduledPaymentsList() {
   );
 
   const payments = Array.isArray(data) ? data : [];
+
+  const filtered = payments.filter(p => {
+    const query = search.toLowerCase();
+    const matchesAddress = p.destAddress.toLowerCase().includes(query);
+    const matchesMemo = (p.memo || "").toLowerCase().includes(query);
+    return matchesAddress || matchesMemo;
+  });
 
   const handleCancel = async (id: string) => {
     try {
@@ -65,6 +75,18 @@ export default function ScheduledPaymentsList() {
         )}
       </div>
 
+      {payments.length > 0 && (
+        <div className="mb-3">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search addresses or memos..."
+            className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">
           {[1, 2].map((i) => (
@@ -74,14 +96,17 @@ export default function ScheduledPaymentsList() {
             />
           ))}
         </div>
-      ) : payments.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          No scheduled payments yet. Use the schedule toggle above to send at
-          a future date.
+          {payments.length === 0 ? (
+            <>No scheduled payments yet. Use the schedule toggle above to send at a future date.</>
+          ) : (
+            <>No payments match your search.</>
+          )}
         </p>
       ) : (
         <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-          {payments.map((payment) => (
+          {filtered.map((payment) => (
             <li
               key={payment.id}
               className="flex items-center justify-between gap-3 py-3"
@@ -122,6 +147,7 @@ export default function ScheduledPaymentsList() {
               </div>
             </li>
           ))}
+
         </ul>
       )}
     </div>

@@ -16,6 +16,22 @@ export function shortenAddress(address: string, chars = 4): string {
 }
 
 /**
+ * Truncate a wallet address to "GABC...WXYZ" for compact UI badges.
+ * Strings that are too short to benefit (under 12 chars, or not longer than
+ * the truncated form would be) are returned unchanged.
+ */
+export function truncateAddress(address: string, start = 4, end = 4): string {
+  if (!address) return "";
+  const head = Math.max(0, Math.floor(start));
+  const tail = Math.max(0, Math.floor(end));
+  const ellipsis = "...";
+  if (address.length < 12 || address.length <= head + tail + ellipsis.length) {
+    return address;
+  }
+  return `${address.slice(0, head)}${ellipsis}${tail > 0 ? address.slice(-tail) : ""}`;
+}
+
+/**
  * Format a number as XLM/USDC amount
  */
 export function formatAmount(amount: number, assetCode = "XLM"): string {

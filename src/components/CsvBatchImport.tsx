@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 import { useCallback, useEffect, useRef, useState } from "react";
-
-import { BatchDropzone, formatFileSize } from "@/components/batch/BatchDropzone";
-import { escapeCsvField } from "@/lib/csv";
 import {
-  applyDuplicateErrors,
-  type CsvImportRow,
-  downloadCsvTemplate,
-  MAX_BATCH_RECIPIENTS,
   parseRecipientsCsvToRows,
   validateRecipientFields,
+  applyDuplicateErrors,
+  downloadCsvTemplate,
+  MAX_BATCH_RECIPIENTS,
+  type CsvImportRow,
 } from "@/lib/csv-import";
+import {
+  BatchDropzone,
+  formatFileSize,
+  MemoByteCounter,
+} from "@/components/batch/BatchDropzone";
+import { escapeCsvField } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -242,8 +245,8 @@ export function CsvBatchImport({
               {fileErrors.length > 0
                 ? " · import blocked"
                 : errorCount > 0
-                ? ` · ${errorCount} with error${errorCount !== 1 ? "s" : ""}`
-                : " · all rows valid"}
+                  ? ` · ${errorCount} with error${errorCount !== 1 ? "s" : ""}`
+                  : " · all rows valid"}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -341,7 +344,7 @@ export function CsvBatchImport({
                       className={cn(
                         "border-t border-gray-100 dark:border-gray-800/50 align-top",
                         hasErrors &&
-                          "bg-red-50/50 dark:bg-red-950/20"
+                        "bg-red-50/50 dark:bg-red-950/20"
                       )}
                     >
                       <td className="py-3 px-3 text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -371,7 +374,7 @@ export function CsvBatchImport({
                           value={r.values.memo}
                           error={r.errors.memo}
                           placeholder="Optional"
-                          maxLength={28}
+                          showMemoByteCounter={true}
                           onChange={(v) => updateCell(r.id, "memo", v)}
                         />
                       </td>
@@ -458,6 +461,7 @@ function CellInput({
   className,
   inputMode,
   maxLength,
+  showMemoByteCounter,
   onChange,
 }: {
   value: string;
@@ -466,6 +470,7 @@ function CellInput({
   className?: string;
   inputMode?: "decimal" | "text";
   maxLength?: number;
+  showMemoByteCounter?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -487,6 +492,9 @@ function CellInput({
           className
         )}
       />
+      {showMemoByteCounter && (
+        <MemoByteCounter memo={value} showWhenEmpty={false} />
+      )}
       {error && (
         <p
           role="alert"

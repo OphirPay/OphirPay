@@ -2,34 +2,40 @@
 // SPDX-License-Identifier: MIT
 
 
-import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-import { AddressBookMultiSelect } from "@/components/batches/AddressBookMultiSelect";
-import { CsvBatchImport, type CsvRecipientRow } from "@/components/CsvBatchImport";
-import { CopyButton } from "@/components/ui/CopyButton";
-import { useWallet } from "@/hooks/useMultiWallet";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import type { AddressEntry } from "@/lib/address-book";
-import { mergeAddressBookSelections } from "@/lib/address-book";
-import { downloadCsvTemplate,parseRecipientsCsvToRows } from "@/lib/csv-import";
-import { estimateBatchFee, estimateTransactionFee } from "@/lib/fee-estimator";
 import { PAGE_TITLES } from "@/lib/page-titles";
+import { useWallet } from "@/hooks/useMultiWallet";
+import { getWalletConnector } from "@/lib/wallets";
+import { CsvBatchImport, type CsvRecipientRow } from "@/components/CsvBatchImport";
 import {
-  resetPendingWork,
+  parseRecipientsCsvToRows,
+  downloadCsvTemplate,
+} from "@/lib/csv-import";
+import {
+  MemoByteCounter,
+  getMemoByteLength,
+} from "@/components/batch/BatchDropzone";
+import {
+  isValidStellarAddress,
+  buildBatchPaymentTx,
+  submitSignedTx,
+  getStellarExplorerUrl,
+  NETWORK_PASSPHRASE,
+} from "@/lib/stellar";
+import { formatAmount, shortenAddress, cn } from "@/lib/utils";
+import { validateMemo } from "@/lib/validation-helpers";
+import { estimateBatchFee, estimateTransactionFee } from "@/lib/fee-estimator";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { AddressBookMultiSelect } from "@/components/batches/AddressBookMultiSelect";
+import { mergeAddressBookSelections } from "@/lib/address-book";
+import type { AddressEntry } from "@/lib/address-book";
+import {
   setInFlightTransactions,
   setUnsavedDrafts,
+  resetPendingWork,
 } from "@/lib/session-lifecycle";
-import {
-  buildBatchPaymentTx,
-  getStellarExplorerUrl,
-  isValidStellarAddress,
-  NETWORK_PASSPHRASE,
-  submitSignedTx,
-} from "@/lib/stellar";
-import { formatAmount, shortenAddress } from "@/lib/utils";
-import { validateMemo } from "@/lib/validation-helpers";
-import { getWalletConnector } from "@/lib/wallets";
+import dynamic from "next/dynamic";
 
 // The confirmation dialog is only rendered after the user hits "Send", so it is
 // lazy-loaded to keep it out of the initial batch creation bundle.
@@ -41,7 +47,6 @@ const BatchConfirmDialog = dynamic(
   { ssr: false }
 );
 import Link from "next/link";
-
 import type { BatchRecipientInput } from "@/lib/stellar";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -104,7 +109,7 @@ export default function NewBatchPage() {
           stale: fee.stale,
         })
       )
-      .catch(() => {});
+      .catch(() => { });
   }, []);
   const [showConfirm, setShowConfirm] = useState(false);
   const [mode, setMode] = useState<EntryMode>("manual");
@@ -629,76 +634,75 @@ export default function NewBatchPage() {
       {/* CSV Import Dropzone — prefill bridge for manual entry; the dedicated
           CSV mode renders CsvBatchImport's own dropzone instead. */}
       {mode === "manual" && (
-      <div
-        className={`bg-white dark:bg-gray-900 rounded-xl border-2 border-dashed p-4 sm:p-6 mb-4 transition-colors ${
-          isDragging
-            ? "border-ophir-500 bg-ophir-50 dark:bg-ophir-950/30"
-            : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-        }`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        data-testid="csv-dropzone"
-      >
-        <div className="flex flex-col items-center text-center">
-          <div className="h-12 w-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="w-6 h-6 text-gray-400"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-              />
-            </svg>
-          </div>
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Import recipients from CSV
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            Drag and drop a .csv file here, or click to select
-          </p>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors min-h-[44px]"
-            >
-              Choose CSV File
-            </button>
-            <button
-              type="button"
-              onClick={downloadCsvTemplate}
-              className="px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors min-h-[44px]"
-            >
-              Download Template
-            </button>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleCsvFile(file);
-            }}
-            className="hidden"
-            aria-label="Upload CSV file"
-          />
-        </div>
-        {csvError && (
-          <div className="mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
-            <p className="text-sm text-red-600 dark:text-red-400 whitespace-pre-line">
-              {csvError}
+        <div
+          className={`bg-white dark:bg-gray-900 rounded-xl border-2 border-dashed p-4 sm:p-6 mb-4 transition-colors ${isDragging
+              ? "border-ophir-500 bg-ophir-50 dark:bg-ophir-950/30"
+              : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+            }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          data-testid="csv-dropzone"
+        >
+          <div className="flex flex-col items-center text-center">
+            <div className="h-12 w-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="w-6 h-6 text-gray-400"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Import recipients from CSV
             </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              Drag and drop a .csv file here, or click to select
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2.5 rounded-lg bg-ophir-600 text-white text-sm font-medium hover:bg-ophir-700 transition-colors min-h-[44px]"
+              >
+                Choose CSV File
+              </button>
+              <button
+                type="button"
+                onClick={downloadCsvTemplate}
+                className="px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors min-h-[44px]"
+              >
+                Download Template
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleCsvFile(file);
+              }}
+              className="hidden"
+              aria-label="Upload CSV file"
+            />
           </div>
-        )}
-      </div>
+          {csvError && (
+            <div className="mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+              <p className="text-sm text-red-600 dark:text-red-400 whitespace-pre-line">
+                {csvError}
+              </p>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Wallet info */}
@@ -738,11 +742,10 @@ export default function NewBatchPage() {
               role="tab"
               aria-selected={mode === "manual"}
               onClick={() => switchMode("manual")}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                mode === "manual"
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "manual"
                   ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
                   : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              }`}
+                }`}
             >
               Manual entry
             </button>
@@ -751,11 +754,10 @@ export default function NewBatchPage() {
               role="tab"
               aria-selected={mode === "csv"}
               onClick={() => switchMode("csv")}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                mode === "csv"
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === "csv"
                   ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
                   : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              }`}
+                }`}
             >
               Upload CSV
             </button>
@@ -877,59 +879,70 @@ export default function NewBatchPage() {
         )}
 
         {/* Submit */}
-        <button
-          onClick={handleSend}
-          disabled={isSubmitting || (mode === "csv" && !csvValid)}
-          className="w-full py-3 rounded-lg bg-gradient-to-r from-ophir-600 to-stellar-dark text-white font-medium text-sm hover:from-ophir-700 hover:to-stellar disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg shadow-ophir-500/25 active:scale-[0.98] flex items-center justify-center gap-2"
-        >
-          {isSubmitting ? (
-            <>
-              <svg
-                className="animate-spin h-4 w-4"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              {step === "building"
-                ? "Building batch transaction..."
-                : step === "signing"
-                  ? "Waiting for signature..."
-                  : "Submitting to Stellar..."}
-            </>
-          ) : (
-            <>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-5 h-5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
-                />
-              </svg>
-              Send Batch Payment
-            </>
-          )}
-        </button>
+        {(() => {
+          const hasOversizedMemo = recipients.some(
+            (r) => getMemoByteLength(r.memo.trim()) > 28
+          );
+          return (
+            <button
+              onClick={handleSend}
+              disabled={
+                isSubmitting ||
+                (mode === "csv" && !csvValid) ||
+                hasOversizedMemo
+              }
+              className="w-full py-3 rounded-lg bg-gradient-to-r from-ophir-600 to-stellar-dark text-white font-medium text-sm hover:from-ophir-700 hover:to-stellar disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg shadow-ophir-500/25 active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? (
+                <>
+                  <svg
+                    className="animate-spin h-4 w-4"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  {step === "building"
+                    ? "Building batch transaction..."
+                    : step === "signing"
+                      ? "Waiting for signature..."
+                      : "Submitting to Stellar..."}
+                </>
+              ) : (
+                <>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className="w-5 h-5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
+                    />
+                  </svg>
+                  Send Batch Payment
+                </>
+              )}
+            </button>
+          );
+        })()}
 
         {isSubmitting && (
           <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">
@@ -1030,17 +1043,26 @@ function RecipientRow({
           </span>
         </div>
 
-        <input
-          type="text"
-          value={recipient.memo}
-          onChange={(e) =>
-            onChange(recipient.id, "memo", e.target.value)
-          }
-          disabled={disabled}
-          placeholder="Memo (optional)"
-          maxLength={28}
-          className="w-full px-3 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-        />
+        <div className="space-y-1">
+          <input
+            type="text"
+            value={recipient.memo}
+            onChange={(e) =>
+              onChange(recipient.id, "memo", e.target.value)
+            }
+            disabled={disabled}
+            placeholder="Memo (optional)"
+            className={cn(
+              "w-full px-3 py-2.5 rounded-lg border bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed",
+              getMemoByteLength(recipient.memo.trim()) > 28
+                ? "border-red-500 dark:border-red-500 focus:ring-red-500/30"
+                : "border-gray-200 dark:border-gray-700"
+            )}
+          />
+          {recipient.memo && (
+            <MemoByteCounter memo={recipient.memo} />
+          )}
+        </div>
       </div>
     </div>
   );

@@ -111,4 +111,56 @@ describe("BatchConfirmDialog", () => {
     expect(screen.getByText("Estimated Fee")).toBeDefined();
     expect(screen.getByText("0.00007 XLM")).toBeDefined();
   });
+
+  it("copies address to clipboard and displays 'Copied!' tooltip with accessible aria-live", async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextMock,
+      },
+    });
+
+    const fullAddress = "GA" + "A".repeat(54);
+    render(
+      <BatchConfirmDialog
+        {...baseProps}
+        recipients={[{ address: fullAddress, amount: "10" }]}
+      />
+    );
+
+    const copyBtn = screen.getByRole("button", { name: `Copy address ${fullAddress}` });
+    expect(copyBtn).toBeDefined();
+
+    // Click to copy
+    fireEvent.click(copyBtn);
+
+    expect(writeTextMock).toHaveBeenCalledWith(fullAddress);
+    const tooltip = await screen.findByRole("status");
+    expect(tooltip).toBeDefined();
+    expect(tooltip.textContent).toBe("Copied!");
+    expect(tooltip.getAttribute("aria-live")).toBe("polite");
+  });
+
+  it("handles clipboard permission denial gracefully without crashing", async () => {
+    const writeTextMock = vi.fn().mockRejectedValue(new Error("Permission denied"));
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: writeTextMock,
+      },
+    });
+
+    const fullAddress = "GA" + "B".repeat(54);
+    render(
+      <BatchConfirmDialog
+        {...baseProps}
+        recipients={[{ address: fullAddress, amount: "10" }]}
+      />
+    );
+
+    const copyBtn = screen.getByRole("button", { name: `Copy address ${fullAddress}` });
+    await fireEvent.click(copyBtn);
+
+    expect(writeTextMock).toHaveBeenCalledWith(fullAddress);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
 });

@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import {
-  getFeeSnapshot,
   type FeeSnapshot,
   type FeeStatsFetcher,
+  getFeeSnapshot,
 } from "@/lib/fee-stats";
 
 /**

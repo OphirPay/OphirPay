@@ -12,7 +12,7 @@
  * Rust contract test suite.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
 
 // ── Route Registry ─────────────────────────────────────────────
 // Every state-changing route is registered here with its expected

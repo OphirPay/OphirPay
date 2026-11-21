@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import { 
+  MAX_FEE_BPS,
   validateFeeBps, 
   validateFeeConfig, 
-  MAX_FEE_BPS,
 } from "@/lib/fee-config";
 
 describe("Fee Configuration Validation", () => {

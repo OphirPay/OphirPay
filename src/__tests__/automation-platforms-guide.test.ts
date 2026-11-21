@@ -14,11 +14,13 @@
  *   • The examples are validated against the schema by this test.
  */
 
-import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { createHmac } from "node:crypto";
-import { WEBHOOK_EVENTS, WEBHOOK_EVENT_LABELS } from "@/app/api/webhooks/event-types";
+import { readdirSync,readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { describe, expect,it } from "vitest";
+
+import { WEBHOOK_EVENT_LABELS,WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { buildSignedPayload } from "@/lib/webhook-deliver";
 
 const root = process.cwd();

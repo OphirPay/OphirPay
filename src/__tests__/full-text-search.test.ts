@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  tokenize,
-  buildTsQuery,
-  looksLikeTxHash,
-  normalizeTxHash,
-  escapeLikePattern,
+  buildFallbackWhere,
   buildPostgresMatch,
   buildPostgresRank,
-  buildFallbackWhere,
+  buildTsQuery,
+  escapeLikePattern,
+  looksLikeTxHash,
+  normalizeTxHash,
   SEARCH_VECTOR_COLUMN,
+  tokenize,
 } from "@/lib/full-text-search";
 
 /**

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+
 import yaml from "js-yaml";
+import { describe, expect,it } from "vitest";
 
 interface DependabotGroup {
   patterns?: string[];

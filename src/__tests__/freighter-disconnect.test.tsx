@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { act,render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { WalletProvider, useWallet } from "@/hooks/useFreighter";
-import type { FreighterAPI } from "@/types";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
+import { useWallet,WalletProvider } from "@/hooks/useFreighter";
 import { fetchXlmBalance } from "@/lib/stellar";
+import type { FreighterAPI } from "@/types";
 
 const TEST_PUBLIC_KEY =
   "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";

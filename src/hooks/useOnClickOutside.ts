@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useEffect, useRef, type RefObject } from "react";
+import { type RefObject,useEffect, useRef } from "react";
 
 /**
  * Detects clicks outside of the given ref element and calls the callback.

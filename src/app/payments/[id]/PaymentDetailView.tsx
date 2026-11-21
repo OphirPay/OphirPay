@@ -3,19 +3,20 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { useApiQuery } from "@/hooks/useApiQuery";
-import type { Payment } from "@/types";
+
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import { downloadReceiptPdf } from "@/lib/receipt-pdf";
+import { getStellarExplorerUrl, isValidStellarAddress } from "@/lib/stellar";
 import {
   formatAmount,
   formatDate,
   getStatusColor,
   shortenAddress,
 } from "@/lib/utils";
-import { getStellarExplorerUrl, isValidStellarAddress } from "@/lib/stellar";
-import { downloadReceiptPdf } from "@/lib/receipt-pdf";
+import type { Payment } from "@/types";
 
 // Payment ids are cuid strings (Prisma `@default(cuid())`). UUIDs are
 // accepted too so either id style resolves; anything shorter or containing

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach } from "vitest";
-import { useState } from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent,render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ToastProvider } from "@/components/ui/Toast";
+import { useState } from "react";
+import { beforeEach,describe, expect, it } from "vitest";
+
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
-import { saveAddress, getAddressBook } from "@/lib/address-book";
+import { ToastProvider } from "@/components/ui/Toast";
+import { getAddressBook,saveAddress } from "@/lib/address-book";
 
 const ADDR_A = "G" + "A".repeat(55);
 const ADDR_B = "G" + "B".repeat(55);

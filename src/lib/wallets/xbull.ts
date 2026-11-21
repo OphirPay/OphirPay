@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import type { WalletConnector, SignOptions } from "./types";
+import type { SignOptions,WalletConnector } from "./types";
 
 /**
  * xBull wallet connector.

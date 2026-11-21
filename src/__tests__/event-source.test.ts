@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import { normalizeEvent } from "@/lib/events/event-source";
 
 describe("normalizeEvent", () => {

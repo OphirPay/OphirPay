@@ -11,10 +11,11 @@
 // Each assertion below turns one of those silent failures into a loud test
 // failure so the next rename cannot reintroduce the same rot.
 
-import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+
 import { load } from "js-yaml";
+import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const read = (relPath: string): string => readFileSync(join(root, relPath), "utf8");

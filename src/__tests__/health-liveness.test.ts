@@ -11,10 +11,11 @@
  * endpoint behaviour and every manifest/doc that wires the two together.
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
 import { load, loadAll } from "js-yaml";
+import { afterEach,describe, expect, it, vi } from "vitest";
 
 import { GET } from "@/app/api/health/live/route";
 
@@ -22,8 +23,8 @@ vi.mock("@/lib/prisma", () => ({
   default: { $queryRaw: vi.fn() },
 }));
 
-import prisma from "@/lib/prisma";
 import { GET as getReady } from "@/app/api/health/ready/route";
+import prisma from "@/lib/prisma";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");

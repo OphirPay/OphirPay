@@ -1,13 +1,14 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef,useState } from "react";
+
 import {
+  getStoredNotifications,
+  normalizePaymentEvent,
   type PaymentNotification,
   type RawPaymentEventPayload,
-  getStoredNotifications,
   saveStoredNotifications,
-  normalizePaymentEvent,
 } from "@/lib/notifications";
 
 export function useNotifications() {

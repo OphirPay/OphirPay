@@ -13,7 +13,8 @@
 // (e2e/helpers/sse-mock.ts) so the tests are deterministic in CI and locally.
 // The notification center hook, React state, and DOM all run unmodified.
 
-import { test, expect } from "@playwright/test";
+import { expect,test } from "@playwright/test";
+
 import { installSseMock } from "./helpers/sse-mock";
 
 const NOTIF_STORAGE_KEY = "ophirpay-notifications";

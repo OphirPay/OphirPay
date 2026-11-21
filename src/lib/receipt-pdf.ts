@@ -2,6 +2,7 @@
 
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
+
 import { getStellarExplorerUrl } from "@/lib/stellar";
 
 /**

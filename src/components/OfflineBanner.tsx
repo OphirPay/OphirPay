@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useState, useEffect } from "react";
+import { useEffect,useState } from "react";
 
 /**
  * Banner that appears when the browser detects offline status.

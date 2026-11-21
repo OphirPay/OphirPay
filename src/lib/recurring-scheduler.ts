@@ -18,8 +18,9 @@
  *     retries on the next sweep (bounded retry, no double-fire).
  */
 
-import prisma from "@/lib/prisma";
 import type { Frequency } from "@prisma/client";
+
+import prisma from "@/lib/prisma";
 
 export const RECURRING_SWEEP_LIMIT = 50;
 

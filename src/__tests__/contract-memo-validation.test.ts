@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import { decodeContractError, getContractErrorCatalog } from "@/lib/contract-errors";
-import { PAYMENT_ERROR_NAMES, PAYMENT_ERROR_DISCRIMINANTS, ERROR_MESSAGES } from "@/types/errors";
-import { PaymentErrorCode, PAYMENT_ERROR_MESSAGES } from "@/types/contract-abi";
+import { PAYMENT_ERROR_MESSAGES,PaymentErrorCode } from "@/types/contract-abi";
+import { ERROR_MESSAGES,PAYMENT_ERROR_DISCRIMINANTS, PAYMENT_ERROR_NAMES } from "@/types/errors";
 
 // Mirror of contract validate_memo_text logic for parity verification
 function validateMemoText(memo: string): { valid: boolean; error?: string } {

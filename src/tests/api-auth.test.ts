@@ -9,7 +9,7 @@
  *   • creation refuses keys below the 32-byte entropy threshold.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),

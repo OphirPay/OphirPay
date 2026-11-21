@@ -1,26 +1,27 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
+import { useEffect,useState } from "react";
+
 import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { useWallet } from "@/hooks/useMultiWallet";
 import { useAdminSudo } from "@/hooks/useAdminSudo";
-import { authorizeAdminAction, SudoDeclinedError } from "@/lib/sudo-client";
-import { setFeeConfig, setFeeCollector } from "@/lib/contract-advanced";
+import { useWallet } from "@/hooks/useMultiWallet";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { setFeeCollector,setFeeConfig } from "@/lib/contract-advanced";
 import {
-  validateFeeBps,
-  validateFeeConfig,
   MAX_FEE_BPS,
   useFeeConfig,
+  validateFeeBps,
+  validateFeeConfig,
 } from "@/lib/fee-config";
+import { PAGE_TITLES } from "@/lib/page-titles";
+import { authorizeAdminAction, SudoDeclinedError } from "@/lib/sudo-client";
 
 interface TxStatus {
   type: "success" | "error";

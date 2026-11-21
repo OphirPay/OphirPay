@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import prisma from "@/lib/prisma";
 import {
   badRequestError,
   handleApiError,
@@ -12,7 +9,9 @@ import {
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
 import { sendEmail } from "@/lib/email";
+import { withMetrics } from "@/lib/metrics-middleware";
 import { expireDuePaymentRequests } from "@/lib/payment-request-lifecycle";
+import prisma from "@/lib/prisma";
 import { withRequestLogging } from "@/lib/request-logging";
 
 const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from "vitest";
+
 import { aggregateApiKeyUsage, type ApiKeyUsageInput } from "@/lib/api-key-usage";
 
 const key = (id: string): ApiKeyUsageInput => ({

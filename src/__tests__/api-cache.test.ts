@@ -11,17 +11,17 @@
  *      at something unreachable instead of failing the request.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  cachedRead,
   cacheClear,
+  cachedRead,
   cacheStats,
   invalidateCache,
   invalidateCaches,
+  READ_TTL_MS,
   readCacheKey,
   resetReadCache,
-  READ_TTL_MS,
 } from "@/lib/api-cache";
 
 vi.mock("@/lib/prisma", () => ({
@@ -38,9 +38,9 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(),
 }));
 
-import prisma from "@/lib/prisma";
-import * as authSession from "@/lib/auth-session";
 import { GET as getAnalytics } from "@/app/api/analytics/route";
+import * as authSession from "@/lib/auth-session";
+import prisma from "@/lib/prisma";
 
 const MOCK_AUTH = {
   userId: "user_cache_test",

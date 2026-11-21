@@ -12,7 +12,8 @@
 //   • the paused state, the banner and the unpause happy path,
 //   • the unknown/unavailable state disables both mutations.
 
-import { test, expect } from "@playwright/test";
+import { expect,test } from "@playwright/test";
+
 import { installAdminMocks } from "./helpers/admin-mocks";
 
 test.describe("Pause controls", () => {

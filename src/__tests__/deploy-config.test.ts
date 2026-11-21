@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect,it } from "vitest";
 
 const scriptPath = join(process.cwd(), "scripts", "deploy-workflow.sh");
 const script = readFileSync(scriptPath, "utf8");

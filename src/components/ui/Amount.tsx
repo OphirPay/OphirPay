@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 
-import { cn } from "@/lib/utils";
 import { NON_FINITE_AMOUNT, parseAmount } from "@/lib/amount";
+import { cn } from "@/lib/utils";
 
 interface AmountProps {
   value: number | string;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const { mockIdempotencyKey } = vi.hoisted(() => {
   const mockIdempotencyKey = {
@@ -18,8 +18,8 @@ vi.mock("@/lib/prisma", () => ({
 
 import {
   cleanupExpiredIdempotencyKeys,
-  IDEMPOTENCY_RETENTION_DAYS,
   IDEMPOTENCY_CLEANUP_BATCH_SIZE,
+  IDEMPOTENCY_RETENTION_DAYS,
 } from "@/lib/db/cleanup";
 import { getMetricsSnapshot, resetMetricsForTest } from "@/lib/metrics-counters";
 

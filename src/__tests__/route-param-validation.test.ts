@@ -4,7 +4,7 @@
 // on-chain contract reads) for invalid params. Covers one contract-backed
 // route (numeric id) and one DB-backed route (cuid id).
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(async () => ({ userId: "user_1", publicKey: "GTEST" })),

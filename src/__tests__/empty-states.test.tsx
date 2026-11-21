@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent,render, screen } from "@testing-library/react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
+import AuditLogPage from "@/app/audit-log/page";
+import BatchesPage from "@/app/batches/page";
+import EventsPage from "@/app/events/page";
+import PaymentsPage from "@/app/payments/page";
+import WebhooksPage from "@/app/webhooks/page";
 import { EmptyState } from "@/components/EmptyState";
 import { ToastProvider } from "@/components/ui/Toast";
-import PaymentsPage from "@/app/payments/page";
-import BatchesPage from "@/app/batches/page";
-import WebhooksPage from "@/app/webhooks/page";
-import EventsPage from "@/app/events/page";
-import AuditLogPage from "@/app/audit-log/page";
 
 // ═══════════════════════════════════════════════════════════════
 // Mocks shared by the page-level tests

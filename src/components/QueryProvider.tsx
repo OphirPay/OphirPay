@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode,useEffect, useState } from "react";
+
 import { onSessionRevoked } from "@/lib/session-lifecycle";
 
 function makeQueryClient() {

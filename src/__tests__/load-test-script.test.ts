@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
 import { execFileSync } from "child_process";
-import { readFileSync, existsSync } from "fs";
+import { existsSync,readFileSync } from "fs";
 import path from "path";
+
+import { describe, expect,it } from "vitest";
 
 const ROOT = process.cwd();
 const SCRIPT = path.join(ROOT, "scripts", "load-test.js");

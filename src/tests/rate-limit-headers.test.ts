@@ -6,7 +6,8 @@
  * Reset), while a 429 additionally carries an accurate Retry-After countdown.
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { afterEach,describe, expect, it, vi } from "vitest";
+
 import { InMemoryRateLimitStore } from "@/lib/rate-limit";
 import {
   getRateLimitExceededHeaders,

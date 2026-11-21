@@ -1,34 +1,35 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, renderHook,screen } from "@testing-library/react";
 import React from "react";
-import { render, screen, renderHook } from "@testing-library/react";
+import { afterEach,describe, expect, it, vi } from "vitest";
+
 import { Amount } from "@/components/ui/Amount";
-import { trapFocus } from "@/lib/focus-trap";
-import { estimateTransactionFee, estimateBatchFee } from "@/lib/fee-estimator";
-import {
-  isPermissionRequested,
-  requestNotificationPermission,
-  sendNotification,
-  NOTIFY,
-} from "@/lib/notifications";
-import { usePrefetch, PRELOAD_ROUTES } from "@/lib/prefetch";
-import { isFeatureEnabled, overrideFeatureFlag } from "@/lib/feature-flags";
 import { trackEvent, trackPageView } from "@/lib/analytics-events";
-import { getRequestId, withRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
+import * as apiAuthLib from "@/lib/api-auth";
 import {
-  getAuthSecret,
+  buildLogoutCookie,
+  buildSessionCookie,
   createSessionToken,
+  getAuthContext,
+  getAuthSecret,
   parseSessionToken,
   readSessionCookie,
-  buildSessionCookie,
-  buildLogoutCookie,
-  getAuthContext,
   SESSION_COOKIE_NAME,
 } from "@/lib/auth-session";
-import * as stellarLib from "@/lib/stellar";
+import { isFeatureEnabled, overrideFeatureFlag } from "@/lib/feature-flags";
+import { estimateBatchFee,estimateTransactionFee } from "@/lib/fee-estimator";
+import { trapFocus } from "@/lib/focus-trap";
+import {
+  isPermissionRequested,
+  NOTIFY,
+  requestNotificationPermission,
+  sendNotification,
+} from "@/lib/notifications";
+import { PRELOAD_ROUTES,usePrefetch } from "@/lib/prefetch";
 import prisma from "@/lib/prisma";
-import * as apiAuthLib from "@/lib/api-auth";
+import { getRequestId, REQUEST_ID_HEADER,withRequestId } from "@/lib/request-id";
+import * as stellarLib from "@/lib/stellar";
 
 const mockPrefetchFn = vi.fn();
 

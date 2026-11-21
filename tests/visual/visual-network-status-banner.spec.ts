@@ -13,7 +13,7 @@
 // Baselines live in `tests/visual/__screenshots__/` and are regenerated with
 // `npm run test:visual:update` (light and dark).
 
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page,test } from "@playwright/test";
 
 const THEME_STORAGE_KEY = "ophirpay-theme";
 const PRIMARY = "https://soroban-testnet.stellar.org:443";

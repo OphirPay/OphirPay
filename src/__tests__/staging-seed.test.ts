@@ -9,13 +9,15 @@
  * 3. scripts/staging-seed.sh script existence, safety check definitions, and staging execution.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+
+import { afterEach,beforeEach, describe, expect, it } from "vitest";
+
 import {
-  parseProfile,
-  isProductionDatabaseUrl,
   assertSafeDatabaseUrl,
+  isProductionDatabaseUrl,
+  parseProfile,
 } from "../../prisma/seed";
 
 const repoRoot = process.cwd();

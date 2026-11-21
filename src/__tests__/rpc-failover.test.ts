@@ -13,7 +13,7 @@
  *   • `resetRpcState` clears every tracked value so tests are independent.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
 const originalFetch = global.fetch;
 
@@ -42,9 +42,9 @@ vi.mock("@stellar/stellar-sdk", () => ({
 
 import { logger } from "@/lib/logger";
 import {
-  getWorkingRpcServer,
   getRpcFailoverState,
   getRpcUrls,
+  getWorkingRpcServer,
   isRpcFailoverDegraded,
   resetRpcState,
   RPC_FAILOVER_DEGRADED_AFTER_MS,

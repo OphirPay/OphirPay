@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Tests for src/lib/validate-params.ts — shared route-param validation
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  validateParam,
-  validateIdParam,
-  recordId,
   numericId,
+  recordId,
   stellarAddressId,
+  validateIdParam,
+  validateParam,
 } from "@/lib/validate-params";
 
 const VALID_CUID = "cabcdefghijklmnopqrstuvwx"; // 25 chars: c + 24 alnum

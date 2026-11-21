@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
+
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
 const { isSafeWebhookUrlAtDeliveryMock } = vi.hoisted(() => ({
   isSafeWebhookUrlAtDeliveryMock: vi.fn(),
@@ -12,24 +13,24 @@ vi.mock("@/lib/webhook-url-guard", () => ({
 }));
 
 import {
-  signWebhookPayload,
+  resetMetricsForTest,
+} from "@/lib/metrics-counters";
+import {
+  BLOCKED_WEBHOOK_TARGET_ERROR,
   buildSignedPayload,
   buildWebhookRequestPreview,
-  deliverWebhook,
-  verifyWebhookSignature,
-  constantTimeEqual,
-  BLOCKED_WEBHOOK_TARGET_ERROR,
   canonicalizeWebhookBody,
-  webhookSignedInput,
+  constantTimeEqual,
+  deliverWebhook,
+  signWebhookPayload,
+  verifyWebhookSignature,
   WEBHOOK_SIGNATURE_HEADER,
   WEBHOOK_TIMESTAMP_HEADER,
   WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
   type WebhookPayload,
+  webhookSignedInput,
   type WebhookVerificationResult,
 } from "@/lib/webhook-deliver";
-import {
-  resetMetricsForTest,
-} from "@/lib/metrics-counters";
 
 const SECRET = "test-secret-0123456789";
 

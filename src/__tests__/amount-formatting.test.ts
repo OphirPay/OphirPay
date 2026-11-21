@@ -21,20 +21,21 @@
  * so a suite there would silently never run.
  */
 
-import { describe, it, expect } from "vitest";
 import fc from "fast-check";
+import { describe, expect,it } from "vitest";
+
 import {
-  STROOPS_PER_XLM,
-  formatXlmAmount,
-  formatXlmStroops,
-  parseXlmAmount,
-} from "@/lib/stellar-amount";
-import {
-  NON_FINITE_AMOUNT,
   formatDecimal,
+  NON_FINITE_AMOUNT,
   parseAmount,
   stroopsToDisplay,
 } from "@/lib/amount";
+import {
+  formatXlmAmount,
+  formatXlmStroops,
+  parseXlmAmount,
+  STROOPS_PER_XLM,
+} from "@/lib/stellar-amount";
 
 /** Upper bound for generated stroop counts: well past 2^53, still exact. */
 // Built with BigInt(...) rather than a `0n` literal — the project targets

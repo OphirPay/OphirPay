@@ -1,8 +1,8 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { formatAmount, shortenAddress } from "@/lib/utils";
 
 interface BatchRecipient {

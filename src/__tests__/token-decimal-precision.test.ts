@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { PaymentError } from '../types/errors';
+import { describe, expect,it } from 'vitest';
+
 import { CONTRACT_ERROR_MAP } from '../lib/contract-errors';
+import { PaymentError } from '../types/errors';
 
 const DEFAULT_STELLAR_DECIMALS = 7;
 const MAX_TOKEN_DECIMALS = 18;

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 import {
-  getRecommendedFee,
   type FeeAggressiveness,
   type FeeRecommendation,
   type FeeSource,
+  getRecommendedFee,
   type NetworkCongestion,
 } from "@/lib/fee-stats";
 

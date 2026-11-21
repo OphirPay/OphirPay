@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  sanitizeImageUrl,
-  isSafeImageUrl,
   ALLOWED_IMAGE_DATA_TYPES,
+  isSafeImageUrl,
+  sanitizeImageUrl,
 } from "@/lib/sanitize-url";
 
 // A minimal but valid base64 payload (1x1 transparent PNG) + fake siblings.

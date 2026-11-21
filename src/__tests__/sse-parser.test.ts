@@ -15,13 +15,13 @@
  * the server's own encoder produces.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { act,renderHook } from "@testing-library/react";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useNotifications } from "@/hooks/useNotifications";
 import { connectLiveEvents, type LiveStatus } from "@/lib/events/event-client";
 import type { LiveEvent } from "@/lib/events/event-source";
 import { encodeSseComment, encodeSseFrame } from "@/lib/events/sse-buffer";
-import { useNotifications } from "@/hooks/useNotifications";
 
 // ── Wire-level EventSource stand-in ─────────────────────────────
 

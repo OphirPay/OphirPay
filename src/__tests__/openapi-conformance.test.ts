@@ -10,10 +10,11 @@
 // parameters, and complete request/response declarations) so a schema that
 // "passes YAML" but would produce undefined requests/responses fails here.
 
-import { describe, it, expect, beforeAll } from "vitest";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { existsSync,readdirSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
+
 import { load } from "js-yaml";
+import { beforeAll,describe, expect, it } from "vitest";
 
 const SPEC_PATH = join(process.cwd(), "docs", "openapi.yaml");
 const API_DIR = join(process.cwd(), "src", "app", "api");

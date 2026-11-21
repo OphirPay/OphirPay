@@ -19,7 +19,8 @@
 // stubs the auth session. External Stellar origins are aborted so the capture
 // is deterministic and offline.
 
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page,test } from "@playwright/test";
+
 import {
   fakeFreighterInitScript,
   randomAddress,

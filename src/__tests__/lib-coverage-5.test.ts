@@ -1,18 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
 import { exportToCsv } from '@/lib/csv';
 import { getDateRange, getDateRangePresets } from '@/lib/date-range';
-import { formatXlm, formatFiat, formatTokenAmount, formatCompact } from '@/lib/format-currency';
-import { formatStroopsToXlm, formatBaseFee, estimateTotalCost } from '@/lib/gas-estimate';
+import { EMAIL_TEMPLATES,sendEmail } from '@/lib/email';
 import { estimateBatchFee } from '@/lib/fee-estimator';
-import { getStructuredData } from '@/lib/json-ld';
-import { canonicalUrl, breadcrumbJsonLd } from '@/lib/seo';
-import { generateMetadata } from '@/lib/metadata-helpers';
-import { captureHealthSnapshot, formatHealthSnapshot } from '@/lib/monitoring';
-import { incMetric, getMetricsSnapshot, observeDbQuery } from '@/lib/metrics-counters';
-import { PRELOAD_ROUTES } from '@/lib/prefetch';
-import { sendEmail, EMAIL_TEMPLATES } from '@/lib/email';
 import { trapFocus } from '@/lib/focus-trap';
+import { formatCompact,formatFiat, formatTokenAmount, formatXlm } from '@/lib/format-currency';
+import { estimateTotalCost,formatBaseFee, formatStroopsToXlm } from '@/lib/gas-estimate';
+import { getStructuredData } from '@/lib/json-ld';
 import { hashMemo } from '@/lib/memo';
+import { generateMetadata } from '@/lib/metadata-helpers';
+import { getMetricsSnapshot, incMetric, observeDbQuery } from '@/lib/metrics-counters';
+import { captureHealthSnapshot, formatHealthSnapshot } from '@/lib/monitoring';
+import { PRELOAD_ROUTES } from '@/lib/prefetch';
+import { breadcrumbJsonLd,canonicalUrl } from '@/lib/seo';
 
 describe('csv', () => {
   it('exports', () => expect(() => exportToCsv([{name:'x'}],[{key:'name',header:'N'}],{filename:'t.csv'})).not.toThrow());

@@ -1,23 +1,22 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import prisma from "@/lib/prisma";
-import { updatePaymentSchema } from "@/lib/validation-schemas";
-import {
-  successResponse,
-  validationError,
-  notFoundError,
-  unauthorizedError,
-  handleApiError,
-  requireJsonContentType,
-} from "@/lib/api-response";
-import { logger } from "@/lib/logger";
-import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
+import {
+  handleApiError,
+  notFoundError,
+  requireJsonContentType,
+  successResponse,
+  unauthorizedError,
+  validationError,
+} from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
-import { validateIdParam } from "@/lib/validate-params";
+import { logger } from "@/lib/logger";
+import { withMetrics } from "@/lib/metrics-middleware";
+import prisma from "@/lib/prisma";
 import { withRequestLogging } from "@/lib/request-logging";
+import { validateIdParam } from "@/lib/validate-params";
+import { updatePaymentSchema } from "@/lib/validation-schemas";
+import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
 
 export const GET = withMetrics("GET /api/payments/[id]", withRequestLogging(async function GET(
   request: Request,

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, renderHook, act } from "@testing-library/react";
+import { act,fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import { CurrencyToggle } from "@/components/ui/CurrencyToggle";
 import { useCurrencyDisplay } from "@/hooks/useCurrencyDisplay";
 import { useXlmPrice } from "@/hooks/usePrice";

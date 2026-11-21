@@ -13,19 +13,20 @@
  *   • A non-finite value renders as `"—"` — never `NaN`, `Infinity` or `∞`.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  NON_FINITE_AMOUNT,
+  formatAmountRange,
   formatCompactAmount,
   formatDecimal,
-  formatAmountRange,
+  NON_FINITE_AMOUNT,
   stroopsToDisplay,
 } from "@/lib/amount";
 import {
-  formatXlm,
+  formatCompact,
   formatFiat,
   formatTokenAmount,
-  formatCompact,
+  formatXlm,
 } from "@/lib/format-currency";
 
 const ONE_STROOP_IN_XLM = 1e-7;

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Nonce-based script-src for HTML pages (issue #1257, follow-up to #697).
 
-import { describe, it, expect, vi, afterEach } from "vitest";
 import { NextRequest } from "next/server";
+import { afterEach,describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn(), request: vi.fn() },

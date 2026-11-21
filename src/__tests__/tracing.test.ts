@@ -17,7 +17,7 @@
  * present; here we verify the contract the rest of the codebase relies on.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const ENV_KEYS = [
   "OTEL_TRACING_ENABLED",

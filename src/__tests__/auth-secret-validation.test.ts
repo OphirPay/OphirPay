@@ -5,17 +5,19 @@
 // `validateEnv`, the session-signing path, and the deploy-time guard in
 // `scripts/validate-deploy-config.sh`.
 
-import { describe, it, expect, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+
+import { afterEach,describe, expect, it } from "vitest";
+
+import { getAuthSecret } from "@/lib/auth-session";
 import {
+  assertAuthSecret,
   AUTH_SECRET_MIN_BYTES,
   AUTH_SECRET_PLACEHOLDER,
   authSecretProblem,
-  assertAuthSecret,
   validateEnv,
 } from "@/lib/env";
-import { getAuthSecret } from "@/lib/auth-session";
 
 // A real `openssl rand -hex 32` value (64 hex chars).
 const STRONG_SECRET =

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 // Mock dependencies
 vi.mock("@/lib/prisma", () => ({
@@ -32,20 +32,20 @@ vi.mock("@/lib/contracts", () => ({
   fetchOnChainPayments: vi.fn(),
 }));
 
-import prisma from "@/lib/prisma";
-import * as authSession from "@/lib/auth-session";
-import * as csrf from "@/lib/csrf";
-import * as contracts from "@/lib/contracts";
+import { GET as getEventsHistory } from "@/app/api/events/history/route";
+import { GET as getEvents } from "@/app/api/events/route";
+import { PATCH as patchHookById } from "@/app/api/hooks/[id]/route";
+import { GET as getHooks, POST as postHooks } from "@/app/api/hooks/route";
 import {
+  DELETE as deleteWebhooks,
   GET as getWebhooks,
   POST as postWebhooks,
-  DELETE as deleteWebhooks,
 } from "@/app/api/webhooks/route";
-import { GET as getHooks, POST as postHooks } from "@/app/api/hooks/route";
+import * as authSession from "@/lib/auth-session";
+import * as contracts from "@/lib/contracts";
+import * as csrf from "@/lib/csrf";
 import { HOOK_PAGE_LIMIT } from "@/lib/hooks-pagination";
-import { PATCH as patchHookById } from "@/app/api/hooks/[id]/route";
-import { GET as getEvents } from "@/app/api/events/route";
-import { GET as getEventsHistory } from "@/app/api/events/history/route";
+import prisma from "@/lib/prisma";
 
 const MOCK_AUTH = {
   userId: "user_123",

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
 import type { Frequency } from "@prisma/client";
+import { describe, expect, it, vi } from "vitest";
 
 import { nextRunAfter } from "@/lib/recurring-scheduler";
 

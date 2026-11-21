@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
 const redisClientMocks = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -36,9 +36,9 @@ vi.mock("@/lib/contracts", () => {
   };
 });
 
-import prisma from "@/lib/prisma";
 import { GET } from "@/app/api/health/route";
 import * as contracts from "@/lib/contracts";
+import prisma from "@/lib/prisma";
 
 const originalFetch = global.fetch;
 const redisEnvironmentKeys = [

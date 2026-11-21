@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import EscrowsPage from "@/app/escrows/page";
 
 const mockUseApiQuery = vi.hoisted(() => vi.fn());

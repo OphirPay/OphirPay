@@ -6,9 +6,10 @@
 // (including contracts), and safe-harbor language — and a security issue
 // template must exist under .github/ISSUE_TEMPLATE/.
 
-import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync,readFileSync } from "node:fs";
 import path from "node:path";
+
+import { describe, expect,it } from "vitest";
 
 const root = path.resolve(__dirname, "../..");
 const securityPath = path.join(root, "SECURITY.md");

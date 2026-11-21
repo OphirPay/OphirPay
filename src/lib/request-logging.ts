@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { AsyncLocalStorage } from "node:async_hooks";
+
 import { logger } from "@/lib/logger";
 import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
 import { getCurrentSpan, REQUEST_ID_SPAN_ATTRIBUTE } from "@/lib/tracing";

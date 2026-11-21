@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { NETWORK_PASSPHRASE, SOROBAN_RPC_URL, HORIZON_URL, STELLAR_NETWORK } from "@/lib/stellar";
-import { DEFAULT_CONTRACT_ID, EMITTER_CONTRACT_ID } from "@/lib/contracts";
 import { USDC_MAINNET, USDC_TESTNET } from "@/lib/assets";
+import { DEFAULT_CONTRACT_ID, EMITTER_CONTRACT_ID } from "@/lib/contracts";
+import { HORIZON_URL, NETWORK_PASSPHRASE, SOROBAN_RPC_URL, STELLAR_NETWORK } from "@/lib/stellar";
 
 export const dynamic = "force-dynamic";
 

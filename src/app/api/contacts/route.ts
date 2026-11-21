@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-import { withMetrics } from "@/lib/metrics-middleware";
 import {
-  successResponse,
   badRequestError,
-  unauthorizedError,
   handleApiError,
+  successResponse,
+  unauthorizedError,
   validationError,
 } from "@/lib/api-response";
-import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
+import { withMetrics } from "@/lib/metrics-middleware";
+import { withRequestLogging } from "@/lib/request-logging";
 import { contactSchema } from "@/lib/validation/contact";
 
 export const GET = withMetrics(

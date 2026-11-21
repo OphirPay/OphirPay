@@ -4,14 +4,15 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+
+import { EmptyState } from "@/components/EmptyState";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/EmptyState";
-import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useToast } from "@/components/ui/Toast";
+import { type ApiError,useApiMutation, useApiQuery } from "@/hooks/useApiQuery";
 import { useWallet } from "@/hooks/useMultiWallet";
-import { useApiMutation, useApiQuery, type ApiError } from "@/hooks/useApiQuery";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getGovernanceProposalState } from "@/lib/governance-state";
 

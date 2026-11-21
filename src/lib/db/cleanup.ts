@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { incIdempotencyKeysPruned } from "@/lib/metrics-counters";
+import prisma from "@/lib/prisma";
 
 /** Default retention period for idempotency keys: 7 days (issue #2025). */
 export const IDEMPOTENCY_RETENTION_DAYS = 7;

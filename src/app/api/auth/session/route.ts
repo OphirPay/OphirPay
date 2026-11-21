@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
+import {
+  badRequestError,
+  sensitiveSuccessResponse,
+  unauthorizedError,
+} from "@/lib/api-response";
+import { enforceAuthRateLimit } from "@/lib/auth-rate-limit";
 /**
  * Wallet session endpoints.
  *
@@ -21,24 +25,18 @@ import { withMetrics } from "@/lib/metrics-middleware";
  * addition to clearing the cookie, so every tab and device is invalidated at
  * once.
  */
-
 import {
-  buildSessionCookie,
   buildLogoutCookie,
+  buildSessionCookie,
   readSessionCookie,
   sessionNeedsRenewal,
 } from "@/lib/auth-session";
-import { revokeWalletSessions } from "@/lib/session-revocation";
-import { verifyChallengeToken, challengeMessage, verifyWalletSignature } from "@/lib/challenge";
-import { isValidStellarAddress } from "@/lib/stellar";
-import {
-  badRequestError,
-  unauthorizedError,
-  sensitiveSuccessResponse,
-} from "@/lib/api-response";
+import { challengeMessage, verifyChallengeToken, verifyWalletSignature } from "@/lib/challenge";
 import { verifyCsrf } from "@/lib/csrf";
+import { withMetrics } from "@/lib/metrics-middleware";
 import { withRequestLogging } from "@/lib/request-logging";
-import { enforceAuthRateLimit } from "@/lib/auth-rate-limit";
+import { revokeWalletSessions } from "@/lib/session-revocation";
+import { isValidStellarAddress } from "@/lib/stellar";
 
 export const POST = withMetrics("POST /api/auth/session", withRequestLogging(async function POST(request: Request) {
   const csrfError = verifyCsrf(request);

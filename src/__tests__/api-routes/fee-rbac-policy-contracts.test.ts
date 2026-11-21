@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 // Mock dependencies
 vi.mock("@/lib/auth-session", () => ({
@@ -14,14 +14,14 @@ vi.mock("@/lib/contracts", () => ({
   simulateContractCall: vi.fn(),
 }));
 
-import * as authSession from "@/lib/auth-session";
-import * as contracts from "@/lib/contracts";
-import { GET as getFeeConfig } from "@/app/api/fee-config/route";
+import { GET as getContracts } from "@/app/api/contracts/route";
 import { GET as getFeeCollector } from "@/app/api/fee-config/collector/route";
 import { GET as getFeeHistory } from "@/app/api/fee-config/history/route";
+import { GET as getFeeConfig } from "@/app/api/fee-config/route";
 import { GET as getPolicyVersions } from "@/app/api/policy-versions/route";
 import { GET as getRbac } from "@/app/api/rbac/route";
-import { GET as getContracts } from "@/app/api/contracts/route";
+import * as authSession from "@/lib/auth-session";
+import * as contracts from "@/lib/contracts";
 
 const MOCK_AUTH = {
   userId: "user_123",

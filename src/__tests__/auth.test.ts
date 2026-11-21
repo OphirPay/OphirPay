@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
 import crypto from "crypto";
+
+import { describe, expect,it } from "vitest";
+
 import {
-  hashApiKey,
-  extractApiKey,
-  deriveKeyPrefix,
   API_KEY_PREFIX_LENGTH,
+  deriveKeyPrefix,
+  extractApiKey,
+  hashApiKey,
 } from "@/lib/api-auth";
-import { InMemoryRateLimitStore } from "@/lib/rate-limit";
 import { timingSafeEqual } from "@/lib/crypto";
-import { searchRecords, rankSearchResults } from "@/lib/search-index";
+import { InMemoryRateLimitStore } from "@/lib/rate-limit";
+import { rankSearchResults,searchRecords } from "@/lib/search-index";
 
 // ─── hashApiKey ─────────────────────────────────────────────────
 

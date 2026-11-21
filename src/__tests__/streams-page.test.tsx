@@ -2,6 +2,7 @@
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import StreamsPage from "@/app/streams/page";
 
 const mockUseApiQuery = vi.hoisted(() => vi.fn());

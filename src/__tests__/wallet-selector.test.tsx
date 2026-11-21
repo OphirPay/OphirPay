@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
 import { WalletSelector } from "@/components/WalletSelector";
 
 const WALLET_IDS = ["freighter", "albedo", "xbull"] as const;

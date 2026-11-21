@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 import { useMemo, useState } from "react";
-import { getAddressBook } from "@/lib/address-book";
+
 import type { AddressEntry } from "@/lib/address-book";
+import { getAddressBook } from "@/lib/address-book";
 import { shortenAddress } from "@/lib/utils";
 
 interface AddressBookMultiSelectProps {

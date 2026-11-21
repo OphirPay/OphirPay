@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 
 import { beforeEach, describe, expect, it } from "vitest";
+
+import { buildMetrics } from "@/app/api/metrics/route";
 import {
   DB_LATENCY_BUCKET_BOUNDS,
-  RPC_LATENCY_BUCKET_BOUNDS,
   getDbQueryMetrics,
   getRpcCallMetrics,
   recordDbQuery,
   recordRpcCall,
   resetMetricsForTest,
+  RPC_LATENCY_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
-import { buildMetrics } from "@/app/api/metrics/route";
 
 describe("RPC latency histograms", () => {
   beforeEach(() => resetMetricsForTest());

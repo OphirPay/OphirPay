@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 
 import { NextResponse } from "next/server";
+
 import { withApiAuth } from "@/lib/api-auth";
 import { handleApiError, validationError } from "@/lib/api-response";
-import prisma from "@/lib/prisma";
-import { withRequestLogging } from "@/lib/request-logging";
 import {
+  type AuditLogEntry,
   auditLogQuerySchema,
   parseAuditTimestamp,
-  readAuditLogTotalCount,
   readAuditEntryById,
-  type AuditLogEntry,
+  readAuditLogTotalCount,
 } from "@/lib/audit-log";
+import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /**
  * GET /api/audit-log

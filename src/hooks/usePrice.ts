@@ -1,12 +1,13 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef,useState } from "react";
+
 import {
   fetchXlmPrice,
-  PRICE_CACHE_MAX_AGE_MS,
   MAX_XLM_USD_PRICE,
   MIN_XLM_USD_PRICE,
+  PRICE_CACHE_MAX_AGE_MS,
   type PriceResult,
 } from "@/lib/price";
 

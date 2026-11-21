@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useState } from "react";
+
 import { CopyButton } from "@/components/ui/CopyButton";
+import { cn } from "@/lib/utils";
 
 interface QrCodeProps {
   /** The payload to encode. The QR regenerates whenever this changes. */

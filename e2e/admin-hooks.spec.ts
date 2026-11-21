@@ -6,8 +6,9 @@
 // + fake-Freighter stack; `/api/hooks` is mocked with a mutable store so the
 // page's ledger row write is exercised too.
 
-import { test, expect } from "@playwright/test";
-import { installAdminMocks, type HookRecord } from "./helpers/admin-mocks";
+import { expect,test } from "@playwright/test";
+
+import { type HookRecord,installAdminMocks } from "./helpers/admin-mocks";
 
 const activeHook: HookRecord = {
   id: "hk_e2e_active",

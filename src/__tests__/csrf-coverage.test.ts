@@ -17,14 +17,16 @@
  * handlers on disk first and then reconciles them against the registry union.
  */
 
-import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
+
+import { describe, expect,it } from "vitest";
+
 import {
-  MUTATING_ROUTES,
   CSRF_EXEMPT_ROUTES,
-  type CsrfRouteEntry,
   type CsrfExemptRoute,
+  type CsrfRouteEntry,
+  MUTATING_ROUTES,
 } from "@/lib/csrf-route-registry";
 
 const API_ROOT = path.join(process.cwd(), "src/app/api");

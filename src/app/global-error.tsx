@@ -3,6 +3,7 @@
 
 
 import { useEffect } from "react";
+
 import { Button } from "@/components/ui/Button";
 import { reportRenderedError } from "@/lib/analytics-events";
 import { captureError } from "@/lib/sentry";

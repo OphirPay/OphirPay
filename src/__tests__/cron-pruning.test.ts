@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import prisma from "@/lib/prisma";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import {
-  pruneCronExecutionLogs,
-  CRON_LOG_RETENTION_DAYS,
   CRON_LOG_PRUNE_BATCH_SIZE,
+  CRON_LOG_RETENTION_DAYS,
+  pruneCronExecutionLogs,
 } from "@/app/api/cron/route";
 import { getMetricsSnapshot, resetMetricsForTest } from "@/lib/metrics-counters";
+import prisma from "@/lib/prisma";
 
 describe("Cron Job Log Pruning (Issue #1420)", () => {
   beforeEach(() => {

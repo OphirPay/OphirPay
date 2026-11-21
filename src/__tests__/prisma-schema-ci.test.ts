@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync, readdirSync } from "fs";
-import { join } from "path";
 import { execSync } from "child_process";
+import { existsSync, readdirSync,readFileSync } from "fs";
+import { join } from "path";
+
+import { describe, expect,it } from "vitest";
 
 describe("Prisma Schema Validation & Consistency", () => {
   const schemaPath = join(process.cwd(), "prisma", "schema.prisma");

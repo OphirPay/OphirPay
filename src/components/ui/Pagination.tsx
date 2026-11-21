@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { cn } from "@/lib/utils";
 
 interface PaginationProps {
   page: number;

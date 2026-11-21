@@ -13,17 +13,18 @@ import {
   nativeToScVal,
   xdr,
 } from "@stellar/stellar-sdk";
+
 import {
   CHAIN_READ_SOURCE,
-  invokeContractFunction,
-  submitContractInvocation,
-  simulateContractCall,
+  classifyContractError,
   DEFAULT_CONTRACT_ID,
   EMITTER_CONTRACT_ID,
-  classifyContractError,
+  invokeContractFunction,
+  simulateContractCall,
+  submitContractInvocation,
 } from "@/lib/contracts";
-import { getActiveWalletConnector } from "@/lib/wallets";
 import { NETWORK_PASSPHRASE, STELLAR_NETWORK } from "@/lib/stellar";
+import { getActiveWalletConnector } from "@/lib/wallets";
 
 /** Resolve contract ID — env var or hardcoded Testnet fallback */
 const CONTRACT_ID = DEFAULT_CONTRACT_ID;

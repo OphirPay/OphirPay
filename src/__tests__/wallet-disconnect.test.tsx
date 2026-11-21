@@ -1,24 +1,25 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   QueryClient,
   QueryClientProvider,
   useQueryClient,
 } from "@tanstack/react-query";
-import { MultiWalletProvider, useWallet } from "@/hooks/useMultiWallet";
-import { WalletButton } from "@/components/WalletButton";
+import { act,render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useEffect } from "react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import TreasuryDashboard from "@/app/(dashboard)/page";
-import { fetchXlmBalance } from "@/lib/stellar";
+import { QueryProvider } from "@/components/QueryProvider";
+import { WalletButton } from "@/components/WalletButton";
+import { MultiWalletProvider, useWallet } from "@/hooks/useMultiWallet";
 import {
   notifySessionRevoked,
   onSessionRevoked,
   setUnsavedDrafts,
 } from "@/lib/session-lifecycle";
-import { QueryProvider } from "@/components/QueryProvider";
-import { useEffect } from "react";
+import { fetchXlmBalance } from "@/lib/stellar";
 
 // ── Mocks ──────────────────────────────────────────────────────
 //

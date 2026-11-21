@@ -12,7 +12,7 @@
 //     ("two simulated instances"),
 //   • with no Redis configured the semantics are the in-memory ones.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
 // Deterministic stand-in for the optional `ioredis` dependency. The class
 // throws from its constructor so `initRateLimitStore()` must fall back to the
@@ -27,12 +27,12 @@ vi.mock("ioredis", () => ({
 }));
 
 import {
-  HttpRedisRateLimitStore,
-  InMemoryRateLimitStore,
   createRateLimitStoreFromEnv,
   getRateLimitStore,
   getRedisRestConfig,
+  HttpRedisRateLimitStore,
   initRateLimitStore,
+  InMemoryRateLimitStore,
   isHttpRedisUrl,
   setRateLimitStore,
 } from "@/lib/rate-limit";

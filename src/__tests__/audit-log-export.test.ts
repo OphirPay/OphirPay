@@ -14,7 +14,8 @@
  * simulate a source that throws mid-stream or to observe iterator release.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import { parseCsvText } from "@/lib/csv-import";
 
 const mocks = vi.hoisted(() => ({

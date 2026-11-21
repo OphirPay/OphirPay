@@ -20,12 +20,13 @@
 // on-chain ids).
 
 import type { Page } from "@playwright/test";
+
 import {
-  SIGNER_A,
   createState,
   horizonHandler,
-  rpcHandler,
   type MultisigState,
+  rpcHandler,
+  SIGNER_A,
 } from "./stellar-mock";
 
 export type RefundStatus = "REQUESTED" | "APPROVED" | "REJECTED" | "PROCESSED";

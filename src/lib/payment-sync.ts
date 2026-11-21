@@ -27,11 +27,11 @@
  * surfaced in the admin view and overlapping runs can be prevented.
  */
 
+import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
+import { logger } from "@/lib/logger";
 import prisma from "@/lib/prisma";
 import { getHorizonServer } from "@/lib/stellar";
-import { logger } from "@/lib/logger";
 import { dispatchWebhookEventAsync } from "@/lib/webhook-dispatcher";
-import { WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 
 export type SyncTrigger = "cron" | "admin";
 

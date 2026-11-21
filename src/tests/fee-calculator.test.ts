@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from "vitest";
+
 import {
-  BPS_DENOMINATOR,
-  DEFAULT_FEE_SCHEDULE,
   assertValidFeeSchedule,
+  BPS_DENOMINATOR,
   calculateFee,
   calculateFeeStroops,
+  DEFAULT_FEE_SCHEDULE,
   type FeeSchedule,
   type VolumeTier,
 } from "@/lib/fee-calculator";

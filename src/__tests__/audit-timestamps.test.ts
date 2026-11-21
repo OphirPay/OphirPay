@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect,it } from "vitest";
+
 import { formatRelativeTime, relativeTimeProps } from "@/lib/date-utils";
 
 const NOW = new Date("2026-06-15T12:00:00.000Z");

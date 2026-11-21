@@ -3,6 +3,7 @@
 
 
 import { Component, type ReactNode } from "react";
+
 import { captureError } from "@/lib/sentry";
 
 interface Props {

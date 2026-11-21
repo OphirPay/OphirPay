@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useId, useState } from "react";
-import { cn } from "@/lib/utils";
-import { formatXlmAmount } from "@/lib/stellar-amount";
+
 import type { FeeSnapshot, FeeTierKey } from "@/lib/fee-stats";
+import { formatXlmAmount } from "@/lib/stellar-amount";
+import { cn } from "@/lib/utils";
 
 export type FeeTier = FeeTierKey | "custom";
 

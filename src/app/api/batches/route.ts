@@ -1,36 +1,36 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-import { ERROR_CODES } from "@/lib/error-codes";
-
 import type { PaymentStatus } from "@prisma/client";
-import prisma from "@/lib/prisma";
-import { createBatchSchema, paginationSchema } from "@/lib/validation-schemas";
+
+import { problemFromZodError } from "@/lib/api-errors";
 import {
-  successResponse,
-  validationError,
   badRequestError,
-  unauthorizedError,
   conflictError,
   handleApiError,
+  successResponse,
+  unauthorizedError,
+  validationError,
 } from "@/lib/api-response";
-import { problemFromZodError } from "@/lib/api-errors";
-import { withRequestLogging } from "@/lib/request-logging";
-import { getAuthContext } from "@/lib/auth-session";
 import { requireScope } from "@/lib/api-route";
+import { requireIdempotencyKey } from "@/lib/api-route";
+import { getAuthContext } from "@/lib/auth-session";
+import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
 import { verifyCsrf } from "@/lib/csrf";
+import { ERROR_CODES } from "@/lib/error-codes";
+import {
+  claimIdempotencyKey,
+  type IdempotencyClaim,
+} from "@/lib/idempotency";
 import { incMetric } from "@/lib/metrics-counters";
+import { withMetrics } from "@/lib/metrics-middleware";
 import {
   buildCursorWhere,
   computeNextCursor,
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
-import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
-import {
-  claimIdempotencyKey,
-  type IdempotencyClaim,
-} from "@/lib/idempotency";
-import { requireIdempotencyKey } from "@/lib/api-route";
+import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
+import { createBatchSchema, paginationSchema } from "@/lib/validation-schemas";
 
 // ── GET /api/batches — List batches with pagination ──────────
 

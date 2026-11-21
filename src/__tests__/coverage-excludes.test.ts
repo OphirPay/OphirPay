@@ -1,9 +1,11 @@
 /**
  * @vitest-environment node
  */
-import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+
+import { describe, expect,it } from 'vitest';
+
 import config from '../../vitest.config';
 
 describe('Coverage Excludes', () => {

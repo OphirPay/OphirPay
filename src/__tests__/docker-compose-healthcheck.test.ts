@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+
+import { describe, expect,it } from "vitest";
 
 describe("Docker Compose Healthcheck & Readiness Gates (Issue #2027)", () => {
   const devComposePath = path.resolve(__dirname, "../../docker-compose.dev.yml");

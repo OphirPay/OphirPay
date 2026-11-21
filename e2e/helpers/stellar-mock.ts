@@ -31,19 +31,19 @@
 // The XDR payloads are built here with the real SDK (Node side) so the values
 // are always structurally valid base64; no hand-rolled XDR bytes are involved.
 
+import type { Page, Route } from "@playwright/test";
 import {
   Account,
   Asset,
   Contract,
   Keypair,
+  nativeToScVal,
   Networks,
   Operation,
   StrKey,
   TransactionBuilder,
-  nativeToScVal,
   xdr,
 } from "@stellar/stellar-sdk";
-import type { Page, Route } from "@playwright/test";
 
 // ── Fixed (known-valid) addresses ──────────────────────────────
 // SIGNER_B is the repo's CHAIN_READ_SOURCE; SIGNER_A is the repo's DEMO_WALLET.

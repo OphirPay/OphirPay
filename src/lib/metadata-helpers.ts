@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import type { Metadata } from "next";
+
 import { canonicalUrl } from "@/lib/seo";
 
 /** Fallback used when a page supplies no (or a blank) title. */

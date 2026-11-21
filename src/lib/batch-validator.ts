@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import type { BatchRecipient } from "@/types";
 import { isValidStellarAddress } from "@/lib/stellar";
+import type { BatchRecipient } from "@/types";
 
 interface BatchValidationResult {
   valid: boolean;

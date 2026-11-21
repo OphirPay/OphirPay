@@ -3,10 +3,11 @@
  * Tests for docker-compose.yml and docker-compose.dev.yml (issue #1340).
  */
 
-import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync,readFileSync } from "node:fs";
 import path from "node:path";
+
 import { load } from "js-yaml";
+import { describe, expect,it } from "vitest";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");

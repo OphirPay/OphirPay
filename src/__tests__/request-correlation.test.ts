@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
 const { isSafeWebhookUrlAtDeliveryMock } = vi.hoisted(() => ({
   isSafeWebhookUrlAtDeliveryMock: vi.fn(),
@@ -11,15 +11,15 @@ vi.mock("@/lib/webhook-url-guard", () => ({
   isSafeWebhookUrlAtDelivery: isSafeWebhookUrlAtDeliveryMock,
 }));
 
-import proxy from "@/proxy";
 import { logger } from "@/lib/logger";
+import { REQUEST_ID_HEADER } from "@/lib/request-id";
 import {
   getCurrentRequestId,
   requestIdContext,
   withRequestLogging,
 } from "@/lib/request-logging";
-import { REQUEST_ID_HEADER } from "@/lib/request-id";
 import { deliverWebhook } from "@/lib/webhook-deliver";
+import proxy from "@/proxy";
 
 /**
  * Issue: API logs lacked consistent correlation IDs. These tests pin the

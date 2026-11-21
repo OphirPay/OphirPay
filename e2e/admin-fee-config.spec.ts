@@ -6,7 +6,8 @@
 // fee validation (the Save control is closed and the field is flagged). The
 // on-chain writes reuse the shared Soroban RPC + Horizon + fake-Freighter mocks.
 
-import { test, expect } from "@playwright/test";
+import { expect,test } from "@playwright/test";
+
 import { installAdminMocks, VALID_ADDRESS_B } from "./helpers/admin-mocks";
 
 test.describe("Fee configuration admin page", () => {

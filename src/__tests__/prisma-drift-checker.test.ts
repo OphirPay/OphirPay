@@ -3,12 +3,13 @@
 // Unit tests for scripts/verify-prisma-drift.mjs — the no-database Prisma
 // schema ⇄ migration drift checker (issue #404).
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  parseSchema,
-  parseMigrations,
-  replaySql,
   diffSchemaAndMigrations,
+  parseMigrations,
+  parseSchema,
+  replaySql,
 } from "../../scripts/verify-prisma-drift.mjs";
 
 // The drift checker is a plain .mjs script (no TS types); the shapes below

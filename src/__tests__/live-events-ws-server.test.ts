@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, afterEach } from "vitest";
-import net from "node:net";
 import http from "node:http";
+import net from "node:net";
+
+import { afterEach,describe, expect, it } from "vitest";
+
+import type { LiveEvent, LiveEventSource } from "@/lib/events/event-source";
 import { LiveEventsWsServer } from "@/lib/events/live-events-ws-server";
 import {
-  FrameDecoder,
   computeAcceptKey,
+  FrameDecoder,
 } from "@/lib/events/ws-protocol";
-import type { LiveEvent, LiveEventSource } from "@/lib/events/event-source";
 
 // ── Helpers ─────────────────────────────────────────────────────
 

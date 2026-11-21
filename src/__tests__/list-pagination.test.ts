@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { GET as getPayments } from "@/app/api/payments/route";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import { GET as getBatches } from "@/app/api/batches/route";
+import { GET as getPayments } from "@/app/api/payments/route";
 
 // ── Mocks ──────────────────────────────────────────────────────
 

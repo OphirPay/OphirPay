@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  shortenAddress,
-  formatAmount,
-  timeAgo,
-  getStatusColor,
   cn,
+  formatAmount,
+  getStatusColor,
+  shortenAddress,
+  timeAgo,
 } from "@/lib/utils";
 
 describe("shortenAddress", () => {

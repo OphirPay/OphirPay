@@ -1,24 +1,11 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import prisma from "@/lib/prisma";
 import {
-  sensitiveSuccessResponse,
-  badRequestError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
-import { logger } from "@/lib/logger";
-import { getAuthContext } from "@/lib/auth-session";
-import {
+  API_SCOPES,
+  assertMinimumKeyEntropy,
   deriveKeyPrefix,
   generateApiKey,
   hashApiKeyV2,
-  assertMinimumKeyEntropy,
-  API_SCOPES,
 } from "@/lib/api-auth";
-import { withRequestLogging } from "@/lib/request-logging";
-import { verifyCsrf } from "@/lib/csrf";
 import {
   activeApiKeyWhere,
   apiKeyLimitError,
@@ -27,9 +14,21 @@ import {
   isRetryableTransactionError,
 } from "@/lib/api-key-limits";
 import {
+  badRequestError,
+  handleApiError,
+  sensitiveSuccessResponse,
+  unauthorizedError,
+} from "@/lib/api-response";
+import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
+import { logger } from "@/lib/logger";
+import { withMetrics } from "@/lib/metrics-middleware";
+import prisma from "@/lib/prisma";
+import {
   consumeApiKeyMutationQuota,
   MAX_ACTIVE_API_KEYS,
 } from "@/lib/rate-limit";
+import { withRequestLogging } from "@/lib/request-logging";
 
 /** Validate an array of scopes against the known set. */
 function parseScopes(input: unknown): {

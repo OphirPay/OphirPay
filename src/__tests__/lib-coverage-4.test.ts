@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from 'vitest';
-import { ERRORS } from '@/lib/error-messages';
-import { SUCCESS_MESSAGES } from '@/lib/success-messages';
-import { PAGE_TITLES, PAGE_DESCRIPTIONS } from '@/lib/page-titles';
+import { describe, expect,it } from 'vitest';
+
 import { ARIA } from '@/lib/aria-labels';
-import { STORAGE_KEYS } from '@/lib/storage-keys';
-import { ROUTES, API_ROUTES } from '@/lib/route-paths';
-import { Z_INDEX } from '@/lib/z-index';
-import { RETRY_CONFIG } from '@/lib/retry-config';
-import { BREAKPOINTS, MEDIA } from '@/lib/responsive';
-import { FEATURE_FLAGS, isFeatureEnabled } from '@/lib/feature-flags';
 import { checkBrowserSupport } from '@/lib/browser-check';
-import { isPermissionRequested, NOTIFY, sendNotification } from '@/lib/notifications';
+import { API,APP, STELLAR, UI } from '@/lib/constants';
+import { ERRORS } from '@/lib/error-messages';
+import { FEATURE_FLAGS, isFeatureEnabled } from '@/lib/feature-flags';
+import { getCorsHeaders,getSecurityHeaders } from '@/lib/headers';
 import { getNetworkStatus, isMainnet } from '@/lib/network';
-import { getSecurityHeaders, getCorsHeaders } from '@/lib/headers';
-import { APP, STELLAR, UI, API } from '@/lib/constants';
-import { buildTxSummary, buildBatchSummary, shortenAddress, buildEventMessage } from '@/lib/string-builder';
+import { isPermissionRequested, NOTIFY, sendNotification } from '@/lib/notifications';
+import { PAGE_DESCRIPTIONS,PAGE_TITLES } from '@/lib/page-titles';
+import { BREAKPOINTS, MEDIA } from '@/lib/responsive';
+import { RETRY_CONFIG } from '@/lib/retry-config';
+import { API_ROUTES,ROUTES } from '@/lib/route-paths';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
+import { buildBatchSummary, buildEventMessage,buildTxSummary, shortenAddress } from '@/lib/string-builder';
+import { SUCCESS_MESSAGES } from '@/lib/success-messages';
+import { Z_INDEX } from '@/lib/z-index';
 
 describe('error-messages', () => {
   it('has all expected error keys', () => {

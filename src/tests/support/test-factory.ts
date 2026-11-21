@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import type { Payment, Batch, BatchRecipient } from "@/types";
+import type { Batch, BatchRecipient,Payment } from "@/types";
 
 /**
  * Test data factories for consistent test data across test suites.

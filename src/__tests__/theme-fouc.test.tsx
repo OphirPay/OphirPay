@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, renderHook, act } from "@testing-library/react";
-import { THEME_BLOCKING_SCRIPT } from "@/lib/theme-script";
-import { useTheme, ThemeProvider, getStoredTheme, getPrehydratedResolvedTheme } from "@/hooks/useTheme";
-import { Header } from "@/components/Header";
+import { act,fireEvent, render, renderHook, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { Header } from "@/components/Header";
+import { getPrehydratedResolvedTheme,getStoredTheme, ThemeProvider, useTheme } from "@/hooks/useTheme";
+import { THEME_BLOCKING_SCRIPT } from "@/lib/theme-script";
 
 vi.mock("@/components/WalletButton", () => ({
   WalletButton: () => <div data-testid="wallet-button" />,

@@ -11,21 +11,21 @@
 //   • disconnect cleanup + server-session revocation
 //   • balance refresh guarding
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type { FreighterAPI } from "@/types";
-import type { WalletId } from "@/lib/wallets";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
+import {
+  getFreighter,
+  useWallet as useFreighterWallet,
+  WalletProvider,
+} from "@/hooks/useFreighter";
 import {
   MultiWalletProvider,
   useWallet as useMultiWallet,
 } from "@/hooks/useMultiWallet";
-import {
-  WalletProvider,
-  useWallet as useFreighterWallet,
-  getFreighter,
-} from "@/hooks/useFreighter";
+import type { WalletId } from "@/lib/wallets";
+import type { FreighterAPI } from "@/types";
 
 // ── Mocks ──────────────────────────────────────────────────────
 
@@ -81,11 +81,11 @@ vi.mock("@/lib/client-auth", () => ({
   revokeSession: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { fetchXlmBalance } from "@/lib/stellar";
 import {
   establishSession,
   revokeSession,
 } from "@/lib/client-auth";
+import { fetchXlmBalance } from "@/lib/stellar";
 import { setActiveWalletId } from "@/lib/wallets";
 
 const multiWalletWrapper = ({ children }: { children: ReactNode }) => (

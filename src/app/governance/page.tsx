@@ -1,20 +1,21 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState } from "react";
 import Link from "next/link";
+import { useState } from "react";
+
+import { EmptyState } from "@/components/EmptyState";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
+import type { ApiError } from "@/hooks/useApiQuery";
+import { useApiMutation,useApiQuery } from "@/hooks/useApiQuery";
+import { useWallet } from "@/hooks/useMultiWallet";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
-import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
-import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { useToast } from "@/components/ui/Toast";
-import { useWallet } from "@/hooks/useMultiWallet";
-import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
-import type { ApiError } from "@/hooks/useApiQuery";
 
 interface Proposal {
   id: number;

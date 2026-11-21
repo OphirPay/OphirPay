@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Tests for the batch CSV import flow: robust parsing and field-level validation.
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  parseCsvText,
-  validateRecipientFields,
-  parseRecipientsCsvToRows,
   applyDuplicateErrors,
-  MAX_BATCH_RECIPIENTS,
   type CsvImportRow,
+  MAX_BATCH_RECIPIENTS,
+  parseCsvText,
+  parseRecipientsCsvToRows,
+  validateRecipientFields,
 } from "@/lib/csv-import";
 
 const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";

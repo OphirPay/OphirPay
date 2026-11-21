@@ -17,7 +17,8 @@
 // On-chain refunds are addressed by u64 ids; the mocked ledger assigns a
 // monotonic id per request, which the UI surfaces as "On-chain refund #<id>".
 
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page,test } from "@playwright/test";
+
 import {
   createRefundsState,
   installRefundsMocks,

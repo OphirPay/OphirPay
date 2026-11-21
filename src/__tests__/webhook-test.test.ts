@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
+import { ALL_WEBHOOK_EVENTS,WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 import { buildTestWebhookPayload } from "@/lib/webhook-test";
-import { WEBHOOK_EVENTS, ALL_WEBHOOK_EVENTS } from "@/app/api/webhooks/event-types";
 
 describe("buildTestWebhookPayload", () => {
   it("is clearly marked as a test on both the envelope and the data", () => {

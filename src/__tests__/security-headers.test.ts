@@ -18,9 +18,11 @@
  * `next.config.ts`, so self-hosted targets emit the identical headers.
  */
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect,it } from "vitest";
+
 import nextConfig from "../../next.config";
 
 interface HeaderEntry {

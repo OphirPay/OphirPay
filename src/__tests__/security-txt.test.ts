@@ -5,16 +5,17 @@
 // channels, keep it in sync with the repository copy, and make sure the retired
 // `security@ophirpay.com` mailbox is never advertised again.
 
-import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { describe, expect, it } from "vitest";
+
+import { GET, HEAD, OPTIONS } from "@/app/.well-known/security.txt/route";
 import {
+  generateSecurityTxt,
   SECURITY_TXT_CONTACTS,
   SECURITY_TXT_EXPIRES,
-  generateSecurityTxt,
 } from "@/lib/security-txt";
-import { GET, HEAD, OPTIONS } from "@/app/.well-known/security.txt/route";
 
 const root = path.resolve(__dirname, "../..");
 const repoFile = readFileSync(path.join(root, ".well-known", "security.txt"), "utf8");

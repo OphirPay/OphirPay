@@ -10,15 +10,15 @@
  * must rotate (never accumulate) credentials.
  */
 
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { beforeAll,describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({ default: {} }));
 
 import {
+  API_KEY_LEGACY_PATTERN,
   API_KEY_PREFIX,
   API_KEY_PREFIX_LENGTH,
   API_KEY_RANDOM_BYTES,
-  API_KEY_LEGACY_PATTERN,
   deriveKeyPrefix,
   hashApiKey,
   hashApiKeyV1,

@@ -12,9 +12,10 @@
  * enforced as a drift guard across every workflow.
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync,readFileSync } from "node:fs";
 import path from "node:path";
+
+import { beforeAll,describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");

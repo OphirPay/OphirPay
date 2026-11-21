@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
-  fetchXlmPrice,
-  convertXlmToUsd,
-  formatFiatAmount,
   clearPriceCache,
-  setCachedPrice,
-  ROUNDING_RULES,
-  PRICE_CACHE_TTL_MS,
+  convertXlmToUsd,
+  fetchXlmPrice,
+  formatFiatAmount,
   PRICE_CACHE_MAX_AGE_MS,
+  PRICE_CACHE_TTL_MS,
+  ROUNDING_RULES,
+  setCachedPrice,
 } from "@/lib/price";
 
 describe("Price Utility & Precision Rules", () => {

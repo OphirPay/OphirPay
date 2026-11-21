@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { fetchRecentContractRecords } from "@/lib/on-chain-records";
 
 afterEach(() => {

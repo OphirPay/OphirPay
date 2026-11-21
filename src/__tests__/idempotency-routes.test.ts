@@ -17,7 +17,7 @@
  *   • without Redis the route still works (degraded, not broken)
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const {
   mockClaim,
@@ -65,12 +65,12 @@ vi.mock("@/lib/api-cache", () => ({
   invalidateCaches: mockInvalidateCaches,
 }));
 
-import { generateCsrfToken } from "@/lib/csrf";
-import { IDEMPOTENCY_RESPONSE_TTL_SECONDS } from "@/lib/idempotency";
-import { POST as createPayment } from "@/app/api/payments/route";
 import { POST as createBatch } from "@/app/api/batches/route";
 import { POST as createEscrow } from "@/app/api/escrows/route";
+import { POST as createPayment } from "@/app/api/payments/route";
 import { POST as createStream } from "@/app/api/streams/route";
+import { generateCsrfToken } from "@/lib/csrf";
+import { IDEMPOTENCY_RESPONSE_TTL_SECONDS } from "@/lib/idempotency";
 
 const USER_ID = "user-1";
 const KEY = "idempotency-key-12345";

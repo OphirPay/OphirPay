@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import prisma from "@/lib/prisma";
+import type { DeliveryStatus } from "@prisma/client";
+
 import type { WebhookEventType } from "@/app/api/webhooks/event-types";
+import prisma from "@/lib/prisma";
 import {
   REPLAY_DEFAULT_COUNT,
   REPLAY_MAX_COUNT,
   REPLAY_MAX_DAYS,
 } from "@/lib/webhook-replay-config";
-import type { DeliveryStatus } from "@prisma/client";
 
 export interface StoredWebhookPayload {
   event: string;

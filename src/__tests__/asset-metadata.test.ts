@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import {
-  resolveAssetMetadata,
   formatAssetDisplay,
-  stellarTomlUrl,
   resetAssetMetadataCache,
+  resolveAssetMetadata,
   type StellarTomlDocument,
+  stellarTomlUrl,
 } from "@/lib/asset-metadata";
 import { TimeoutError } from "@/lib/timeout";
 

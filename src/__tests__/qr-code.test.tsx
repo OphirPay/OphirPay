@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import { QrCode } from "@/components/ui/QrCode";
 
 const toDataURLMock = vi.fn();

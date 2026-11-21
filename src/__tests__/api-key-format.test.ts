@@ -4,7 +4,7 @@
 // match the documented format at creation: op_{env}_{32_hex_bytes}_{4_byte_crc}.
 // Digests are version-tagged, and keys minted before the change must keep authenticating.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -17,25 +17,25 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import prisma from "@/lib/prisma";
 import {
-  API_KEY_PREFIX,
-  API_KEY_PATTERN,
-  API_KEY_LOOKUP_PATTERN,
-  API_KEY_LEGACY_HEX_LENGTH,
   API_KEY_DIGEST_VERSION,
-  calculateCrc32,
-  validateKeyFormat,
+  API_KEY_LEGACY_HEX_LENGTH,
+  API_KEY_LOOKUP_PATTERN,
+  API_KEY_PATTERN,
+  API_KEY_PREFIX,
   apiKeyLookupHashes,
   assertValidApiKeyFormat,
   authenticateRequest,
+  calculateCrc32,
   deriveKeyPrefix,
   generateApiKey,
   hashApiKey,
   hashApiKeyV1,
   hashApiKeyV2,
   isValidApiKeyFormat,
+  validateKeyFormat,
 } from "@/lib/api-auth";
+import prisma from "@/lib/prisma";
 
 const PRE_701_LEGACY_KEY = `${API_KEY_PREFIX}${"a1b2c3d4".repeat(6)}`; // 48 hex chars (oph_)
 const POST_701_LEGACY_KEY = `${API_KEY_PREFIX}${"a1b2c3d4".repeat(8)}`; // 64 hex chars (oph_)

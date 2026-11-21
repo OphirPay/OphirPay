@@ -29,8 +29,8 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
+
 import { classifyApiError, logApiError } from "@/lib/api-response";
-import { getCurrentRequestId } from "@/lib/request-logging";
 import {
   PROBLEM_CONTENT_TYPE,
   PROBLEM_TYPE_BASE,
@@ -38,6 +38,7 @@ import {
   type ProblemDetails,
   type ProblemFieldError,
 } from "@/lib/problem-details";
+import { getCurrentRequestId } from "@/lib/request-logging";
 
 /**
  * Canonical `title` for a status code.

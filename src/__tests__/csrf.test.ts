@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
 import {
-  generateCsrfToken,
+  auditRouteProtection,
   csrfCookieHeader,
-  validateCsrfToken,
+  findUnprotectedRoutes,
+  generateCsrfToken,
   getCsrfTokenFromCookies,
   getCsrfTokenFromHeaders,
+  validateCsrfToken,
   verifyCsrf,
   withCsrf,
-  findUnprotectedRoutes,
-  auditRouteProtection,
 } from "@/lib/csrf";
 
 describe("CSRF Protection", () => {

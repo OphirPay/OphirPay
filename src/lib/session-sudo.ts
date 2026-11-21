@@ -33,14 +33,15 @@
  */
 
 import crypto from "crypto";
-import { getAuthSecret, type AuthContext } from "@/lib/auth-session";
+
+import { errorResponse } from "@/lib/api-response";
+import { type AuthContext,getAuthSecret } from "@/lib/auth-session";
 import {
-  createChallengeToken,
   challengeMessage,
+  createChallengeToken,
   verifyChallengeToken,
   verifyWalletSignature,
 } from "@/lib/challenge";
-import { errorResponse } from "@/lib/api-response";
 import { ERROR_CODES } from "@/lib/error-codes";
 
 /** How long a cryptographic re-verification stays valid. */

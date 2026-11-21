@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
-import { ContractErrorType, ContractError, classifyContractError } from "@/lib/contracts";
+import { describe, expect,it } from "vitest";
+
+import { classifyContractError,ContractError, ContractErrorType } from "@/lib/contracts";
 
 describe("ContractError", () => {
   it("creates a CONTRACT error", () => {

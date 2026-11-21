@@ -1,6 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
+import { useState, useEffect } from "react";
 import {
   RPC_HEALTH_LATENCY_THRESHOLD_MS,
   formatRpcEndpoint,
@@ -8,18 +9,37 @@ import {
 } from "@/hooks/useRpcHealth";
 
 /**
- * Thin, non-blocking warning shown while Soroban RPC is degraded.
+ * Thin, non-blocking warning shown while Soroban RPC is degraded or browser is offline.
  *
  * It is mounted in `AppShell` outside the route `ErrorBoundary`, so a failing
  * RPC never replaces page content with an error screen and a page-level crash
  * never unmounts the banner. The banner is purely informational: it does not
  * intercept requests, retry transactions, or alter any error boundary.
  *
- * Visible when the latest probe failed (5xx / 429 / timeout) or its latency
+ * Visible when browser connection is lost (`offline` event / `!navigator.onLine`),
+ * or when the latest probe failed (5xx / 429 / timeout) or its latency
  * exceeded {@link RPC_HEALTH_LATENCY_THRESHOLD_MS}. A single healthy probe
- * clears it automatically.
+ * or network reconnection clears it automatically.
  */
 export function NetworkStatusBanner() {
+  const [isOffline, setIsOffline] = useState(false);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    if (typeof navigator !== "undefined") {
+      setIsOffline(!navigator.onLine);
+    }
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   const {
     status,
     latencyMs,
@@ -28,6 +48,29 @@ export function NetworkStatusBanner() {
     usingFallback,
     refresh,
   } = useRpcHealth();
+
+  if (isOffline) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="network-status-banner"
+        data-state="offline"
+        className="sticky top-0 z-50 w-full border-b border-amber-400 bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm dark:bg-amber-600"
+      >
+        <div className="mx-auto flex max-w-7xl items-center justify-center gap-x-2">
+          <span
+            aria-hidden="true"
+            className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-white animate-pulse"
+          />
+          <span>
+            You are currently offline. Network operations and transaction submissions are unavailable.
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   if (status !== "degraded") return null;
 

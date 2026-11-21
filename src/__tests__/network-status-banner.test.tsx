@@ -116,4 +116,30 @@ describe("NetworkStatusBanner", () => {
       expect(screen.queryByTestId("network-status-banner")).toBeNull()
     );
   });
+
+  it("renders amber offline banner when navigator.onLine is false and clears when online", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(healthPayload()));
+    Object.defineProperty(navigator, "onLine", {
+      value: false,
+      configurable: true,
+      writable: true,
+    });
+
+    render(<NetworkStatusBanner />);
+
+    const banner = await screen.findByTestId("network-status-banner");
+    expect(banner).toHaveAttribute("data-state", "offline");
+    expect(banner).toHaveTextContent("You are currently offline");
+
+    Object.defineProperty(navigator, "onLine", {
+      value: true,
+      configurable: true,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("online"));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("network-status-banner")).toBeNull()
+    );
+  });
 });

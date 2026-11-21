@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { USDC_TESTNET } from "@/lib/assets";
 
 import { AssetSelector, filterAssets } from "@/components/AssetSelector";
 import type { AssetInfo } from "@/lib/assets";
@@ -172,5 +173,130 @@ describe("filterAssets", () => {
 
   it("does not match the native asset on a missing issuer", () => {
     expect(filterAssets([XLM], "undefined")).toEqual([]);
+  });
+});
+
+
+describe("AssetSelector Accessibility & Keyboard Navigation (Issue #1893)", () => {
+  const onSelectMock = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders trigger button with trigger accessibility attributes", () => {
+    render(
+      <AssetSelector
+        publicKey="GWT7SDH7366X75RZDMUOCSWWRJUF3IJKJI4FYHZAEQSPI626PO4LZZF4"
+        selectedAsset={XLM}
+        onSelect={onSelectMock}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: /Select asset/i });
+    expect(trigger).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("XLM")
+    );
+  });
+
+  it("opens listbox with role='listbox' and options with role='option'", () => {
+    render(
+      <AssetSelector
+        publicKey="GWT7SDH7366X75RZDMUOCSWWRJUF3IJKJI4FYHZAEQSPI626PO4LZZF4"
+        selectedAsset={XLM}
+        onSelect={onSelectMock}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: /Select asset/i });
+    fireEvent.click(trigger);
+
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toBeInTheDocument();
+
+    const options = screen.getAllByRole("option");
+    expect(options.length).toBeGreaterThanOrEqual(2);
+
+    const xlmOption = options.find((opt) => opt.textContent?.includes("XLM"));
+    expect(xlmOption).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("navigates options via ArrowDown and ArrowUp keys", () => {
+    render(
+      <AssetSelector
+        publicKey="GWT7SDH7366X75RZDMUOCSWWRJUF3IJKJI4FYHZAEQSPI626PO4LZZF4"
+        selectedAsset={XLM}
+        onSelect={onSelectMock}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: /Select asset/i });
+    // Open via keyboard ArrowDown
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toBeInTheDocument();
+
+    // Navigate to next item
+    fireEvent.keyDown(listbox, { key: "ArrowDown" });
+    const options = screen.getAllByRole("option");
+    expect(options[1]).toHaveFocus();
+
+    // Navigate back up
+    fireEvent.keyDown(listbox, { key: "ArrowUp" });
+    expect(options[0]).toHaveFocus();
+  });
+
+  it("selects asset via Enter key and closes the listbox", async () => {
+    render(
+      <AssetSelector
+        publicKey="GWT7SDH7366X75RZDMUOCSWWRJUF3IJKJI4FYHZAEQSPI626PO4LZZF4"
+        selectedAsset={XLM}
+        onSelect={onSelectMock}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: /Select asset/i });
+    fireEvent.click(trigger);
+
+    const listbox = screen.getByRole("listbox");
+    // Focus next asset (USDC)
+    fireEvent.keyDown(listbox, { key: "ArrowDown" });
+    // Press Enter to select
+    fireEvent.keyDown(listbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(onSelectMock).toHaveBeenCalledWith(USDC_TESTNET);
+    });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the listbox and restores focus to trigger when Escape is pressed", () => {
+    render(
+      <AssetSelector
+        publicKey="GWT7SDH7366X75RZDMUOCSWWRJUF3IJKJI4FYHZAEQSPI626PO4LZZF4"
+        selectedAsset={XLM}
+        onSelect={onSelectMock}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: /Select asset/i });
+    fireEvent.click(trigger);
+
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toBeInTheDocument();
+
+    fireEvent.keyDown(listbox, { key: "Escape" });
+
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 });

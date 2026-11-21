@@ -6,7 +6,9 @@
 // only fetched when the Contracts route is actually opened, keeping the initial
 // bundle lean. Rendered through next/dynamic with a card skeleton fallback.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { executeWithCircuitBreaker } from "@/lib/stellar-rpc";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { useWallet } from "@/hooks/useMultiWallet";
@@ -40,6 +42,64 @@ const FUNCTIONS = [
   { name: "get_owner", label: "Get Contract Owner", readOnly: true },
   { name: "get_payment", label: "Get Payment #1", args: "1", readOnly: true },
 ];
+
+async function getContractEvents(contractId: string) {
+  return executeWithCircuitBreaker(async (server) => {
+    const { sequence } = await server.getLatestLedger();
+    return server.getEvents({
+      startLedger: Math.max(1, sequence - 1000),
+      filters: [{ type: "contract", contractIds: [contractId] }],
+      limit: 20,
+    });
+  });
+}
+
+function ContractEventLogs({ contractId }: { contractId: string }) {
+  const [result, setResult] = useState<Awaited<ReturnType<typeof getContractEvents>>>();
+  const [failed, setFailed] = useState(false);
+  const loading = !result && !failed;
+
+  useEffect(() => {
+    let active = true;
+    getContractEvents(contractId).then(
+      (events) => { if (active) setResult(events); },
+      () => { if (active) setFailed(true); }
+    );
+    return () => { active = false; };
+  }, [contractId]);
+
+  return (
+    <section className="rounded-xl border p-4" aria-labelledby="contract-events">
+      <h2 id="contract-events" className="mb-3 font-semibold">Contract event logs</h2>
+      <div role="status" className="sr-only">{loading ? "Loading contract event logs" : ""}</div>
+      <div className="min-h-44">
+      <table className="w-full table-fixed text-left text-sm leading-4" aria-busy={loading}>
+        <thead><tr><th scope="col">Ledger</th><th scope="col">Type</th><th scope="col">Event ID</th></tr></thead>
+        <tbody>
+          {loading && Array.from({ length: 5 }, (_, index) => (
+            <tr key={index} aria-hidden="true">
+              {[0, 1, 2].map((column) => (
+                <td key={column} className="py-2 pr-4">
+                  <LoadingSkeleton lines={1} className="motion-reduce:animate-none" />
+                </td>
+              ))}
+            </tr>
+          ))}
+          {result?.events.map((event) => (
+            <tr key={event.id}>
+              <td className="py-2">{event.ledger}</td>
+              <td>{event.type}</td>
+              <td className="truncate" title={event.id}>{event.id}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </div>
+      {failed && <p role="alert">Contract event logs could not be loaded.</p>}
+      {result?.events.length === 0 && <p>No recent contract events.</p>}
+    </section>
+  );
+}
 
 export function ContractsExplorer() {
   usePageTitle(PAGE_TITLES.CONTRACTS);
@@ -274,6 +334,8 @@ export function ContractsExplorer() {
       )}
 
       {/* Transaction History */}
+      <ContractEventLogs key={contractId} contractId={contractId} />
+
       {history.length > 0 && (
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 p-5">
           <h2 className="text-lg font-semibold mb-3">Transaction History</h2>

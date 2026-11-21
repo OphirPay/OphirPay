@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
@@ -145,7 +146,7 @@ export default function GovernanceProposalDetailPage() {
 
   return (
     <main className="space-y-6 animate-fade-in">
-      <Link href="/governance" className="text-sm text-ophir-700 dark:text-ophir-300 hover:underline">← Back to governance</Link>
+      <Breadcrumb items={[{ label: "Governance", href: "/governance" }, { label: proposal.title || "Proposal #" + proposal.id }]} />
       <Card className="p-6 space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">

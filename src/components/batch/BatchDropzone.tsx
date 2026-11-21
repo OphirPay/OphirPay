@@ -1,11 +1,10 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useContext,useRef, useState } from "react";
-
+import { useCallback, useRef, useState, useContext } from "react";
+import { cn } from "@/lib/utils";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { ToastContext } from "@/components/ui/Toast";
-import { cn } from "@/lib/utils";
 
 export type DropzoneState = "idle" | "active" | "parsing" | "error";
 
@@ -399,6 +398,119 @@ export function BatchDropzone({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Stellar Memo Length & Byte Validation (Issue #1898) ─────────────
+
+/** Maximum UTF-8 byte length for a Stellar transaction memo. */
+export const STELLAR_MEMO_MAX_BYTES = 28;
+
+/**
+ * Calculate the exact UTF-8 byte length of a memo string.
+ * Uses TextEncoder to accurately measure multi-byte characters and emojis.
+ */
+export function getMemoByteLength(memo: string): number {
+  if (!memo) return 0;
+  return new TextEncoder().encode(memo).length;
+}
+
+/**
+ * Return detailed byte length, remaining bytes, and overflow status for a memo.
+ */
+export function getMemoByteDetails(
+  memo: string,
+  maxBytes: number = STELLAR_MEMO_MAX_BYTES
+): {
+  byteLength: number;
+  remaining: number;
+  maxBytes: number;
+  exceeds: boolean;
+  isNearLimit: boolean;
+} {
+  const byteLength = getMemoByteLength(memo);
+  const remaining = maxBytes - byteLength;
+  const exceeds = byteLength > maxBytes;
+  const isNearLimit = byteLength >= 20 && !exceeds;
+  return {
+    byteLength,
+    remaining,
+    maxBytes,
+    exceeds,
+    isNearLimit,
+  };
+}
+
+export interface MemoByteCounterProps {
+  memo: string;
+  maxBytes?: number;
+  className?: string;
+  showWhenEmpty?: boolean;
+}
+
+/**
+ * Real-time character & UTF-8 byte counter with warning badge when exceeding 28 bytes.
+ */
+export function MemoByteCounter({
+  memo,
+  maxBytes = STELLAR_MEMO_MAX_BYTES,
+  className,
+  showWhenEmpty = false,
+}: MemoByteCounterProps) {
+  if (!memo && !showWhenEmpty) return null;
+
+  const { byteLength, remaining, exceeds, isNearLimit } = getMemoByteDetails(
+    memo,
+    maxBytes
+  );
+
+  return (
+    <div
+      data-testid="memo-byte-container"
+      data-state={exceeds ? "error" : isNearLimit ? "warning" : "ok"}
+      className={cn("flex flex-wrap items-center gap-1.5 text-xs font-mono mt-1", className)}
+    >
+      {exceeds && (
+        <span
+          role="alert"
+          data-testid="memo-warning-badge"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800"
+        >
+          <svg
+            className="w-3 h-3 text-red-600 dark:text-red-400 shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+          Warning: Exceeds {maxBytes}-byte limit ({byteLength - maxBytes}B over)
+        </span>
+      )}
+      <span
+        data-testid="memo-byte-counter"
+        className={cn(
+          "transition-colors",
+          exceeds
+            ? "text-red-600 dark:text-red-400 font-semibold"
+            : isNearLimit
+            ? "text-amber-600 dark:text-amber-400 font-medium"
+            : "text-gray-500 dark:text-gray-400"
+        )}
+      >
+        {remaining >= 0
+          ? `${remaining} bytes remaining`
+          : `${Math.abs(remaining)} bytes over limit`}{" "}
+        <span className="opacity-70">
+          ({byteLength}/{maxBytes} B)
+        </span>
+      </span>
     </div>
   );
 }

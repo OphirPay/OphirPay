@@ -21,6 +21,8 @@ import {
   formatAmountRange,
   stroopsToDisplay,
 } from "@/lib/amount";
+import { formatStellarAmount, parseXlmAmount } from "@/lib/stellar-amount";
+import { formatStellarAmount as formatFromStellarPackage } from "@/lib/stellar/format";
 import {
   formatXlm,
   formatFiat,
@@ -230,5 +232,57 @@ describe("formatAmountRange", () => {
     expect(formatAmountRange(10.5, 10.5, "$")).toBe("$10.5");
     expect(formatAmountRange(0.25, 0.5, "$")).toBe("$0.25 — $0.5");
     expect(formatAmountRange(-5, -1, "$")).toBe("$-5 — $-1");
+  });
+});
+
+describe("formatStellarAmount boundary values (issue #1919)", () => {
+  const MAX_INT64 = BigInt("9223372036854775807");
+  const MIN_INT64 = BigInt("-9223372036854775807");
+
+  it("correctly formats zero token amounts across number, string, and BigInt inputs", () => {
+    expect(formatStellarAmount(0)).toBe("0");
+    expect(formatStellarAmount("0")).toBe("0");
+    expect(formatStellarAmount(BigInt(0))).toBe("0");
+    expect(formatFromStellarPackage(0)).toBe("0");
+  });
+
+  it("formats the minimum non-zero stroop amount (0.0000001 / 1 stroop) losslessly without exponential notation", () => {
+    expect(formatStellarAmount(1)).toBe("0.0000001");
+    expect(formatStellarAmount("1")).toBe("0.0000001");
+    expect(formatStellarAmount(BigInt(1))).toBe("0.0000001");
+    expect(formatStellarAmount(1)).not.toMatch(/[eE]/);
+  });
+
+  it("formats micro-stroop intermediate boundaries with trailing zero stripping", () => {
+    expect(formatStellarAmount(10)).toBe("0.000001");
+    expect(formatStellarAmount(100)).toBe("0.00001");
+    expect(formatStellarAmount(1_000)).toBe("0.0001");
+    expect(formatStellarAmount(10_000)).toBe("0.001");
+    expect(formatStellarAmount(100_000)).toBe("0.01");
+    expect(formatStellarAmount(1_000_000)).toBe("0.1");
+    expect(formatStellarAmount(10_000_000)).toBe("1");
+    expect(formatStellarAmount(12_500_000)).toBe("1.25");
+  });
+
+  it("formats negative amounts preserving correct sign prefix across fractions and whole numbers", () => {
+    expect(formatStellarAmount(-1)).toBe("-0.0000001");
+    expect(formatStellarAmount("-1")).toBe("-0.0000001");
+    expect(formatStellarAmount(BigInt(-1))).toBe("-0.0000001");
+    expect(formatStellarAmount(-10_000_000)).toBe("-1");
+    expect(formatStellarAmount(-12_500_000)).toBe("-1.25");
+  });
+
+  it("formats maximum and minimum int64 representation without floating point overflow", () => {
+    // 9,223,372,036,854,775,807 stroops = 922,337,203,685.4775807 XLM
+    expect(formatStellarAmount(MAX_INT64)).toBe("922337203685.4775807");
+    expect(formatStellarAmount(MAX_INT64.toString())).toBe("922337203685.4775807");
+    expect(formatStellarAmount(MIN_INT64)).toBe("-922337203685.4775807");
+    expect(formatStellarAmount(MIN_INT64.toString())).toBe("-922337203685.4775807");
+  });
+
+  it("maintains 100% round-trip parity with parseXlmAmount across boundaries", () => {
+    expect(parseXlmAmount(formatStellarAmount(1))).toBe(BigInt(1));
+    expect(parseXlmAmount(formatStellarAmount(10_000_000))).toBe(BigInt(10_000_000));
+    expect(parseXlmAmount(formatStellarAmount(MAX_INT64))).toBe(MAX_INT64);
   });
 });

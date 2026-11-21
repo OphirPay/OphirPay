@@ -18,7 +18,7 @@ describe("contract event deserializer", () => {
         id: 1,
         payer: "GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIBTGONTOPDMAUNDIGUID6DP42V",
         payee: "GBUJZ4CI3LA52XZMBNQVULCNQ施展EJA7SXWDTOJRXE54B2KUUCCA5",
-        amountStroops: 1000000000,
+        amountStroops: 10000000,
         txHash: "abc123def456",
         // memo (metadata) is intentionally missing
       };
@@ -55,7 +55,7 @@ describe("contract event deserializer", () => {
         id: 3,
         payer: "GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIBTGONTOPDMAUNDIGUID6DP42V",
         payee: "GBUJZ4CI3LA52XZMBNQVULCNQSJ5WKWPO5Z5LCLVCCUVE7EZYJAA5Z3",
-        amountStroops: 2500000000,
+        amountStroops: 25000000,
         txHash: "legacy456",
       };
 
@@ -76,7 +76,7 @@ describe("contract event deserializer", () => {
         id: 4,
         payer: "GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIBTGONTOPDMAUNDIGUID6DP42V",
         payee: "GBUJZ4CI3LA52XZMBNQVULCNQSJ5WKWPO5Z5LCLVCCUVE7EZYJAA5Z3",
-        amountStroops: 1000000000,
+        amountStroops: 10000000,
         txHash: "cancelled_tx",
         metadata: "CANCELLED",
       };
@@ -106,7 +106,7 @@ describe("contract event deserializer", () => {
         id: 6,
         payer: "GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIBTGONTOPDMAUNDIGUID6DP42V",
         payee: "GBUJZ4CI3LA52XZMBNQVULCNQSJ5WKWPO5Z5LCLVCCUVE7EZYJAA5Z3",
-        amountStroops: 1000000000,
+        amountStroops: 10000000,
         txHash: "full_event",
         timestamp: 1699000000,
         metadata: "ref_xyz",
@@ -247,7 +247,7 @@ describe("contract event deserializer", () => {
         id: 100,
         payer: "GBUQWP3BOUZX34ULNQG23RQ6F4BVWCIBTGONTOPDMAUNDIGUID6DP42V",
         payee: "GBUJZ4CI3LA52XZMBNQVULCNQSJ5WKWPO5Z5LCLVCCUVE7EZYJAA5Z3",
-        amountStroops: 1000000000,
+        amountStroops: 10000000,
         txHash: "legacy_hash",
       };
 

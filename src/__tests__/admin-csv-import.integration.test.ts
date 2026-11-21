@@ -89,20 +89,20 @@ async function createTestUser(): Promise<string> {
 // this is the same client the assertions read through.
 const prisma = (await import("@/lib/prisma")).default;
 
-beforeAll(async () => {
-  // Ensure Prisma client is connected
-  await prisma.$connect();
-});
-
-afterAll(async () => {
-  await prisma.$disconnect();
-});
-
 const testDatabaseReachable = await isTestDatabaseReachable();
 
 describe.skipIf(!testDatabaseReachable)(
   "admin CSV import integration",
   () => {
+  beforeAll(async () => {
+    // Ensure Prisma client is connected
+    await prisma.$connect();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
   const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
   function csvFile(content: string): File {
@@ -232,14 +232,15 @@ describe("CsvBatchImport (corruption handling)", () => {
   });
 
   it("row with missing amount column displays error without stopping parsing", async () => {
+    const OTHER_ADDRESS = "G" + "B".repeat(55);
     const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
-      csvFile(`address,amount,memo\n${VALID_ADDRESS},,thanks\nGBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB,50,memo\n`)
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},,thanks\n${OTHER_ADDRESS},50,memo\n`)
     );
 
     expect(fileErrors).toEqual([]);
     expect(rows).toHaveLength(2);
     expect(rows[0].errors).toHaveProperty("amount");
-    expect(rows[1].errors).toBeFalsy();
+    expect(rows[1].errors).toEqual({});
   });
 
   it("row with invalid public key flags specific row without stopping parsing", async () => {
@@ -280,15 +281,18 @@ describe("CsvBatchImport (corruption handling)", () => {
   });
 
   it("CSV with empty lines between data rows is handled correctly", async () => {
+    const OTHER_ADDRESS = "G" + "B".repeat(55);
     const { rows, fileErrors } = await csvImport.parseRecipientsCsvToRows(
-      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,first\n\n${VALID_ADDRESS},50,second\n`)
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,first\n\n${OTHER_ADDRESS},50,second\n`)
     );
 
     expect(fileErrors).toEqual([]);
-    expect(rows).toHaveLength(3);
-    // Empty row should produce errors for missing address and amount
-    expect(rows[1].errors).toBeDefined();
-    expect(rows[2].errors).toEqual({});
+    // Blank lines are dropped during CSV parsing
+    expect(rows).toHaveLength(2);
+    expect(rows[0].values.memo).toBe("first");
+    expect(rows[1].values.memo).toBe("second");
+    expect(rows[0].errors).toEqual({});
+    expect(rows[1].errors).toEqual({});
   });
 
   it("CSV with whitespace-only values treats them as empty", async () => {

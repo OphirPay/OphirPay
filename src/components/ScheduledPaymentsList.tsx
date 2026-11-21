@@ -25,11 +25,24 @@ export interface ScheduledPaymentRow {
 }
 
 const STATUS_STYLES: Record<ScheduledPaymentRow["status"], string> = {
-  SCHEDULED: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  PROCESSING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  EXECUTED: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  FAILED: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  CANCELLED: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
+  SCHEDULED:
+    "bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-700",
+  PROCESSING:
+    "bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-700",
+  EXECUTED:
+    "bg-green-100 text-green-900 border border-green-300 dark:bg-green-950 dark:text-green-200 dark:border-green-700",
+  FAILED:
+    "bg-red-100 text-red-900 border border-red-300 dark:bg-red-950 dark:text-red-200 dark:border-red-700",
+  CANCELLED:
+    "bg-gray-200 text-gray-800 border border-gray-400 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-600",
+};
+
+const STATUS_INDICATORS: Record<ScheduledPaymentRow["status"], string> = {
+  SCHEDULED: "◷",
+  PROCESSING: "⟳",
+  EXECUTED: "✓",
+  FAILED: "✕",
+  CANCELLED: "⊘",
 };
 
 /**
@@ -120,7 +133,7 @@ export default function ScheduledPaymentsList() {
                 </p>
                 {payment.status === "FAILED" && payment.errorMessage && (
                   <p
-                    className="text-xs text-red-600 dark:text-red-400 truncate"
+                    className="text-xs text-red-700 dark:text-red-300 truncate"
                     title={payment.errorMessage}
                   >
                     {payment.errorMessage}
@@ -140,15 +153,16 @@ export default function ScheduledPaymentsList() {
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <span
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[payment.status]}`}
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[payment.status]}`}
                 >
-                  {payment.status.replace(/_/g, " ").toLowerCase()}
+                  <span aria-hidden="true">{STATUS_INDICATORS[payment.status]}</span>
+                  <span>{payment.status.replace(/_/g, " ").toLowerCase()}</span>
                 </span>
                 {payment.status === "SCHEDULED" && (
                   <button
                     onClick={() => handleCancel(payment.id)}
                     disabled={cancelMutation.isPending}
-                    className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 transition-colors"
+                    className="text-xs text-red-600 hover:text-red-800 dark:text-red-300 dark:hover:text-red-200 disabled:opacity-50 transition-colors"
                   >
                     Cancel
                   </button>

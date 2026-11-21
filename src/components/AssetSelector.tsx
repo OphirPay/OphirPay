@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   XLM_ASSET,
@@ -128,7 +128,11 @@ export function AssetSelector({
   disabled = false,
   assets = KNOWN_ASSETS,
 }: AssetSelectorProps) {
-  const [balances, setBalances] = useState<AssetBalance[]>([]);
+  const [accountBalances, setAccountBalances] = useState<{
+    publicKey: string;
+    values: AssetBalance[];
+  } | null>(null);
+  const balances = accountBalances?.publicKey === publicKey ? accountBalances?.values ?? [] : [];
   const [query, setQuery] = useState("");
   const [trustlineStatus, setTrustlineStatus] = useState<
     Record<string, { hasTrustline: boolean; checking: boolean; state?: TrustlineState }>
@@ -141,21 +145,26 @@ export function AssetSelector({
   // Absent/`null` entries fall back to the built-in display name.
   const [metadata, setMetadata] = useState<Record<string, ClientAssetMetadata | null>>({});
 
+  const balanceGeneration = useRef(0);
   const fetchBalances = useCallback(async () => {
     if (!publicKey) return;
+    const generation = ++balanceGeneration.current;
     setLoading(true);
     try {
       const allBalances = await fetchAllBalances(publicKey);
-      setBalances(allBalances);
+      if (generation === balanceGeneration.current) setAccountBalances({ publicKey, values: allBalances });
     } catch {
       // silent
     } finally {
-      setLoading(false);
+      if (generation === balanceGeneration.current) setLoading(false);
     }
   }, [publicKey]);
 
   useEffect(() => {
-    fetchBalances();
+    setAccountBalances(null);
+    setLoading(false);
+    void fetchBalances();
+    return () => { balanceGeneration.current += 1; };
   }, [fetchBalances]);
 
   // Resolve ticker/issuer names for the non-native assets we might display.

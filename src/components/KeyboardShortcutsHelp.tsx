@@ -1,10 +1,9 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState } from "react";
-
-import { Kbd } from "@/components/ui/Kbd";
+import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
+import { Kbd } from "@/components/ui/Kbd";
 
 function ShortcutRow({
   keys,
@@ -31,11 +30,29 @@ function ShortcutRow({
 export function KeyboardShortcutsHelp() {
   const [open, setOpen] = useState(false);
 
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key !== "?" || event.defaultPrevented || event.repeat ||
+          event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+
+      const target = event.target instanceof HTMLElement ? event.target : document.activeElement;
+      if (target instanceof HTMLElement &&
+          (target.isContentEditable || target.closest("input, textarea, select, [role='textbox']"))) return;
+
+      event.preventDefault();
+      setOpen((current) => !current);
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
+        aria-keyshortcuts="?"
         aria-haspopup="dialog"
         aria-expanded={open}
         title="Keyboard shortcuts"
@@ -78,6 +95,7 @@ export function KeyboardShortcutsHelp() {
             <h3 id="dialog-shortcuts" className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
               Dialogs and menus
             </h3>
+            <ShortcutRow keys={["?"]}>Toggle keyboard shortcuts</ShortcutRow>
             <ShortcutRow keys={["Esc"]}>Close an open dialog or menu</ShortcutRow>
           </section>
         </div>

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { fireEvent,render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { BatchConfirmDialog } from "@/components/BatchConfirmDialog";
 
 const baseProps = {
@@ -14,6 +13,35 @@ const baseProps = {
 };
 
 describe("BatchConfirmDialog", () => {
+  it("traps focus in both directions and restores the previous focus", () => {
+    const page = (open: boolean) => (
+      <>
+        <button>Review batch</button>
+        <button>Outside dialog</button>
+        <BatchConfirmDialog {...baseProps} open={open} recipients={[]} />
+      </>
+    );
+    const { rerender } = render(page(false));
+    const trigger = screen.getByRole("button", { name: "Review batch" });
+    trigger.focus();
+    rerender(page(true));
+
+    const close = screen.getByRole("button", { name: "Close dialog" });
+    const confirm = screen.getByRole("button", { name: "Confirm & Sign" });
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: "Tab" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(confirm).toHaveFocus();
+
+    const dialog = screen.getByRole("dialog");
+    screen.getByRole("button", { name: "Outside dialog" }).focus();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    rerender(page(false));
+    expect(trigger).toHaveFocus();
+  });
+
   it("renders nothing when closed", () => {
     render(
       <BatchConfirmDialog

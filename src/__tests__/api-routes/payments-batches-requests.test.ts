@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { beforeEach,describe, expect, it, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock dependencies
 vi.mock("@/lib/prisma", () => ({
@@ -56,21 +56,21 @@ vi.mock("@/lib/contracts", () => ({
   simulateContractCall: vi.fn(),
 }));
 
-import { GET as getBatchById } from "@/app/api/batches/[id]/route";
-import { GET as getBatches, POST as postBatches } from "@/app/api/batches/route";
+import prisma from "@/lib/prisma";
+import * as authSession from "@/lib/auth-session";
+import * as webhookDispatcher from "@/lib/webhook-dispatcher";
+import { GET as getPayments, POST as postPayments } from "@/app/api/payments/route";
 import {
-  DELETE as deletePaymentById,
   GET as getPaymentById,
   PATCH as patchPaymentById,
+  DELETE as deletePaymentById,
 } from "@/app/api/payments/[id]/route";
-import { GET as getPayments, POST as postPayments } from "@/app/api/payments/route";
+import { GET as getBatches, POST as postBatches } from "@/app/api/batches/route";
+import { GET as getBatchById } from "@/app/api/batches/[id]/route";
 import { GET as getRequests, POST as postRequests } from "@/app/api/requests/route";
-import { invalidateCaches } from "@/lib/api-cache";
-import * as authSession from "@/lib/auth-session";
-import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
 import { generateCsrfToken } from "@/lib/csrf";
-import prisma from "@/lib/prisma";
-import * as webhookDispatcher from "@/lib/webhook-dispatcher";
+import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
+import { invalidateCaches } from "@/lib/api-cache";
 
 // Keep the real cache behaviour, but observe the invalidation calls a mutation
 // makes (#741).
@@ -242,7 +242,7 @@ describe("API Routes: Payments, Batches & Requests", () => {
       expect(data.data.id).toBe("cabcdefghijklmnopqrstuvwx");
     });
 
-    it("PATCH updates payment status and triggers webhooks", async () => {
+    it("PATCH delivers completion webhooks in the authenticated owner scope", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
       vi.mocked(prisma.payment.updateMany).mockResolvedValueOnce({ count: 1 });
       const updatedPayment = {
@@ -259,7 +259,11 @@ describe("API Routes: Payments, Batches & Requests", () => {
         { params: Promise.resolve({ id: "cabcdefghijklmnopqrstuvwx" }) }
       );
       expect(res.status).toBe(200);
-      expect(webhookDispatcher.dispatchWebhookEventAsync).toHaveBeenCalled();
+      expect(webhookDispatcher.dispatchWebhookEventAsync).toHaveBeenCalledExactlyOnceWith(
+        "payment.completed",
+        expect.objectContaining({ paymentId: updatedPayment.id }),
+        MOCK_AUTH.userId,
+      );
     });
 
     it("PATCH returns 404 when payment does not exist", async () => {
@@ -271,6 +275,10 @@ describe("API Routes: Payments, Batches & Requests", () => {
         { params: Promise.resolve({ id: "cabcdefghijklmnopqrstuvwz" }) }
       );
       expect(res.status).toBe(404);
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ userId: MOCK_AUTH.userId, deletedAt: null }) }),
+      );
+      expect(webhookDispatcher.dispatchWebhookEventAsync).not.toHaveBeenCalled();
     });
 
     it("DELETE removes payment record", async () => {

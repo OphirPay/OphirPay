@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useMemo, useRef, useState } from "react";
-
-import { useToast } from "@/components/ui/Toast";
-import { saveAddress,searchAddressBook } from "@/lib/address-book";
+import { searchAddressBook, saveAddress } from "@/lib/address-book";
 import { isValidStellarAddress } from "@/lib/stellar";
-import { cn,shortenAddress } from "@/lib/utils";
+import { shortenAddress, cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 interface AddressAutocompleteProps {
   value: string;
@@ -163,8 +162,24 @@ export function AddressAutocomplete({
         aria-controls={id ? `${id}-listbox` : undefined}
         aria-autocomplete="list"
         aria-label="Recipient address with address book autocomplete"
-        className="w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+        className={cn("w-full px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed", value && !disabled && "pr-11")}
       />
+
+      {value && !disabled && (
+        <button
+          type="button"
+          aria-label="Clear address search"
+          onClick={() => {
+            onChange("");
+            setJustSaved(false);
+            inputRef.current?.focus();
+            setOpen(false);
+          }}
+          className="absolute inset-y-0 right-1 my-auto grid h-9 w-9 place-items-center rounded text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      )}
 
       {showDropdown && (
         <ul

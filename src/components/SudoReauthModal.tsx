@@ -1,11 +1,12 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { Button } from "@/components/ui/Button";
+import { useEffect, useRef } from "react";
 import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
 
 /**
- * Sudo-mode re-authentication prompt (issue #1389).
+ * Sudo-mode re-authentication prompt (issue #1389, #1907).
  *
  * Shown when a critical admin action (fee-config change, RBAC grant/revoke)
  * is refused with `403 SUDO_REQUIRED` because the session's last cryptographic
@@ -26,6 +27,33 @@ export function SudoReauthModal({
   busy?: boolean;
   error?: string | null;
 }) {
+  const triggerElementRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+        triggerElementRef.current = document.activeElement;
+      }
+
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "Escape" && !busy) {
+          event.preventDefault();
+          onCancel();
+        }
+      };
+
+      window.addEventListener("keydown", handleKeyDown);
+      return () => {
+        window.removeEventListener("keydown", handleKeyDown);
+      };
+    }
+
+    if (triggerElementRef.current && typeof triggerElementRef.current.focus === "function") {
+      triggerElementRef.current.focus();
+      triggerElementRef.current = null;
+    }
+  }, [open, busy, onCancel]);
+
   return (
     <Modal
       open={open}

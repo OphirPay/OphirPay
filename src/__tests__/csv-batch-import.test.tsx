@@ -139,7 +139,7 @@ describe("CsvBatchImport", () => {
     expect(screen.getByTestId("csv-status")).toHaveTextContent(/fix the highlighted fields/i);
   });
 
-  it("clears the preview when the file is removed", async () => {
+  it("prompts confirmation modal before clearing drafted batch rows", async () => {
     setup();
     await uploadFile(
       screen.getByTestId("csv-file-input") as HTMLInputElement,
@@ -149,6 +149,18 @@ describe("CsvBatchImport", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Remove file" }));
 
+    // Confirmation modal should be open, preserving batch preview
+    expect(screen.getByText("Clear Imported Batch Rows?")).toBeInTheDocument();
+    expect(screen.getByTestId("csv-preview-table")).toBeInTheDocument();
+
+    // Cancelling leaves rows intact
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Clear Imported Batch Rows?")).toBeNull();
+    expect(screen.getByTestId("csv-preview-table")).toBeInTheDocument();
+
+    // Confirming clears rows and preview
+    fireEvent.click(screen.getByRole("button", { name: "Remove file" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear all rows" }));
     expect(screen.queryByTestId("csv-preview-table")).toBeNull();
     expect(screen.queryByText("recipients.csv")).toBeNull();
   });

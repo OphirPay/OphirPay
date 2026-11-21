@@ -11,6 +11,8 @@ import {
   type CsvImportRow,
 } from "@/lib/csv-import";
 import { BatchDropzone, formatFileSize } from "@/components/batch/BatchDropzone";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -43,6 +45,7 @@ export function CsvBatchImport({
   const [fileErrors, setFileErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [parseProgress, setParseProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -139,6 +142,14 @@ export function CsvBatchImport({
     if (inputRef.current) inputRef.current.value = "";
   };
 
+  const handleRequestClear = () => {
+    if (rows.length > 0) {
+      setConfirmClearOpen(true);
+    } else {
+      clearFile();
+    }
+  };
+
   return (
     <div className="space-y-4" data-testid="csv-batch-import">
       {/* Dropzone */}
@@ -149,7 +160,7 @@ export function CsvBatchImport({
         fileName={fileName}
         fileSize={fileSize}
         rowCount={rows.length > 0 ? rows.length : null}
-        onClear={clearFile}
+        onClear={handleRequestClear}
         onTemplateDownload={downloadCsvTemplate}
         maxRecipients={MAX_BATCH_RECIPIENTS}
         showMetadataCard={false}
@@ -200,7 +211,7 @@ export function CsvBatchImport({
             </button>
             <button
               type="button"
-              onClick={clearFile}
+              onClick={handleRequestClear}
               className="px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
             >
               Remove file
@@ -379,6 +390,40 @@ export function CsvBatchImport({
           )}
         </div>
       )}
+
+      {/* Confirmation modal before clearing drafted batch rows */}
+      <Modal
+        open={confirmClearOpen}
+        onClose={() => setConfirmClearOpen(false)}
+        title="Clear Imported Batch Rows?"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Are you sure you want to clear all {rows.length} imported recipients?
+            Any unsaved edits or parsed rows will be discarded.
+          </p>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setConfirmClearOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                clearFile();
+                setConfirmClearOpen(false);
+              }}
+            >
+              Clear all rows
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

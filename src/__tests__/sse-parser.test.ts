@@ -122,6 +122,7 @@ function liveEvent(id: number): LiveEvent {
 beforeEach(() => {
   WireEventSource.instances = [];
   window.sessionStorage.clear();
+  window.sessionStorage.setItem("ophirpay-notifications", JSON.stringify([]));
   vi.stubGlobal("EventSource", WireEventSource);
 });
 

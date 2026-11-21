@@ -40,6 +40,9 @@ const OPTIMIZED_IMAGE_CACHE = "public, max-age=3600, stale-while-revalidate=8640
 // it never affects a normal or CI build, and it is the *webpack* analyzer —
 // `npm run analyze` builds with `--webpack` for that reason.
 const nextConfig: NextConfig = {
+  // Allow webpack configuration alongside Turbopack in Next 16
+  turbopack: {},
+
   // Standalone output — required by the Docker image (copies .next/standalone).
   // Disabled on Vercel: Next 16.3's adapter-based Vercel builds crash with
   // ENOENT .next/next-server.js.nft.json when standalone is set (vercel/next.js

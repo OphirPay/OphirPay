@@ -9,3 +9,8 @@ http://\[::1\](:[0-9]+)?
 https://example.com
 https://ophirpay\.ci\.invalid
 mailto:.*
+
+# External unreachable URLs or internal broken links in repo documentation
+https://github\.com/OphirPay/OphirPay/discussions
+https://xbull\.app.*
+docs/examples/postman_collection\.json

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
-import { describe, expect, it } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { load } from "js-yaml";
+import { describe, expect, it } from "vitest";
 
 describe("Markdown links check workflow (#1985)", () => {
   const repoRoot = join(__dirname, "../..");

@@ -242,7 +242,7 @@ describe("API Routes: Payments, Batches & Requests", () => {
       expect(data.data.id).toBe("cabcdefghijklmnopqrstuvwx");
     });
 
-    it("PATCH updates payment status and triggers webhooks", async () => {
+    it("PATCH delivers completion webhooks in the authenticated owner scope", async () => {
       vi.mocked(authSession.getAuthContext).mockResolvedValueOnce(MOCK_AUTH);
       vi.mocked(prisma.payment.updateMany).mockResolvedValueOnce({ count: 1 });
       const updatedPayment = {
@@ -259,7 +259,11 @@ describe("API Routes: Payments, Batches & Requests", () => {
         { params: Promise.resolve({ id: "cabcdefghijklmnopqrstuvwx" }) }
       );
       expect(res.status).toBe(200);
-      expect(webhookDispatcher.dispatchWebhookEventAsync).toHaveBeenCalled();
+      expect(webhookDispatcher.dispatchWebhookEventAsync).toHaveBeenCalledExactlyOnceWith(
+        "payment.completed",
+        expect.objectContaining({ paymentId: updatedPayment.id }),
+        MOCK_AUTH.userId,
+      );
     });
 
     it("PATCH returns 404 when payment does not exist", async () => {
@@ -271,6 +275,10 @@ describe("API Routes: Payments, Batches & Requests", () => {
         { params: Promise.resolve({ id: "cabcdefghijklmnopqrstuvwz" }) }
       );
       expect(res.status).toBe(404);
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ userId: MOCK_AUTH.userId, deletedAt: null }) }),
+      );
+      expect(webhookDispatcher.dispatchWebhookEventAsync).not.toHaveBeenCalled();
     });
 
     it("DELETE removes payment record", async () => {

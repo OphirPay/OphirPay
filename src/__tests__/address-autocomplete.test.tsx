@@ -30,6 +30,18 @@ beforeEach(() => {
 });
 
 describe("AddressAutocomplete", () => {
+  it("only offers clearing when populated and restores input focus", async () => {
+    setup();
+    const input = screen.getByRole("combobox");
+    const clear = () => screen.queryByRole("button", { name: "Clear address search" });
+    expect(clear()).toBeNull();
+    await userEvent.type(input, "Alice");
+    await userEvent.click(screen.getByRole("button", { name: "Clear address search" }));
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
+    expect(clear()).toBeNull();
+  });
+
   it("shows matching address book entries while typing", async () => {
     saveAddress({ publicKey: ADDR_A, label: "Alice" });
     setup();

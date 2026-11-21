@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma,PrismaClient } from "@prisma/client";
+
+import { beginAsyncOperation, registerShutdownTask } from "@/lib/lifecycle";
 import { logger } from "@/lib/logger";
 import { recordDbQuery } from "@/lib/metrics-counters";
-import { beginAsyncOperation, registerShutdownTask } from "@/lib/lifecycle";
 
 export { Prisma, PrismaClient };
 

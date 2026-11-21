@@ -23,8 +23,8 @@
  *   AUTH_RATE_LIMIT_WALLET_RPM — per-account requests per minute (default 10)
  */
 
-import { getRateLimitStore } from "@/lib/rate-limit";
 import { ERROR_CODES } from "@/lib/error-codes";
+import { getRateLimitStore } from "@/lib/rate-limit";
 
 const WINDOW_MS = 60_000; // 1 minute sliding window
 

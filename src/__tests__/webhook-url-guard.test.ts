@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
 const { lookupMock } = vi.hoisted(() => ({ lookupMock: vi.fn() }));
 
 vi.mock("node:dns/promises", () => ({ lookup: lookupMock }));
 
 import {
+  DEFAULT_ALLOWED_WEBHOOK_PORTS,
+  getAllowedWebhookPorts,
   isSafeWebhookUrl,
   isSafeWebhookUrlAtDelivery,
-  getAllowedWebhookPorts,
-  DEFAULT_ALLOWED_WEBHOOK_PORTS,
 } from "@/lib/webhook-url-guard";
 
 describe("isSafeWebhookUrl", () => {

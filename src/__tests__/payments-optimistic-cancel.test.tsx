@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  fireEvent,
   render,
   screen,
-  fireEvent,
   waitFor,
   within,
 } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ToastProvider } from "@/components/ui/Toast";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import PaymentsPage from "@/app/payments/page";
+import { ToastProvider } from "@/components/ui/Toast";
 import type { OnChainPayment } from "@/lib/contracts";
 
 const mocks = vi.hoisted(() => ({

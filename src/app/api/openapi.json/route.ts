@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { NextResponse } from "next/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { load } from "js-yaml";
+import { NextResponse } from "next/server";
+
 import { apiRoute } from "@/lib/api-route";
 
 let cachedSpec: unknown = null;

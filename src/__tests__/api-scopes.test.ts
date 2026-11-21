@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
@@ -21,11 +21,11 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import {
+  type ApiScope,
+  hashApiKeyV1,
   hasScope,
   requireScopes,
   withApiAuth,
-  hashApiKeyV1,
-  type ApiScope,
 } from "@/lib/api-auth";
 
 // A valid-format key (32 CSPRNG bytes as hex) so the request reaches the

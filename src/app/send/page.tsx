@@ -1,43 +1,44 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState, useEffect, Suspense, useRef } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useWallet } from "@/hooks/useMultiWallet";
-import { getWalletConnector } from "@/lib/wallets";
+import { Suspense, useEffect, useRef,useState } from "react";
+
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { AssetSelector } from "@/components/AssetSelector";
+import ScheduledPaymentsList from "@/components/ScheduledPaymentsList";
+import { CopyButton } from "@/components/ui/CopyButton";
 import {
-  isValidStellarAddress,
-  buildPaymentTx,
-  buildPathPaymentStrictSendTx,
-  findStrictSendPath,
-  type PathPaymentEstimate,
-  submitSignedTx,
-  getStellarExplorerUrl,
-  NETWORK_PASSPHRASE,
-  STELLAR_NETWORK,
-  XLM_STROOPS,
+  type FeeSelection,
+  FeeSelector,
+} from "@/components/ui/FeeSelector";
+import { useToast } from "@/components/ui/Toast";
+import { useApiMutation } from "@/hooks/useApiQuery";
+import { useFeeStats } from "@/hooks/useFeeStats";
+import { useWallet } from "@/hooks/useMultiWallet";
+import { type AssetInfo,getAssetInfo, XLM_ASSET } from "@/lib/assets";
+import { recordPaymentOnChain } from "@/lib/contracts";
+import { downloadReceiptPdf } from "@/lib/receipt-pdf";
+import { type Frequency,FREQUENCY_LABELS, FREQUENCY_OPTIONS, frequencyLabel, nextRunAt } from "@/lib/recurrence";
+import {
   accountExists,
+  buildPathPaymentStrictSendTx,
+  buildPaymentTx,
+  findStrictSendPath,
+  getStellarExplorerUrl,
+  isValidStellarAddress,
+  NETWORK_PASSPHRASE,
   parseSubmissionError,
+  type PathPaymentEstimate,
   SPONSOR_MIN_STARTING_BALANCE,
+  STELLAR_NETWORK,
+  submitSignedTx,
+  XLM_STROOPS,
 } from "@/lib/stellar";
 import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
 import { validateMemo } from "@/lib/validation-helpers";
-import { recordPaymentOnChain } from "@/lib/contracts";
-import { downloadReceiptPdf } from "@/lib/receipt-pdf";
-import { useFeeStats } from "@/hooks/useFeeStats";
-import {
-  FeeSelector,
-  type FeeSelection,
-} from "@/components/ui/FeeSelector";
-import { useToast } from "@/components/ui/Toast";
-import { CopyButton } from "@/components/ui/CopyButton";
-import { useApiMutation } from "@/hooks/useApiQuery";
-import { AssetSelector } from "@/components/AssetSelector";
-import { AddressAutocomplete } from "@/components/AddressAutocomplete";
-import ScheduledPaymentsList from "@/components/ScheduledPaymentsList";
-import { XLM_ASSET, getAssetInfo, type AssetInfo } from "@/lib/assets";
-import { nextRunAt, FREQUENCY_OPTIONS, FREQUENCY_LABELS, frequencyLabel, type Frequency } from "@/lib/recurrence";
-import Link from "next/link";
+import { getWalletConnector } from "@/lib/wallets";
 
 // ── Types ─────────────────────────────────────────────────────
 

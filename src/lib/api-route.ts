@@ -1,24 +1,25 @@
 // SPDX-License-Identifier: MIT
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { z } from "zod";
 import type { NextResponse } from "next/server";
-import { getAuthContext } from "@/lib/auth-session";
+import { z } from "zod";
+
+import { type ApiScope,hasScope, missingScopes } from "@/lib/api-auth";
+import { formatProblemDetails } from "@/lib/api-errors";
 import {
   badRequestError,
   conflictError,
+  handleApiError,
   unauthorizedError,
   validationError,
-  handleApiError,
 } from "@/lib/api-response";
-import { hasScope, missingScopes, type ApiScope } from "@/lib/api-auth";
-import { formatProblemDetails } from "@/lib/api-errors";
+import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
+import { ERROR_CODES } from "@/lib/error-codes";
+import { claimIdempotencyKey } from "@/lib/idempotency";
 import { withMetrics } from "@/lib/metrics-middleware";
 import { withRequestLogging } from "@/lib/request-logging";
 import { idempotencyKeySchema } from "@/lib/validation-schemas";
-import { claimIdempotencyKey } from "@/lib/idempotency";
-import { ERROR_CODES } from "@/lib/error-codes";
 
 /** Header that makes a mutation safely retryable (issue #1440). */
 export const IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";

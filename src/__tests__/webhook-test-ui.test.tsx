@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ToastProvider } from "@/components/ui/Toast";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import WebhookDetailPage from "@/app/webhooks/[id]/page";
+import { ToastProvider } from "@/components/ui/Toast";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "wh-test" }),

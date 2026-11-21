@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: MIT
 
-export type { WalletId, WalletConnector, SignOptions, MultiWalletState, WalletStatus } from "./types";
-export { WALLET_REGISTRY } from "./types";
-export { freighterConnector } from "./freighter";
 export { albedoConnector } from "./albedo";
-export { xBullConnector } from "./xbull";
+export { freighterConnector } from "./freighter";
 export { ledgerConnector } from "./ledger";
-export { rabetConnector } from "./rabet";
 export { lobstrConnector } from "./lobstr";
+export { rabetConnector } from "./rabet";
+export type { MultiWalletState, SignOptions, WalletConnector, WalletId, WalletStatus } from "./types";
+export { WALLET_REGISTRY } from "./types";
+export { xBullConnector } from "./xbull";
 
-import type { WalletConnector, WalletId } from "./types";
-import { freighterConnector } from "./freighter";
 import { albedoConnector } from "./albedo";
-import { xBullConnector } from "./xbull";
+import { freighterConnector } from "./freighter";
 import { ledgerConnector } from "./ledger";
-import { rabetConnector } from "./rabet";
 import { lobstrConnector } from "./lobstr";
+import { rabetConnector } from "./rabet";
+import type { WalletConnector, WalletId } from "./types";
+import { xBullConnector } from "./xbull";
 
 /**
  * Map of all available wallet connectors by ID.

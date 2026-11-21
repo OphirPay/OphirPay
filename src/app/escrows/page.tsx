@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 import { useState } from "react";
+
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import { useWallet } from "@/hooks/useMultiWallet";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useTableKeyboardNavigation } from "@/hooks/useTableKeyboardNavigation";
-import { PAGE_TITLES } from "@/lib/page-titles";
 import {
-  createEscrow,
   claimEscrow,
+  createEscrow,
   getContractOwner,
   raiseEscrowDispute,
   releaseEscrow,
@@ -22,9 +22,10 @@ import {
   resolveEscrowDispute,
 } from "@/lib/contract-advanced";
 import { fetchRecentContractRecords } from "@/lib/on-chain-records";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { formatXlmStroops, parseXlmAmount } from "@/lib/stellar-amount";
-import type { EscrowData } from "@/types/contract-abi";
 import { cn, shortenAddress } from "@/lib/utils";
+import type { EscrowData } from "@/types/contract-abi";
 
 const XLM_ASSET = "native";
 

@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/contracts", () => ({
   fetchOnChainPayments: vi.fn(),
 }));
 
-import * as contracts from "@/lib/contracts";
 import { GET } from "@/app/api/events/history/route";
-import { decodeCursor } from "@/lib/pagination-utils";
 import type { OnChainPayment } from "@/lib/contracts";
+import * as contracts from "@/lib/contracts";
+import { decodeCursor } from "@/lib/pagination-utils";
 
 /** Build a payment fixture whose on-chain id is `id`. */
 function payment(id: number): OnChainPayment {

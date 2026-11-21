@@ -9,12 +9,13 @@
  * 3. docker-compose.yml healthcheck directive parameters.
  */
 
-import { describe, it, expect } from "vitest";
-import { readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { createServer, type Server } from "node:http";
 import { spawn } from "node:child_process";
+import { readFileSync, statSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import { join } from "node:path";
+
 import { load } from "js-yaml";
+import { describe, expect,it } from "vitest";
 
 const repoRoot = process.cwd();
 const healthcheckScriptPath = join(repoRoot, "scripts", "healthcheck.js");

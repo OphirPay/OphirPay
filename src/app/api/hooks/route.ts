@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import prisma from "@/lib/prisma";
 import {
-  successResponse,
   badRequestError,
-  unauthorizedError,
   handleApiError,
+  successResponse,
+  unauthorizedError,
 } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
 import { verifyCsrf } from "@/lib/csrf";
-import { validateBody, createHookSchema } from "@/lib/validation-schemas";
-import { isSafeWebhookUrl } from "@/lib/webhook-url-guard";
-import { withRequestLogging } from "@/lib/request-logging";
 import { HOOK_PAGE_LIMIT } from "@/lib/hooks-pagination";
+import { withMetrics } from "@/lib/metrics-middleware";
+import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
+import { createHookSchema,validateBody } from "@/lib/validation-schemas";
+import { isSafeWebhookUrl } from "@/lib/webhook-url-guard";
 
 export const GET = withMetrics("GET /api/hooks", withRequestLogging(async function GET(request: Request) {
   try {

@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  enforceLookupRateLimit,
+} from "@/lib/lookup-rate-limit";
 import {
   InMemoryRateLimitStore,
   setRateLimitStore,
 } from "@/lib/rate-limit";
-import {
-  enforceLookupRateLimit,
-} from "@/lib/lookup-rate-limit";
 
 const ADDR_A = "GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U";
 const ADDR_B = "GBD2G5AG4QXLQL5GXGBH7Z4LQO2W3XHOKQQSWH4F6Z5VR2P4B7XM3S2A";

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import { GET, PATCH } from "@/app/api/webhooks/route";
 import { generateCsrfToken } from "@/lib/csrf";
 
@@ -19,8 +20,8 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(),
 }));
 
-import prisma from "@/lib/prisma";
 import { getAuthContext } from "@/lib/auth-session";
+import prisma from "@/lib/prisma";
 
 const authMock = vi.mocked(getAuthContext);
 const updateManyMock = vi.mocked(prisma.webhook.updateMany);

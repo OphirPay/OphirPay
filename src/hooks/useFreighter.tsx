@@ -3,15 +3,16 @@
 
 
 import {
-  useState,
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useRef,
-  createContext,
-  useContext,
+  useState,
 } from "react";
-import type { WalletState, FreighterAPI } from "@/types";
+
 import { fetchXlmBalance } from "@/lib/stellar";
+import type { FreighterAPI,WalletState } from "@/types";
 
 // ── Context ───────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
 import { simulatePayment } from '@/lib/transaction-simulator';
 
 // Mock the stellar module to avoid actual Horizon calls

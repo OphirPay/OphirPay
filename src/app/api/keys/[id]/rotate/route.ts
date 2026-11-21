@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import prisma from "@/lib/prisma";
+import {
+  deriveKeyPrefix,
+  generateApiKey,
+  hashApiKeyV2,
+} from "@/lib/api-auth";
+import {
+  apiKeyQuotaError,
+  describeKeyInitiator,
+} from "@/lib/api-key-limits";
 import {
   badRequestError,
   handleApiError,
@@ -8,17 +16,9 @@ import {
   unauthorizedError,
 } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
-import {
-  deriveKeyPrefix,
-  generateApiKey,
-  hashApiKeyV2,
-} from "@/lib/api-auth";
 import { verifyCsrf } from "@/lib/csrf";
 import { logger } from "@/lib/logger";
-import {
-  apiKeyQuotaError,
-  describeKeyInitiator,
-} from "@/lib/api-key-limits";
+import prisma from "@/lib/prisma";
 import { consumeApiKeyMutationQuota } from "@/lib/rate-limit";
 
 const ROTATION_GRACE_MS = 24 * 60 * 60 * 1000;

@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import prisma from "@/lib/prisma";
+
+import {
+  API_KEY_LOG_PRUNE_BATCH_SIZE,
+  API_KEY_LOG_RETENTION_DAYS,
+  pruneApiKeyRequestLogs,
+} from "@/app/api/cron/route";
 import { GET as getStats } from "@/app/api/keys/stats/route";
 import { getAuthContext } from "@/lib/auth-session";
-import {
-  pruneApiKeyRequestLogs,
-  API_KEY_LOG_RETENTION_DAYS,
-  API_KEY_LOG_PRUNE_BATCH_SIZE,
-} from "@/app/api/cron/route";
 import {
   getMetricsSnapshot,
   resetMetricsForTest,
 } from "@/lib/metrics-counters";
+import prisma from "@/lib/prisma";
 
 vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(),

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 // Mock dependencies
 vi.mock("@/lib/prisma", () => ({
@@ -56,21 +56,21 @@ vi.mock("@/lib/contracts", () => ({
   simulateContractCall: vi.fn(),
 }));
 
-import prisma from "@/lib/prisma";
-import * as authSession from "@/lib/auth-session";
-import * as webhookDispatcher from "@/lib/webhook-dispatcher";
-import { GET as getPayments, POST as postPayments } from "@/app/api/payments/route";
+import { GET as getBatchById } from "@/app/api/batches/[id]/route";
+import { GET as getBatches, POST as postBatches } from "@/app/api/batches/route";
 import {
+  DELETE as deletePaymentById,
   GET as getPaymentById,
   PATCH as patchPaymentById,
-  DELETE as deletePaymentById,
 } from "@/app/api/payments/[id]/route";
-import { GET as getBatches, POST as postBatches } from "@/app/api/batches/route";
-import { GET as getBatchById } from "@/app/api/batches/[id]/route";
+import { GET as getPayments, POST as postPayments } from "@/app/api/payments/route";
 import { GET as getRequests, POST as postRequests } from "@/app/api/requests/route";
-import { generateCsrfToken } from "@/lib/csrf";
-import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
 import { invalidateCaches } from "@/lib/api-cache";
+import * as authSession from "@/lib/auth-session";
+import { CONTRACT_READER_ENTRY_CAP } from "@/lib/contracts";
+import { generateCsrfToken } from "@/lib/csrf";
+import prisma from "@/lib/prisma";
+import * as webhookDispatcher from "@/lib/webhook-dispatcher";
 
 // Keep the real cache behaviour, but observe the invalidation calls a mutation
 // makes (#741).

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 import type { Metadata } from "next";
-import { PAGE_TITLES, PAGE_DESCRIPTIONS } from "@/lib/page-titles";
+
+import { PAGE_DESCRIPTIONS,PAGE_TITLES } from "@/lib/page-titles";
 
 // Server-rendered metadata for the home route `/` (route group, so the URL
 // is unchanged). Without this, crawlers, link previews, and JS-disabled

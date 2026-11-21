@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  recordEndpointLatency,
-  getEndpointMetrics,
-  resetEndpointMetrics,
-  LATENCY_BUCKET_BOUNDS,
-} from "@/lib/metrics-counters";
-import { withMetrics } from "@/lib/metrics-middleware";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import { GET } from "@/app/api/metrics/route";
+import {
+  getEndpointMetrics,
+  LATENCY_BUCKET_BOUNDS,
+  recordEndpointLatency,
+  resetEndpointMetrics,
+} from "@/lib/metrics-counters";
 import { resetMetricsForTest } from "@/lib/metrics-counters";
+import { withMetrics } from "@/lib/metrics-middleware";
 
 // The metrics route falls back to API-key auth, which imports Prisma. These
 // tests only exercise the static METRICS_TOKEN path, so stub the module to

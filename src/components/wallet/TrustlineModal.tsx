@@ -3,8 +3,8 @@
 
 import { useEffect, useState } from "react";
 
-import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import type { AssetInfo } from "@/lib/assets";
 import { createTrustline } from "@/lib/stellar-transactions";
 import type { TrustlineInfo, TrustlineState } from "@/lib/trustline";

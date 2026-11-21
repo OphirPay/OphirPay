@@ -37,9 +37,10 @@
  */
 
 import crypto from "node:crypto";
+
 import {
-  withRedis,
   type RedisLike,
+  withRedis,
 } from "@/lib/redis";
 
 /** How long one in-flight request may hold the claim (seconds). */

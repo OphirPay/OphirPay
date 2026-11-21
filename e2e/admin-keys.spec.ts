@@ -6,8 +6,9 @@
 // empty-name validation failure. The `/api/keys` and `/api/keys/stats` routes
 // are mocked with a mutable store (see helpers/admin-mocks.ts).
 
-import { test, expect } from "@playwright/test";
-import { installAdminMocks, type ApiKeyRecord } from "./helpers/admin-mocks";
+import { expect,test } from "@playwright/test";
+
+import { type ApiKeyRecord,installAdminMocks } from "./helpers/admin-mocks";
 
 const existingKey: ApiKeyRecord = {
   id: "key_e2e_existing",

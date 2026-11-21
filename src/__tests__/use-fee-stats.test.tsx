@@ -2,8 +2,9 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getFeeSnapshot, type RawFeeStats } from "@/lib/fee-stats";
+
 import { useFeeStats } from "@/hooks/useFeeStats";
+import { getFeeSnapshot, type RawFeeStats } from "@/lib/fee-stats";
 
 const payload: RawFeeStats = {
   last_ledger: "123",

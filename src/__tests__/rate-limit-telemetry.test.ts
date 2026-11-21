@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, afterEach } from "vitest";
 import { NextRequest } from "next/server";
+import { afterEach,describe, expect, it, vi } from "vitest";
+
 import * as ratelimit from "@/lib/ratelimit";
 
 describe("Rate Limit Telemetry & Headers (#1958)", () => {

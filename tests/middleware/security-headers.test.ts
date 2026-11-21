@@ -16,11 +16,12 @@
 // They intentionally do not boot Next.js: `proxy()` is the same function the
 // framework calls, so a missing/incorrect header fails here before deploy.
 
-import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
+import { describe, expect, it } from "vitest";
+
 import nextConfig from "../../next.config";
-import proxy from "../../src/proxy";
 import { SECURITY_HEADERS } from "../../src/lib/security-headers";
+import proxy from "../../src/proxy";
 
 const BASE_URL = "https://ophirpay.example";
 

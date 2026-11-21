@@ -1,7 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { type RefObject,useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Row virtualization (windowing) for large tables (issue #745).

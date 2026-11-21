@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
+  buildLogoutCookie,
+  buildSessionCookie,
   createSessionToken,
   parseSessionToken,
   readSessionCookie,
-  buildSessionCookie,
-  buildLogoutCookie,
-  sessionNeedsRenewal,
   SESSION_COOKIE_NAME,
   SESSION_RENEW_AFTER_MS,
   SESSION_TTL_MS,
+  sessionNeedsRenewal,
 } from "@/lib/auth-session";
 import {
   isWalletRevoked,
-  revokeWalletSessions,
   resetSessionRevocation,
   REVOCATION_TTL_MS,
+  revokeWalletSessions,
 } from "@/lib/session-revocation";
 
 const PK = "GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U";

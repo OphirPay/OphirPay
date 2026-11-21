@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  toBatchItemStatus,
   computeBatchProgress,
+  toBatchItemStatus,
 } from "@/lib/batch-progress";
 
 describe("toBatchItemStatus", () => {

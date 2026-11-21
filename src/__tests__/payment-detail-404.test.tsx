@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Component, type ReactNode } from "react";
-import { render, screen, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { Component, type ReactNode } from "react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import PaymentDetailView from "@/app/payments/[id]/PaymentDetailView";
 import type { Payment } from "@/types";
 

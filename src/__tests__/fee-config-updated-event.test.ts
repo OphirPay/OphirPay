@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect,it } from 'vitest';
 
 export interface FeeConfigUpdatedEvent {
   previous_collector: string | null;

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 import { useState } from "react";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
+
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 
 interface FeeVersion {
   version: number;

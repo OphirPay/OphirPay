@@ -1,27 +1,28 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useCallback, useMemo, useRef, useState } from "react";
+
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { EmptyState } from "@/components/EmptyState";
+import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { Input } from "@/components/ui/Form";
+import { Modal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import {
+  type AddressEntry,
   getAddressBook,
   importAddressBookCsv,
-  saveAddress,
   removeAddress,
+  saveAddress,
   searchAddressBook,
-  type AddressEntry,
 } from "@/lib/address-book";
 import { exportToCsv } from "@/lib/csv";
 import { isValidStellarAddress } from "@/lib/stellar";
 import { shortenAddress, timeAgo } from "@/lib/utils";
-import { Breadcrumb } from "@/components/Breadcrumb";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Form";
-import { Modal } from "@/components/ui/Modal";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { CopyButton } from "@/components/ui/CopyButton";
-import { useToast } from "@/components/ui/Toast";
-import { EmptyState } from "@/components/EmptyState";
 
 interface ContactForm {
   label: string;

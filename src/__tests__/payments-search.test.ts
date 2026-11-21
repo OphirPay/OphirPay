@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 // vi.hoisted ensures these exist before the mocked modules are imported
 // (ESM imports are hoisted above the const declarations otherwise).

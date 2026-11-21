@@ -17,9 +17,10 @@
 // The palette module (`src/lib/color-utils.ts`) is intentionally literal and is
 // therefore not in the scanned set: charts need concrete dataset colours.
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { describe, expect,it } from "vitest";
 
 /**
  * Components that must express colour through theme tokens (CSS variables or

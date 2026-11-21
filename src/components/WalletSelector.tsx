@@ -3,9 +3,10 @@
 
 
 import { useState } from "react";
+
 import { Modal } from "@/components/ui/Modal";
-import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
 import { cn } from "@/lib/utils";
+import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
 
 interface WalletSelectorProps {
   availableWallets: WalletId[];

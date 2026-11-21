@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const { mockFindFirst, mockFindUnique, mockUpdateMany, mockGetAuthContext } =
   vi.hoisted(() => ({
@@ -24,8 +24,8 @@ vi.mock("@/lib/auth-session", () => ({
   getAuthContext: mockGetAuthContext,
 }));
 
-import { generateCsrfToken } from "@/lib/csrf";
 import { POST } from "@/app/api/payments/retry/route";
+import { generateCsrfToken } from "@/lib/csrf";
 
 function csrfHeaders(): Record<string, string> {
   const token = generateCsrfToken();

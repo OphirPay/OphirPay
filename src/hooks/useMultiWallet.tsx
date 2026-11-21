@@ -3,22 +3,23 @@
 
 
 import {
-  useState,
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useRef,
-  createContext,
-  useContext,
+  useState,
 } from "react";
-import type { MultiWalletState, WalletId } from "@/lib/wallets";
-import { getWalletConnector, getAvailableWallets, setActiveWalletId } from "@/lib/wallets";
-import { fetchXlmBalance } from "@/lib/stellar";
+
 import { establishSession, revokeSession } from "@/lib/client-auth";
 import { clearWalletSession } from "@/lib/session";
 import {
   notifySessionRevoked,
   resetPendingWork,
 } from "@/lib/session-lifecycle";
+import { fetchXlmBalance } from "@/lib/stellar";
+import type { MultiWalletState, WalletId } from "@/lib/wallets";
+import { getAvailableWallets, getWalletConnector, setActiveWalletId } from "@/lib/wallets";
 
 // ── Context ───────────────────────────────────────────────────
 

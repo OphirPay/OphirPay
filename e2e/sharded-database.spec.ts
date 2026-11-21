@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { test, expect } from "@playwright/test";
+import { expect,test } from "@playwright/test";
+
 import {
-  ShardedDatabaseRouter,
   ShardConfig,
+  ShardedDatabaseRouter,
 } from "../src/lib/db/shard-router";
 import {
   ShardedTestFixtureManager,

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Unit tests for CSV batch parser (malformed rows, encodings, headers, quotes, extra columns)
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
+  generateRecipientsCsvTemplate,
   parseRecipientsCsv,
   parseRecipientsCsvText,
   splitCsvRow,
-  generateRecipientsCsvTemplate,
 } from "@/lib/csv-import";
 
 const VALID_ADDR_1 = "GA2C5RFPE6GCKMY3US5PAB6UZLKIGAHWKXX2G2CTRBIAP2W2QASXYZW1";

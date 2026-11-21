@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
-  normalizePaymentEvent,
-  getStoredNotifications,
-  saveStoredNotifications,
-  getUnreadCount,
   emitPaymentNotification,
-  NOTIFY,
+  getStoredNotifications,
+  getUnreadCount,
   INITIAL_NOTIFICATIONS,
-  requestNotificationPermission,
   isPermissionRequested,
+  normalizePaymentEvent,
+  NOTIFY,
+  requestNotificationPermission,
+  saveStoredNotifications,
   sendNotification,
 } from "@/lib/notifications";
 import { STORAGE_KEYS } from "@/lib/storage-keys";

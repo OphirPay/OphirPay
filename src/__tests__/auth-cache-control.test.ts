@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-import { sensitiveSuccessResponse, SENSITIVE_CACHE_CONTROL } from "@/lib/api-response";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
+import { SENSITIVE_CACHE_CONTROL,sensitiveSuccessResponse } from "@/lib/api-response";
 
 // Mocks
 const prismaMocks = vi.hoisted(() => {
@@ -65,11 +66,11 @@ vi.mock("@/lib/challenge", async (importOriginal) => {
   };
 });
 
-import prisma from "@/lib/prisma";
-import * as authSession from "@/lib/auth-session";
 import { GET as getChallenge } from "@/app/api/auth/challenge/route";
-import { GET as getSession, POST as postSession, DELETE as deleteSession } from "@/app/api/auth/session/route";
-import { GET as getKeys, POST as postKeys, DELETE as deleteKeys, PATCH as patchKeys } from "@/app/api/keys/route";
+import { DELETE as deleteSession,GET as getSession, POST as postSession } from "@/app/api/auth/session/route";
+import { DELETE as deleteKeys, GET as getKeys, PATCH as patchKeys,POST as postKeys } from "@/app/api/keys/route";
+import * as authSession from "@/lib/auth-session";
+import prisma from "@/lib/prisma";
 import { proxy } from "@/proxy";
 
 const VALID_STELLAR_PK = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";

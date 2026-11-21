@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
 import { NextResponse } from "next/server";
-import {
-  getMetricsSnapshot,
-  getEndpointMetrics,
-  getRpcMetricsSnapshot,
-  getRpcCallMetrics,
-  getDbQueryMetrics,
-  recordRpcFailoverState,
-  LATENCY_BUCKET_BOUNDS,
-  SSE_DURATION_BUCKET_BOUNDS,
-  RPC_LATENCY_BUCKET_BOUNDS,
-  DB_LATENCY_BUCKET_BOUNDS,
-} from "@/lib/metrics-counters";
-import { getRpcFailoverState } from "@/lib/rpc-failover";
-import { timingSafeEqual } from "@/lib/crypto";
+
 import { authenticateRequest } from "@/lib/api-auth";
-import { hasScope, ADMIN_SCOPE } from "@/lib/api-scopes";
+import { ADMIN_SCOPE,hasScope } from "@/lib/api-scopes";
+import { timingSafeEqual } from "@/lib/crypto";
+import {
+  DB_LATENCY_BUCKET_BOUNDS,
+  getDbQueryMetrics,
+  getEndpointMetrics,
+  getMetricsSnapshot,
+  getRpcCallMetrics,
+  getRpcMetricsSnapshot,
+  LATENCY_BUCKET_BOUNDS,
+  recordRpcFailoverState,
+  RPC_LATENCY_BUCKET_BOUNDS,
+  SSE_DURATION_BUCKET_BOUNDS,
+} from "@/lib/metrics-counters";
+import { withMetrics } from "@/lib/metrics-middleware";
 import * as prismaModule from "@/lib/prisma";
+import { getRpcFailoverState } from "@/lib/rpc-failover";
 
 /**
  * /api/metrics — Prometheus exposition endpoint.

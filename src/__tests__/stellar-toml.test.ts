@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from "vitest";
+
+import { generateStellarToml,GET, OPTIONS } from "@/app/.well-known/stellar.toml/route";
 import { DEFAULT_CONTRACT_ID, EMITTER_CONTRACT_ID } from "@/lib/contracts";
 import { NETWORK_PASSPHRASE } from "@/lib/stellar";
-import { GET, OPTIONS, generateStellarToml } from "@/app/.well-known/stellar.toml/route";
 
 describe("SEP-1 Stellar discovery document", () => {
   it("renders TOML scalar, array, and table syntax with required SEP-1 metadata", () => {

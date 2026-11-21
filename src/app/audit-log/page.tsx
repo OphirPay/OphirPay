@@ -2,24 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
-  useState,
   useCallback,
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
+
 import { EmptyState } from "@/components/EmptyState";
 import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { Pagination } from "@/components/ui/Pagination";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { useDebounce } from "@/hooks/useDebounce";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { PAGE_TITLES } from "@/lib/page-titles";
 
 interface AuditEntry {
   id: number;

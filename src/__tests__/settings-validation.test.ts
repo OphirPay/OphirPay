@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
+import { GET, POST } from "@/app/api/settings/route";
+import { generateCsrfToken } from "@/lib/csrf";
 import {
   isValidRpcEndpoint,
   rpcEndpointSchema,
   updateSettingsSchema,
 } from "@/lib/validation/settings";
-import { GET, POST } from "@/app/api/settings/route";
-import { generateCsrfToken } from "@/lib/csrf";
 
 vi.mock("@/lib/auth-session", () => ({
   getAuthContext: vi.fn(),

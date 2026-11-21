@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import type { BatchRecipient } from "@/types";
 import { isValidStellarAddress } from "@/lib/stellar";
 import { validateStellarMemo } from "@/lib/validation/stellar";
+import type { BatchRecipient } from "@/types";
 
 /**
  * Maximum recipients allowed in a single batch transaction (matches the

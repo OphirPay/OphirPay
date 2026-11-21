@@ -7,18 +7,19 @@
 // initial bundle lean. Rendered through next/dynamic with a skeleton fallback.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
+
+import { ErrorBoundary, WidgetErrorFallback } from "@/components/ErrorBoundary";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { Card } from "@/components/ui/Card";
 import { useWallet } from "@/hooks/useMultiWallet";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import {
   fetchOnChainPayments,
   type OnChainPayment,
 } from "@/lib/contracts";
-import { formatAmount, shortenAddress } from "@/lib/utils";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { XLM_STROOPS } from "@/lib/stellar";
-import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { ErrorBoundary, WidgetErrorFallback } from "@/components/ErrorBoundary";
-import { Card } from "@/components/ui/Card";
+import { formatAmount, shortenAddress } from "@/lib/utils";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 

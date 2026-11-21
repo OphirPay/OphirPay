@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 import { rpc } from "@stellar/stellar-sdk";
+
+import { logger } from "@/lib/logger";
 import {
-  rpcCircuitBreaker,
-  getCircuitBreakerState,
   type CircuitBreakerSnapshot,
+  getCircuitBreakerState,
+  rpcCircuitBreaker,
 } from "@/lib/rpc-circuit-breaker";
 import { getSorobanTimeoutMs, withStellarTimeoutProxy } from "@/lib/timeout";
-import { logger } from "@/lib/logger";
 
 /**
  * Resilient Soroban RPC Client with Circuit Breaker and Fallback routing (issue #1421).
@@ -102,4 +103,4 @@ export async function getLatestLedgerWithFallback(): Promise<number> {
   });
 }
 
-export { rpcCircuitBreaker, getCircuitBreakerState, type CircuitBreakerSnapshot };
+export { type CircuitBreakerSnapshot,getCircuitBreakerState, rpcCircuitBreaker };

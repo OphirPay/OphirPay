@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 import { useMemo } from "react";
-import { Modal } from "@/components/ui/Modal";
+
 import { Button } from "@/components/ui/Button";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { Modal } from "@/components/ui/Modal";
 import { QrCode } from "@/components/ui/QrCode";
 import {
   buildSep7PayUri,

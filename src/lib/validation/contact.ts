@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { z } from "zod";
+
 import { isValidStellarAddress } from "@/lib/stellar";
 
 export const CONTACT_NAME_MAX_LENGTH = 64;

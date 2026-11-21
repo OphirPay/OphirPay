@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import { authorizeCronRequest } from "@/lib/scheduler";
 import {
   errorResponse,
   handleApiError,
@@ -10,8 +7,10 @@ import {
 } from "@/lib/api-response";
 import { ERROR_CODES } from "@/lib/error-codes";
 import { logger } from "@/lib/logger";
+import { withMetrics } from "@/lib/metrics-middleware";
 import { expireDuePaymentRequests } from "@/lib/payment-request-lifecycle";
 import { withRequestLogging } from "@/lib/request-logging";
+import { authorizeCronRequest } from "@/lib/scheduler";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

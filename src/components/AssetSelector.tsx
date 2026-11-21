@@ -2,23 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useXlmPrice } from "@/hooks/usePrice";
-import { useState, useEffect, useCallback, useRef } from "react";
-import { cn } from "@/lib/utils";
-import {
-  XLM_ASSET,
-  USDC_TESTNET,
-  USDC_MAINNET,
-  type AssetInfo,
-} from "@/lib/assets";
-import { fetchAllBalances, STELLAR_NETWORK, type AssetBalance } from "@/lib/stellar";
-import { checkTrustline, getTrustlineMessage, type TrustlineInfo, type TrustlineState } from "@/lib/trustline";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { TrustlineModal } from "@/components/wallet/TrustlineModal";
+import { useXlmPrice } from "@/hooks/usePrice";
 import {
-  fetchAssetMetadata,
   type ClientAssetMetadata,
+  fetchAssetMetadata,
 } from "@/lib/asset-metadata-client";
+import {
+  type AssetInfo,
+  USDC_MAINNET,
+  USDC_TESTNET,
+  XLM_ASSET,
+} from "@/lib/assets";
 import { sanitizeImageUrl } from "@/lib/sanitize-url";
+import { type AssetBalance, fetchAllBalances, STELLAR_NETWORK } from "@/lib/stellar";
+import { checkTrustline, getTrustlineMessage, type TrustlineInfo, type TrustlineState } from "@/lib/trustline";
+import { cn } from "@/lib/utils";
 
 // ── Helpers ────────────────────────────────────────────────────
 

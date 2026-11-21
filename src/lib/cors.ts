@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Issue #1393 — Strict CORS origin allowlist validator.
 
-import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /** Standard allowed methods on public API routes. */
 export const CORS_ALLOWED_METHODS = "GET, POST, PUT, DELETE, PATCH, OPTIONS";

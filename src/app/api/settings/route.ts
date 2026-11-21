@@ -8,18 +8,18 @@
  * custom RPC endpoints.
  */
 
+import {
+  badRequestError,
+  handleApiError,
+  successResponse,
+  unauthorizedError,
+} from "@/lib/api-response";
+import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
 import { withMetrics } from "@/lib/metrics-middleware";
 import { withRequestLogging } from "@/lib/request-logging";
-import { verifyCsrf } from "@/lib/csrf";
-import { getAuthContext } from "@/lib/auth-session";
-import {
-  successResponse,
-  badRequestError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
-import { updateSettingsSchema } from "@/lib/validation/settings";
 import { SOROBAN_RPC_URL, STELLAR_NETWORK } from "@/lib/stellar";
+import { updateSettingsSchema } from "@/lib/validation/settings";
 
 export const GET = withMetrics(
   "GET /api/settings",

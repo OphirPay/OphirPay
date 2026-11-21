@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import { successResponse, unauthorizedError, handleApiError } from "@/lib/api-response";
-import { getAuthContext } from "@/lib/auth-session";
-import { verifyCsrf } from "@/lib/csrf";
-import { voteOnProposal } from "@/lib/contract-advanced";
-import { validateBody, voteOnProposalSchema } from "@/lib/validation-schemas";
 import { cacheDelete } from "@/lib/api-cache";
-import { withRequestLogging } from "@/lib/request-logging";
+import { handleApiError,successResponse, unauthorizedError } from "@/lib/api-response";
+import { getAuthContext } from "@/lib/auth-session";
+import { voteOnProposal } from "@/lib/contract-advanced";
+import { verifyCsrf } from "@/lib/csrf";
+import { withMetrics } from "@/lib/metrics-middleware";
 import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
+import { validateBody, voteOnProposalSchema } from "@/lib/validation-schemas";
 
 /** Invalidate the cached proposal reads so a refetch shows the fresh vote. */
 function invalidateProposalCache(proposalId: number) {

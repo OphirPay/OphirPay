@@ -1,40 +1,40 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { act,renderHook } from '@testing-library/react';
+import { beforeEach,describe, expect, it, vi } from 'vitest';
 
-// ── Low-coverage lib modules ──
-import { useFormSubmit, useFormReset } from '@/lib/form-helpers';
-import { computePagination, prismaPagination } from '@/lib/pagination-utils';
-import { getRateLimitHeaders, getRateLimitExceededHeaders, isRateLimited } from '@/lib/rate-limit-headers';
-import { sendNotification, isPermissionRequested, requestNotificationPermission, NOTIFY } from '@/lib/notifications';
-import { logger } from '@/lib/logger';
-import { generateRandomHex, generateId, timingSafeEqual } from '@/lib/crypto';
-import { sendEmail, EMAIL_TEMPLATES } from '@/lib/email';
-import { validateEnv, isProduction, getDatabaseProvider, getAppUrl } from '@/lib/env';
-import { FEATURE_FLAGS, isFeatureEnabled, overrideFeatureFlag, type FeatureFlag } from '@/lib/feature-flags';
-import { estimateBatchFee } from '@/lib/fee-estimator';
-import { trapFocus } from '@/lib/focus-trap';
-import { captureHealthSnapshot, formatHealthSnapshot, logMemoryUsage } from '@/lib/monitoring';
-import { PRELOAD_ROUTES } from '@/lib/prefetch';
 import { trackEvent, trackPageView } from '@/lib/analytics-events';
 import { computeAnalytics, groupByDay, percentChange } from '@/lib/analytics-helpers';
-import { DURATIONS, getStaggerDelay, EASING, waitForAnimation } from '@/lib/animation';
-import { sanitizeHtml, escapeHtml, hasSqlInjectionPatterns, sanitizeStellarAddress, sanitizeSlug } from '@/lib/sanitize';
-import { cn, shortenAddress, formatAmount, formatDate, timeAgo, getStatusColor } from '@/lib/utils';
+import { DURATIONS, EASING, getStaggerDelay, waitForAnimation } from '@/lib/animation';
 import { COLORS, lighten } from '@/lib/color-utils';
-import { getSecurityHeaders, getCorsHeaders } from '@/lib/headers';
-import { searchRecords, rankSearchResults } from '@/lib/search-index';
-import { buildTxSummary, buildBatchSummary, shortenAddress as sbShorten, buildEventMessage } from '@/lib/string-builder';
+import { generateId, generateRandomHex, timingSafeEqual } from '@/lib/crypto';
 import { exportToCsv } from '@/lib/csv';
 import { getDateRange, getDateRangePresets } from '@/lib/date-range';
-import { formatXlm, formatFiat, formatTokenAmount, formatCompact } from '@/lib/format-currency';
-import { formatStroopsToXlm, formatBaseFee, estimateTotalCost } from '@/lib/gas-estimate';
+import { EMAIL_TEMPLATES,sendEmail } from '@/lib/email';
+import { getAppUrl,getDatabaseProvider, isProduction, validateEnv } from '@/lib/env';
+import { FEATURE_FLAGS, type FeatureFlag,isFeatureEnabled, overrideFeatureFlag } from '@/lib/feature-flags';
+import { estimateBatchFee } from '@/lib/fee-estimator';
+import { trapFocus } from '@/lib/focus-trap';
+// ── Low-coverage lib modules ──
+import { useFormReset,useFormSubmit } from '@/lib/form-helpers';
+import { formatCompact,formatFiat, formatTokenAmount, formatXlm } from '@/lib/format-currency';
+import { estimateTotalCost,formatBaseFee, formatStroopsToXlm } from '@/lib/gas-estimate';
+import { getCorsHeaders,getSecurityHeaders } from '@/lib/headers';
 import { getStructuredData } from '@/lib/json-ld';
-import { canonicalUrl, breadcrumbJsonLd } from '@/lib/seo';
+import { logger } from '@/lib/logger';
 import { generateMetadata } from '@/lib/metadata-helpers';
-import { incMetric, getMetricsSnapshot, observeDbQuery } from '@/lib/metrics-counters';
-import { sleep, withTimeout, debounce, throttle } from '@/lib/timeout';
+import { getMetricsSnapshot, incMetric, observeDbQuery } from '@/lib/metrics-counters';
+import { captureHealthSnapshot, formatHealthSnapshot, logMemoryUsage } from '@/lib/monitoring';
+import { isPermissionRequested, NOTIFY,requestNotificationPermission, sendNotification } from '@/lib/notifications';
+import { computePagination, prismaPagination } from '@/lib/pagination-utils';
+import { PRELOAD_ROUTES } from '@/lib/prefetch';
+import { getRateLimitExceededHeaders, getRateLimitHeaders, isRateLimited } from '@/lib/rate-limit-headers';
+import { escapeHtml, hasSqlInjectionPatterns, sanitizeHtml, sanitizeSlug,sanitizeStellarAddress } from '@/lib/sanitize';
+import { rankSearchResults,searchRecords } from '@/lib/search-index';
+import { breadcrumbJsonLd,canonicalUrl } from '@/lib/seo';
+import { buildBatchSummary, buildEventMessage,buildTxSummary, shortenAddress as sbShorten } from '@/lib/string-builder';
+import { debounce, sleep, throttle,withTimeout } from '@/lib/timeout';
+import { cn, formatAmount, formatDate, getStatusColor,shortenAddress, timeAgo } from '@/lib/utils';
 
 
 

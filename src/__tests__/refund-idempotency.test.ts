@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const { mockFindFirst, mockCreate, mockFindMany, mockUpdateMany, mockAuditCreate, mockGetAuthContext, mockVerifyCsrf } =
   vi.hoisted(() => ({
@@ -40,8 +40,8 @@ vi.mock("@/lib/api-auth", () => ({
   withApiAuth: (fn: unknown) => fn,
 }));
 
-import { POST } from "@/app/api/refunds/route";
 import { GET as AuditGET } from "@/app/api/audit-log/route";
+import { POST } from "@/app/api/refunds/route";
 import { REFUND_REASON_CODES } from "@/lib/validation-schemas";
 
 const USER_ID = "user-1";

@@ -18,6 +18,7 @@
 // flow uses, so the pages auto-connect as SIGNER_A.
 
 import type { Page, Route } from "@playwright/test";
+
 import {
   createState,
   fakeFreighterInitScript,

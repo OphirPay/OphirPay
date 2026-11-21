@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
+import crypto from "crypto";
 
+import {
+  badRequestError,
+  handleApiError,
+  successResponse,
+  unauthorizedError,
+} from "@/lib/api-response";
+import { requireScope } from "@/lib/api-route";
+import { getAuthContext } from "@/lib/auth-session";
+import { verifyCsrf } from "@/lib/csrf";
+import { logger } from "@/lib/logger";
+import { withMetrics } from "@/lib/metrics-middleware";
 import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
 import {
   createWebhookSchema,
   isAllowedWebhookProtocol,
 } from "@/lib/validation/webhook";
-import {
-  successResponse,
-  badRequestError,
-  unauthorizedError,
-  handleApiError,
-} from "@/lib/api-response";
-import { logger } from "@/lib/logger";
-import { getAuthContext } from "@/lib/auth-session";
-import { requireScope } from "@/lib/api-route";
 import { isSafeWebhookUrl } from "@/lib/webhook-url-guard";
-import { verifyCsrf } from "@/lib/csrf";
-import crypto from "crypto";
-import { withRequestLogging } from "@/lib/request-logging";
 
 // ── GET /api/webhooks ─────────────────────────────────────────
 

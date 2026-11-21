@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import SendPage from "@/app/send/page";
-import * as stellarLib from "@/lib/stellar";
-import { USDC_TESTNET } from "@/lib/assets";
 import type { Horizon } from "@stellar/stellar-sdk";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
+import SendPage from "@/app/send/page";
+import { USDC_TESTNET } from "@/lib/assets";
+import * as stellarLib from "@/lib/stellar";
 
 // Mock useMultiWallet
 vi.mock("@/hooks/useMultiWallet", () => ({

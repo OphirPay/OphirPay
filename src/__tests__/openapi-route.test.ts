@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import { GET } from "@/app/api/openapi.json/route";
 
 describe("GET /api/openapi.json", () => {

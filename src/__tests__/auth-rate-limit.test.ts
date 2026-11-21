@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
+import { GET as ChallengeGET } from "@/app/api/auth/challenge/route";
+import { POST as SessionPOST } from "@/app/api/auth/session/route";
+import {
+  enforceAuthRateLimit,
+} from "@/lib/auth-rate-limit";
+import { csrfCookieHeader,generateCsrfToken } from "@/lib/csrf";
 import {
   InMemoryRateLimitStore,
   setRateLimitStore,
 } from "@/lib/rate-limit";
-import {
-  enforceAuthRateLimit,
-} from "@/lib/auth-rate-limit";
-import { GET as ChallengeGET } from "@/app/api/auth/challenge/route";
-import { POST as SessionPOST } from "@/app/api/auth/session/route";
-import { generateCsrfToken, csrfCookieHeader } from "@/lib/csrf";
 
 const PK_A = "GACZ7ZELCUC5YGJ6JHIVLEZNR3XKYKOVUWD6H3IRFPRZMALNUYJZQM2U";
 const PK_B = "GBD2G5AG4QXLQL5GXGBH7Z4LQO2W3XHOKQQSWH4F6Z5VR2P4B7XM3S2A";

@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
+import { buildMetrics } from "@/app/api/metrics/route";
+import { logger } from "@/lib/logger";
 import {
-  DB_POOL_WAIT_THRESHOLD_MS,
   checkConnectionAcquisitionWait,
+  DB_POOL_WAIT_THRESHOLD_MS,
   getPrismaPoolMetrics,
   getPrismaPrometheusMetrics,
 } from "@/lib/prisma";
-import { logger } from "@/lib/logger";
-import { buildMetrics } from "@/app/api/metrics/route";
 
 describe("Database Connection Pool Monitoring & Telemetry (#1371)", () => {
   beforeEach(() => {

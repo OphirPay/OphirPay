@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect,test } from '@playwright/test';
 
 test.describe('Service Worker Offline Behavior', () => {
   test('registers and caches app shell, then serves it offline', async ({ page, context }) => {

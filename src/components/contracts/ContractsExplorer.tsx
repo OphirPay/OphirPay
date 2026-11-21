@@ -6,26 +6,27 @@
 // only fetched when the Contracts route is actually opened, keeping the initial
 // bundle lean. Rendered through next/dynamic with a card skeleton fallback.
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { executeWithCircuitBreaker } from "@/lib/stellar-rpc";
+
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
 import { useWallet } from "@/hooks/useMultiWallet";
-import { getWalletConnector } from "@/lib/wallets";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import {
-  DEFAULT_CONTRACT_ID,
-  simulateContractCall,
-  invokeContractFunction,
-  submitContractInvocation,
   classifyContractError,
   ContractErrorType,
-  type SimulateResult,
+  DEFAULT_CONTRACT_ID,
+  invokeContractFunction,
   type InvokeResult,
+  simulateContractCall,
+  type SimulateResult,
+  submitContractInvocation,
 } from "@/lib/contracts";
+import { PAGE_TITLES } from "@/lib/page-titles";
 import { getStellarExplorerUrl, NETWORK_PASSPHRASE } from "@/lib/stellar";
+import { executeWithCircuitBreaker } from "@/lib/stellar-rpc";
 import { shortenAddress } from "@/lib/utils";
-import Link from "next/link";
+import { getWalletConnector } from "@/lib/wallets";
 
 // ── Types ─────────────────────────────────────────────────────
 

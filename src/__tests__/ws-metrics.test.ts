@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import net from "node:net";
+
+import { afterEach, beforeEach,describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api-auth", () => ({
   authenticateRequest: vi.fn(async () => null),
@@ -11,13 +12,13 @@ vi.mock("@/lib/prisma", () => ({
   getPrismaPrometheusMetrics: vi.fn(async () => ""),
 }));
 
+import { GET } from "@/app/api/metrics/route";
+import type { LiveEvent, LiveEventSource } from "@/lib/events/event-source";
 import { LiveEventsWsServer } from "@/lib/events/live-events-ws-server";
 import {
   getMetricsSnapshot,
   resetMetricsForTest,
 } from "@/lib/metrics-counters";
-import { GET } from "@/app/api/metrics/route";
-import type { LiveEvent, LiveEventSource } from "@/lib/events/event-source";
 
 const servers: LiveEventsWsServer[] = [];
 

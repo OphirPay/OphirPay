@@ -8,10 +8,11 @@
  * cold-start CrashLoopBackOff while maintaining fast failure detection within 45s.
  */
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { load, loadAll } from "js-yaml";
+import { describe, expect,it } from "vitest";
 
 const repoRoot = process.cwd();
 

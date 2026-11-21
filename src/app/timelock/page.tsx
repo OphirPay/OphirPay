@@ -1,23 +1,24 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState } from "react";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+
 import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { useWallet } from "@/hooks/useMultiWallet";
 import { useApiQuery } from "@/hooks/useApiQuery";
+import { useWallet } from "@/hooks/useMultiWallet";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import {
-  proposeTimelockedAction,
-  executeTimelockedAction,
   cancelTimelockedAction,
+  executeTimelockedAction,
+  proposeTimelockedAction,
 } from "@/lib/contract-advanced";
+import { PAGE_TITLES } from "@/lib/page-titles";
 
 interface TimelockAction {
   id: number;

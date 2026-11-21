@@ -14,15 +14,16 @@
 // multisig page, the contract-advanced helpers, and the Stellar SDK's
 // build/simulate/sign/submit pipeline — without needing live chain state.
 
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page,test } from "@playwright/test";
+
 import {
+  createState,
+  fakeFreighterInitScript,
+  installMultisigMocks,
+  type MultisigState,
+  randomAddress,
   SIGNER_A,
   SIGNER_B,
-  createState,
-  installMultisigMocks,
-  fakeFreighterInitScript,
-  randomAddress,
-  type MultisigState,
 } from "./helpers/stellar-mock";
 
 // Amount proposed for the payment (XLM).

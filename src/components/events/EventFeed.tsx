@@ -7,20 +7,20 @@
 // initial bundle lean. Rendered through next/dynamic with a card skeleton
 // fallback sized to the feed container so there is no layout shift.
 
-import { useState, useEffect, useRef } from "react";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES } from "@/lib/page-titles";
-import { shortenAddress, timeAgo } from "@/lib/utils";
-import { Breadcrumb } from "@/components/Breadcrumb";
+import { useEffect, useRef,useState } from "react";
 
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { useApiQuery } from "@/hooks/useApiQuery";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import {
   fetchOnChainPayments,
   type OnChainPayment,
 } from "@/lib/contracts";
-import { useApiQuery } from "@/hooks/useApiQuery";
 import { connectLiveEvents, type LiveTransport } from "@/lib/events/event-client";
 import type { LiveEvent } from "@/lib/events/event-source";
-import { XLM_STROOPS, getStellarExplorerUrl } from "@/lib/stellar";
+import { PAGE_TITLES } from "@/lib/page-titles";
+import { getStellarExplorerUrl,XLM_STROOPS } from "@/lib/stellar";
+import { shortenAddress, timeAgo } from "@/lib/utils";
 
 type SseEvent = LiveEvent;
 

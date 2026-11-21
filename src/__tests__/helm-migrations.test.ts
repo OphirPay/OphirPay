@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { load } from "js-yaml";
+import { describe, expect,it } from "vitest";
 
 const root = process.cwd();
 const read = (file: string) => readFileSync(join(root, file), "utf8");

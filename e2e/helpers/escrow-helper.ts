@@ -17,16 +17,17 @@
 // The route handlers run in the Playwright test process, so the exported
 // `EscrowState` is shared with the spec and can be asserted directly.
 
-import { Keypair } from "@stellar/stellar-sdk";
 import type { Page } from "@playwright/test";
+import { Keypair } from "@stellar/stellar-sdk";
+
 import {
-  SIGNER_A,
-  SIGNER_B,
   createState,
   fakeFreighterInitScript as baseFakeFreighterInitScript,
   horizonHandler,
-  rpcHandler,
   type MultisigState,
+  rpcHandler,
+  SIGNER_A,
+  SIGNER_B,
 } from "./stellar-mock";
 
 export { SIGNER_A, SIGNER_B };

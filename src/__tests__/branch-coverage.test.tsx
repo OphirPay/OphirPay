@@ -1,28 +1,27 @@
 // SPDX-License-Identifier: MIT
 // Targeted branch-coverage tests to push overall branches past 80%
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { fireEvent,render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
+import { StatusBadge } from '@/components/ui/Badge';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Input, Select,Textarea } from '@/components/ui/Form';
 // Components with low branch coverage
 import { Pagination } from '@/components/ui/Pagination';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Input, Textarea, Select } from '@/components/ui/Form';
-import { StatusBadge } from '@/components/ui/Badge';
-
+import { generateId, generateRandomHex, timingSafeEqual } from '@/lib/crypto';
 // Lib modules with branch gaps
-import { isProduction, getDatabaseProvider, getAppUrl } from '@/lib/env';
-import { sanitizeHtml, escapeHtml, sanitizeSlug, hasSqlInjectionPatterns } from '@/lib/sanitize';
+import { getAppUrl,getDatabaseProvider, isProduction } from '@/lib/env';
+import { FEATURE_FLAGS, type FeatureFlag,isFeatureEnabled } from '@/lib/feature-flags';
+import { getCorsHeaders,getSecurityHeaders } from '@/lib/headers';
 import { logger } from '@/lib/logger';
-import { computePagination, prismaPagination } from '@/lib/pagination-utils';
-import { isRateLimited, getRateLimitHeaders, getRateLimitExceededHeaders } from '@/lib/rate-limit-headers';
-import { generateRandomHex, generateId, timingSafeEqual } from '@/lib/crypto';
-import { FEATURE_FLAGS, isFeatureEnabled, type FeatureFlag } from '@/lib/feature-flags';
-import { truncate, truncateMiddle, pluralize, titleCase, formatBytes } from '@/lib/text';
-import { cn, shortenAddress, formatAmount, formatDate, timeAgo, getStatusColor } from '@/lib/utils';
-import { getSecurityHeaders, getCorsHeaders } from '@/lib/headers';
 import { sendNotification } from '@/lib/notifications';
-import { validateAmount, getFieldError, validateMemo } from '@/lib/validation-helpers';
+import { computePagination, prismaPagination } from '@/lib/pagination-utils';
+import { getRateLimitExceededHeaders,getRateLimitHeaders, isRateLimited } from '@/lib/rate-limit-headers';
+import { escapeHtml, hasSqlInjectionPatterns,sanitizeHtml, sanitizeSlug } from '@/lib/sanitize';
+import { formatBytes,pluralize, titleCase, truncate, truncateMiddle } from '@/lib/text';
+import { cn, formatAmount, formatDate, getStatusColor,shortenAddress, timeAgo } from '@/lib/utils';
+import { getFieldError, validateAmount, validateMemo } from '@/lib/validation-helpers';
 
 // ═══════════════════════════════════════════════════════════════
 // Pagination — branch coverage

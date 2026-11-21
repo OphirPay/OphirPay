@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  RpcCircuitBreaker,
-  CIRCUIT_FAILURE_THRESHOLD,
-  CIRCUIT_COOLDOWN_MS,
-  resetCircuitBreakerForTest,
-} from "@/lib/rpc-circuit-breaker";
-import { getMetricsSnapshot, resetMetricsForTest } from "@/lib/metrics-counters";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import { GET } from "@/app/api/health/route";
+import { getMetricsSnapshot, resetMetricsForTest } from "@/lib/metrics-counters";
+import {
+  CIRCUIT_COOLDOWN_MS,
+  CIRCUIT_FAILURE_THRESHOLD,
+  resetCircuitBreakerForTest,
+  RpcCircuitBreaker,
+} from "@/lib/rpc-circuit-breaker";
 
 describe("Soroban RPC Circuit Breaker (Issue #1421)", () => {
   const primaryUrl = "https://primary-rpc.stellar.org";

@@ -10,18 +10,20 @@
  * 4. Grafana dashboard panel definitions for active SSE client connections.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { beforeEach,describe, expect, it } from "vitest";
+
+import { buildMetrics } from "@/app/api/metrics/route";
 import {
-  incSseActiveConnection,
   getSseActiveConnections,
-  recordSseConnectionDuration,
   getSseDurations,
+  incSseActiveConnection,
+  recordSseConnectionDuration,
   resetMetricsForTest,
   SSE_DURATION_BUCKET_BOUNDS,
 } from "@/lib/metrics-counters";
-import { buildMetrics } from "@/app/api/metrics/route";
 
 const repoRoot = process.cwd();
 

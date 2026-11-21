@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-import prisma from "@/lib/prisma";
 import { successResponse } from "@/lib/api-response";
+import prisma from "@/lib/prisma";
 
 export async function GET() {
   const start = Date.now();

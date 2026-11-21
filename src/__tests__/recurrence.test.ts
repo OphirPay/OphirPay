@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
-import { nextRunAt, frequencyLabel, FREQUENCY_LABELS } from "@/lib/recurrence";
+import { describe, expect,it } from "vitest";
+
+import { FREQUENCY_LABELS,frequencyLabel, nextRunAt } from "@/lib/recurrence";
 
 describe("recurrence helpers", () => {
   it("computes the next daily run as +1 day", () => {

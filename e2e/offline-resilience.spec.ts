@@ -9,7 +9,7 @@
  * 3. Network reconnection cleanly dismisses the offline banner.
  */
 
-import { test, expect } from "@playwright/test";
+import { expect,test } from "@playwright/test";
 
 test.describe("Offline Resilience & Service Worker Caching (#1410)", () => {
   test("displays offline banner when network drops, serves cached shell, and dismisses on reconnect", async ({

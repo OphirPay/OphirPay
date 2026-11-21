@@ -1,14 +1,15 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useEffect,useRef, useState } from "react";
+
+import { BellIcon } from "@/components/ui/Icon";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useOnClickOutside } from "@/hooks/useOnClickOutside";
-import { BellIcon } from "@/components/ui/Icon";
-import { shortenAddress, timeAgo } from "@/lib/utils";
+import type { PaymentEventType,PaymentNotification } from "@/lib/notifications";
 import { getStellarExplorerUrl } from "@/lib/stellar";
-import type { PaymentNotification, PaymentEventType } from "@/lib/notifications";
+import { shortenAddress, timeAgo } from "@/lib/utils";
 
 function getNotificationIcon(type: PaymentEventType) {
   switch (type) {

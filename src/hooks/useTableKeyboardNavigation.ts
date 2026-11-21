@@ -1,8 +1,8 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, RefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface RowProps {
   tabIndex: number;

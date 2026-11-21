@@ -7,10 +7,11 @@
  * - Superseded PR runs are still cancelled
  */
 
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
 import { load } from "js-yaml";
+import { describe, expect,it } from "vitest";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");

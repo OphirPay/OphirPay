@@ -20,7 +20,7 @@
 // `src/__tests__/dark-mode-color-guard.test.ts`, because this suite runs
 // against a live deployment (E2E_BASE_URL) and is not part of the trimmed CI.
 
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page,test } from "@playwright/test";
 
 // Desktop viewport used for all baselines (matches the app's primary layout).
 const DESKTOP_VIEWPORT = { width: 1440, height: 900 };

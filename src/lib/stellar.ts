@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: MIT
 
 import {
-  rpc,
-  Networks,
-  Horizon,
-  TransactionBuilder,
-  Operation,
   Asset,
-  Memo,
-  Keypair,
   Config,
+  Horizon,
+  Keypair,
+  Memo,
+  Networks,
+  Operation,
+  rpc,
+  TransactionBuilder,
 } from "@stellar/stellar-sdk";
+
+import {
+  getFallbackBaseFee,
+  getFeeAggressiveness,
+  parseFeeStats,
+  type RawFeeStats,
+  recommendFee,
+} from "./fee-stats";
 import { getStellarErrorMessage } from "./stellar-error";
 import {
   getHorizonTimeoutMs,
@@ -18,13 +26,6 @@ import {
   getStellarTimeoutMs,
   withStellarTimeoutProxy,
 } from "./timeout";
-import {
-  getFeeAggressiveness,
-  getFallbackBaseFee,
-  parseFeeStats,
-  recommendFee,
-  type RawFeeStats,
-} from "./fee-stats";
 
 // ── Batch Recipient ───────────────────────────────────────────
 

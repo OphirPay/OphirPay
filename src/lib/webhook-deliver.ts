@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: MIT
 
+import crypto from "crypto";
+
+import type { DeliveryStatus } from "@prisma/client";
+
 import { logger } from "@/lib/logger";
-import { getCurrentRequestId } from "@/lib/request-logging";
-import { REQUEST_ID_HEADER } from "@/lib/request-id";
 import { incMetric } from "@/lib/metrics-counters";
-import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
+import prisma from "@/lib/prisma";
+import { REQUEST_ID_HEADER } from "@/lib/request-id";
+import { getCurrentRequestId } from "@/lib/request-logging";
 import { RETRY_CONFIG } from "@/lib/retry-config";
 import {
   fetchWithTimeout,
   getWebhookTimeoutMs,
   isTimeoutError,
 } from "@/lib/timeout";
-import crypto from "crypto";
-import prisma from "@/lib/prisma";
-import type { DeliveryStatus } from "@prisma/client";
+import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
 
 export interface WebhookPayload {
   event: string;

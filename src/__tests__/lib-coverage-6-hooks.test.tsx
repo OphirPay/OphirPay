@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Hook tests extracted from lib-coverage-6.test.ts
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { act,renderHook } from '@testing-library/react';
 import { type RefObject } from 'react';
-import { useOnClickOutside } from '@/hooks/useOnClickOutside';
+import { beforeEach,describe, expect, it, vi } from 'vitest';
+
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 import { usePagination } from '@/hooks/usePagination';
 import { useWindowSize } from '@/hooks/useWindowSize';
 

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
-  useRpcHealth,
-  parseRpcHealthPayload,
   formatRpcEndpoint,
+  parseRpcHealthPayload,
   RPC_HEALTH_LATENCY_THRESHOLD_MS,
+  useRpcHealth,
 } from "@/hooks/useRpcHealth";
 
 const PRIMARY = "https://soroban-testnet.stellar.org:443";

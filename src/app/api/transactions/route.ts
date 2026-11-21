@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-import { withMetrics } from "@/lib/metrics-middleware";
-import prisma from "@/lib/prisma";
 import {
   problemBadRequest,
   problemFromError,
@@ -9,10 +7,8 @@ import {
   problemUnauthorized,
 } from "@/lib/api-errors";
 import { successResponse } from "@/lib/api-response";
-import { transactionPaginationSchema } from "@/lib/validation-schemas";
-import { withRequestLogging } from "@/lib/request-logging";
 import { getAuthContext } from "@/lib/auth-session";
-import { buildPaymentWhere } from "@/lib/payment-filters";
+import { withMetrics } from "@/lib/metrics-middleware";
 import {
   buildCursorWhere,
   computeNextCursor,
@@ -20,6 +16,10 @@ import {
   decodeCursor,
   prismaPagination,
 } from "@/lib/pagination-utils";
+import { buildPaymentWhere } from "@/lib/payment-filters";
+import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
+import { transactionPaginationSchema } from "@/lib/validation-schemas";
 
 /**
  * GET /api/transactions

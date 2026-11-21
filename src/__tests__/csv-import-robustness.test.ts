@@ -8,14 +8,16 @@
 //   3. UTF-8 content and quoted fields parse correctly.
 //   4. A happy-path fixture is included and parses cleanly end-to-end.
 
-import { describe, it, expect } from "vitest";
-import path from "node:path";
 import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { describe, expect,it } from "vitest";
+
 import {
+  MEMO_MAX_BYTES,
   parseCsvText,
   parseRecipientsCsv,
   parseRecipientsCsvToRows,
-  MEMO_MAX_BYTES,
 } from "@/lib/csv-import";
 
 const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";

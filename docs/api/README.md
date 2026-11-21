@@ -31,7 +31,7 @@ OphirPay provides production-grade payment orchestration over the Stellar networ
 
 ## API Tooling & Collection Imports
 
-OphirPay ships a complete, pre-configured collection in [`examples/postman_collection.json`](file:///C:/Users/USER/.gemini/antigravity/scratch/OphirPay/examples/postman_collection.json) adhering to the Postman v2.1.0 schema, fully compatible with both **Postman** and **Insomnia**.
+OphirPay ships a complete, pre-configured collection in [`examples/postman_collection.json`](../../examples/postman_collection.json) adhering to the Postman v2.1.0 schema, fully compatible with both **Postman** and **Insomnia**.
 
 ### Postman Import
 
@@ -93,6 +93,6 @@ OphirPay supports two primary forms of API authentication:
 
 ## OpenAPI Specification
 
-- **YAML Specification**: Located at [`docs/openapi.yaml`](file:///C:/Users/USER/.gemini/antigravity/scratch/OphirPay/docs/openapi.yaml).
+- **YAML Specification**: Located at [`docs/openapi.yaml`](../openapi.yaml).
 - **JSON Endpoint**: Served directly by the application at `GET /api/openapi.json`.
 - **Interactive UI**: Interactive API documentation powered by Scalar is served at `/docs/api`.

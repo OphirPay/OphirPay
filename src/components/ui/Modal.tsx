@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { type ReactNode,useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "@/lib/utils";
+
 import { trapFocus } from "@/lib/focus-trap";
+import { cn } from "@/lib/utils";
 
 interface ModalProps {
   open: boolean;

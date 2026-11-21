@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => {
   const payment = {
@@ -35,13 +35,13 @@ vi.mock("@/lib/cache", () => ({
   readCacheHeaders: vi.fn(() => ({ "Cache-Control": "no-cache" })),
 }));
 
-import prisma from "@/lib/prisma";
-import * as authSession from "@/lib/auth-session";
 import { GET as getAnalytics } from "@/app/api/analytics/route";
+import * as authSession from "@/lib/auth-session";
 import {
-  getAnalyticsMetrics,
   ANALYTICS_QUERY_TIMEOUT_MS,
+  getAnalyticsMetrics,
 } from "@/lib/db/analytics";
+import prisma from "@/lib/prisma";
 import { TimeoutError } from "@/lib/timeout";
 
 const MOCK_AUTH = {

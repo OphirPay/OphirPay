@@ -24,11 +24,12 @@
  */
 
 import { StellarToml } from "@stellar/stellar-sdk";
+
+import { logger } from "@/lib/logger";
+import { sanitizeImageUrl } from "@/lib/sanitize-url";
 import { getHorizonServer } from "@/lib/stellar";
 import { getStellarTimeoutMs } from "@/lib/timeout";
 import { isSafeWebhookUrlAtDelivery } from "@/lib/webhook-url-guard";
-import { sanitizeImageUrl } from "@/lib/sanitize-url";
-import { logger } from "@/lib/logger";
 
 // ── Types ──────────────────────────────────────────────────────
 

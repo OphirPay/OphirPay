@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
 /**
  * SSE (Server-Sent Events) endpoint for real-time payment event streaming.
  *
@@ -23,7 +21,6 @@ import { withMetrics } from "@/lib/metrics-middleware";
  * therefore never grow server memory without bound, and the
  * `ophirpay_sse_open_connections` gauge is released on teardown.
  */
-
 import { createLiveEventSource } from "@/lib/events/event-source";
 import { createBoundedSseBuffer } from "@/lib/events/sse-buffer";
 import {
@@ -31,6 +28,7 @@ import {
   incSseActiveConnection,
   recordSseConnectionDuration,
 } from "@/lib/metrics-counters";
+import { withMetrics } from "@/lib/metrics-middleware";
 
 export const dynamic = "force-dynamic";
 

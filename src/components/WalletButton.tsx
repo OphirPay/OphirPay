@@ -4,18 +4,19 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useWallet } from "@/hooks/useMultiWallet";
-import { shortenAddress, formatAmount } from "@/lib/utils";
+
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { WalletSelector } from "@/components/WalletSelector";
-import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
+import { useWallet } from "@/hooks/useMultiWallet";
 import { usePendingWork } from "@/hooks/usePendingWork";
 import {
   hasPendingWork,
   type PendingWork,
 } from "@/lib/session-lifecycle";
+import { formatAmount,shortenAddress } from "@/lib/utils";
+import { WALLET_REGISTRY, type WalletId } from "@/lib/wallets";
 
 /** Human summary of what a disconnect would discard (issue #1379). */
 function describePendingWork(work: PendingWork): string {

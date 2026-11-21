@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect,it } from 'vitest';
 
-import { truncate, truncateMiddle, pluralize, titleCase, formatBytes } from '@/lib/text';
-import { DURATIONS, getStaggerDelay, EASING } from '@/lib/animation';
-import { COLORS, CHART_COLORS, lighten } from '@/lib/color-utils';
-import { cn, shortenAddress, getStatusColor } from '@/lib/utils';
+import { DURATIONS, EASING,getStaggerDelay } from '@/lib/animation';
+import { CHART_COLORS, COLORS, lighten } from '@/lib/color-utils';
+import { formatBytes,pluralize, titleCase, truncate, truncateMiddle } from '@/lib/text';
+import { cn, getStatusColor,shortenAddress } from '@/lib/utils';
 
 // ═══════════════════════════════════════════════════════════
 // text

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ToastProvider } from "@/components/ui/Toast";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import AddressBookPage from "@/app/address-book/page";
-import { saveAddress, getAddressBook } from "@/lib/address-book";
+import { ToastProvider } from "@/components/ui/Toast";
+import { getAddressBook,saveAddress } from "@/lib/address-book";
 import { exportToCsv } from "@/lib/csv";
 
 vi.mock("@/lib/csv", () => ({ exportToCsv: vi.fn() }));

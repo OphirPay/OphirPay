@@ -1,21 +1,20 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
-
-import prisma from "@/lib/prisma";
 import {
   badRequestError,
   handleApiError,
   notFoundError,
   successResponse,
 } from "@/lib/api-response";
-import { confirmPaymentRequestSchema } from "@/lib/validation-schemas";
 import { verifyCsrf } from "@/lib/csrf";
+import { withMetrics } from "@/lib/metrics-middleware";
 import {
   expireDuePaymentRequests,
   markPaymentRequestPaid,
   transactionPaysRequest,
 } from "@/lib/payment-request-lifecycle";
+import prisma from "@/lib/prisma";
 import { withRequestLogging } from "@/lib/request-logging";
+import { confirmPaymentRequestSchema } from "@/lib/validation-schemas";
 
 export const POST = withMetrics(
   "POST /api/requests/[id]/paid",

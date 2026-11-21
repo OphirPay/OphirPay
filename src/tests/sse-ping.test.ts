@@ -7,7 +7,7 @@
  * cleared when the client goes away.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/events/event-source", () => ({
   createLiveEventSource: () => ({

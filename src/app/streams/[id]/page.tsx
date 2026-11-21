@@ -4,14 +4,15 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+
+import { VestingProgressChart } from "@/components/streams/VestingProgressChart";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useToast } from "@/components/ui/Toast";
-import { VestingProgressChart } from "@/components/streams/VestingProgressChart";
 import { useApiQuery } from "@/hooks/useApiQuery";
-import { usePageTitle } from "@/hooks/usePageTitle";
 import { useWallet } from "@/hooks/useMultiWallet";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { claimStream } from "@/lib/contract-advanced";
 import { PAGE_TITLES } from "@/lib/page-titles";
 import { shortenAddress } from "@/lib/utils";

@@ -6,9 +6,11 @@
 // The Rust-side test (contracts/ophirpay/tests/error_uniqueness.rs) guards
 // against duplicate discriminants. This test guards the TS → Rust mapping.
 
-import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
 import { generateCatalog } from "../../scripts/regenerate-errors";
 
 const root = process.cwd();

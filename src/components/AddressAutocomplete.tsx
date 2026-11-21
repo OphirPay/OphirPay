@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { searchAddressBook, saveAddress } from "@/lib/address-book";
-import { isValidStellarAddress } from "@/lib/stellar";
-import { shortenAddress, cn } from "@/lib/utils";
+
 import { useToast } from "@/components/ui/Toast";
+import { saveAddress,searchAddressBook } from "@/lib/address-book";
+import { isValidStellarAddress } from "@/lib/stellar";
+import { cn,shortenAddress } from "@/lib/utils";
 
 interface AddressAutocompleteProps {
   value: string;

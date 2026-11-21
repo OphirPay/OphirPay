@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import type { Metadata } from "next";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync,readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { load } from "js-yaml";
+import type { Metadata } from "next";
+
 import { ApiDocsClient, type OpenApiSpecData } from "./ApiDocsClient";
 
 export const metadata: Metadata = {

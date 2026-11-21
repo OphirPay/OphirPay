@@ -15,9 +15,10 @@
  *   slip cannot silently point readers at another repository's issue.
  */
 
-import { describe, it, expect } from "vitest";
-import { existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import path from "path";
+
+import { describe, expect,it } from "vitest";
 
 const ROOT = process.cwd();
 

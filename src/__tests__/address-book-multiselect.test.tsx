@@ -2,8 +2,9 @@
 // Component tests for AddressBookMultiSelect — multi-select contacts from the
 // saved address book and add them to a batch with a default amount.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent,render, screen } from "@testing-library/react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import { AddressBookMultiSelect } from "@/components/batches/AddressBookMultiSelect";
 import type { AddressEntry } from "@/lib/address-book";
 

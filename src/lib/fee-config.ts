@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { useApiQuery } from "@/hooks/useApiQuery";
-import { getFeeConfig, getFeeCollector } from "@/lib/contract-advanced";
+import { getFeeCollector,getFeeConfig } from "@/lib/contract-advanced";
 
 export const MAX_FEE_BPS = 1000; // 10%
 

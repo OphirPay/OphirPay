@@ -1,8 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getRateLimitStore } from "@/lib/rate-limit";
+import { NextResponse } from "next/server";
+
+import {
+  API_KEY_LOOKUP_PATTERN,
+  extractApiKey,
+  validateKeyFormat,
+} from "@/lib/api-key-format";
+import {
+  CORS_ALLOWED_HEADERS,
+  CORS_ALLOWED_METHODS,
+  handleCorsPreflight,
+  resolveCorsOrigin,
+} from "@/lib/cors";
+import { hasSessionCookie, verifyCsrfForRequest } from "@/lib/csrf-token";
 import { logger } from "@/lib/logger";
 import {
   buildCsp,
@@ -13,26 +25,14 @@ import {
   getRateLimitMax,
   RATE_LIMIT_WINDOW_MS,
 } from "@/lib/proxy-config";
-
+import { getRateLimitStore } from "@/lib/rate-limit";
 import {
-  handleCorsPreflight,
-  resolveCorsOrigin,
-  CORS_ALLOWED_METHODS,
-  CORS_ALLOWED_HEADERS,
-} from "@/lib/cors";
-import {
-  extractApiKey,
-  validateKeyFormat,
-  API_KEY_LOOKUP_PATTERN,
-} from "@/lib/api-key-format";
-import { hasSessionCookie, verifyCsrfForRequest } from "@/lib/csrf-token";
-import { applySecurityHeaders } from "@/lib/security-headers";
-import {
-  getRateLimitHeaders,
   getRateLimitExceededHeaders,
-  rateLimitInfoFromResult,
+  getRateLimitHeaders,
   getRetryAfterHeaderValue,
+  rateLimitInfoFromResult,
 } from "@/lib/rate-limit-headers";
+import { applySecurityHeaders } from "@/lib/security-headers";
 
 const RATE_LIMIT_MAX = getRateLimitMax();
 

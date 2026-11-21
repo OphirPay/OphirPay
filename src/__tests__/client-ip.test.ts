@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from "vitest";
+
 import {
   getClientIp,
+  getTrustedProxyDepth,
   isValidIp,
   isValidIpv4,
   isValidIpv6,
-  stripPort,
   sanitizeRateLimitKey,
-  getTrustedProxyDepth,
+  stripPort,
 } from "@/lib/client-ip";
 import { InMemoryRateLimitStore } from "@/lib/rate-limit";
 

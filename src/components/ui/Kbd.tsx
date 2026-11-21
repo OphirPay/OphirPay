@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 
-import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
 
 interface KbdProps {
   children: ReactNode;

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 
-import { cn } from "@/lib/utils";
 import type { PaymentLifecycleStep } from "@/lib/payment-lifecycle";
+import { cn } from "@/lib/utils";
 
 interface PaymentTimelineProps {
   steps: PaymentLifecycleStep[];

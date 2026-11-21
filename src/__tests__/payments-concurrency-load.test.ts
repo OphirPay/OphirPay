@@ -8,8 +8,9 @@
  * pass/fail contract, and compatibility with the shared baseline gate.
  */
 
-import { createRequire } from "node:module";
 import path from "node:path";
+
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();

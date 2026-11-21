@@ -2,9 +2,10 @@
 // Proves that a malicious payment memo (e.g. `<script>` / event-handler HTML)
 // is rendered as escaped text by the payment detail view — never executed.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act,render, screen } from "@testing-library/react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import PaymentDetailView from "@/app/payments/[id]/PaymentDetailView";
 import type { Payment } from "@/types";
 

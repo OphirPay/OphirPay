@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import { rpc } from "@stellar/stellar-sdk";
+
 import { logger } from "@/lib/logger";
 import { recordRpcCall } from "@/lib/metrics-counters";
 import { getFailoverProbeTimeoutMs, getSorobanTimeoutMs } from "@/lib/timeout";

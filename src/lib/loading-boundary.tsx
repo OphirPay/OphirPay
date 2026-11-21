@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 
-import { Suspense, type ReactNode } from "react";
+import { type ReactNode,Suspense } from "react";
+
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 interface LoadingBoundaryProps {

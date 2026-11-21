@@ -20,14 +20,14 @@ This guide details OphirPay's Cross-Origin Resource Sharing (CORS) policy, prefl
 
 ## Overview & Security Architecture
 
-OphirPay enforces strict, dynamic CORS origin validation at the edge proxy layer ([`src/proxy.ts`](file:///C:/Users/USER/.gemini/antigravity/scratch/OphirPay/src/proxy.ts)) and through the shared CORS utility ([`src/lib/cors.ts`](file:///C:/Users/USER/.gemini/antigravity/scratch/OphirPay/src/lib/cors.ts)).
+OphirPay enforces strict, dynamic CORS origin validation at the edge proxy layer ([`src/proxy.ts`](../../src/proxy.ts)) and through the shared CORS utility ([`src/lib/cors.ts`](../../src/lib/cors.ts)).
 
 The architecture balances two critical requirements:
 
 1. **Public Integration**: Permitting authorized external frontend dApps, wallets, and checkout widgets to query payment statuses and initiate payments from external web origins.
 2. **CSRF & Origin Isolation**: Preventing unauthorized third-party websites from executing state-changing mutations (`POST`, `PUT`, `DELETE`, `PATCH`) using a victim's active session cookie or credentials.
 
-In addition, [`next.config.ts`](file:///C:/Users/USER/.gemini/antigravity/scratch/OphirPay/next.config.ts) configures the static HTTP response headers for the API boundary:
+In addition, [`next.config.ts`](../../next.config.ts) configures the static HTTP response headers for the API boundary:
 
 ```typescript
 {

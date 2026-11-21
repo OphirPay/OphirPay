@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
+import { describe, expect,it } from "vitest";
+
 import {
-  isNonNull,
-  isString,
-  isNumber,
-  isStellarKey,
   isError,
+  isNonNull,
+  isNumber,
   isOnChainId,
+  isStellarKey,
+  isString,
 } from "@/lib/type-guards";
 
 // ─── isOnChainId ────────────────────────────────────────────────

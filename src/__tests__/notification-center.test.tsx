@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
-import { NotificationCenter } from "@/components/NotificationCenter";
+import { act,fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import { Header } from "@/components/Header";
+import { NotificationCenter } from "@/components/NotificationCenter";
 import {
-  saveStoredNotifications,
-  type PaymentNotification,
   emitPaymentNotification,
+  type PaymentNotification,
+  saveStoredNotifications,
 } from "@/lib/notifications";
 import { STORAGE_KEYS } from "@/lib/storage-keys";
 

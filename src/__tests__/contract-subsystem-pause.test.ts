@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import {
-  SUBSYSTEM_FLAGS,
-  SUBSYSTEM_FLAG_LABELS,
-  parseSubsystemFlags,
   getSubsystemPauseFlags,
   isSubsystemPaused,
+  parseSubsystemFlags,
   setSubsystemPause,
+  SUBSYSTEM_FLAG_LABELS,
+  SUBSYSTEM_FLAGS,
 } from "@/lib/contract-advanced";
 
 vi.mock("@/lib/contracts", () => ({
@@ -41,7 +42,7 @@ vi.mock("@/lib/stellar", () => ({
   STELLAR_NETWORK: "TESTNET",
 }));
 
-import { simulateContractCall, invokeContractFunction, submitContractInvocation } from "@/lib/contracts";
+import { invokeContractFunction, simulateContractCall, submitContractInvocation } from "@/lib/contracts";
 const mockSimulate = vi.mocked(simulateContractCall);
 const mockInvoke = vi.mocked(invokeContractFunction);
 const mockSubmit = vi.mocked(submitContractInvocation);

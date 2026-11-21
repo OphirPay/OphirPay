@@ -9,7 +9,7 @@
  * auditor would ask about first.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
@@ -26,10 +26,10 @@ vi.mock("@/lib/prisma", () => ({
 
 import {
   authenticateRequest,
+  deriveKeyPrefix,
+  hashApiKeyV1,
   requireAuth,
   withApiAuth,
-  hashApiKeyV1,
-  deriveKeyPrefix,
 } from "@/lib/api-auth";
 
 /**

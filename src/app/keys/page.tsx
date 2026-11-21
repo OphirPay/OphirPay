@@ -1,17 +1,18 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback,useEffect, useState } from "react";
+
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { Card } from "@/components/ui/Card";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { useApiQuery, useApiMutation, type ApiError } from "@/hooks/useApiQuery";
+import { Card } from "@/components/ui/Card";
+import { CopyButton } from "@/components/ui/CopyButton";
+import { useToast } from "@/components/ui/Toast";
+import { type ApiError,useApiMutation, useApiQuery } from "@/hooks/useApiQuery";
 import {
   API_SCOPES,
   type ApiScope,
 } from "@/lib/api-scopes";
-import { useToast } from "@/components/ui/Toast";
-import { CopyButton } from "@/components/ui/CopyButton";
 
 interface ApiKeyRecord {
   id: string;

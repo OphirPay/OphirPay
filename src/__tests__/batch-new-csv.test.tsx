@@ -2,9 +2,10 @@
 // Tests for the CSV upload flow on the New Batch page: the submit button
 // stays disabled until every row in the imported file is valid.
 
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type React from "react";
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
 import NewBatchPage from "@/app/batches/new/page";
 
 const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";

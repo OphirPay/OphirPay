@@ -13,8 +13,9 @@
  * local Standalone Soroban nodes.
  */
 
-import { z } from "zod";
 import { isIP } from "node:net";
+
+import { z } from "zod";
 
 /** Permitted protocol schemes for RPC endpoints. */
 export const PERMITTED_RPC_SCHEMES = ["https:", "wss:"] as const;

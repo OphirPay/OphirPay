@@ -10,7 +10,7 @@
  *   • a bad body is a 400, not a 500
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it, vi } from "vitest";
 
 const { mockCreate, mockFindFirst, mockFindUnique, mockUpdateMany, mockAuth } =
   vi.hoisted(() => ({
@@ -45,10 +45,10 @@ vi.mock("@/lib/idempotency", () => ({
   IDEMPOTENCY_LOCK_TTL_SECONDS: 120,
 }));
 
-import { generateCsrfToken } from "@/lib/csrf";
-import { POST as createPayment } from "@/app/api/payments/route";
 import { POST as cancelPayment } from "@/app/api/payments/cancel/route";
 import { POST as retryPayment } from "@/app/api/payments/retry/route";
+import { POST as createPayment } from "@/app/api/payments/route";
+import { generateCsrfToken } from "@/lib/csrf";
 import { PROBLEM_CONTENT_TYPE } from "@/lib/problem-details";
 
 const USER_ID = "user-1";

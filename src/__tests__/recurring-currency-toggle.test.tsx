@@ -4,11 +4,12 @@
 // Verifies that amounts on the recurring page respect the persisted XLM ↔ USD
 // preference, with a graceful fallback when the price feed is unavailable.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ToastProvider } from "@/components/ui/Toast";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach,describe, expect, it, vi } from "vitest";
+
 import RecurringPage from "@/app/recurring/page";
+import { ToastProvider } from "@/components/ui/Toast";
 import * as priceModule from "@/lib/price";
 
 // ── Minimal mocks ─────────────────────────────────────────────

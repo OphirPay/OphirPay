@@ -2,13 +2,14 @@
 // Tests for CsvBatchImport: drag-and-drop upload, preview table, inline
 // error highlighting, re-validation on edit, and validity callbacks.
 
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
 import {
-  CsvBatchImport,
   buildBatchPaymentsCsv,
-  sanitizeCsvExportFilename,
+  CsvBatchImport,
   type CsvRecipientRow,
+  sanitizeCsvExportFilename,
 } from "@/components/CsvBatchImport";
 
 const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
+import { afterEach,beforeEach, describe, expect, it } from "vitest";
+
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { PAGE_TITLES, PAGE_DESCRIPTIONS } from "@/lib/page-titles";
+import { PAGE_DESCRIPTIONS,PAGE_TITLES } from "@/lib/page-titles";
 
 // Every route in the app must have a dedicated (non-default) title so the
 // browser tab always reflects the current resource. Keep this list in sync

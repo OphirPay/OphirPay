@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Prisma } from "@prisma/client";
+import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
+
 import { MAX_EXECUTION_ATTEMPTS, PROCESSING_LEASE_MS } from "@/lib/scheduler";
 
 // vi.hoisted ensures these exist before the mocked modules are imported

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
-import { withMetrics } from "@/lib/metrics-middleware";
+import { z } from "zod";
 
-import prisma from "@/lib/prisma";
-import { successResponse } from "@/lib/api-response";
 import {
   problemBadRequest,
   problemFromError,
@@ -11,11 +9,13 @@ import {
   problemNotFound,
   problemUnauthorized,
 } from "@/lib/api-errors";
-import { logger } from "@/lib/logger";
+import { successResponse } from "@/lib/api-response";
 import { getAuthContext } from "@/lib/auth-session";
-import { withRequestLogging } from "@/lib/request-logging";
 import { verifyCsrf } from "@/lib/csrf";
-import { z } from "zod";
+import { logger } from "@/lib/logger";
+import { withMetrics } from "@/lib/metrics-middleware";
+import prisma from "@/lib/prisma";
+import { withRequestLogging } from "@/lib/request-logging";
 
 const cancelPaymentSchema = z.object({
   txHash: z.string().min(1, "Transaction hash is required"),

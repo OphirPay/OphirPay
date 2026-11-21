@@ -26,17 +26,17 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-12 text-center",
+        "bg-white dark:bg-gray-900 rounded-xl border border-gray-300 dark:border-gray-700 p-12 text-center",
         className
       )}
     >
-      <div className="h-16 w-16 mx-auto rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
+      <div className="h-16 w-16 mx-auto rounded-full bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 flex items-center justify-center mb-4">
         {icon}
       </div>
-      <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
         {title}
       </h2>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
+      <p className="text-sm text-gray-700 dark:text-gray-300 mb-6 max-w-md mx-auto">
         {description}
       </p>
       {onAction && (

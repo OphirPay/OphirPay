@@ -14,11 +14,13 @@ import {
   fetchOnChainPayments,
   type OnChainPayment,
 } from "@/lib/contracts";
-import { formatAmount } from "@/lib/utils";
+import { formatAmount, shortenAddress } from "@/lib/utils";
 import { XLM_STROOPS } from "@/lib/stellar";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { ErrorBoundary, WidgetErrorFallback } from "@/components/ErrorBoundary";
 import { Card } from "@/components/ui/Card";
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 
 export function AnalyticsDashboard() {
   usePageTitle(PAGE_TITLES.ANALYTICS);
@@ -26,6 +28,8 @@ export function AnalyticsDashboard() {
   const [payments, setPayments] = useState<OnChainPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,6 +37,7 @@ export function AnalyticsDashboard() {
     try {
       const result = await fetchOnChainPayments(100);
       setPayments(result.payments);
+      setCurrentPage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load analytics data");
     } finally {
@@ -68,6 +73,19 @@ export function AnalyticsDashboard() {
   }, [payments]);
 
   const maxVolume = Math.max(1, ...metrics.chartData.map((d) => d.volume));
+
+  const totalPages = Math.max(1, Math.ceil(payments.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const paginatedAuditRows = useMemo(
+    () => payments.slice(startIndex, startIndex + pageSize),
+    [payments, startIndex, pageSize]
+  );
+
+  const handlePageSizeChange = (nextSize: number) => {
+    setPageSize(nextSize);
+    setCurrentPage(1);
+  };
 
   return (
     <>
@@ -212,6 +230,104 @@ export function AnalyticsDashboard() {
               </ErrorBoundary>
             </div>
           </div>
+
+          {/* Audit Log Table with Page Size Selector (#1909) */}
+          <Card title="Payment Audit Log" padding="md">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Showing {payments.length === 0 ? 0 : startIndex + 1}–
+                {Math.min(startIndex + pageSize, payments.length)} of {payments.length} entries
+              </p>
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="audit-log-page-size"
+                  className="text-xs font-medium text-gray-600 dark:text-gray-300"
+                >
+                  Rows per page:
+                </label>
+                <select
+                  id="audit-log-page-size"
+                  data-testid="audit-log-page-size-select"
+                  value={pageSize}
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                  className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-medium text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-ophir-500"
+                >
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {paginatedAuditRows.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No audit log entries available
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400">
+                      <th className="py-2 pr-4 font-medium">Payer</th>
+                      <th className="py-2 pr-4 font-medium">Payee</th>
+                      <th className="py-2 pr-4 font-medium text-right">Amount</th>
+                      <th className="py-2 font-medium text-right">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {paginatedAuditRows.map((entry, idx) => (
+                      <tr key={`${entry.payer}-${entry.payee}-${entry.timestamp}-${startIndex + idx}`}>
+                        <td className="py-2.5 pr-4 font-mono text-gray-800 dark:text-gray-200">
+                          {shortenAddress(entry.payer, 6)}
+                        </td>
+                        <td className="py-2.5 pr-4 font-mono text-gray-800 dark:text-gray-200">
+                          {shortenAddress(entry.payee, 6)}
+                        </td>
+                        <td className="py-2.5 pr-4 font-mono text-right text-gray-900 dark:text-white">
+                          {formatAmount(entry.amountStroops / XLM_STROOPS, "XLM")}
+                        </td>
+                        <td className="py-2.5 text-right text-gray-500 dark:text-gray-400">
+                          {entry.timestamp
+                            ? new Date(entry.timestamp * 1000).toLocaleString()
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Page {safeCurrentPage} of {totalPages}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className="px-2.5 py-1 rounded border border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300 disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safeCurrentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className="px-2.5 py-1 rounded border border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </Card>
         </>
       )}
     </>

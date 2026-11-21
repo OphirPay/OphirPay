@@ -3,6 +3,7 @@
 
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { formatAmount, shortenAddress } from "@/lib/utils";
 
 interface BatchRecipient {
@@ -28,6 +29,28 @@ interface BatchConfirmDialogProps {
 }
 
 const MAX_VISIBLE = 5;
+
+function RecipientAddress({ address }: { address: string }) {
+  const { copy, state } = useCopyToClipboard();
+
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={() => copy(address)}
+        title="Copy recipient address"
+        aria-label="Copy recipient address"
+        className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate hover:text-gray-900 dark:hover:text-white hover:underline underline-offset-2"
+      >
+        {state.copied ? "Copied!" : shortenAddress(address, 8)}
+      </button>
+      <span aria-live="polite" className="sr-only">
+        {state.copied ? "Address copied to clipboard" : ""}
+        {state.error ? "Copy failed" : ""}
+      </span>
+    </span>
+  );
+}
 
 export function BatchConfirmDialog({
   open,
@@ -81,7 +104,7 @@ export function BatchConfirmDialog({
                 className="flex items-center justify-between px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-900"
               >
                 <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
-                  {shortenAddress(r.address, 8)}
+                  <RecipientAddress address={r.address} />
                 </span>
                 <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white ml-3">
                   {formatAmount(parseFloat(r.amount), "XLM")}

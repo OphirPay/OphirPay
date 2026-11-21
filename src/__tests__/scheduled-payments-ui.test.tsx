@@ -326,4 +326,99 @@ describe("ScheduledPaymentsList", () => {
     );
     expect(deleteCall).toBeTruthy();
   });
+
+  it("filters scheduled payments in real-time by memo text", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/scheduled" && (!init?.method || init.method === "GET")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            success: true,
+            data: [
+              {
+                id: "sched_1",
+                amount: "100",
+                assetCode: "XLM",
+                destAddress: RECIPIENT,
+                memo: "Monthly Retainer",
+                scheduledAt: "2099-01-01T10:00:00.000Z",
+                status: "SCHEDULED",
+              },
+              {
+                id: "sched_2",
+                amount: "25",
+                assetCode: "XLM",
+                destAddress: PUBLIC_KEY,
+                memo: "Hosting Reimbursement",
+                scheduledAt: "2099-02-01T10:00:00.000Z",
+                status: "EXECUTED",
+              },
+            ],
+            meta: {},
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse(200, { success: true, data: [], meta: {} })
+      );
+    });
+
+    renderWithClient(<ScheduledPaymentsList />);
+
+    expect(await screen.findByText("100.00 XLM")).toBeInTheDocument();
+    expect(await screen.findByText("25.00 XLM")).toBeInTheDocument();
+
+    const searchInput = screen.getByTestId("scheduled-search-input");
+    fireEvent.change(searchInput, { target: { value: "Retainer" } });
+
+    expect(screen.getByText("100.00 XLM")).toBeInTheDocument();
+    expect(screen.queryByText("25.00 XLM")).not.toBeInTheDocument();
+
+    const clearButton = screen.getByTestId("scheduled-search-clear");
+    fireEvent.click(clearButton);
+
+    expect(screen.getByText("100.00 XLM")).toBeInTheDocument();
+    expect(screen.getByText("25.00 XLM")).toBeInTheDocument();
+  });
+
+  it("filters scheduled payments by recipient address and shows empty state when none match", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/scheduled" && (!init?.method || init.method === "GET")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            success: true,
+            data: [
+              {
+                id: "sched_1",
+                amount: "100",
+                assetCode: "XLM",
+                destAddress: RECIPIENT,
+                memo: "Office Rent",
+                scheduledAt: "2099-01-01T10:00:00.000Z",
+                status: "SCHEDULED",
+              },
+            ],
+            meta: {},
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse(200, { success: true, data: [], meta: {} })
+      );
+    });
+
+    renderWithClient(<ScheduledPaymentsList />);
+
+    expect(await screen.findByText("100.00 XLM")).toBeInTheDocument();
+
+    const searchInput = screen.getByTestId("scheduled-search-input");
+    fireEvent.change(searchInput, { target: { value: "NonExistentAddress" } });
+
+    expect(screen.queryByText("100.00 XLM")).not.toBeInTheDocument();
+    expect(screen.getByTestId("scheduled-empty-search")).toBeInTheDocument();
+    expect(
+      screen.getByText(/No scheduled payments match/i)
+    ).toBeInTheDocument();
+  });
 });

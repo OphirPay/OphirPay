@@ -1,10 +1,9 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useMemo, useState } from "react";
-
-import type { AddressEntry } from "@/lib/address-book";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAddressBook } from "@/lib/address-book";
+import type { AddressEntry } from "@/lib/address-book";
 import { shortenAddress } from "@/lib/utils";
 
 interface AddressBookMultiSelectProps {
@@ -19,6 +18,9 @@ interface AddressBookMultiSelectProps {
  * Multi-select picker over the saved address book. Lets users tick several
  * contacts, optionally set a default amount that applies to every selected
  * row, and append them to the batch recipient list in one action.
+ *
+ * Includes horizontal scroll indicators (subtle edge fade gradients) on mobile
+ * when columns overflow horizontally to cue users that scrolling is available.
  */
 export function AddressBookMultiSelect({
   onAdd,
@@ -29,6 +31,19 @@ export function AddressBookMultiSelect({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [defaultAmount, setDefaultAmount] = useState("");
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    const maxScroll = scrollWidth - clientWidth;
+    setCanScrollLeft(scrollLeft > 0);
+    setCanScrollRight(maxScroll > 0 && scrollLeft < maxScroll - 1);
+  }, []);
 
   const existing = useMemo(
     () => new Set(existingAddresses.map((a) => a.trim())),
@@ -44,6 +59,16 @@ export function AddressBookMultiSelect({
         e.publicKey.toLowerCase().includes(q)
     );
   }, [entries, query]);
+
+  useEffect(() => {
+    checkScroll();
+    window.addEventListener("resize", checkScroll);
+    return () => window.removeEventListener("resize", checkScroll);
+  }, [checkScroll, filtered]);
+
+  const handleScroll = () => {
+    checkScroll();
+  };
 
   const selectable = filtered.filter((e) => !existing.has(e.publicKey));
   const selectableSelected = selectable.filter((e) => selected.has(e.publicKey));
@@ -89,53 +114,72 @@ export function AddressBookMultiSelect({
         />
       </div>
 
-      {/* Contact list */}
-      <div
-        className="max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800"
-        role="group"
-        aria-label="Address book contacts"
-      >
-        {filtered.length === 0 && (
-          <p className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-            No contacts match “{query.trim()}”.
-          </p>
+      {/* Contact list with horizontal scroll indicator gradients for mobile */}
+      <div className="relative">
+        {canScrollLeft && (
+          <div
+            data-testid="scroll-indicator-left"
+            className="pointer-events-none absolute left-0 top-0 bottom-0 z-10 w-6 bg-gradient-to-r from-white dark:from-gray-900 to-transparent transition-opacity duration-200"
+            aria-hidden="true"
+          />
         )}
-        {filtered.map((entry) => {
-          const alreadyAdded = existing.has(entry.publicKey);
-          const checked = selected.has(entry.publicKey);
-          return (
-            <label
-              key={entry.publicKey}
-              className={`flex items-center gap-3 px-3 py-2.5 ${
-                alreadyAdded
-                  ? "opacity-60 cursor-not-allowed"
-                  : "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                disabled={disabled || alreadyAdded}
-                onChange={() => toggle(entry.publicKey)}
-                aria-label={`Add ${entry.label}`}
-                className="h-4 w-4 rounded border-gray-300 text-ophir-600 focus:ring-ophir-500 disabled:opacity-50"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {entry.label}
+        {canScrollRight && (
+          <div
+            data-testid="scroll-indicator-right"
+            className="pointer-events-none absolute right-0 top-0 bottom-0 z-10 w-6 bg-gradient-to-l from-white dark:from-gray-900 to-transparent transition-opacity duration-200"
+            aria-hidden="true"
+          />
+        )}
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          data-testid="address-book-scroll-wrapper"
+          className="max-h-56 overflow-y-auto overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800"
+          role="group"
+          aria-label="Address book contacts"
+        >
+          {filtered.length === 0 && (
+            <p className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
+              No contacts match “{query.trim()}”.
+            </p>
+          )}
+          {filtered.map((entry) => {
+            const alreadyAdded = existing.has(entry.publicKey);
+            const checked = selected.has(entry.publicKey);
+            return (
+              <label
+                key={entry.publicKey}
+                className={`flex items-center gap-3 px-3 py-2.5 min-w-[280px] ${
+                  alreadyAdded
+                    ? "opacity-60 cursor-not-allowed"
+                    : "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={disabled || alreadyAdded}
+                  onChange={() => toggle(entry.publicKey)}
+                  aria-label={`Add ${entry.label}`}
+                  className="h-4 w-4 rounded border-gray-300 text-ophir-600 focus:ring-ophir-500 disabled:opacity-50"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {entry.label}
+                  </span>
+                  <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
+                    {shortenAddress(entry.publicKey, 6)}
+                  </span>
                 </span>
-                <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
-                  {shortenAddress(entry.publicKey, 6)}
-                </span>
-              </span>
-              {alreadyAdded && (
-                <span className="text-xs font-medium text-gray-400 dark:text-gray-500 flex-shrink-0">
-                  In batch
-                </span>
-              )}
-            </label>
-          );
-        })}
+                {alreadyAdded && (
+                  <span className="text-xs font-medium text-gray-400 dark:text-gray-500 flex-shrink-0">
+                    In batch
+                  </span>
+                )}
+              </label>
+            );
+          })}
+        </div>
       </div>
 
       {/* Default amount + Add button */}

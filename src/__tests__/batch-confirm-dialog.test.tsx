@@ -140,4 +140,33 @@ describe("BatchConfirmDialog", () => {
     expect(screen.getByText("Estimated Fee")).toBeDefined();
     expect(screen.getByText("0.00007 XLM")).toBeDefined();
   });
+
+  it("renders gas fee estimation spinner while simulating and disables submit", () => {
+    render(
+      <BatchConfirmDialog
+        {...baseProps}
+        isSimulating={true}
+        recipients={[{ address: "G" + "A".repeat(55), amount: "10" }]}
+      />
+    );
+    expect(screen.getByTestId("gas-simulation-spinner")).toBeDefined();
+    expect(screen.getByText("Estimating gas...")).toBeDefined();
+    const submitBtn = screen.getByTestId("batch-confirm-send");
+    expect(submitBtn).toBeDisabled();
+    expect(submitBtn).toHaveTextContent("Simulating...");
+  });
+
+  it("displays estimated fee and enables submit once simulation resolves", () => {
+    render(
+      <BatchConfirmDialog
+        {...baseProps}
+        isSimulating={false}
+        recipients={[{ address: "G" + "A".repeat(55), amount: "10" }]}
+      />
+    );
+    expect(screen.queryByTestId("gas-simulation-spinner")).toBeNull();
+    const submitBtn = screen.getByTestId("batch-confirm-send");
+    expect(submitBtn).not.toBeDisabled();
+    expect(submitBtn).toHaveTextContent("Confirm & Sign");
+  });
 });

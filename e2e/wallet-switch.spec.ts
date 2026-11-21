@@ -252,8 +252,9 @@ test.describe("Wallet switch with state preservation", () => {
       .click();
 
     // Select Albedo from the list
-    const albedoOption = page.locator("button").filter({ hasText: "Albedo" });
+    const albedoOption = page.locator("button").filter({ hasText: "Albedo" }).first();
     await expect(albedoOption).toBeVisible({ timeout: 10000 });
+    await albedoOption.scrollIntoViewIfNeeded();
     await albedoOption.click();
 
     await waitForConnected(page);
@@ -337,8 +338,9 @@ test.describe("Wallet switch with state preservation", () => {
       .first()
       .click();
 
-    const albedoOption = page.locator("button").filter({ hasText: "Albedo" });
+    const albedoOption = page.locator("button").filter({ hasText: "Albedo" }).first();
     await expect(albedoOption).toBeVisible({ timeout: 10000 });
+    await albedoOption.scrollIntoViewIfNeeded();
     await albedoOption.click();
     await waitForConnected(page);
 
@@ -371,8 +373,8 @@ test.describe("Wallet switch with state preservation", () => {
       page
         .locator("button")
         .filter({ hasText: "Freighter" })
-        .locator("..")
-        .getByText("Installed"),
+        .getByText("Installed")
+        .first(),
     ).toBeVisible({ timeout: 10000 });
 
     // Albedo shows "Not found"

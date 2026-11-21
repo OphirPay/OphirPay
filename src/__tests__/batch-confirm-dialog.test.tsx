@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { BatchConfirmDialog } from "@/components/BatchConfirmDialog";
 
 const baseProps = {
@@ -110,5 +110,85 @@ describe("BatchConfirmDialog", () => {
     );
     expect(screen.getByText("Estimated Fee")).toBeDefined();
     expect(screen.getByText("0.00007 XLM")).toBeDefined();
+  });
+});
+
+describe("BatchConfirmDialog copy-to-clipboard (issue #1894)", () => {
+  const ADDRESS_A = "G" + "A".repeat(55);
+  const ADDRESS_B = "G" + "B".repeat(55);
+  const writeText = vi.fn();
+
+  beforeEach(() => {
+    writeText.mockReset();
+    writeText.mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("copies the full address (not the shortened form) when an address is clicked", async () => {
+    render(
+      <BatchConfirmDialog
+        {...baseProps}
+        recipients={[
+          { address: ADDRESS_A, amount: "10" },
+          { address: ADDRESS_B, amount: "15.5" },
+        ]}
+      />
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /copy recipient address GAAAAAAAA/i })
+    );
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith(ADDRESS_A);
+    // Feedback appears only on the clicked row, and is announced politely.
+    expect(await screen.findByText("Copied!")).toBeDefined();
+    expect(screen.getAllByText("Copied!")).toHaveLength(1);
+    expect(screen.getByText("Address copied")).toBeDefined();
+  });
+
+  it("shows 'Copied!' and hides it again after 2 seconds", async () => {
+    vi.useFakeTimers();
+    render(
+      <BatchConfirmDialog
+        {...baseProps}
+        recipients={[{ address: ADDRESS_A, amount: "10" }]}
+      />
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /copy recipient address/i })
+    );
+    // Flush the resolved writeText promise so the tooltip state lands.
+    await act(async () => {});
+    expect(screen.getByText("Copied!")).toBeDefined();
+    act(() => {
+      vi.advanceTimersByTime(1999);
+    });
+    expect(screen.getByText("Copied!")).toBeDefined();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.queryByText("Copied!")).toBeNull();
+    expect(screen.queryByText("Address copied")).toBeNull();
+  });
+
+  it("fails gracefully when the clipboard write is rejected", async () => {
+    writeText.mockRejectedValue(new Error("Clipboard permission denied"));
+    render(
+      <BatchConfirmDialog
+        {...baseProps}
+        recipients={[{ address: ADDRESS_A, amount: "10" }]}
+      />
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /copy recipient address/i })
+    );
+    // Flush the rejected promise; the rejection must be swallowed.
+    await act(async () => {});
+    expect(writeText).toHaveBeenCalledWith(ADDRESS_A);
+    expect(screen.queryByText("Copied!")).toBeNull();
+    expect(screen.queryByText("Address copied")).toBeNull();
   });
 });

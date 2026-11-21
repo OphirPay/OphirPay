@@ -230,4 +230,26 @@ describe("CsvBatchImport", () => {
       /fix the highlighted fields/i
     );
   });
+
+  it("renders an Export CSV button and triggers download when clicked", async () => {
+    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock-url");
+    const revokeObjectURLSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    setup();
+    await uploadFile(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,payroll\n`)
+    );
+    await screen.findByTestId("csv-preview-table");
+
+    const exportBtn = screen.getByRole("button", { name: "Export CSV" });
+    expect(exportBtn).toBeInTheDocument();
+
+    fireEvent.click(exportBtn);
+    expect(createObjectURLSpy).toHaveBeenCalled();
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:mock-url");
+
+    createObjectURLSpy.mockRestore();
+    revokeObjectURLSpy.mockRestore();
+  });
 });

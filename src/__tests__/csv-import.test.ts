@@ -7,6 +7,7 @@ import {
   parseRecipientsCsvText,
   splitCsvRow,
   generateRecipientsCsvTemplate,
+  exportBatchRowsToCsv,
 } from "@/lib/csv-import";
 
 const VALID_ADDR_1 = "GA2C5RFPE6GCKMY3US5PAB6UZLKIGAHWKXX2G2CTRBIAP2W2QASXYZW1";
@@ -236,6 +237,25 @@ describe("CSV Batch Parser - Unit Tests", () => {
       const headerOnlyRes = parseRecipientsCsvText("address,amount,assetCode\n");
       expect(headerOnlyRes.errors).toHaveLength(1);
       expect(headerOnlyRes.errors[0].message).toContain("header row and at least one data row");
+    });
+  });
+
+  describe("exportBatchRowsToCsv utility", () => {
+    it("serializes batch recipient rows with standard header and escaping", () => {
+      const rows = [
+        { address: VALID_ADDR_1, amount: "100.5", memo: "payroll" },
+        { address: VALID_ADDR_2, amount: "50", memo: "bonus, november" },
+      ];
+      const output = exportBatchRowsToCsv(rows);
+      expect(output).toBe(
+        `address,amount,memo\n${VALID_ADDR_1},100.5,payroll\n${VALID_ADDR_2},50,"bonus, november"\n`
+      );
+    });
+
+    it("handles rows with missing memo", () => {
+      const rows = [{ address: VALID_ADDR_1, amount: "25" }];
+      const output = exportBatchRowsToCsv(rows);
+      expect(output).toBe(`address,amount,memo\n${VALID_ADDR_1},25,\n`);
     });
   });
 });

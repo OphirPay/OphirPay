@@ -2,14 +2,13 @@
 // Tests for CsvBatchImport: drag-and-drop upload, preview table, inline
 // error highlighting, re-validation on edit, and validity callbacks.
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
-  buildBatchPaymentsCsv,
   CsvBatchImport,
-  type CsvRecipientRow,
+  buildBatchPaymentsCsv,
   sanitizeCsvExportFilename,
+  type CsvRecipientRow,
 } from "@/components/CsvBatchImport";
 
 const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -288,5 +287,43 @@ describe("CsvBatchImport", () => {
     createObjectUrlSpy.mockRestore();
     revokeObjectUrlSpy.mockRestore();
     clickSpy.mockRestore();
+  });
+
+  it("updates memo byte counter in real-time and warns when exceeding 28 bytes (Issue #1898)", async () => {
+    const { onValidityChange } = setup();
+
+    await uploadFile(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,short memo\n`)
+    );
+
+    await screen.findByTestId("csv-preview-table");
+    expect(screen.getByTestId("memo-byte-counter")).toHaveTextContent("18 bytes remaining (10/28 B)");
+    expect(screen.queryByTestId("memo-warning-badge")).toBeNull();
+
+    // Type into memo field to exceed 28 bytes (e.g. 8 rocket emojis = 32 bytes)
+    const memoInput = screen.getByDisplayValue("short memo");
+    fireEvent.change(memoInput, { target: { value: "🚀🚀🚀🚀🚀🚀🚀🚀" } });
+
+    // Real-time counter and warning badge appear immediately
+    expect(await screen.findByTestId("memo-warning-badge")).toBeInTheDocument();
+    expect(screen.getByTestId("memo-warning-badge")).toHaveTextContent(/Exceeds 28-byte limit/i);
+    expect(screen.getByTestId("memo-byte-counter")).toHaveTextContent(/4 bytes over limit/i);
+
+    // Validity is reported as false to disable submission
+    await waitFor(() => {
+      expect(onValidityChange).toHaveBeenLastCalledWith(false);
+    });
+    expect(screen.getByTestId("csv-status")).toHaveTextContent(/fix the highlighted fields/i);
+
+    // Fix the memo back to <= 28 bytes
+    fireEvent.change(memoInput, { target: { value: "valid-note" } });
+
+    await waitFor(() => {
+      expect(onValidityChange).toHaveBeenLastCalledWith(true);
+    });
+    expect(screen.queryByTestId("memo-warning-badge")).toBeNull();
+    expect(screen.getByTestId("memo-byte-counter")).toHaveTextContent("18 bytes remaining (10/28 B)");
+    expect(screen.getByTestId("csv-status")).toHaveTextContent(/ready to submit/i);
   });
 });

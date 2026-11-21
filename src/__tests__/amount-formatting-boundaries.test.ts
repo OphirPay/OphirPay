@@ -1,10 +1,4 @@
-import {
-  formatStellarAmount,
-  MAX_INT64,
-  MIN_INT64,
-} from "@/lib/stellar/format";
 // SPDX-License-Identifier: MIT
-
 /**
  * Boundary tests for amount and currency formatting (issue #722).
  *
@@ -17,21 +11,26 @@ import {
  *   • Rounding is **half away from zero** (`2.5 → "3"`), not banker's rounding.
  *   • A non-finite value renders as `"—"` — never `NaN`, `Infinity` or `∞`.
  */
+import { describe, expect,it } from "vitest";
 
-import { describe, it, expect } from "vitest";
 import {
-  NON_FINITE_AMOUNT,
+  formatAmountRange,
   formatCompactAmount,
   formatDecimal,
-  formatAmountRange,
+  NON_FINITE_AMOUNT,
   stroopsToDisplay,
 } from "@/lib/amount";
 import {
-  formatXlm,
+  formatCompact,
   formatFiat,
   formatTokenAmount,
-  formatCompact,
+  formatXlm,
 } from "@/lib/format-currency";
+import {
+  formatStellarAmount,
+  MAX_INT64,
+  MIN_INT64,
+} from "@/lib/stellar/format";
 
 const ONE_STROOP_IN_XLM = 1e-7;
 
@@ -242,15 +241,15 @@ describe("formatStellarAmount boundary values (issue #1919)", () => {
   it("formats zero amounts", () => {
     expect(formatStellarAmount(0)).toBe("0");
     expect(formatStellarAmount("0")).toBe("0");
-    expect(formatStellarAmount(0n)).toBe("0");
-    expect(formatStellarAmount(0n, { inStroops: true })).toBe("0");
+    expect(formatStellarAmount(BigInt(0))).toBe("0");
+    expect(formatStellarAmount(BigInt(0), { inStroops: true })).toBe("0");
     expect(formatStellarAmount("0", { inStroops: true })).toBe("0");
   });
 
   it("formats minimum non-zero stroop amount (0.0000001)", () => {
     expect(formatStellarAmount(0.0000001)).toBe("0.0000001");
     expect(formatStellarAmount("0.0000001")).toBe("0.0000001");
-    expect(formatStellarAmount(1n, { inStroops: true })).toBe("0.0000001");
+    expect(formatStellarAmount(BigInt(1), { inStroops: true })).toBe("0.0000001");
     expect(formatStellarAmount(1, { inStroops: true })).toBe("0.0000001");
     expect(formatStellarAmount("1", { inStroops: true })).toBe("0.0000001");
   });
@@ -258,8 +257,8 @@ describe("formatStellarAmount boundary values (issue #1919)", () => {
   it("formats negative numbers correctly", () => {
     expect(formatStellarAmount(-5)).toBe("-5");
     expect(formatStellarAmount("-0.0000001")).toBe("-0.0000001");
-    expect(formatStellarAmount(-1n, { inStroops: true })).toBe("-0.0000001");
-    expect(formatStellarAmount(-10_000_000n, { inStroops: true })).toBe("-1");
+    expect(formatStellarAmount(BigInt(-1), { inStroops: true })).toBe("-0.0000001");
+    expect(formatStellarAmount(BigInt(-10_000_000), { inStroops: true })).toBe("-1");
     expect(formatStellarAmount(MIN_INT64, { inStroops: true })).toBe("-922337203685.4775808");
   });
 
@@ -290,7 +289,7 @@ describe("formatStellarAmount boundary values (issue #1919)", () => {
     expect(formatStellarAmount("100.000", { trimTrailingZeros: true })).toBe("100");
 
     // Stroop amounts with maxDecimals < 7 and trimTrailingZeros false
-    expect(formatStellarAmount(12_345_678n, { inStroops: true, maxDecimals: 3, trimTrailingZeros: false })).toBe("1.234");
-    expect(formatStellarAmount(10_000_000n, { inStroops: true, trimTrailingZeros: false })).toBe("1.0000000");
+    expect(formatStellarAmount(BigInt(12_345_678), { inStroops: true, maxDecimals: 3, trimTrailingZeros: false })).toBe("1.234");
+    expect(formatStellarAmount(BigInt(10_000_000), { inStroops: true, trimTrailingZeros: false })).toBe("1.0000000");
   });
 });

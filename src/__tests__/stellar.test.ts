@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach,describe, expect, it } from "vitest";
+
 import {
-  isValidStellarAddress,
-  getStellarExplorerUrl,
   getPreferredStellarExplorer,
+  getStellarExplorerUrl,
+  isValidStellarAddress,
   setPreferredStellarExplorer,
   STELLAR_EXPLORER_STORAGE_KEY,
 } from "@/lib/stellar";

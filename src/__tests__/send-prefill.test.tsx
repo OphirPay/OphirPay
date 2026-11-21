@@ -39,6 +39,7 @@ vi.mock("@/lib/stellar", () => ({
   buildPaymentTx: vi.fn(),
   submitSignedTx: vi.fn(),
   getStellarExplorerUrl: vi.fn(),
+  getPreferredStellarExplorer: vi.fn(() => "stellar.expert"),
   NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
   STELLAR_NETWORK: "TESTNET",
   XLM_STROOPS: 10000000,

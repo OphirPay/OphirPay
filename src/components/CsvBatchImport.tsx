@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  parseRecipientsCsvToRows,
-  validateRecipientFields,
-  applyDuplicateErrors,
-  downloadCsvTemplate,
-  MAX_BATCH_RECIPIENTS,
-  type CsvImportRow,
-} from "@/lib/csv-import";
+
 import { BatchDropzone, formatFileSize } from "@/components/batch/BatchDropzone";
 import { escapeCsvField } from "@/lib/csv";
+import {
+  applyDuplicateErrors,
+  type CsvImportRow,
+  downloadCsvTemplate,
+  MAX_BATCH_RECIPIENTS,
+  parseRecipientsCsvToRows,
+  validateRecipientFields,
+} from "@/lib/csv-import";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useState, useEffect } from "react";
+import { useEffect,useState } from "react";
+
 import {
   formatRpcEndpoint,
   RPC_HEALTH_LATENCY_THRESHOLD_MS,

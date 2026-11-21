@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useRef } from "react";
-import { Modal } from "@/components/ui/Modal";
+
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 
 /**
  * Sudo-mode re-authentication prompt (issue #1389, #1907).

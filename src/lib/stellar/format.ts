@@ -6,9 +6,9 @@
  * without loss of precision or floating-point overflow.
  */
 
-export const STROOPS_PER_XLM = 10_000_000n;
-export const MAX_INT64 = 9223372036854775807n;
-export const MIN_INT64 = -9223372036854775808n;
+export const STROOPS_PER_XLM = BigInt(10_000_000);
+export const MAX_INT64 = BigInt("9223372036854775807");
+export const MIN_INT64 = BigInt("-9223372036854775808");
 
 export interface FormatStellarAmountOptions {
   /** When true, input amount is treated as stroops (1 XLM = 10,000,000 stroops). Default false. */
@@ -45,7 +45,7 @@ export function formatStellarAmount(
       return "—";
     }
 
-    const isNegative = stroopVal < 0n;
+    const isNegative = stroopVal < BigInt(0);
     const absVal = isNegative ? -stroopVal : stroopVal;
     const whole = absVal / STROOPS_PER_XLM;
     const fractionPart = absVal % STROOPS_PER_XLM;

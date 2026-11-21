@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 import { useEffect, useState } from "react";
-import { Modal } from "@/components/ui/Modal";
+
 import { Kbd } from "@/components/ui/Kbd";
+import { Modal } from "@/components/ui/Modal";
 
 function ShortcutRow({
   keys,

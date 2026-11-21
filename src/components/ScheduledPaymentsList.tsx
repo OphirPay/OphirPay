@@ -1,9 +1,15 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useToast } from "@/components/ui/Toast";
-import { useApiMutation,useApiQuery } from "@/hooks/useApiQuery";
+import { useEffect, useState } from "react";
+import { useApiQuery, useApiMutation } from "@/hooks/useApiQuery";
+import {
+  getPreferredStellarExplorer,
+  getStellarExplorerUrl,
+  type StellarExplorerId,
+} from "@/lib/stellar";
 import { formatAmount, formatDate, shortenAddress } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 /** Shape returned by GET /api/scheduled (amount pre-serialized as string). */
 export interface ScheduledPaymentRow {
@@ -32,6 +38,23 @@ const STATUS_STYLES: Record<ScheduledPaymentRow["status"], string> = {
  */
 export default function ScheduledPaymentsList() {
   const toast = useToast();
+  const [explorer, setExplorer] = useState<StellarExplorerId>(() =>
+    getPreferredStellarExplorer()
+  );
+
+  useEffect(() => {
+    setExplorer(getPreferredStellarExplorer());
+    const onExplorerChanged = () => {
+      setExplorer(getPreferredStellarExplorer());
+    };
+    window.addEventListener("ophirpay:explorer-changed", onExplorerChanged);
+    window.addEventListener("storage", onExplorerChanged);
+    return () => {
+      window.removeEventListener("ophirpay:explorer-changed", onExplorerChanged);
+      window.removeEventListener("storage", onExplorerChanged);
+    };
+  }, []);
+
   const { data, isLoading } = useApiQuery<ScheduledPaymentRow[]>(
     ["scheduled"],
     "/api/scheduled"
@@ -102,6 +125,17 @@ export default function ScheduledPaymentsList() {
                   >
                     {payment.errorMessage}
                   </p>
+                )}
+                {payment.transactionHash && (
+                  <a
+                    href={getStellarExplorerUrl(payment.transactionHash, explorer)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid={`tx-explorer-link-${payment.id}`}
+                    className="inline-block mt-0.5 text-xs font-mono text-ophir-600 dark:text-ophir-400 hover:underline"
+                  >
+                    View tx {shortenAddress(payment.transactionHash, 4)}
+                  </a>
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">

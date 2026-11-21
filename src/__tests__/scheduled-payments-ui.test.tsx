@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach,beforeEach, describe, expect, it, vi } from "vitest";
-
 import SendPage from "@/app/send/page";
 import ScheduledPaymentsList from "@/components/ScheduledPaymentsList";
 
@@ -37,6 +36,7 @@ vi.mock("@/lib/stellar", () => ({
   isValidStellarAddress: vi.fn(() => true), accountExists: vi.fn(() => Promise.resolve(true)),
   buildPaymentTx: vi.fn(),
   submitSignedTx: vi.fn(),
+  getPreferredStellarExplorer: vi.fn(() => "stellar.expert"),
   getStellarExplorerUrl: vi.fn((h: string) => `https://stellar.expert/explorer/testnet/tx/${h}`),
   NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
   STELLAR_NETWORK: "TESTNET",

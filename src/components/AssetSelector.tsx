@@ -2,8 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useCallback,useEffect, useState } from "react";
-
+import { useXlmPrice } from "@/hooks/usePrice";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { cn } from "@/lib/utils";
+import {
+  XLM_ASSET,
+  USDC_TESTNET,
+  USDC_MAINNET,
+  type AssetInfo,
+} from "@/lib/assets";
+import { fetchAllBalances, STELLAR_NETWORK, type AssetBalance } from "@/lib/stellar";
+import { checkTrustline, getTrustlineMessage, type TrustlineInfo, type TrustlineState } from "@/lib/trustline";
 import { TrustlineModal } from "@/components/wallet/TrustlineModal";
 import {
   type ClientAssetMetadata,
@@ -129,7 +138,11 @@ export function AssetSelector({
   disabled = false,
   assets = KNOWN_ASSETS,
 }: AssetSelectorProps) {
-  const [balances, setBalances] = useState<AssetBalance[]>([]);
+  const [accountBalances, setAccountBalances] = useState<{
+    publicKey: string;
+    values: AssetBalance[];
+  } | null>(null);
+  const balances = accountBalances?.publicKey === publicKey ? accountBalances?.values ?? [] : [];
   const [query, setQuery] = useState("");
   const [trustlineStatus, setTrustlineStatus] = useState<
     Record<string, { hasTrustline: boolean; checking: boolean; state?: TrustlineState }>
@@ -142,21 +155,26 @@ export function AssetSelector({
   // Absent/`null` entries fall back to the built-in display name.
   const [metadata, setMetadata] = useState<Record<string, ClientAssetMetadata | null>>({});
 
+  const balanceGeneration = useRef(0);
   const fetchBalances = useCallback(async () => {
     if (!publicKey) return;
+    const generation = ++balanceGeneration.current;
     setLoading(true);
     try {
       const allBalances = await fetchAllBalances(publicKey);
-      setBalances(allBalances);
+      if (generation === balanceGeneration.current) setAccountBalances({ publicKey, values: allBalances });
     } catch {
       // silent
     } finally {
-      setLoading(false);
+      if (generation === balanceGeneration.current) setLoading(false);
     }
   }, [publicKey]);
 
   useEffect(() => {
-    fetchBalances();
+    setAccountBalances(null);
+    setLoading(false);
+    void fetchBalances();
+    return () => { balanceGeneration.current += 1; };
   }, [fetchBalances]);
 
   // Resolve ticker/issuer names for the non-native assets we might display.
@@ -257,6 +275,14 @@ export function AssetSelector({
   );
 
   const balance = findAssetBalance(balances, selectedAsset);
+  const { price } = useXlmPrice({ enabled: !!publicKey && selectedAsset.type === "native" });
+  const usdc = STELLAR_NETWORK === "PUBLIC" ? USDC_MAINNET : USDC_TESTNET;
+  const rate = selectedAsset.type === "native" ? price :
+    selectedAsset.code === usdc.code && selectedAsset.issuer === usdc.issuer ? 1 : null;
+  const usd = publicKey && !loading && rate !== null ? Number(balance) * rate : NaN;
+  const fiatEstimate = Number.isFinite(usd)
+    ? new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(usd)
+    : null;
 
   /**
    * Display label for an asset: the resolved TOML name when one exists,
@@ -295,7 +321,7 @@ export function AssetSelector({
 
         <span className="flex items-center gap-2">
           <span className="text-xs text-gray-400">
-            {loading ? "..." : balance}
+            {loading ? "..." : balance}{fiatEstimate && <span className="ml-1">≈ {fiatEstimate}</span>}
           </span>
           <svg
             xmlns="http://www.w3.org/2000/svg"

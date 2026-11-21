@@ -2,22 +2,33 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useEffect,useState } from "react";
-
-import { useTheme } from "@/hooks/useTheme";
-import { cn } from "@/lib/utils";
-
-import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
-import { NotificationCenter } from "./NotificationCenter";
+import { useState, useEffect } from "react";
 import { WalletButton } from "./WalletButton";
+import { NotificationCenter } from "./NotificationCenter";
+import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
+import { useTheme } from "@/hooks/useTheme";
+import {
+  getPreferredStellarExplorer,
+  setPreferredStellarExplorer,
+  STELLAR_EXPLORER_OPTIONS,
+  type StellarExplorerId,
+} from "@/lib/stellar";
+import { cn } from "@/lib/utils";
 
 export function Header() {
   const { toggle, resolved } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [explorer, setExplorer] = useState<StellarExplorerId>("stellar.expert");
 
   useEffect(() => {
     setMounted(true);
+    setExplorer(getPreferredStellarExplorer());
   }, []);
+
+  const handleExplorerChange = (next: StellarExplorerId) => {
+    setExplorer(next);
+    setPreferredStellarExplorer(next);
+  };
 
   const isDark = mounted ? resolved === "dark" : false;
 
@@ -31,8 +42,26 @@ export function Header() {
           </h2>
         </div>
 
-        {/* Right: Notifications + Theme toggle + Wallet button */}
+        {/* Right: Explorer preference + Notifications + Theme toggle + Wallet button */}
         <div className="flex items-center gap-2 md:gap-3">
+          <label className="flex items-center">
+            <span className="sr-only">Preferred block explorer</span>
+            <select
+              aria-label="Preferred block explorer"
+              data-testid="explorer-selector"
+              value={explorer}
+              onChange={(e) =>
+                handleExplorerChange(e.target.value as StellarExplorerId)
+              }
+              className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-xs font-medium text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-ophir-500/40"
+            >
+              {STELLAR_EXPLORER_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <KeyboardShortcutsHelp />
           <NotificationCenter />
           {/* Dark mode toggle */}

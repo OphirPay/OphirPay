@@ -758,19 +758,85 @@ export function parseSubmissionError(err: unknown): string {
 
 // ── Helpers ────────────────────────────────────────────────────
 
-export function getStellarExplorerUrl(txHash: string): string {
-  const base =
-    STELLAR_NETWORK === "TESTNET"
-      ? "https://stellar.expert/explorer/testnet"
-      : "https://stellar.expert/explorer/public";
+export type StellarExplorerId = "stellar.expert" | "horizon" | "steexp";
+
+export const STELLAR_EXPLORER_STORAGE_KEY = "ophirpay:preferred-explorer";
+
+export const STELLAR_EXPLORER_OPTIONS: Array<{
+  id: StellarExplorerId;
+  label: string;
+}> = [
+  { id: "stellar.expert", label: "StellarExpert" },
+  { id: "horizon", label: "Horizon" },
+  { id: "steexp", label: "Steexp" },
+];
+
+export function getPreferredStellarExplorer(): StellarExplorerId {
+  if (typeof window === "undefined") return "stellar.expert";
+  try {
+    const stored = window.localStorage.getItem(STELLAR_EXPLORER_STORAGE_KEY);
+    if (
+      stored === "stellar.expert" ||
+      stored === "horizon" ||
+      stored === "steexp"
+    ) {
+      return stored;
+    }
+  } catch {
+    // Ignore storage read errors in restricted environments
+  }
+  return "stellar.expert";
+}
+
+export function setPreferredStellarExplorer(explorer: StellarExplorerId): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STELLAR_EXPLORER_STORAGE_KEY, explorer);
+    window.dispatchEvent(
+      new CustomEvent("ophirpay:explorer-changed", { detail: explorer })
+    );
+  } catch {
+    // Ignore storage write errors
+  }
+}
+
+export function getStellarExplorerUrl(
+  txHash: string,
+  explorer: StellarExplorerId = getPreferredStellarExplorer()
+): string {
+  const isTestnet = STELLAR_NETWORK === "TESTNET";
+  if (explorer === "horizon") {
+    return `${HORIZON_URL.replace(/\/$/, "")}/transactions/${txHash}`;
+  }
+  if (explorer === "steexp") {
+    const base = isTestnet
+      ? "https://testnet.steexp.com"
+      : "https://steexp.com";
+    return `${base}/tx/${txHash}`;
+  }
+  const base = isTestnet
+    ? "https://stellar.expert/explorer/testnet"
+    : "https://stellar.expert/explorer/public";
   return `${base}/tx/${txHash}`;
 }
 
-export function getAccountExplorerUrl(publicKey: string): string {
-  const base =
-    STELLAR_NETWORK === "TESTNET"
-      ? "https://stellar.expert/explorer/testnet"
-      : "https://stellar.expert/explorer/public";
+export function getAccountExplorerUrl(
+  publicKey: string,
+  explorer: StellarExplorerId = getPreferredStellarExplorer()
+): string {
+  const isTestnet = STELLAR_NETWORK === "TESTNET";
+  if (explorer === "horizon") {
+    return `${HORIZON_URL.replace(/\/$/, "")}/accounts/${publicKey}`;
+  }
+  if (explorer === "steexp") {
+    const base = isTestnet
+      ? "https://testnet.steexp.com"
+      : "https://steexp.com";
+    return `${base}/account/${publicKey}`;
+  }
+  const base = isTestnet
+    ? "https://stellar.expert/explorer/testnet"
+    : "https://stellar.expert/explorer/public";
   return `${base}/account/${publicKey}`;
 }
 

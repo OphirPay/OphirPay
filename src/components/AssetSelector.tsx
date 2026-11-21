@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
+import { useXlmPrice } from "@/hooks/usePrice";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -265,6 +266,14 @@ export function AssetSelector({
   );
 
   const balance = findAssetBalance(balances, selectedAsset);
+  const { price } = useXlmPrice({ enabled: !!publicKey && selectedAsset.type === "native" });
+  const usdc = STELLAR_NETWORK === "PUBLIC" ? USDC_MAINNET : USDC_TESTNET;
+  const rate = selectedAsset.type === "native" ? price :
+    selectedAsset.code === usdc.code && selectedAsset.issuer === usdc.issuer ? 1 : null;
+  const usd = publicKey && !loading && rate !== null ? Number(balance) * rate : NaN;
+  const fiatEstimate = Number.isFinite(usd)
+    ? new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(usd)
+    : null;
 
   /**
    * Display label for an asset: the resolved TOML name when one exists,
@@ -303,7 +312,7 @@ export function AssetSelector({
 
         <span className="flex items-center gap-2">
           <span className="text-xs text-gray-400">
-            {loading ? "..." : balance}
+            {loading ? "..." : balance}{fiatEstimate && <span className="ml-1">≈ {fiatEstimate}</span>}
           </span>
           <svg
             xmlns="http://www.w3.org/2000/svg"

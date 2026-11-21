@@ -4,7 +4,12 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { CsvBatchImport, type CsvRecipientRow } from "@/components/CsvBatchImport";
+import {
+  CsvBatchImport,
+  buildBatchPaymentsCsv,
+  sanitizeCsvExportFilename,
+  type CsvRecipientRow,
+} from "@/components/CsvBatchImport";
 
 const VALID_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const OTHER_ADDRESS = "G" + "B".repeat(55);
@@ -229,5 +234,58 @@ describe("CsvBatchImport", () => {
     expect(screen.getByTestId("csv-status")).toHaveTextContent(
       /fix the highlighted fields/i
     );
+  });
+
+  it("exports verified batch rows to CSV with Recipient, Amount, Asset, Memo columns and quotes commas (#1910)", async () => {
+    expect(
+      buildBatchPaymentsCsv([
+        { address: VALID_ADDRESS, amount: "100", asset: "XLM", memo: "Q3, payroll" },
+        { address: OTHER_ADDRESS, amount: "50.25", memo: 'Bonus "A"' },
+      ])
+    ).toBe(
+      [
+        "Recipient,Amount,Asset,Memo",
+        `${VALID_ADDRESS},100,XLM,"Q3, payroll"`,
+        `${OTHER_ADDRESS},50.25,XLM,"Bonus ""A"""`,
+      ].join("\n")
+    );
+
+    expect(sanitizeCsvExportFilename("my unsafe/file:name!.csv")).toBe(
+      "my-unsafe-file-name-verified.csv"
+    );
+
+    setup();
+    await uploadFile(
+      screen.getByTestId("csv-file-input") as HTMLInputElement,
+      csvFile(`address,amount,memo\n${VALID_ADDRESS},100,"Hello, world"\n`)
+    );
+
+    const exportBtn = await screen.findByTestId("csv-export-btn");
+    expect(exportBtn).toHaveTextContent(/export csv/i);
+
+    const createObjectUrlSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:mock-csv-url");
+    const revokeObjectUrlSpy = vi
+      .spyOn(URL, "revokeObjectURL")
+      .mockImplementation(() => {});
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+
+    fireEvent.click(exportBtn);
+
+    expect(createObjectUrlSpy).toHaveBeenCalledTimes(1);
+    const blobArg = createObjectUrlSpy.mock.calls[0][0] as Blob;
+    expect(blobArg.type).toContain("text/csv");
+    expect(await blobArg.text()).toBe(
+      `Recipient,Amount,Asset,Memo\n${VALID_ADDRESS},100,XLM,"Hello, world"`
+    );
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:mock-csv-url");
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+    clickSpy.mockRestore();
   });
 });

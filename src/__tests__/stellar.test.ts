@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-import { describe, it, expect } from "vitest";
-import { isValidStellarAddress, getStellarExplorerUrl } from "@/lib/stellar";
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  isValidStellarAddress,
+  getStellarExplorerUrl,
+  getPreferredStellarExplorer,
+  setPreferredStellarExplorer,
+  STELLAR_EXPLORER_STORAGE_KEY,
+} from "@/lib/stellar";
 
 describe("isValidStellarAddress", () => {
   it("accepts a valid Stellar public key", () => {
@@ -28,12 +34,31 @@ describe("isValidStellarAddress", () => {
 });
 
 describe("getStellarExplorerUrl", () => {
-  it("returns a testnet explorer URL", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem(STELLAR_EXPLORER_STORAGE_KEY);
+  });
+
+  it("returns a testnet StellarExpert URL by default when no preference is set (#1913)", () => {
+    expect(getPreferredStellarExplorer()).toBe("stellar.expert");
     const url = getStellarExplorerUrl(
       "abc123def456abc123def456abc123def456abc123def456"
     );
     expect(url).toContain("stellar.expert");
     expect(url).toContain("testnet");
     expect(url).toContain("abc123def456");
+  });
+
+  it("persists preferred block explorer in localStorage and builds Horizon and Steexp URLs (#1913)", () => {
+    const hash = "abc123def456abc123def456abc123def456abc123def456";
+
+    setPreferredStellarExplorer("horizon");
+    expect(getPreferredStellarExplorer()).toBe("horizon");
+    expect(getStellarExplorerUrl(hash)).toContain(`/transactions/${hash}`);
+
+    setPreferredStellarExplorer("steexp");
+    expect(getPreferredStellarExplorer()).toBe("steexp");
+    expect(getStellarExplorerUrl(hash)).toBe(
+      `https://testnet.steexp.com/tx/${hash}`
+    );
   });
 });

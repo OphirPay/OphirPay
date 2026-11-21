@@ -11,6 +11,7 @@ import {
   type CsvImportRow,
 } from "@/lib/csv-import";
 import { BatchDropzone, formatFileSize } from "@/components/batch/BatchDropzone";
+import { escapeCsvField } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -31,6 +32,36 @@ interface CsvBatchImportProps {
 }
 
 type EditableField = keyof CsvImportRow["values"];
+
+/**
+ * Construct a formatted CSV string (`Recipient,Amount,Asset,Memo`) from batch
+ * payment rows, properly quoting fields that contain commas, quotes, or newlines.
+ */
+export function buildBatchPaymentsCsv(
+  rows: Array<{ address: string; amount: string; asset?: string; memo?: string }>
+): string {
+  const header = "Recipient,Amount,Asset,Memo";
+  const lines = rows.map((row) =>
+    [
+      escapeCsvField(row.address, ","),
+      escapeCsvField(row.amount, ","),
+      escapeCsvField(row.asset ?? "XLM", ","),
+      escapeCsvField(row.memo ?? "", ","),
+    ].join(",")
+  );
+  return [header, ...lines].join("\n");
+}
+
+/**
+ * Sanitize a base filename for safe browser download.
+ */
+export function sanitizeCsvExportFilename(rawName?: string | null): string {
+  const base = (rawName ?? "batch-payments")
+    .replace(/\.csv$/i, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${base || "batch-payments"}-verified.csv`;
+}
 
 // ── Component ─────────────────────────────────────────────────
 
@@ -139,6 +170,30 @@ export function CsvBatchImport({
     if (inputRef.current) inputRef.current.value = "";
   };
 
+  const exportVerifiedCsv = () => {
+    const verifiedRows = rows
+      .filter((r) => Object.keys(r.errors).length === 0)
+      .map((r) => ({
+        address: r.values.address,
+        amount: r.values.amount,
+        asset: "XLM",
+        memo: r.values.memo,
+      }));
+    if (verifiedRows.length === 0) return;
+
+    const csvContent = buildBatchPaymentsCsv(verifiedRows);
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = sanitizeCsvExportFilename(fileName);
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-4" data-testid="csv-batch-import">
       {/* Dropzone */}
@@ -191,6 +246,16 @@ export function CsvBatchImport({
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {rows.some((r) => Object.keys(r.errors).length === 0) && (
+              <button
+                type="button"
+                onClick={exportVerifiedCsv}
+                data-testid="csv-export-btn"
+                className="px-3 py-1.5 rounded-lg border border-ophir-200 dark:border-ophir-800 text-ophir-700 dark:text-ophir-300 text-xs font-medium hover:bg-ophir-50 dark:hover:bg-ophir-950/30 transition-colors"
+              >
+                Export CSV
+              </button>
+            )}
             <button
               type="button"
               onClick={() => inputRef.current?.click()}

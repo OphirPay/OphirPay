@@ -17,6 +17,7 @@ import {
 import { formatAmount } from "@/lib/utils";
 import { XLM_STROOPS } from "@/lib/stellar";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { ErrorBoundary, WidgetErrorFallback } from "@/components/ErrorBoundary";
 import { Card } from "@/components/ui/Card";
 
 export function AnalyticsDashboard() {
@@ -100,76 +101,116 @@ export function AnalyticsDashboard() {
       ) : (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard label="Total Payments" value={metrics.total.toString()} icon="💳" />
-            <MetricCard label="Total Volume" value={formatAmount(metrics.volume, "XLM")} icon="📊" />
-            <MetricCard label="Unique Payers" value={metrics.uniquePayers.toString()} icon="👤" />
-            <MetricCard label="Avg Payment" value={formatAmount(metrics.avgAmount, "XLM")} icon="📈" />
-          </div>
+          <ErrorBoundary
+            segment="analytics-kpi-cards"
+            onRetry={load}
+            fallback={({ error: widgetErr, reset }) => (
+              <WidgetErrorFallback
+                title="KPI Metrics Unavailable"
+                error={widgetErr}
+                onRetry={reset}
+              />
+            )}
+          >
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <MetricCard label="Total Payments" value={metrics.total.toString()} icon="💳" />
+              <MetricCard label="Total Volume" value={formatAmount(metrics.volume, "XLM")} icon="📊" />
+              <MetricCard label="Unique Payers" value={metrics.uniquePayers.toString()} icon="👤" />
+              <MetricCard label="Avg Payment" value={formatAmount(metrics.avgAmount, "XLM")} icon="📈" />
+            </div>
+          </ErrorBoundary>
 
           {/* Chart + Detail Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Bar Chart */}
-            <Card title="Daily Volume" className="lg:col-span-2" padding="md">
-              {metrics.chartData.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">No timestamped data yet</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {metrics.chartData.slice(-14).map((d) => (
-                    <div key={d.date} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-500 dark:text-gray-400 w-24 shrink-0">
-                        {new Date(d.date + "T00:00:00").toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
-                      <div className="flex-1 h-6 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-ophir-500 to-stellar rounded-full transition-all duration-500"
-                          style={{ width: `${(d.volume / maxVolume) * 100}%`, minWidth: "4px" }}
-                        />
-                      </div>
-                      <span className="text-xs font-mono text-gray-700 dark:text-gray-300 w-20 text-right">
-                        {formatAmount(d.volume, "XLM")}
-                      </span>
+            <div className="lg:col-span-2">
+              <ErrorBoundary
+                segment="analytics-daily-volume"
+                onRetry={load}
+                fallback={({ error: widgetErr, reset }) => (
+                  <WidgetErrorFallback
+                    title="Daily Volume Chart Unavailable"
+                    error={widgetErr}
+                    onRetry={reset}
+                  />
+                )}
+              >
+                <Card title="Daily Volume" padding="md">
+                  {metrics.chartData.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">No timestamped data yet</p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </Card>
+                  ) : (
+                    <div className="space-y-2">
+                      {metrics.chartData.slice(-14).map((d) => (
+                        <div key={d.date} className="flex items-center gap-3">
+                          <span className="text-xs text-gray-500 dark:text-gray-400 w-24 shrink-0">
+                            {new Date(d.date + "T00:00:00").toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                          <div className="flex-1 h-6 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-ophir-500 to-stellar rounded-full transition-all duration-500"
+                              style={{ width: `${(d.volume / maxVolume) * 100}%`, minWidth: "4px" }}
+                            />
+                          </div>
+                          <span className="text-xs font-mono text-gray-700 dark:text-gray-300 w-20 text-right">
+                            {formatAmount(d.volume, "XLM")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </ErrorBoundary>
+            </div>
 
             {/* Distribution */}
-            <Card title="Summary" padding="md">
-              <div className="space-y-4">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Unique Payees</span>
-                  <span className="text-sm font-mono font-medium text-gray-900 dark:text-white">
-                    {metrics.uniquePayees}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Largest Payment</span>
-                  <span className="text-sm font-mono font-medium text-gray-900 dark:text-white">
-                    {formatAmount(metrics.maxAmount, "XLM")}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Network</span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/30 text-xs font-medium text-blue-700 dark:text-blue-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                    TESTNET
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Wallet</span>
-                  <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
-                    {wallet.connected ? "Connected" : "—"}
-                  </span>
-                </div>
-              </div>
-            </Card>
+            <div>
+              <ErrorBoundary
+                segment="analytics-summary"
+                onRetry={load}
+                fallback={({ error: widgetErr, reset }) => (
+                  <WidgetErrorFallback
+                    title="Summary Widget Unavailable"
+                    error={widgetErr}
+                    onRetry={reset}
+                  />
+                )}
+              >
+                <Card title="Summary" padding="md">
+                  <div className="space-y-4">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">Unique Payees</span>
+                      <span className="text-sm font-mono font-medium text-gray-900 dark:text-white">
+                        {metrics.uniquePayees}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">Largest Payment</span>
+                      <span className="text-sm font-mono font-medium text-gray-900 dark:text-white">
+                        {formatAmount(metrics.maxAmount, "XLM")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">Network</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/30 text-xs font-medium text-blue-700 dark:text-blue-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                        TESTNET
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">Wallet</span>
+                      <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
+                        {wallet.connected ? "Connected" : "—"}
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+              </ErrorBoundary>
+            </div>
           </div>
         </>
       )}

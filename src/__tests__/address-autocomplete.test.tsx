@@ -109,4 +109,32 @@ describe("AddressAutocomplete", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
+
+  it("renders clear button only when input has text, clears value and refocuses on click", async () => {
+    setup();
+    const input = screen.getByRole("combobox");
+
+    // Initially empty -> no clear button
+    expect(screen.queryByLabelText("Clear address search")).not.toBeInTheDocument();
+
+    // Type text -> clear button appears
+    await userEvent.type(input, "alice");
+    const clearBtn = screen.getByLabelText("Clear address search");
+    expect(clearBtn).toBeInTheDocument();
+
+    // Click clear button -> input value cleared and refocused
+    await userEvent.click(clearBtn);
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
+    expect(screen.queryByLabelText("Clear address search")).not.toBeInTheDocument();
+  });
+
+  it("does not render clear button when input is disabled", () => {
+    render(
+      <ToastProvider>
+        <AddressAutocomplete value="some-address" onChange={() => {}} disabled={true} />
+      </ToastProvider>
+    );
+    expect(screen.queryByLabelText("Clear address search")).not.toBeInTheDocument();
+  });
 });

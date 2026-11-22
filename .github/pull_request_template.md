@@ -16,6 +16,7 @@
 ## Checklist
 
 - [ ] My code follows the project's code style and conventions
+- [ ] For UI/frontend changes: I have followed the [Frontend Styling Guidelines & Tailwind Conventions](../CONTRIBUTING.md#frontend-styling-guidelines--tailwind-conventions) in CONTRIBUTING.md
 - [ ] I have run `npm run lint` and addressed any issues
 - [ ] I have run `npm test` and all tests pass (800 frontend tests)
 - [ ] I have run `npx tsc --noEmit` and there are no type errors

@@ -102,6 +102,123 @@ Type-safety ESLint suppressions should be avoided; when a targeted suppression
 is necessary, keep it to one line and explain why on that line. The zero-warning
 ESLint check runs in CI.
 
+## Frontend Styling Guidelines & Tailwind Conventions
+
+All UI components in OphirPay must maintain visual consistency, adhere to our design tokens in [`tailwind.config.ts`](tailwind.config.ts), support light/dark modes seamlessly, and comply with WCAG 2.1 AA accessibility standards.
+
+### 1. Design Tokens & Color Palette
+
+OphirPay defines semantic color tokens extended in Tailwind:
+
+| Token Group        | Palette / Values                                                  | Usage & Context                                                                     |
+| ------------------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **Ophir Primary**  | `ophir-50` through `ophir-950` (`ophir-600: #1b6cf5`)             | Brand identity, primary buttons, active navigation, focus rings (`ring-ophir-500`). |
+| **Stellar Accent** | `stellar` (`DEFAULT: #14b7e6`, `dark: #0e8db3`, `light: #5ed5f7`) | Gradient accents, Stellar network badges, asset highlights.                         |
+| **Neutrals**       | Tailwind `gray-50` through `gray-950`                             | Backgrounds, surface borders, typography, separators.                               |
+| **Feedback**       | `green-600` (success), `red-600` (danger), `amber-500` (warning)  | Status badges, error messages, alerts, and transactional confirmations.             |
+
+**Border Radius:**
+
+- Buttons & pills: `rounded-full`
+- Cards & modals: `rounded-xl`
+- Inputs & dropdowns: `rounded-lg`
+- Tooltips & badges: `rounded-md`
+
+---
+
+### 2. Typography & Hierarchy
+
+Use standard font utilities and maintain typographic scale:
+
+- **Headings**:
+  - Page Titles (H1): `text-2xl font-bold text-gray-900 dark:text-white`
+  - Section Headings (H2): `text-lg font-semibold text-gray-900 dark:text-white`
+  - Subsections (H3): `text-base font-medium text-gray-900 dark:text-gray-100`
+- **Body Text**:
+  - Primary text: `text-sm text-gray-700 dark:text-gray-300`
+  - Muted / captions: `text-xs text-gray-500 dark:text-gray-400`
+- **Monospace Numbers & Addresses**:
+  - Stellar addresses, amounts, and hashes: `font-mono text-xs tracking-tight`
+
+---
+
+### 3. Dark Mode Conventions
+
+OphirPay supports system and manual theme toggling via class-based dark mode (`dark` prefix).
+
+- **Always pair light and dark utility classes:** Never specify a light background or text color without its dark mode counterpart.
+  - Card background: `bg-white dark:bg-gray-900`
+  - Primary text: `text-gray-900 dark:text-white`
+  - Secondary text: `text-gray-600 dark:text-gray-300`
+  - Borders: `border-gray-200 dark:border-gray-800`
+  - Subtly divided headers: `border-gray-100 dark:border-gray-800/60`
+- **Focus Rings:** Include dark mode ring offsets:
+  ```html
+  class="focus-visible:ring-2 focus-visible:ring-ophir-500 focus-visible:ring-offset-2
+  dark:focus-visible:ring-offset-gray-900"
+  ```
+- **Avoid hardcoded hex colors** in inline styles. Rely on Tailwind classes configured in [`tailwind.config.ts`](tailwind.config.ts).
+
+---
+
+### 4. Standard UI Components & Patterns
+
+Whenever building new interfaces, use or extend the shared primitives in [`src/components/ui/`](src/components/ui/):
+
+#### A. Button Variants ([`src/components/ui/Button.tsx`](src/components/ui/Button.tsx))
+
+Buttons use `rounded-full font-medium transition-all duration-300` and interactive state handling:
+
+| Variant     | Tailwind Classes                                                                                                                                            | Usage                                                  |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `primary`   | `bg-gradient-to-r from-ophir-600 to-stellar-dark text-white shadow-lg shadow-ophir-500/25 hover:from-ophir-700 hover:to-stellar active:shadow-ophir-500/40` | Main call-to-actions, submission actions.              |
+| `secondary` | `bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700`        | Alternative actions, cancels, secondary options.       |
+| `outline`   | `bg-transparent text-ophir-700 dark:text-ophir-400 border border-ophir-300 dark:border-ophir-700 hover:bg-ophir-50 dark:hover:bg-ophir-950/30`              | Tertiary actions, filters, view switches.              |
+| `ghost`     | `bg-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white`                        | Header icons, dropdown items, subtle table actions.    |
+| `danger`    | `bg-red-600 text-white shadow-lg shadow-red-500/25 hover:bg-red-700 active:shadow-red-500/40`                                                               | Destructive operations (delete, revoke, cancel batch). |
+| `success`   | `bg-green-600 text-white shadow-lg shadow-green-500/25 hover:bg-green-700 active:shadow-green-500/40`                                                       | Completion confirmations, payouts.                     |
+
+**Standard Button Sizes:**
+
+- `sm`: `px-3 py-1.5 text-xs gap-1.5`
+- `md`: `px-5 py-2.5 text-sm gap-2` (Default)
+- `lg`: `px-6 py-3 text-base gap-2`
+
+#### B. Card Paddings ([`src/components/ui/Card.tsx`](src/components/ui/Card.tsx))
+
+Cards wrap content in `bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800`.
+
+- `none`: `p-0` (for custom layouts or edge-to-edge tables)
+- `sm`: `p-3` (compact summary cards or nested panels)
+- `md`: `p-5` (default dashboard widgets, detail views)
+- `lg`: `p-7` (major forms or hero presentation panels)
+
+#### C. Form Inputs ([`src/components/ui/Form.tsx`](src/components/ui/Form.tsx))
+
+All inputs (`Input`, `Textarea`, `Select`) must provide explicit labels and handle error states:
+
+- Base input styling: `rounded-lg border bg-white dark:bg-gray-900 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-ophir-500/40 focus:border-ophir-500`
+- Error border & ring: `border-red-500 focus:border-red-500 focus:ring-red-500/30`
+- Icons: Left icon `pl-9`, Right icon `pr-9` with absolute positioning
+
+---
+
+### 5. Accessibility (a11y) & Contrast Guidelines
+
+OphirPay enforces WCAG 2.1 AA accessibility standards:
+
+1. **Color Contrast:**
+   - Normal text (< 18pt / 24px) must maintain at least **4.5:1** contrast ratio against its background.
+   - Large text (≥ 18pt or bold ≥ 14pt) and UI controls/borders must maintain at least **3:1** contrast ratio.
+   - Never rely on color alone to convey status; always pair colored indicators with text or icons.
+2. **Keyboard Accessibility:**
+   - All interactive elements must be focusable using `Tab`.
+   - Never use `outline-none` without providing an explicit replacement focus ring (`focus-visible:ring-2`).
+3. **ARIA Attributes:**
+   - Input errors must be marked with `aria-invalid="true"` and linked to error descriptions using `aria-describedby="{id}-error"`.
+   - Error messages must include `role="alert"`.
+   - Icon-only buttons must provide an explicit `aria-label` describing the action (e.g. `aria-label="Copy public key"`).
+
 ### Dependency Updates
 
 [Dependabot](.github/dependabot.yml) checks the `npm` (root `package-lock.json`),
@@ -454,6 +571,7 @@ and the required CI checks listed above.
 - [ ] Addresses the issue's acceptance criteria **completely** (docs issues:
       every requested section exists and is accurate)
 - [ ] Follows existing code conventions and the repo's style (Prettier + ESLint)
+- [ ] For UI/frontend changes: follows [Frontend Styling Guidelines & Tailwind Conventions](#frontend-styling-guidelines--tailwind-conventions) (WCAG AA contrast, dark mode, ARIA)
 - [ ] No new lint warnings (`npm run lint` clean)
 - [ ] No new type errors (`npx tsc --noEmit` clean)
 - [ ] Tests added/updated for the change, and the full suite passes

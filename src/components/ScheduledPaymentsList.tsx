@@ -1,8 +1,9 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { EmptyState } from "@/components/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { useApiMutation,useApiQuery } from "@/hooks/useApiQuery";
 import {
@@ -78,7 +79,24 @@ export default function ScheduledPaymentsList() {
     { method: "DELETE", invalidateKeys: [["scheduled"]] }
   );
 
-  const payments = Array.isArray(data) ? data : [];
+  const payments = useMemo(
+    () => (Array.isArray(data) ? data : []),
+    [data],
+  );
+
+  const [query, setQuery] = useState("");
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredPayments = useMemo(() => {
+    if (!normalizedQuery) return payments;
+    return payments.filter((payment) => {
+      const recipient = payment.destAddress.toLowerCase();
+      const memo = (payment.memo ?? "").toLowerCase();
+      return (
+        recipient.includes(normalizedQuery) || memo.includes(normalizedQuery)
+      );
+    });
+  }, [payments, normalizedQuery]);
 
   const handleCancel = async (id: string) => {
     try {
@@ -102,6 +120,58 @@ export default function ScheduledPaymentsList() {
         )}
       </div>
 
+      {payments.length > 0 && (
+        <div className="relative mb-4 max-w-sm">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            aria-hidden="true"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+            />
+          </svg>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search scheduled payments"
+            placeholder="Search by recipient or memo..."
+            className="w-full pl-10 pr-10 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-ophir-500 focus:border-transparent"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                aria-hidden="true"
+                className="w-4 h-4"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">
           {[1, 2].map((i) => (
@@ -116,9 +186,32 @@ export default function ScheduledPaymentsList() {
           No scheduled payments yet. Use the schedule toggle above to send at
           a future date.
         </p>
+      ) : filteredPayments.length === 0 ? (
+        <EmptyState
+          icon={
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              aria-hidden="true"
+              className="w-8 h-8"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+              />
+            </svg>
+          }
+          title="No matching scheduled payments"
+          description={`No scheduled payments match "${query.trim()}". Try a different recipient or memo.`}
+          className="border-gray-200 dark:border-gray-800 p-8"
+        />
       ) : (
         <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-          {payments.map((payment) => (
+          {filteredPayments.map((payment) => (
             <li
               key={payment.id}
               className="flex items-center justify-between gap-3 py-3"

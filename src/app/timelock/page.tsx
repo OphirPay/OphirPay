@@ -141,7 +141,7 @@ export default function TimelockPage() {
           <span className="text-amber-500 text-lg">⚠️</span>
           <div>
             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Wallet not connected</p>
-            <p className="text-xs text-amber-600 dark:text-amber-400">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
               Connect your wallet to propose timelocked admin actions on-chain.
             </p>
           </div>
@@ -202,7 +202,7 @@ export default function TimelockPage() {
                     <div className="flex flex-wrap gap-3 text-xs text-gray-500">
                       <span>Proposed: {formatTime(action.proposed_at)}</span>
                       {!action.executed && (
-                        <span className={isReady ? "text-green-600 font-medium" : "text-amber-600 font-medium"}>
+                        <span className={isReady ? "text-green-600 dark:text-green-400 font-medium" : "text-amber-700 dark:text-amber-300 font-medium"}>
                           {timeRemaining(action.unlocks_at)}
                         </span>
                       )}

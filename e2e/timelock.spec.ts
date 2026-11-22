@@ -15,6 +15,12 @@ import {
   readyAction,
 } from "./helpers/admin-mocks";
 
+async function waitForWallet(page: import("@playwright/test").Page) {
+  await expect(
+    page.locator('[aria-label="Disconnect wallet"]').first()
+  ).toBeVisible({ timeout: 15000 });
+}
+
 test.describe("Timelocked actions", () => {
   test("renders the unlock countdown and blocks execution while locked", async ({
     page,
@@ -42,6 +48,7 @@ test.describe("Timelocked actions", () => {
     await expect(
       page.getByRole("heading", { level: 1, name: "Timelocked Actions" })
     ).toBeVisible({ timeout: 15000 });
+    await waitForWallet(page);
 
     await expect(page.getByText("Ready", { exact: true }).first()).toBeVisible({ timeout: 15000 });
     const execute = page.getByRole("button", { name: "✓ Execute" });
@@ -60,6 +67,7 @@ test.describe("Timelocked actions", () => {
     await expect(
       page.getByRole("heading", { level: 1, name: "Timelocked Actions" })
     ).toBeVisible({ timeout: 15000 });
+    await waitForWallet(page);
 
     await page.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByText("Action cancelled on-chain").first()).toBeVisible({
@@ -76,12 +84,16 @@ test.describe("Timelocked actions", () => {
     await expect(page.getByText("No Timelocked Actions")).toBeVisible({
       timeout: 15000,
     });
+    await waitForWallet(page);
 
     await page.getByRole("button", { name: "+ Propose Action" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toContainText("Propose Timelocked Action");
 
-    await dialog.getByRole("button", { name: "pause contract", exact: true }).click();
+    const pauseBtn = dialog.getByRole("button", { name: "pause contract", exact: true });
+    await expect(pauseBtn).toBeVisible({ timeout: 10000 });
+    await pauseBtn.scrollIntoViewIfNeeded();
+    await pauseBtn.click();
     await dialog
       .getByPlaceholder("Contract address or parameter...")
       .fill("GACNKEDGJYLLVQDXWYEEPB47Y3JEV5JNZ3RQANTJIVKKEOXX4NC4YWHU");

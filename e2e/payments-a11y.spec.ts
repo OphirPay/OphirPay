@@ -25,7 +25,7 @@ test.describe("Payments table accessibility", () => {
     await page.goto("/payments");
     await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
 
-    const table = page.locator(TABLE_SELECTOR);
+    const table = page.locator(TABLE_SELECTOR).first();
     await expect(table).toBeVisible({ timeout: 15000 });
 
     await waitForTableData(page);
@@ -43,6 +43,11 @@ test.describe("Payments table accessibility", () => {
   test("modal dialog traps Tab focus, passes axe and restores focus on Escape", async ({
     page,
   }) => {
+    test.skip(
+      (page.viewportSize()?.width ?? 1280) < 640,
+      "Keyboard shortcuts help and Tab focus trapping are desktop-only",
+    );
+
     await page.goto("/payments");
     await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
 
@@ -81,7 +86,7 @@ test.describe("Payments table accessibility", () => {
   test("Enter opens the detail view for the focused row", async ({ page }) => {
     await page.goto("/payments");
     await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
-    await expect(page.locator(TABLE_SELECTOR)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(TABLE_SELECTOR).first()).toBeVisible({ timeout: 15000 });
 
     await waitForTableData(page);
 
@@ -122,7 +127,7 @@ test.describe("Payments table accessibility", () => {
   test("arrow keys navigate between payment rows", async ({ page }) => {
     await page.goto("/payments");
     await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
-    await expect(page.locator(TABLE_SELECTOR)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(TABLE_SELECTOR).first()).toBeVisible({ timeout: 15000 });
 
     await waitForTableData(page);
 

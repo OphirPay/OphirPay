@@ -30,7 +30,7 @@ test.describe("API keys admin page", () => {
     ).toBeVisible({ timeout: 15000 });
     await expect(page.getByText("You have no API keys yet.")).toBeVisible();
 
-    await page.getByPlaceholder("e.g. Production server").fill("CI runner");
+    await page.getByPlaceholder("e.g. Production server").first().fill("CI runner");
     await page
       .locator("label")
       .filter({ hasText: "read:payments" })

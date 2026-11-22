@@ -95,11 +95,11 @@ export default function PolicyVersionsPage() {
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
               activeTab === tab.key
                 ? "bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                : "text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
             }`}
           >
             {tab.label}
-            <span className="ml-2 text-xs opacity-60">({tab.count})</span>
+            <span className="ml-2 text-xs text-gray-600 dark:text-gray-400">({tab.count})</span>
           </button>
         ))}
       </div>

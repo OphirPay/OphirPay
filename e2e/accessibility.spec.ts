@@ -134,7 +134,7 @@ for (const theme of THEMES) {
       await applyTheme(page, theme);
       await page.goto(path);
       await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
-      await page.waitForSelector("h1, h2", { timeout: 15_000 });
+      await page.waitForSelector("main h1, main h2", { timeout: 15_000 });
 
       const results = await new AxeBuilder({ page }).analyze();
       const blocking = toFindings(results.violations).filter(

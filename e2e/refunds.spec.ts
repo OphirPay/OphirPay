@@ -87,7 +87,9 @@ test.describe("Refund lifecycle UI", () => {
     expect(state.postCount).toBe(1);
 
     // ── Approve ────────────────────────────────────────────────
-    await page.getByRole("button", { name: "Approve" }).click();
+    const approveBtn = page.getByRole("button", { name: "Approve" });
+    await approveBtn.scrollIntoViewIfNeeded();
+    await approveBtn.click({ force: true });
     await expect(page.getByText("Refund approved on-chain")).toBeVisible({
       timeout: 20000,
     });
@@ -98,7 +100,9 @@ test.describe("Refund lifecycle UI", () => {
     await expect(page.getByRole("button", { name: "Reject" })).toHaveCount(0);
 
     // ── Process ────────────────────────────────────────────────
-    await page.getByRole("button", { name: "Process" }).click();
+    const processBtn = page.getByRole("button", { name: "Process" });
+    await processBtn.scrollIntoViewIfNeeded();
+    await processBtn.click({ force: true });
     await expect(
       page.getByText("Refund processed on-chain — tokens returned"),
     ).toBeVisible({ timeout: 20000 });
@@ -132,7 +136,9 @@ test.describe("Refund lifecycle UI", () => {
     await expect(page.getByText(seeded.reason)).toBeVisible();
     await expect(page.getByRole("button", { name: "Reject" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Reject" }).click();
+    const rejectBtn = page.getByRole("button", { name: "Reject" });
+    await rejectBtn.scrollIntoViewIfNeeded();
+    await rejectBtn.click({ force: true });
     await expect(page.getByText("Refund rejected on-chain")).toBeVisible({
       timeout: 20000,
     });

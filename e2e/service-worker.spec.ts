@@ -28,6 +28,6 @@ test.describe('Service Worker Offline Behavior', () => {
 
     // Assert the offline shell renders
     await expect(page.locator('text="You\'re Offline"')).toBeVisible();
-    await expect(page.locator('text="OphirPay requires an internet connection"')).toBeVisible();
+    await expect(page.getByText("OphirPay requires an internet connection")).toBeVisible();
   });
 });

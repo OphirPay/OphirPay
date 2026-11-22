@@ -455,7 +455,7 @@ function AuditLogClient() {
           </p>
           <button
             onClick={() => refetch()}
-            className="mt-2 text-sm text-red-600 dark:text-red-400 underline hover:no-underline"
+            className="mt-2 text-sm text-red-700 dark:text-red-400 underline hover:no-underline"
           >
             Try again
           </button>

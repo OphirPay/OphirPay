@@ -1,9 +1,11 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { formatAmount, shortenAddress } from "@/lib/utils";
+import { cn, formatAmount, shortenAddress } from "@/lib/utils";
 
 interface BatchRecipient {
   address: string;
@@ -45,6 +47,54 @@ export function BatchConfirmDialog({
   const visibleRecipients = recipients.slice(0, MAX_VISIBLE);
   const remainingCount = recipients.length - MAX_VISIBLE;
   const feeXlm = formatAmount(parseFloat(estimatedFee) / 10000000, "XLM");
+
+  // Index of the recipient row currently showing the "Copied!" tooltip, or
+  // `null` when none is visible. Cleared automatically after ~2s.
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  // Message announced to assistive tech via the aria-live region below.
+  const [announcement, setAnnouncement] = useState("");
+  // Reset timer so a rapid second click restarts the 2s window cleanly.
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear any pending timer when the dialog unmounts to avoid setting state
+  // on an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    };
+  }, []);
+
+  const handleCopyAddress = useCallback(
+    async (address: string, index: number) => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+      try {
+        await navigator.clipboard.writeText(address);
+        setCopiedIndex(index);
+        setAnnouncement("Address copied to clipboard");
+        resetTimerRef.current = setTimeout(() => {
+          setCopiedIndex(null);
+          setAnnouncement("");
+        }, 2000);
+      } catch {
+        // Clipboard permission denied / API unavailable — fall back to a
+        // manual copy: select the full address so the user can press Ctrl/Cmd+C.
+        // No "Copied!" tooltip is shown because the copy did not succeed.
+        setCopiedIndex(null);
+        setAnnouncement(
+          "Copy failed. The address is selected — press Control or Command C to copy."
+        );
+        const selection = window.getSelection();
+        const node = document.getElementById(`recipient-address-${index}`);
+        if (selection && node) {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+    },
+    []
+  );
 
   return (
     <Modal open={open} onClose={onCancel} title="Confirm Batch Payment" size="md">
@@ -114,9 +164,54 @@ export function BatchConfirmDialog({
                 key={i}
                 className="flex items-center justify-between px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-900"
               >
-                <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
-                  {shortenAddress(r.address, 8)}
-                </span>
+                <div className="relative flex items-center min-w-0">
+                  <button
+                    type="button"
+                    id={`recipient-address-${i}`}
+                    onClick={() => handleCopyAddress(r.address, i)}
+                    title="Copy address"
+                    aria-label={`Copy recipient address ${shortenAddress(r.address, 8)}`}
+                    className={cn(
+                      "group inline-flex items-center gap-1.5 rounded px-1 -mx-1 text-xs font-mono truncate",
+                      "transition-colors duration-150 cursor-pointer",
+                      "hover:text-gray-900 dark:hover:text-white focus:outline-none",
+                      "focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1",
+                      copiedIndex === i
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-gray-700 dark:text-gray-300"
+                    )}
+                  >
+                    <span className="truncate">{shortenAddress(r.address, 8)}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      aria-hidden="true"
+                      className="w-3.5 h-3.5 shrink-0 opacity-50 group-hover:opacity-100"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75"
+                      />
+                    </svg>
+                  </button>
+                  {copiedIndex === i && (
+                    <span
+                      data-testid={`copied-tooltip-${i}`}
+                      role="tooltip"
+                      className={cn(
+                        "pointer-events-none absolute left-0 -top-7 z-10 whitespace-nowrap",
+                        "rounded bg-gray-900 dark:bg-gray-700 px-2 py-0.5 text-[10px] font-medium text-white",
+                        "shadow-sm animate-fade-in"
+                      )}
+                    >
+                      Copied!
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white ml-3">
                   {formatAmount(parseFloat(r.amount), "XLM")}
                 </span>
@@ -128,6 +223,15 @@ export function BatchConfirmDialog({
               …and {remainingCount} more
             </p>
           )}
+          {/* Screen-reader announcement for copy feedback (issue #1894). */}
+          <span
+            data-testid="batch-copy-announcement"
+            aria-live="polite"
+            role="status"
+            className="sr-only"
+          >
+            {announcement}
+          </span>
         </div>
 
         {/* Actions */}

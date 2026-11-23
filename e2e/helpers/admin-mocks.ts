@@ -140,7 +140,10 @@ export async function installAdminMocks(
   // Reuse the wallet + Soroban RPC + Horizon mocks; the wallet auto-connects
   // because the auth session route is mocked to accept any proof.
   await page.addInitScript(fakeFreighterInitScript(SIGNER_A));
-  await installMultisigMocks(page, createState({ activeSigner: SIGNER_A }));
+  await installMultisigMocks(
+    page,
+    createState({ activeSigner: SIGNER_A, transactionMeta: "success" })
+  );
 
   // apiFetch (used by several pages) mints a CSRF token before mutating.
   await page.route("**/api/csrf", (route) =>

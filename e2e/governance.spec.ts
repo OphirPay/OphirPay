@@ -12,13 +12,13 @@ test.describe("Governance Page", () => {
 
   test("shows New Proposal button", async ({ page }) => {
     await page.goto("/governance");
-    const btn = page.locator("button").filter({ hasText: "New Proposal" });
+    const btn = page.locator("button").filter({ hasText: "New Proposal" }).first();
     await expect(btn).toBeVisible({ timeout: 15000 });
   });
 
   test("opens create proposal modal", async ({ page }) => {
     await page.goto("/governance");
-    await page.locator("button").filter({ hasText: "New Proposal" }).click();
+    await page.locator("button").filter({ hasText: "New Proposal" }).first().click();
     await expect(page.locator("text=Create Governance Proposal")).toBeVisible({
       timeout: 15000,
     });
@@ -26,7 +26,7 @@ test.describe("Governance Page", () => {
 
   test("create proposal form has required fields", async ({ page }) => {
     await page.goto("/governance");
-    await page.locator("button").filter({ hasText: "New Proposal" }).click();
+    await page.locator("button").filter({ hasText: "New Proposal" }).first().click();
     await expect(page.locator("input[placeholder*='Upgrade']")).toBeVisible({
       timeout: 15000,
     });

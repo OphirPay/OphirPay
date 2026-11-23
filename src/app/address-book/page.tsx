@@ -272,39 +272,45 @@ export default function AddressBookPage() {
           {filtered.map((entry) => (
             <li
               key={entry.publicKey}
-              className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
+              className="flex items-center justify-between gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-gray-900 dark:text-white truncate">
                     {entry.label}
                   </p>
                   {entry.lastUsed ? (
-                    <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500">
+                    <span className="hidden sm:inline shrink-0 text-xs text-gray-400 dark:text-gray-500">
                       used {timeAgo(new Date(entry.lastUsed).toISOString())}
                     </span>
                   ) : null}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
+                  <span className="text-xs sm:text-sm font-mono text-gray-600 dark:text-gray-300 truncate max-w-[140px] xs:max-w-[180px] sm:max-w-none">
                     {shortenAddress(entry.publicKey, 8)}
                   </span>
                   <CopyButton value={entry.publicKey} label="Address" />
                 </div>
                 {entry.memo ? (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
                     memo: {entry.memo}
                   </p>
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEdit(entry)}
+                  className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 px-3 py-2"
+                >
                   Edit
                 </Button>
                 <Button
                   variant="danger"
                   size="sm"
                   onClick={() => setDeleting(entry)}
+                  className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 px-3 py-2"
                 >
                   Delete
                 </Button>

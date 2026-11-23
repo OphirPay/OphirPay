@@ -3,10 +3,12 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { useState } from "react";
 
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { CopyButton } from "@/components/ui/CopyButton";
+import { PaymentRequestModal } from "@/components/payments/PaymentRequestModal";
 import { useApiQuery } from "@/hooks/useApiQuery";
 import { downloadReceiptPdf } from "@/lib/receipt-pdf";
 import { getStellarExplorerUrl, isValidStellarAddress } from "@/lib/stellar";
@@ -25,6 +27,7 @@ import type { Payment } from "@/types";
 const ID_PATTERN = /^[a-zA-Z0-9-]{20,64}$/;
 
 export default function PaymentDetailView({ id }: { id: string }) {
+  const [showQrModal, setShowQrModal] = useState(false);
   const idLooksValid = ID_PATTERN.test(id);
 
   const {
@@ -172,6 +175,32 @@ export default function PaymentDetailView({ id }: { id: string }) {
               Download Receipt (PDF)
             </button>
           )}
+          <button
+            onClick={() => setShowQrModal(true)}
+            aria-label="View QR code"
+            className="print:hidden inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-4 h-4"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M13.5 14.625c0-.621.504-1.125 1.125-1.125h1.5a1.125 1.125 0 011.125 1.125v1.5a1.125 1.125 0 01-1.125 1.125h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5zM19.125 14.625h1.125M13.5 19.125h4.5M19.125 19.125h1.125"
+              />
+            </svg>
+            QR Code
+          </button>
           <Link
             href="/payments"
             className="print:hidden inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -247,6 +276,23 @@ export default function PaymentDetailView({ id }: { id: string }) {
           )}
         </dl>
       </div>
+
+      <PaymentRequestModal
+        open={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        request={
+          payment
+            ? {
+                id: payment.id,
+                destination: payment.recipient,
+                amount: String(payment.amount),
+                assetCode: payment.assetCode,
+                memo: payment.memo || undefined,
+                description: payment.description || undefined,
+              }
+            : null
+        }
+      />
     </div>
   );
 }

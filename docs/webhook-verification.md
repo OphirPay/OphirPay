@@ -280,70 +280,291 @@ app.post("/webhooks/ophirpay", (req, res) => {
 
 ## Python (reference)
 
+The following example demonstrates HMAC-SHA256 webhook signature verification in Python 3 using only the standard library (`hmac`, `hashlib`, `json`, `datetime`).
+
+### Python Verifier Implementation
+
 ```python
 import hashlib
 import hmac
 import json
 from datetime import datetime, timezone
 
-DEFAULT_MAX_AGE_SECONDS = 300
+DEFAULT_MAX_AGE_SECONDS = 300  # 5-minute replay prevention window
 
 
-def verify_webhook_signature(body, signature, secret, timestamp=None, max_age_seconds=DEFAULT_MAX_AGE_SECONDS, now=None):
-    # 1–3. Parse, empty the signature field, re-serialize in key order.
-    parsed = json.loads(body)
+def verify_webhook_signature(
+    body: str,
+    signature: str,
+    secret: str,
+    timestamp: str = None,
+    max_age_seconds: int = DEFAULT_MAX_AGE_SECONDS,
+    now: datetime = None,
+) -> bool:
+    """Verifies the X-OphirPay-Signature header using HMAC-SHA256 and timing-safe comparison.
+
+    Args:
+        body: Raw request body as string.
+        signature: Hex-encoded signature from X-OphirPay-Signature header.
+        secret: Webhook signing secret configured for your endpoint.
+        timestamp: Value of X-OphirPay-Timestamp header (ISO 8601 UTC).
+        max_age_seconds: Replay window in seconds (0 disables check).
+        now: Current time for testing; defaults to datetime.now(timezone.utc).
+
+    Returns:
+        True if signature is valid and within freshness window, False otherwise.
+    """
+    # 1. Parse JSON body
+    try:
+        parsed = json.loads(body)
+    except (ValueError, TypeError):
+        return False
     if not isinstance(parsed, dict):
-        raise ValueError("body must be a JSON object")
+        return False
+
+    # 2. Empty the signature field while preserving key and insertion order
     parsed["signature"] = ""
-    # Compact separators + raw UTF-8 match Node's JSON.stringify byte-for-byte.
+    # Compact separators (',', ':') match Node's JSON.stringify format exactly
     canonical = json.dumps(parsed, separators=(",", ":"), ensure_ascii=False)
 
-    # 4. Recompute the expected HMAC-SHA256 hex over
-    #    `<timestamp>.<canonical body>`.
+    # 3. Resolve timestamp bound to the payload
     signed_timestamp = str(timestamp if timestamp is not None else parsed.get("timestamp", ""))
-    signed_input = "%s.%s" % (signed_timestamp, canonical)
-    expected = hmac.new(secret.encode("utf-8"), signed_input.encode("utf-8"), hashlib.sha256).hexdigest()
+    signed_input = f"{signed_timestamp}.{canonical}"
 
-    # 5. Constant-time comparison against the header value.
-    provided = (signature or "").encode("utf-8")
+    # 4. Compute expected HMAC-SHA256 hex digest
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        signed_input.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    # 5. Timing-safe comparison using hmac.compare_digest
+    provided = (signature or "").strip().lower().encode("utf-8")
     expected_bytes = expected.encode("utf-8")
     if len(provided) != len(expected_bytes) or not hmac.compare_digest(provided, expected_bytes):
         return False
 
-    # Replay protection: timestamp freshness window.
+    # 6. Replay prevention check: enforce timestamp freshness window
     if max_age_seconds > 0:
         try:
             ts = datetime.fromisoformat(signed_timestamp.replace("Z", "+00:00"))
-        except ValueError:
+        except (ValueError, TypeError):
             return False
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        now = now or datetime.now(timezone.utc)
-        age_seconds = (now - ts).total_seconds()
+        current_time = now or datetime.now(timezone.utc)
+        age_seconds = (current_time - ts).total_seconds()
+        # Reject deliveries that are too old or skewed into the future
         if age_seconds > max_age_seconds or age_seconds < -max_age_seconds:
             return False
+
     return True
 ```
 
-Example usage (Flask-style):
+### Python HTTP Handler Examples
+
+#### Flask Example
 
 ```python
-from flask import Flask, request
+import os
+from flask import Flask, abort, request
 
 app = Flask(__name__)
 
+
 @app.post("/webhooks/ophirpay")
-def webhook():
-    valid = verify_webhook_signature(
-        request.get_data(as_text=True),
-        request.headers.get("X-OphirPay-Signature", ""),
-        os.environ["WEBHOOK_SECRET"],
-        timestamp=request.headers.get("X-OphirPay-Timestamp", ""),
-    )
-    if not valid:
-        return "unauthorized", 401
-    return "", 200
+def webhook_handler():
+    raw_body = request.get_data(as_text=True)
+    signature = request.headers.get("X-OphirPay-Signature", "")
+    timestamp = request.headers.get("X-OphirPay-Timestamp", "")
+
+    if not verify_webhook_signature(
+        body=raw_body,
+        signature=signature,
+        secret=os.environ["WEBHOOK_SECRET"],
+        timestamp=timestamp,
+    ):
+        abort(401, "Webhook signature verification failed")
+
+    # Acknowledge quickly (2xx), then dispatch event processing asynchronously
+    return {"status": "accepted"}, 200
 ```
+
+#### FastAPI Example
+
+```python
+import os
+from fastapi import FastAPI, Header, HTTPException, Request, status
+
+app = FastAPI()
+
+
+@app.post("/webhooks/ophirpay")
+async def ophirpay_webhook(
+    request: Request,
+    x_ophirpay_signature: str = Header(default=""),
+    x_ophirpay_timestamp: str = Header(default=""),
+):
+    raw_body = (await request.body()).decode("utf-8")
+
+    is_valid = verify_webhook_signature(
+        body=raw_body,
+        signature=x_ophirpay_signature,
+        secret=os.environ["WEBHOOK_SECRET"],
+        timestamp=x_ophirpay_timestamp,
+    )
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook signature",
+        )
+
+    return {"received": True}
+```
+
+---
+
+## Go (reference)
+
+The following example demonstrates HMAC-SHA256 webhook signature verification in Go (1.21+) using standard library packages (`crypto/hmac`, `crypto/sha256`, `encoding/hex`, `encoding/json`, `net/http`, `time`).
+
+### Go Verifier Implementation
+
+```go
+package main
+
+import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+const defaultMaxAge = 300 * time.Second // 5-minute replay prevention window
+
+// VerifyWebhookSignature verifies an incoming OphirPay webhook request.
+// It computes HMAC-SHA256 over "<timestamp>.<canonical_body>" and compares the result
+// against the X-OphirPay-Signature header using timing-safe hmac.Equal.
+func VerifyWebhookSignature(
+	rawBody []byte,
+	signature string,
+	secret string,
+	headerTimestamp string,
+	maxAge time.Duration,
+) (bool, error) {
+	// 1. Validate signature length and decode from hex
+	cleanSig := strings.ToLower(strings.TrimSpace(signature))
+	if len(cleanSig) != 64 {
+		return false, errors.New("invalid signature length: expected 64 hex characters")
+	}
+	providedSigBytes, err := hex.DecodeString(cleanSig)
+	if err != nil {
+		return false, fmt.Errorf("invalid hex signature: %w", err)
+	}
+
+	// 2. Resolve signed timestamp (from header or fallback to payload timestamp)
+	signedTs := headerTimestamp
+	if signedTs == "" {
+		var probe struct {
+			Timestamp string `json:"timestamp"`
+		}
+		if err := json.Unmarshal(rawBody, &probe); err == nil {
+			signedTs = probe.Timestamp
+		}
+	}
+	if signedTs == "" {
+		return false, errors.New("missing timestamp in webhook header and body")
+	}
+
+	// 3. Replay prevention check: ensure timestamp is within freshness window
+	if maxAge > 0 {
+		sentTime, err := time.Parse(time.RFC3339, signedTs)
+		if err != nil {
+			return false, fmt.Errorf("invalid ISO 8601 timestamp (%q): %w", signedTs, err)
+		}
+		age := time.Since(sentTime)
+		if age > maxAge {
+			return false, fmt.Errorf("WebhookTimestampExpired: payload too old (%v > %v)", age, maxAge)
+		}
+		if age < -maxAge {
+			return false, fmt.Errorf("WebhookTimestampFutureSkew: payload timestamp is in future (%v ahead)", -age)
+		}
+	}
+
+	// 4. Build canonical JSON: parse body and set "signature": ""
+	var parsed map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(rawBody))
+	decoder.UseNumber()
+	if err := decoder.Decode(&parsed); err != nil {
+		return false, fmt.Errorf("malformed JSON body: %w", err)
+	}
+	parsed["signature"] = ""
+
+	canonicalBody, err := json.Marshal(parsed)
+	if err != nil {
+		return false, fmt.Errorf("failed to canonicalize payload: %w", err)
+	}
+
+	// 5. Compute HMAC-SHA256 digest over "<timestamp>.<canonical_body>"
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(signedTs))
+	mac.Write([]byte("."))
+	mac.Write(canonicalBody)
+	expectedSigBytes := mac.Sum(nil)
+
+	// 6. Timing-safe comparison using crypto/hmac.Equal
+	if !hmac.Equal(providedSigBytes, expectedSigBytes) {
+		return false, errors.New("signature mismatch")
+	}
+
+	return true, nil
+}
+```
+
+### Go HTTP Handler Example (`net/http`)
+
+```go
+// WebhookHandler processes incoming OphirPay webhook HTTP POST requests.
+func WebhookHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Limit body read to prevent memory exhaustion attacks
+	const maxBodyBytes = 1 << 20 // 1 MB
+	rawBody, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	signature := r.Header.Get("X-OphirPay-Signature")
+	timestamp := r.Header.Get("X-OphirPay-Timestamp")
+	secret := os.Getenv("WEBHOOK_SECRET")
+
+	valid, err := VerifyWebhookSignature(rawBody, signature, secret, timestamp, defaultMaxAge)
+	if !valid || err != nil {
+		http.Error(w, "Unauthorized: invalid signature or expired timestamp", http.StatusUnauthorized)
+		return
+	}
+
+	// Signature is authentic and within freshness window.
+	// Return 200 OK immediately and process payload asynchronously.
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"received":true}`))
+}
+```
+
+> **Complete Go Reference:** A production-grade CLI verifier preserving exact JSON key ordering is provided in [`examples/webhook-verification/go/verify.go`](../examples/webhook-verification/go/verify.go).
 
 ---
 

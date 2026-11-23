@@ -4,10 +4,11 @@ export const RATE_LIMIT_WINDOW_MS = 60_000;
 export const DEFAULT_RATE_LIMIT_RPM = 120;
 
 export function getRateLimitMax(value = process.env.RATE_LIMIT_RPM): number {
-  if (process.env.CI || process.env.NODE_ENV === "test") {
-    return Math.max(10_000, parseInt(value || "10000", 10));
-  }
-  return Math.max(1, parseInt(value || String(DEFAULT_RATE_LIMIT_RPM), 10) || DEFAULT_RATE_LIMIT_RPM);
+  const defaultRpm =
+    process.env.CI && process.env.NODE_ENV !== "test"
+      ? 10_000
+      : DEFAULT_RATE_LIMIT_RPM;
+  return Math.max(1, parseInt(value || String(defaultRpm), 10) || defaultRpm);
 }
 
 export { getClientIp } from "@/lib/client-ip";

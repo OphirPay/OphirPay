@@ -19,6 +19,7 @@
 - [Soroban — Smart Contracts on Stellar](#soroban--smart-contracts-on-stellar)
 - [Minimal Working Example: Send XLM](#minimal-working-example-send-xlm)
 - [Wallet Connectors & Ledger Status](#wallet-connectors--ledger-status)
+- [Wallet Troubleshooting FAQ](#wallet-troubleshooting-faq)
 - [Glossary](../GLOSSARY.md)
 - [Further Reading](#further-reading)
 
@@ -566,6 +567,78 @@ connect and sign, including Ledger hardware wallets.
 
 Ledger is available alongside **Freighter, xBull, Rabet, Albedo and Lobstr** in
 the wallet selector. If WebUSB is unavailable, use one of those connectors.
+
+---
+
+## Wallet Troubleshooting FAQ
+
+Common connection issues, wallet errors, and their actionable resolutions when connecting to OphirPay with Freighter or other Stellar wallets:
+
+### 1. "Freighter extension not detected" / Wallet Not Found
+
+- **Symptoms**: The wallet selector modal displays "Not found" next to Freighter, or an alert pops up stating `"Freighter extension not detected"`.
+- **Causes**:
+  1. The Freighter browser extension is not installed or is currently disabled.
+  2. You are using an unsupported browser context (e.g. mobile browser without extension support, or private/incognito mode where extension access has not been granted).
+  3. The page was loaded before the extension injected its `window.freighter` provider.
+- **Actionable Resolutions**:
+  - **Install Freighter**: Download the official extension from [freighter.app](https://www.freighter.app) or install directly from the [Chrome Web Store](https://chromewebstore.google.com/detail/freighter/bcacfldlkkdogcmkkibnjlakofdplcbk) or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/freighter/).
+  - **Enable Extension**: Navigate to `chrome://extensions` or `about:addons` and verify Freighter is enabled.
+  - **Allow in Incognito**: If browsing in private/incognito mode, open extension settings and toggle **"Allow in Incognito"** (or **"Run in Private Windows"** in Firefox).
+  - **Hard Refresh**: Press `Ctrl+F5` (or `Cmd+Shift+R` on macOS) to reload OphirPay so the extension scripts are detected.
+
+---
+
+### 2. "Network Mismatch" Between dApp and Wallet
+
+- **Symptoms**: Transactions fail during pre-flight simulation, wallet displays a red warning `"Network mismatch"`, or contract calls revert with `"Transaction rejected on target network"`.
+- **Causes**: OphirPay is configured to operate on **Stellar Testnet** (or a local standalone network), while your Freighter wallet extension is connected to **Public Network (Mainnet)** or a different network passphrase.
+- **Actionable Resolutions**:
+  - Click the **Freighter icon** in your browser toolbar to open the extension.
+  - In the upper right corner, click the network drop-down (defaults to `PUBLIC`).
+  - Switch the network to **TESTNET** (`Test SDF Network ; September 2015`).
+  - For local development with a standalone Stellar node, select **Custom Network** and verify:
+    - **Horizon RPC URL**: `http://localhost:8000`
+    - **Soroban RPC URL**: `http://localhost:8000/soroban/rpc`
+    - **Network Passphrase**: `Standalone Network ; February 2017`
+  - Reopen the OphirPay wallet modal and reconnect your wallet.
+
+---
+
+### 3. Popup Blocked or Connection Window Dismissed
+
+- **Symptoms**: Clicking "Connect Freighter" appears to do nothing, loading spinner spins indefinitely, or fails with `"User rejected connection"` or a timeout error.
+- **Causes**: The browser's pop-up blocker suppressed the Freighter authorization window, or the prompt was accidentally minimized/closed.
+- **Actionable Resolutions**:
+  - Look at the right side of your browser URL bar for the **Pop-up Blocked** icon (🚫). Click it and select **"Always allow pop-ups and redirects from [this site]"**.
+  - Check your browser toolbar: Freighter may have a notification badge awaiting your approval. Click the extension icon to reveal the pending authorization prompt.
+  - Avoid clicking outside the pop-up modal while the cryptographic challenge is being signed.
+
+---
+
+### 4. "Missing Trustline" for Custom Assets (`op_no_trust`)
+
+- **Symptoms**: Attempting to receive, deposit, or transfer non-XLM assets (such as USDC, EURC, or custom Soroban tokens) fails with `op_no_trust` or `"Account does not have a trustline for this asset"`.
+- **Causes**: On Stellar, accounts cannot hold or receive any token other than native XLM without an explicit on-chain **trustline**. Each trustline requires a **0.5 XLM base reserve** commitment.
+- **Actionable Resolutions**:
+  - **Ensure Sufficient XLM**: Verify your account has at least `1.5 XLM` (1.0 XLM account base reserve + 0.5 XLM for the new trustline).
+  - **Add Trustline in Freighter**:
+    1. Open Freighter and click **"Manage Assets"** (or **"+"**).
+    2. Search for the asset code (e.g. `USDC`) or enter the asset's issuer public key (e.g. `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` on testnet).
+    3. Click **"Add Asset"** and confirm the transaction in Freighter.
+  - **Add Trustline via OphirPay**: When interacting with batch payouts or escrows involving custom assets, click **"Establish Trustline"** on the asset prompt before submitting the payment.
+
+---
+
+### 5. Account Unfunded on Testnet (`op_underfunded` / Account Not Found)
+
+- **Symptoms**: Wallet connects, but shows `0 XLM` balance and all payment submissions fail with `"Account not found"` or `op_underfunded`.
+- **Causes**: A newly created Stellar keypair has not yet been funded on the ledger. An account does not exist on-chain until it receives its initial base reserve (≥ 1 XLM).
+- **Actionable Resolutions**:
+  - Fund your address instantly using Stellar Testnet Friendbot:
+    - Visit the [Friendbot FAQ & Faucets](#friendbot-faq--faucets) section above.
+    - Or run: `curl "https://friendbot.stellar.org?addr=YOUR_PUBLIC_KEY"`
+  - Once funded with testnet XLM, refresh the OphirPay balance display.
 
 ---
 

@@ -1,7 +1,7 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -21,14 +21,47 @@ export function SudoReauthModal({
   onCancel,
   busy = false,
   error,
+  sessionTtlMs,
+  onSessionExpire,
 }: {
   open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
   error?: string | null;
+  /**
+   * Remaining lifetime of the active sudo session in ms (15 minutes after a
+   * fresh verification). When set, a countdown ticks every second while the
+   * modal is open and `onSessionExpire` fires once it reaches zero.
+   */
+  sessionTtlMs?: number;
+  onSessionExpire?: () => void;
 }) {
   const triggerElementRef = useRef<HTMLElement | null>(null);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const onSessionExpireRef = useRef(onSessionExpire);
+
+  useEffect(() => {
+    onSessionExpireRef.current = onSessionExpire;
+  }, [onSessionExpire]);
+
+  // Countdown: restarts whenever the modal opens or the TTL changes, and is
+  // cleared (reset) when it closes.
+  useEffect(() => {
+    if (!open || sessionTtlMs === undefined) {
+      setRemainingSeconds(null);
+      return;
+    }
+    setRemainingSeconds(Math.max(0, Math.ceil(sessionTtlMs / 1000)));
+    const id = setInterval(() => {
+      setRemainingSeconds((prev) => (prev === null || prev <= 0 ? prev : prev - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [open, sessionTtlMs]);
+
+  useEffect(() => {
+    if (remainingSeconds === 0) onSessionExpireRef.current?.();
+  }, [remainingSeconds]);
 
   useEffect(() => {
     if (open) {
@@ -69,6 +102,13 @@ export function SudoReauthModal({
           signature. Sign the challenge to confirm it&apos;s you — the
           verification must be newer than 15 minutes.
         </p>
+        {remainingSeconds !== null && (
+          <p role="timer" data-testid="sudo-countdown" className="text-sm font-mono">
+            {remainingSeconds === 0
+              ? "Sudo session expired"
+              : `Sudo session expires in ${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`}
+          </p>
+        )}
         {error && (
           <p role="alert" className="text-sm text-red-600 dark:text-red-400">
             {error}

@@ -79,6 +79,34 @@ export function webhookRetryDelayMs(retriesCompleted: number): number | null {
   return WEBHOOK_RETRY_BACKOFF_MS[index] ?? null;
 }
 
+/** Base delay for the jittered exponential backoff (attempt 1). */
+export const WEBHOOK_BACKOFF_BASE_MS = 10_000;
+/** Upper bound for the jittered exponential backoff (1 hour). */
+export const WEBHOOK_BACKOFF_MAX_MS = 60 * 60_000;
+/** Maximum fraction of the delay added as random jitter (0–20%). */
+export const WEBHOOK_BACKOFF_JITTER_RATIO = 0.2;
+
+/**
+ * Exponential backoff with jitter for a 1-based retry `attempt`:
+ * `10s * 2^(attempt-1)`, capped at 1 hour, plus 0–20% random jitter so many
+ * failing endpoints do not retry in lockstep. The cap bounds the final value
+ * (jitter never pushes it past {@link WEBHOOK_BACKOFF_MAX_MS}). `random` is
+ * injectable (returns [0, 1)) for deterministic tests.
+ */
+export function webhookBackoffWithJitterMs(
+  attempt: number,
+  random: () => number = Math.random
+): number {
+  const n = Math.max(1, Math.floor(attempt));
+  // Clamp the exponent so very large attempts cannot overflow to Infinity.
+  const exponential = Math.min(
+    WEBHOOK_BACKOFF_MAX_MS,
+    WEBHOOK_BACKOFF_BASE_MS * 2 ** Math.min(n - 1, 30)
+  );
+  const jitter = exponential * WEBHOOK_BACKOFF_JITTER_RATIO * random();
+  return Math.min(WEBHOOK_BACKOFF_MAX_MS, Math.round(exponential + jitter));
+}
+
 /** Absolute time of the next attempt, or `null` when retries are exhausted. */
 export function nextWebhookAttemptAt(
   retriesCompleted: number,

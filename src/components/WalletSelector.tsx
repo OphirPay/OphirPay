@@ -43,17 +43,30 @@ export function WalletSelector({
       description="Choose your Stellar wallet"
       size="sm"
       footer={
-        <p className="w-full text-center text-xs text-gray-400">
-          New to Stellar?{" "}
-          <a
-            href="https://www.stellar.org/wallets"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-ophir-600 dark:text-ophir-400 hover:underline"
-          >
-            Find a wallet →
-          </a>
-        </p>
+        <div className="w-full text-center space-y-1.5 text-xs text-gray-500 dark:text-gray-400">
+          <p>
+            Having connection issues?{" "}
+            <a
+              href="https://github.com/OphirPay/OphirPay/blob/main/docs/STELLAR_101.md#wallet-troubleshooting-faq"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ophir-600 dark:text-ophir-400 hover:underline font-medium"
+            >
+              Wallet Troubleshooting FAQ →
+            </a>
+          </p>
+          <p className="text-gray-400">
+            New to Stellar?{" "}
+            <a
+              href="https://www.stellar.org/wallets"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ophir-600 dark:text-ophir-400 hover:underline"
+            >
+              Find a wallet →
+            </a>
+          </p>
+        </div>
       }
     >
       {/* Wallet list */}
@@ -76,8 +89,8 @@ export function WalletSelector({
                   ? "hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
                   : "opacity-50 cursor-not-allowed",
                 hovered === wallet.id &&
-                  isAvailable &&
-                  "bg-gray-50 dark:bg-gray-800 ring-1 ring-ophir-200 dark:ring-ophir-800",
+                isAvailable &&
+                "bg-gray-50 dark:bg-gray-800 ring-1 ring-ophir-200 dark:ring-ophir-800",
               )}
             >
               {/* Icon */}
@@ -144,6 +157,18 @@ export function WalletSelector({
       {error && (
         <div className="mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <p className="mt-1.5 text-xs text-red-500 dark:text-red-400">
+            Need help? Check our{" "}
+            <a
+              href="https://github.com/OphirPay/OphirPay/blob/main/docs/STELLAR_101.md#wallet-troubleshooting-faq"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-medium hover:text-red-700 dark:hover:text-red-300"
+            >
+              Troubleshooting FAQ
+            </a>{" "}
+            for common fixes.
+          </p>
         </div>
       )}
     </Modal>

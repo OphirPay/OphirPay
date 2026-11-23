@@ -12,8 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getRetryAfterSeconds,
   InMemoryRateLimitStore,
-  RedisRateLimitStore,
   type RateLimitResult,
+  RedisRateLimitStore,
 } from "@/lib/ratelimit";
 
 const LIMIT = 5;

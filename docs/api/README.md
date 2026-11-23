@@ -84,6 +84,7 @@ OphirPay supports two primary forms of API authentication:
 
 ## Key Documentation Guides
 
+- [**Batch Payments API**](batches.md): Endpoint specification, cURL & TypeScript examples, Zod schemas, and idempotency guarantees for `POST /api/batches`.
 - [**CORS Policy & Allowed Headers**](cors.md): Cross-Origin Resource Sharing specifications, allowed origins, preflight headers, and frontend dApp integration instructions.
 - [**Rate Limiting & Tier Quotas**](rate-limiting.md): Rate limiting headers (`X-RateLimit-*`, `Retry-After`), tier quotas across proxy, auth, lookup, and API keys, and exponential backoff implementation with full jitter.
 - [**Contract SSE Reference**](../CONTRACT_SSE_REFERENCE.md): Real-time Server-Sent Events (SSE) and native Soroban contract event emission.

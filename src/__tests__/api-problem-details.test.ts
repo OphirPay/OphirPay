@@ -329,3 +329,60 @@ describe("convenience builders", () => {
     });
   });
 });
+
+// ── 400 / 404 payloads and Content-Type ───────────────────────
+
+describe("RFC 7807 400 and 404 responses", () => {
+  it("formats a 400 Bad Request with type, title, status and detail", async () => {
+    const response = problemBadRequest("Amount must be positive", {
+      instance: "/api/payments",
+    });
+    expect(response.status).toBe(400);
+    const body = await readProblem(response);
+    expect(body).toMatchObject({
+      title: "Bad Request",
+      status: 400,
+      detail: "Amount must be positive",
+      instance: "/api/payments",
+      code: "BAD_REQUEST",
+    });
+    expect(typeof body.type).toBe("string");
+    expect(body.type).toBe(problemTypeFor("BAD_REQUEST"));
+  });
+
+  it("formats a 404 Not Found with type, title, status and detail", async () => {
+    const response = problemNotFound("Payment", { instance: "/api/payments/p_1" });
+    expect(response.status).toBe(404);
+    const body = await readProblem(response);
+    expect(body).toMatchObject({
+      title: "Not Found",
+      status: 404,
+      detail: "Payment not found",
+      instance: "/api/payments/p_1",
+      code: "NOT_FOUND",
+    });
+    expect(body.type).toBe(problemTypeFor("NOT_FOUND"));
+  });
+
+  it("sets Content-Type to application/problem+json on both", () => {
+    expect(PROBLEM_CONTENT_TYPE).toBe("application/problem+json");
+    for (const response of [problemBadRequest("bad"), problemNotFound()]) {
+      expect(response.headers.get("Content-Type")).toBe("application/problem+json");
+    }
+  });
+
+  it("always includes the four required RFC 7807 members and parses as a problem", async () => {
+    for (const response of [problemBadRequest("bad"), problemNotFound("Batch")]) {
+      const body = await readProblem(response);
+      for (const key of ["type", "title", "status", "detail"]) {
+        expect(body).toHaveProperty(key);
+      }
+      expect(body.status).toBe(response.status);
+      expect(isProblemDetails(body)).toBe(true);
+    }
+  });
+
+  it("defaults the 404 resource name when none is given", async () => {
+    expect((await readProblem(problemNotFound())).detail).toBe("Resource not found");
+  });
+});

@@ -4,6 +4,8 @@
 // match the documented format at creation: op_{env}_{32_hex_bytes}_{4_byte_crc}.
 // Digests are version-tagged, and keys minted before the change must keep authenticating.
 
+import { createHash } from "node:crypto";
+
 import { beforeEach,describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
@@ -35,6 +37,7 @@ import {
   isValidApiKeyFormat,
   validateKeyFormat,
 } from "@/lib/api-auth";
+import { API_KEY_RANDOM_BYTES, checkApiKeyEntropy } from "@/lib/api-key-format";
 import prisma from "@/lib/prisma";
 
 const PRE_701_LEGACY_KEY = `${API_KEY_PREFIX}${"a1b2c3d4".repeat(6)}`; // 48 hex chars (oph_)
@@ -279,5 +282,65 @@ describe("authenticateRequest", () => {
     ] as never);
 
     expect(await call(STANDARDIZED_TEST_KEY)).toBeNull();
+  });
+});
+
+describe("entropy, prefix and digest format (op_live_ / op_test_)", () => {
+  const ITERATIONS = 10_000;
+
+  it(`generates ${ITERATIONS} unique keys with unique random segments`, () => {
+    const keys = new Set<string>();
+    const randomParts = new Set<string>();
+    for (let i = 0; i < ITERATIONS; i++) {
+      const key = generateApiKey({ env: i % 2 ? "live" : "test" });
+      keys.add(key);
+      randomParts.add(key.split("_")[2]!);
+    }
+    expect(keys.size).toBe(ITERATIONS);
+    expect(randomParts.size).toBe(ITERATIONS);
+  });
+
+  it.each(["live", "test"] as const)("prefixes %s keys with op_%s_", (env) => {
+    for (let i = 0; i < 100; i++) {
+      const key = generateApiKey({ env });
+      expect(key.startsWith(`op_${env}_`)).toBe(true);
+      expect(key).toMatch(/^op_(live|test)_[0-9a-f]{64}_[0-9a-f]{8}$/);
+    }
+  });
+
+  it("carries at least 256 bits (32 bytes) of entropy", () => {
+    expect(API_KEY_RANDOM_BYTES * 8).toBeGreaterThanOrEqual(256);
+    const check = checkApiKeyEntropy(generateApiKey({ env: "live" }));
+    expect(check.valid).toBe(true);
+    expect(check.bytes).toBeGreaterThanOrEqual(32);
+  });
+
+  it("uses every hex digit across the random segment (no stuck bits)", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      for (const ch of generateApiKey().split("_")[2]!) seen.add(ch);
+    }
+    expect(seen.size).toBe(16);
+  });
+
+  it("rejects keys below 256 bits of entropy", () => {
+    const hex = "a1b2c3d4".repeat(6); // 192 bits
+    const payload = `op_live_${hex}`;
+    const weak = `${payload}_${calculateCrc32(payload)}`;
+    expect(checkApiKeyEntropy(weak).valid).toBe(false);
+  });
+
+  it("hashApiKey is the SHA-256 hex digest stored in keyHash", () => {
+    const key = generateApiKey({ env: "live" });
+    const digest = hashApiKey(key);
+    expect(digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(digest).toBe(createHash("sha256").update(key).digest("hex"));
+    expect(hashApiKey(key)).toBe(digest);
+    expect(hashApiKey(generateApiKey({ env: "live" }))).not.toBe(digest);
+  });
+
+  it("hashApiKeyV1 version-tags the SHA-256 digest", () => {
+    const key = generateApiKey({ env: "test" });
+    expect(hashApiKeyV1(key)).toBe(`${API_KEY_DIGEST_VERSION}:${hashApiKey(key)}`);
   });
 });

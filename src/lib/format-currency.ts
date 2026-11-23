@@ -39,21 +39,30 @@ export function formatXlm(stroops: string | number, decimals = 2): string {
 }
 
 /**
- * Format any numeric amount as fiat currency (USD by default).
+ * Format any numeric amount as fiat currency (USD by default). Pass a BCP 47
+ * `locale` (e.g. `de-DE`) for localized separators; omitted/invalid → `en-US`.
  */
 export function formatFiat(
   amount: number | string,
   currency = "USD",
-  decimals = 2
+  decimals = 2,
+  locale?: string
 ): string {
   const num = toFiniteNumber(amount);
   if (num === null) return NON_FINITE_AMOUNT;
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const options: Intl.NumberFormatOptions = {
     style: "currency",
     currency,
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(num);
+  };
+  try {
+    // An omitted locale falls back to the pinned default, never the runtime's.
+    return new Intl.NumberFormat(locale ?? DEFAULT_LOCALE, options).format(num);
+  } catch {
+    // A malformed locale tag throws RangeError — degrade to the default.
+    return new Intl.NumberFormat(DEFAULT_LOCALE, options).format(num);
+  }
 }
 
 /**

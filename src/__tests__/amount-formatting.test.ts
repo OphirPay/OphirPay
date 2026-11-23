@@ -30,6 +30,7 @@ import {
   parseAmount,
   stroopsToDisplay,
 } from "@/lib/amount";
+import { formatFiat } from "@/lib/format-currency";
 import {
   formatXlmAmount,
   formatXlmStroops,
@@ -198,5 +199,60 @@ describe("documented edge cases (issue #1406)", () => {
       expect(formatDecimal(value)).toBe(NON_FINITE_AMOUNT);
       expect(stroopsToDisplay(value)).toBe(NON_FINITE_AMOUNT);
     }
+  });
+});
+
+// ── Locale-aware fiat formatting ─────────────────────────────
+
+/** Intl emits NBSP / narrow NBSP around some currency symbols; normalize. */
+const normalizeSpaces = (value: string) => value.replace(/[  ]/g, " ");
+
+describe("formatFiat locale separators", () => {
+  it("formats USD with en-US separators (1,234.56)", () => {
+    expect(formatFiat(1234.56, "USD", 2, "en-US")).toBe("$1,234.56");
+  });
+
+  it("formats EUR with de-DE separators (1.234,56)", () => {
+    expect(normalizeSpaces(formatFiat(1234.56, "EUR", 2, "de-DE"))).toBe("1.234,56 €");
+  });
+
+  it("groups large amounts per locale", () => {
+    expect(formatFiat(1234567.89, "USD", 2, "en-US")).toBe("$1,234,567.89");
+    expect(normalizeSpaces(formatFiat(1234567.89, "EUR", 2, "de-DE"))).toBe("1.234.567,89 €");
+  });
+
+  it("accepts numeric strings", () => {
+    expect(formatFiat("1234.56", "USD", 2, "en-US")).toBe("$1,234.56");
+  });
+});
+
+describe("formatFiat sub-cent rounding", () => {
+  it("rounds sub-cent amounts down below half a cent", () => {
+    expect(formatFiat(0.004, "USD", 2, "en-US")).toBe("$0.00");
+    expect(formatFiat(1.2349, "USD", 2, "en-US")).toBe("$1.23");
+  });
+
+  it("rounds sub-cent amounts up above half a cent", () => {
+    expect(formatFiat(0.006, "USD", 2, "en-US")).toBe("$0.01");
+    expect(formatFiat(1.239, "USD", 2, "en-US")).toBe("$1.24");
+  });
+
+  it("applies the same rounding under de-DE", () => {
+    expect(normalizeSpaces(formatFiat(0.006, "EUR", 2, "de-DE"))).toBe("0,01 €");
+  });
+});
+
+describe("formatFiat locale fallback", () => {
+  it("falls back to en-US when the locale is undefined", () => {
+    expect(formatFiat(1234.56, "USD", 2, undefined)).toBe("$1,234.56");
+    expect(formatFiat(1234.56)).toBe("$1,234.56");
+  });
+
+  it("falls back to en-US for a malformed locale instead of throwing", () => {
+    expect(formatFiat(1234.56, "USD", 2, "not a locale!!")).toBe("$1,234.56");
+  });
+
+  it("still renders the placeholder for non-finite input", () => {
+    expect(formatFiat("abc", "USD", 2, "de-DE")).toBe(NON_FINITE_AMOUNT);
   });
 });

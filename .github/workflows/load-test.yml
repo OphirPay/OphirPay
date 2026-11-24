@@ -56,7 +56,7 @@ concurrency:
 
 # Runtime configuration for the build, the server and the load scripts.
 # NEXT_PUBLIC_* variables are inlined by Next.js at BUILD time, so they must be
-# set for `npm run build` as well as for the server.
+# set for `sudo apt-get update && sudo apt-get install -y binaryen && npm run build` as well as for the server.
 #
 # NODE_ENV is deliberately NOT set here: `npm ci` treats NODE_ENV=production as
 # "omit devDependencies", which would strip the very tooling the build needs
@@ -177,7 +177,7 @@ jobs:
         run: node scripts/create-load-test-key.mjs --github-env
 
       - name: Build the app
-        run: npm run build
+        run: sudo apt-get update && sudo apt-get install -y binaryen && npm run build
 
       - name: Stage the standalone server
         # A standalone build does not serve `public/` or `.next/static/` on its

@@ -174,3 +174,63 @@ describe("filterAssets", () => {
     expect(filterAssets([XLM], "undefined")).toEqual([]);
   });
 });
+
+describe("AssetSelector keyboard navigation and ARIA accessibility (#1893)", () => {
+  it("exposes role='listbox', role='option', and aria-selected for screen readers", () => {
+    renderOpen();
+    const listbox = screen.getByRole("listbox", { name: "Available assets" });
+    expect(listbox).toBeInTheDocument();
+
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(10);
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(options[1]).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByText(/Selected asset: XLM/i)).toBeInTheDocument();
+  });
+
+  it("navigates options with ArrowDown, ArrowUp, and selects with Enter", () => {
+    const onSelect = vi.fn();
+    render(
+      <AssetSelector
+        publicKey={null}
+        selectedAsset={XLM}
+        onSelect={onSelect}
+        assets={ASSETS}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    const search = screen.getByLabelText("Search assets");
+
+    // ArrowDown moves active highlight from XLM (0) -> USDC (1) -> EURC (2)
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    const options = screen.getAllByRole("option");
+    expect(options[2]).toHaveAttribute("data-active", "true");
+
+    // ArrowUp moves back from EURC (2) -> USDC (1)
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    expect(options[1]).toHaveAttribute("data-active", "true");
+
+    // Enter selects USDC and closes the modal
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledWith(ASSETS[1]);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("traps Tab and Shift+Tab focus within the open modal and closes on Escape", () => {
+    renderOpen();
+    const search = screen.getByLabelText("Search assets");
+    const options = screen.getAllByRole("option");
+    const lastOption = options[options.length - 1];
+
+    lastOption.focus();
+    fireEvent.keyDown(lastOption, { key: "Tab", shiftKey: false });
+    expect(document.activeElement).toBe(search);
+
+    fireEvent.keyDown(search, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(lastOption);
+
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+});

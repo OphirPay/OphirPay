@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { TrustlineModal } from "@/components/wallet/TrustlineModal";
 import { useXlmPrice } from "@/hooks/usePrice";
@@ -143,6 +143,12 @@ export function AssetSelector({
   const [trustlineAsset, setTrustlineAsset] = useState<AssetInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+  const instanceId = useId();
+  const listboxId = `${instanceId}-asset-listbox`;
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   // Issuer-supplied display metadata (issue #824), keyed by `code:issuer`.
   // Absent/`null` entries fall back to the built-in display name.
   const [metadata, setMetadata] = useState<Record<string, ClientAssetMetadata | null>>({});
@@ -287,11 +293,104 @@ export function AssetSelector({
 
   const visibleAssets = filterAssets(assets, query, labelFor);
 
+  useEffect(() => {
+    if (!open) return;
+    const selectedIdx = visibleAssets.findIndex(
+      (a) => a.code === selectedAsset.code && a.issuer === selectedAsset.issuer,
+    );
+    setActiveIndex(visibleAssets.length === 0 ? -1 : selectedIdx >= 0 ? selectedIdx : 0);
+  }, [open, query, visibleAssets.length, selectedAsset.code, selectedAsset.issuer]);
+
+  useEffect(() => {
+    if (open) {
+      searchInputRef.current?.focus();
+    }
+  }, [open]);
+
+  const closeModalAndRestoreFocus = useCallback(() => {
+    setOpen(false);
+    requestAnimationFrame(() => {
+      triggerRef.current?.focus();
+    });
+  }, []);
+
+  const optionIdFor = (index: number, asset: AssetInfo): string =>
+    `${instanceId}-asset-option-${index}-${asset.code}`;
+
+  const handleModalKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeModalAndRestoreFocus();
+      return;
+    }
+
+    if (e.key === "Tab" && modalRef.current) {
+      const focusables = Array.from(
+        modalRef.current.querySelectorAll<HTMLElement>(
+          'input:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusables.length > 0) {
+        const currentIdx = focusables.indexOf(document.activeElement as HTMLElement);
+        if (!e.shiftKey && (currentIdx === focusables.length - 1 || currentIdx === -1)) {
+          e.preventDefault();
+          focusables[0].focus();
+        } else if (e.shiftKey && (currentIdx === 0 || currentIdx === -1)) {
+          e.preventDefault();
+          focusables[focusables.length - 1].focus();
+        }
+      }
+      return;
+    }
+
+    if (visibleAssets.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev < 0 ? 0 : (prev + 1) % visibleAssets.length));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((prev) =>
+        prev <= 0 ? visibleAssets.length - 1 : (prev - 1) % visibleAssets.length,
+      );
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setActiveIndex(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setActiveIndex(visibleAssets.length - 1);
+    } else if (e.key === "Enter") {
+      const targetIdx =
+        activeIndex >= 0 && activeIndex < visibleAssets.length ? activeIndex : 0;
+      const targetAsset = visibleAssets[targetIdx];
+      if (targetAsset) {
+        e.preventDefault();
+        void handleSelect(targetAsset);
+      }
+    }
+  };
+
+  const activeDescendantId =
+    open && activeIndex >= 0 && activeIndex < visibleAssets.length
+      ? optionIdFor(activeIndex, visibleAssets[activeIndex])
+      : undefined;
+
   return (
     <div className={cn("relative", className)}>
       <button
+        ref={triggerRef}
         type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
+        aria-label={`Selected asset: ${selectedAsset.code} (${labelFor(selectedAsset)})`}
         onClick={() => !disabled && setOpen(!open)}
+        onKeyDown={(e) => {
+          if (!disabled && !open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
         disabled={disabled}
         className={cn(
           "w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm transition-colors",
@@ -337,15 +436,28 @@ export function AssetSelector({
 
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in">
+          <div className="fixed inset-0 z-10" onClick={closeModalAndRestoreFocus} />
+          <div
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Select asset"
+            onKeyDown={handleModalKeyDown}
+            className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in"
+          >
+            <span className="sr-only" aria-live="polite">
+              Selected asset: {selectedAsset.code} ({labelFor(selectedAsset)})
+            </span>
             <div className="px-3 pt-2 pb-1">
               <input
+                ref={searchInputRef}
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search by code or issuer"
                 aria-label="Search assets"
+                aria-controls={listboxId}
+                aria-activedescendant={activeDescendantId}
                 autoComplete="off"
                 spellCheck={false}
                 className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-ophir-500"
@@ -361,22 +473,36 @@ export function AssetSelector({
               </p>
             )}
 
-            {visibleAssets.map((asset) => {
+            <div
+              id={listboxId}
+              role="listbox"
+              aria-label="Available assets"
+            >
+            {visibleAssets.map((asset, idx) => {
               const bal = findAssetBalance(balances, asset);
               const key = `${asset.code}:${asset.issuer}`;
               const tl = trustlineStatus[key];
+              const isSelected =
+                selectedAsset.code === asset.code &&
+                selectedAsset.issuer === asset.issuer;
+              const isActive = idx === activeIndex;
 
               return (
                 <button
                   key={key}
+                  id={optionIdFor(idx, asset)}
                   type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  aria-label={`${asset.code} (${labelFor(asset)}), balance ${bal}${isSelected ? ", currently selected" : ""}`}
                   data-testid="asset-option"
+                  data-active={isActive ? "true" : "false"}
+                  onMouseEnter={() => setActiveIndex(idx)}
                   onClick={() => handleSelect(asset)}
                   className={cn(
                     "w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors",
-                    selectedAsset.code === asset.code &&
-                      selectedAsset.issuer === asset.issuer &&
-                      "bg-ophir-50 dark:bg-ophir-950/20",
+                    isSelected && "bg-ophir-50 dark:bg-ophir-950/20",
+                    isActive && "ring-2 ring-inset ring-ophir-500 bg-gray-50 dark:bg-gray-700/60",
                   )}
                 >
                   <div className="flex items-center gap-2">
@@ -441,6 +567,7 @@ export function AssetSelector({
                 </button>
               );
             })}
+            </div>
 
             {selectedAsset.type !== "native" && selectedAsset.issuer && trustlineStatus[`${selectedAsset.code}:${selectedAsset.issuer}`]?.state && (
               <div className="border-t border-gray-100 dark:border-gray-700 mt-1 px-4 py-3">

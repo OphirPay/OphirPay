@@ -30,6 +30,6 @@ jobs:
         run: |
           cp .env.example .env.local
           sed -i 's/AUTH_SECRET=.*/AUTH_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/' .env.local
-      - run: npm run build
+      - run: sudo apt-get update && sudo apt-get install -y binaryen && npm run build
       - name: Run Lighthouse CI
         run: npx @lhci/cli autorun

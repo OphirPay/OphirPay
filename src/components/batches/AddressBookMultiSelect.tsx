@@ -150,7 +150,7 @@ export function AddressBookMultiSelect({
             return (
               <label
                 key={entry.publicKey}
-                className={`flex items-center gap-3 px-3 py-2.5 min-w-[280px] ${
+                className={`flex items-center gap-3 px-3 py-2.5 min-w-0 sm:min-w-[280px] ${
                   alreadyAdded
                     ? "opacity-60 cursor-not-allowed"
                     : "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
@@ -168,7 +168,7 @@ export function AddressBookMultiSelect({
                   <span className="block text-sm font-medium text-gray-900 dark:text-white truncate">
                     {entry.label}
                   </span>
-                  <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
+                  <span className="block text-xs font-mono text-gray-500 dark:text-gray-400 truncate max-w-[120px] sm:max-w-none">
                     {shortenAddress(entry.publicKey, 6)}
                   </span>
                 </span>

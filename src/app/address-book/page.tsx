@@ -286,7 +286,7 @@ export default function AddressBookPage() {
                   ) : null}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate">
+                  <span className="text-sm font-mono text-gray-600 dark:text-gray-300 truncate max-w-[120px] sm:max-w-none">
                     {shortenAddress(entry.publicKey, 8)}
                   </span>
                   <CopyButton value={entry.publicKey} label="Address" />
@@ -298,13 +298,14 @@ export default function AddressBookPage() {
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
+                <Button variant="outline" size="sm" onClick={() => openEdit(entry)} className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0">
                   Edit
                 </Button>
                 <Button
                   variant="danger"
                   size="sm"
                   onClick={() => setDeleting(entry)}
+                  className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0"
                 >
                   Delete
                 </Button>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 "use client";
 // SPDX-License-Identifier: MIT
 
@@ -42,6 +43,17 @@ export function BatchConfirmDialog({
   onConfirm,
   onCancel,
 }: BatchConfirmDialogProps) {
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+
+  const handleCopy = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(address);
+      setTimeout(() => setCopiedAddress(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy", err);
+    }
+  };
   const visibleRecipients = recipients.slice(0, MAX_VISIBLE);
   const remainingCount = recipients.length - MAX_VISIBLE;
   const feeXlm = formatAmount(parseFloat(estimatedFee) / 10000000, "XLM");
@@ -114,8 +126,20 @@ export function BatchConfirmDialog({
                 key={i}
                 className="flex items-center justify-between px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-900"
               >
-                <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
+                <span 
+                  className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate cursor-pointer hover:text-ophir-500 transition-colors relative"
+                  onClick={() => handleCopy(r.address)}
+                  title="Click to copy"
+                >
                   {shortenAddress(r.address, 8)}
+                  {copiedAddress === r.address && (
+                    <span 
+                      className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-sans px-2 py-1 rounded shadow-lg whitespace-nowrap z-50" 
+                      aria-live="polite"
+                    >
+                      Copied!
+                    </span>
+                  )}
                 </span>
                 <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white ml-3">
                   {formatAmount(parseFloat(r.amount), "XLM")}

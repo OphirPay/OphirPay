@@ -1,6 +1,8 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
+import { useEffect, useRef, useState } from "react";
+
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { formatAmount, shortenAddress } from "@/lib/utils";
@@ -30,6 +32,109 @@ interface BatchConfirmDialogProps {
 }
 
 const MAX_VISIBLE = 5;
+
+interface RecipientAddressCopyProps {
+  address: string;
+  index: number;
+}
+
+export function RecipientAddressCopy({ address, index }: RecipientAddressCopyProps) {
+  const [copied, setCopied] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(address);
+        setCopied(true);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+          setCopied(false);
+        }, 2000);
+      }
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const showTooltip = copied || hovered;
+  const tooltipText = copied ? "Copied!" : "Copy address";
+
+  return (
+    <div className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={handleCopy}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => setHovered(true)}
+        onBlur={() => setHovered(false)}
+        aria-label={`Copy address ${shortenAddress(address, 8)}`}
+        title={copied ? "Copied!" : `Copy address ${shortenAddress(address, 8)}`}
+        data-testid={`copy-address-button-${index}`}
+        className="p-1 rounded text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-ophir-500 transition-colors"
+      >
+        {copied ? (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="w-3.5 h-3.5 text-green-600 dark:text-green-400"
+            aria-hidden="true"
+          >
+            <path
+              fillRule="evenodd"
+              d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+              clipRule="evenodd"
+            />
+          </svg>
+        ) : (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            className="w-3.5 h-3.5"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75"
+            />
+          </svg>
+        )}
+      </button>
+
+      {/* Screen reader live notification */}
+      {copied && (
+        <span role="status" className="sr-only">
+          Address copied to clipboard
+        </span>
+      )}
+
+      {/* Feedback tooltip */}
+      {showTooltip && (
+        <div
+          role="tooltip"
+          data-testid={`copy-tooltip-${index}`}
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 px-2 py-0.5 text-xs font-medium rounded-md whitespace-nowrap shadow-md pointer-events-none animate-fade-in bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+        >
+          {tooltipText}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function BatchConfirmDialog({
   open,
@@ -114,9 +219,12 @@ export function BatchConfirmDialog({
                 key={i}
                 className="flex items-center justify-between px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-900"
               >
-                <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
-                  {shortenAddress(r.address, 8)}
-                </span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
+                    {shortenAddress(r.address, 8)}
+                  </span>
+                  <RecipientAddressCopy address={r.address} index={i} />
+                </div>
                 <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white ml-3">
                   {formatAmount(parseFloat(r.amount), "XLM")}
                 </span>

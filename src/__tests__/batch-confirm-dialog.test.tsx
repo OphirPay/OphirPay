@@ -170,4 +170,102 @@ describe("BatchConfirmDialog", () => {
     expect(submitBtn).not.toBeDisabled();
     expect(submitBtn).toHaveTextContent("Confirm & Sign");
   });
+
+  describe("recipient address copy-to-clipboard tooltip feedback", () => {
+    beforeEach(() => {
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: vi.fn().mockResolvedValue(undefined),
+        },
+      });
+    });
+
+    it("renders a copy button with accessible label for each visible recipient", () => {
+      render(
+        <BatchConfirmDialog
+          {...baseProps}
+          recipients={[
+            { address: "G" + "A".repeat(55), amount: "10" },
+            { address: "G" + "B".repeat(55), amount: "15.5" },
+          ]}
+        />
+      );
+
+      const copyButtons = screen.getAllByRole("button", { name: /copy address/i });
+      expect(copyButtons).toHaveLength(2);
+      expect(screen.getByTestId("copy-address-button-0")).toBeInTheDocument();
+      expect(screen.getByTestId("copy-address-button-1")).toBeInTheDocument();
+    });
+
+    it("copies full recipient address to clipboard on click", async () => {
+      const fullAddress = "G" + "A".repeat(55);
+      render(
+        <BatchConfirmDialog
+          {...baseProps}
+          recipients={[{ address: fullAddress, amount: "10" }]}
+        />
+      );
+
+      const copyBtn = screen.getByTestId("copy-address-button-0");
+      fireEvent.click(copyBtn);
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(fullAddress);
+    });
+
+    it("displays 'Copied!' tooltip feedback and announces to screen readers upon copy", async () => {
+      render(
+        <BatchConfirmDialog
+          {...baseProps}
+          recipients={[{ address: "G" + "A".repeat(55), amount: "10" }]}
+        />
+      );
+
+      const copyBtn = screen.getByTestId("copy-address-button-0");
+      fireEvent.click(copyBtn);
+
+      const tooltip = screen.getByTestId("copy-tooltip-0");
+      expect(tooltip).toBeInTheDocument();
+      expect(tooltip).toHaveTextContent("Copied!");
+
+      const liveRegion = screen.getByRole("status");
+      expect(liveRegion).toHaveTextContent("Address copied to clipboard");
+    });
+
+    it("shows 'Copy address' tooltip on hover before copy", () => {
+      render(
+        <BatchConfirmDialog
+          {...baseProps}
+          recipients={[{ address: "G" + "A".repeat(55), amount: "10" }]}
+        />
+      );
+
+      const copyBtn = screen.getByTestId("copy-address-button-0");
+      fireEvent.mouseEnter(copyBtn);
+
+      const tooltip = screen.getByTestId("copy-tooltip-0");
+      expect(tooltip).toBeInTheDocument();
+      expect(tooltip).toHaveTextContent("Copy address");
+
+      fireEvent.mouseLeave(copyBtn);
+      expect(screen.queryByTestId("copy-tooltip-0")).toBeNull();
+    });
+
+    it("isolates copy feedback to the clicked recipient row", () => {
+      render(
+        <BatchConfirmDialog
+          {...baseProps}
+          recipients={[
+            { address: "G" + "A".repeat(55), amount: "10" },
+            { address: "G" + "B".repeat(55), amount: "20" },
+          ]}
+        />
+      );
+
+      const copyBtn1 = screen.getByTestId("copy-address-button-1");
+      fireEvent.click(copyBtn1);
+
+      expect(screen.getByTestId("copy-tooltip-1")).toHaveTextContent("Copied!");
+      expect(screen.queryByTestId("copy-tooltip-0")).toBeNull();
+    });
+  });
 });

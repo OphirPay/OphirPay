@@ -357,7 +357,7 @@ export default function ApiKeysPage() {
                 key={key.id}
                 className="rounded-lg border border-gray-200 dark:border-gray-800 p-4"
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900 dark:text-white">
                       {key.name}
@@ -391,7 +391,7 @@ export default function ApiKeysPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex flex-wrap gap-2 shrink-0">
                     {!key.rotatedAt && (
                       <>
                         <button

@@ -190,4 +190,30 @@ describe("PaymentDetailPage", () => {
     // SUBMITTED position is current
     expect(screen.getByText("Transaction submitted to the network")).toBeInTheDocument();
   });
+
+  it("opens payment QR code modal on QR Code button click", async () => {
+    paramId = "clx1234abcd";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          data: {
+            id: "clx1234abcd",
+            amount: "250",
+            assetCode: "XLM",
+            recipient: "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            status: "CONFIRMED",
+            createdAt: "2024-01-01T00:00:00Z",
+          },
+        })
+      )
+    );
+    renderPage();
+
+    const qrBtn = await screen.findByRole("button", { name: "View QR code" });
+    expect(qrBtn).toBeInTheDocument();
+    fireEvent.click(qrBtn);
+
+    expect(await screen.findByText("Payment QR code")).toBeInTheDocument();
+  });
 });

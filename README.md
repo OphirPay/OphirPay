@@ -744,7 +744,7 @@ the nightly E2E suite (`e2e-nightly.yml`), the Docker image smoke test
 
 _11 scenes: Problem → Live Dashboard → Vercel Deployment → Soroban Contracts → Send Payment → Real-Time Events → GitHub README → CI Pipeline → Multisig Security → Open Source → Outro_
 
-**▶️ [Watch on Loom](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)** · [Download MP4](./public/demo.mp4)
+**▶️ [Watch on Loom](https://www.loom.com/share/0d59c50285c04224a4857720b3640018)**
 
 > Screenshots below are captured live from the production deployment on Vercel, with a connected wallet.
 

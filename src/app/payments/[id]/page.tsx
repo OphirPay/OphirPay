@@ -4,9 +4,10 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { PaymentRequestModal } from "@/components/payments/PaymentRequestModal";
 import { PaymentTimeline } from "@/components/payments/PaymentTimeline";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -87,6 +88,7 @@ function DetailRow({
 }
 
 export default function PaymentDetailPage() {
+  const [showQrModal, setShowQrModal] = useState(false);
   const params = useParams<{ id: string }>();
   const id = Array.isArray(params?.id) ? params.id[0] : params?.id ?? "";
   const numericId = /^\d+$/.test(id) ? Number(id) : NaN;
@@ -231,6 +233,14 @@ export default function PaymentDetailPage() {
               {status && <StatusBadge status={status} />}
               <button
                 type="button"
+                onClick={() => setShowQrModal(true)}
+                aria-label="View QR code"
+                className="print:hidden text-sm text-gray-500 dark:text-gray-400 hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors"
+              >
+                QR Code
+              </button>
+              <button
+                type="button"
                 onClick={() => window.print()}
                 className="print:hidden text-sm text-gray-500 dark:text-gray-400 hover:text-ophir-600 dark:hover:text-ophir-400 transition-colors"
               >
@@ -331,6 +341,18 @@ export default function PaymentDetailPage() {
               <PaymentTimeline steps={steps} explorerUrl={explorerUrl} />
             </Card>
           </div>
+
+          <PaymentRequestModal
+            open={showQrModal}
+            onClose={() => setShowQrModal(false)}
+            request={{
+              id: String(displayId),
+              destination: onChain?.payee || db?.recipient || "",
+              amount: String(onChain ? onChain.amountStroops / XLM_STROOPS : db?.amount || ""),
+              assetCode: db?.assetCode || "XLM",
+              memo: memo,
+            }}
+          />
         </>
       )}
     </div>

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import {
   BatchDropzone,
-  formatFileSize,
   validateCsvFile,
+  formatFileSize,
+  getMemoByteLength,
+  getMemoByteDetails,
+  MemoByteCounter,
+  STELLAR_MEMO_MAX_BYTES,
 } from "@/components/batch/BatchDropzone";
 import { ToastProvider } from "@/components/ui/Toast";
 
@@ -181,6 +184,66 @@ describe("BatchDropzone Component (#1378)", () => {
 
       fireEvent.keyDown(dropzone, { key: " " });
       expect(clickSpy).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("Stellar Memo byte length validation (Issue #1898)", () => {
+    it("calculates UTF-8 byte length correctly for ASCII, multi-byte, and emojis", () => {
+      expect(getMemoByteLength("")).toBe(0);
+      expect(getMemoByteLength("payroll")).toBe(7);
+      // Accented character 'é' is 1 JS char, 2 UTF-8 bytes
+      expect(getMemoByteLength("café")).toBe(5);
+      // Euro sign '€' is 1 JS char, 3 UTF-8 bytes
+      expect(getMemoByteLength("€")).toBe(3);
+      // Rocket emoji '🚀' is 2 UTF-16 code units, 4 UTF-8 bytes
+      expect(getMemoByteLength("🚀")).toBe(4);
+      // 7 emojis = 28 bytes (exact limit)
+      expect(getMemoByteLength("🚀🚀🚀🚀🚀🚀🚀")).toBe(28);
+      // 8 emojis = 32 bytes (exceeds limit)
+      expect(getMemoByteLength("🚀🚀🚀🚀🚀🚀🚀🚀")).toBe(32);
+    });
+
+    it("evaluates boundary conditions and remaining bytes correctly", () => {
+      const detailsZero = getMemoByteDetails("");
+      expect(detailsZero.byteLength).toBe(0);
+      expect(detailsZero.remaining).toBe(28);
+      expect(detailsZero.exceeds).toBe(false);
+      expect(detailsZero.isNearLimit).toBe(false);
+
+      const detailsNear = getMemoByteDetails("a".repeat(22));
+      expect(detailsNear.byteLength).toBe(22);
+      expect(detailsNear.remaining).toBe(6);
+      expect(detailsNear.exceeds).toBe(false);
+      expect(detailsNear.isNearLimit).toBe(true);
+
+      const detailsExact = getMemoByteDetails("a".repeat(28));
+      expect(detailsExact.byteLength).toBe(28);
+      expect(detailsExact.remaining).toBe(0);
+      expect(detailsExact.exceeds).toBe(false);
+
+      const detailsOver = getMemoByteDetails("a".repeat(29));
+      expect(detailsOver.byteLength).toBe(29);
+      expect(detailsOver.remaining).toBe(-1);
+      expect(detailsOver.exceeds).toBe(true);
+    });
+
+    it("renders MemoByteCounter with real-time remaining bytes", () => {
+      const { rerender } = render(<MemoByteCounter memo="test memo" />);
+      const counter = screen.getByTestId("memo-byte-counter");
+      expect(counter).toHaveTextContent("19 bytes remaining (9/28 B)");
+      expect(screen.queryByTestId("memo-warning-badge")).toBeNull();
+
+      // Updates on keystroke / prop change
+      rerender(<MemoByteCounter memo="longer test memo with 25" />);
+      expect(screen.getByTestId("memo-byte-counter")).toHaveTextContent("4 bytes remaining (24/28 B)");
+      expect(screen.queryByTestId("memo-warning-badge")).toBeNull();
+    });
+
+    it("renders warning badge when memo exceeds 28 bytes", () => {
+      render(<MemoByteCounter memo="this is an excessively long memo exceeding limit" />);
+      expect(screen.getByTestId("memo-warning-badge")).toBeInTheDocument();
+      expect(screen.getByTestId("memo-warning-badge")).toHaveTextContent(/Exceeds 28-byte limit/i);
+      expect(screen.getByTestId("memo-byte-counter")).toHaveTextContent(/bytes over limit/i);
     });
   });
 });

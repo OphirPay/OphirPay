@@ -37,6 +37,43 @@ export function verifyMemo(memo: string, reference: string): boolean {
   return hashMemoSync(memo) === hashMemoSync(reference) || memo === reference;
 }
 
+// ── Memo byte counter (Stellar text memo limit) ────────────────
+
+/** Maximum UTF-8 bytes allowed in a Stellar text memo. */
+export const MEMO_TEXT_BYTE_LIMIT = 28;
+
+export interface MemoByteUsage {
+  /** UTF-8 byte length of the memo value. */
+  bytes: number;
+  /** Configured limit (28 by default). */
+  limit: number;
+  /** Bytes still available before the limit; 0 once exceeded. */
+  remaining: number;
+  /** True when the memo exceeds the byte limit. */
+  exceeded: boolean;
+}
+
+/**
+ * Measure a memo string against Stellar's 28-byte text-memo limit.
+ *
+ * Stellar counts UTF-8 bytes, not UTF-16 code units, so multi-byte
+ * characters (e.g. "€", emoji) consume more than one byte each. This is the
+ * single source of truth for the live byte counter surfaced in the batch
+ * import UI.
+ */
+export function getMemoByteUsage(
+  value: string,
+  limit: number = MEMO_TEXT_BYTE_LIMIT
+): MemoByteUsage {
+  const bytes = new TextEncoder().encode(value).length;
+  return {
+    bytes,
+    limit,
+    remaining: Math.max(0, limit - bytes),
+    exceeded: bytes > limit,
+  };
+}
+
 // ── Memo validation (moved from memo-validation.ts) ────────────
 
 export type MemoType = "text" | "id" | "hash" | "return";

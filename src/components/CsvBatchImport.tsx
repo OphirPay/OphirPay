@@ -13,6 +13,7 @@ import {
   parseRecipientsCsvToRows,
   validateRecipientFields,
 } from "@/lib/csv-import";
+import { getMemoByteUsage } from "@/lib/memo";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -367,11 +368,9 @@ export function CsvBatchImport({
                         />
                       </td>
                       <td className="py-3 px-3">
-                        <CellInput
+                        <MemoCellInput
                           value={r.values.memo}
                           error={r.errors.memo}
-                          placeholder="Optional"
-                          maxLength={28}
                           onChange={(v) => updateCell(r.id, "memo", v)}
                         />
                       </td>
@@ -487,6 +486,70 @@ function CellInput({
           className
         )}
       />
+      {error && (
+        <p
+          role="alert"
+          className="mt-1 text-xs text-red-600 dark:text-red-400"
+        >
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Memo cell with live UTF-8 byte counter ────────────────────
+
+/**
+ * Memo input that surfaces a live UTF-8 byte counter against Stellar's
+ * 28-byte text-memo limit. The counter updates on every keystroke and a
+ * warning badge appears once the value exceeds the limit, so users see why a
+ * memo will be rejected before they submit.
+ */
+function MemoCellInput({
+  value,
+  error,
+  onChange,
+}: {
+  value: string;
+  error?: string;
+  onChange: (value: string) => void;
+}) {
+  const usage = getMemoByteUsage(value);
+  return (
+    <div>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Optional"
+        aria-invalid={!!error || usage.exceeded}
+        aria-label="Memo"
+        data-testid="memo-input"
+        className={cn(
+          "w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-ophir-500/40 focus:border-transparent transition-colors",
+          error || usage.exceeded
+            ? "border-red-500 dark:border-red-500 focus:ring-red-500/30"
+            : "border-gray-200 dark:border-gray-700"
+        )}
+      />
+      <p
+        data-testid="memo-byte-counter"
+        data-exceeded={usage.exceeded}
+        className={cn(
+          "mt-1 text-xs font-mono",
+          usage.exceeded
+            ? "text-red-600 dark:text-red-400"
+            : usage.remaining <= 4
+            ? "text-amber-600 dark:text-amber-400"
+            : "text-gray-500 dark:text-gray-400"
+        )}
+      >
+        {usage.bytes}/{usage.limit} bytes
+        {usage.exceeded
+          ? ` · ${usage.bytes - usage.limit} over`
+          : ` · ${usage.remaining} left`}
+      </p>
       {error && (
         <p
           role="alert"

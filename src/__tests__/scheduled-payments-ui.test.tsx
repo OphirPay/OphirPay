@@ -328,4 +328,251 @@ describe("ScheduledPaymentsList", () => {
     );
     expect(deleteCall).toBeTruthy();
   });
+
+  it("filters scheduled payments by memo text", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/csrf") {
+        return Promise.resolve(jsonResponse(200, { token: "test-token" }));
+      }
+      if (u === "/api/scheduled" && (!init?.method || init.method === "GET")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            success: true,
+            data: [
+              {
+                id: "sched_1",
+                amount: "100",
+                assetCode: "XLM",
+                destAddress: RECIPIENT,
+                memo: "Payout for contractor",
+                scheduledAt: "2099-01-01T10:00:00.000Z",
+                status: "SCHEDULED",
+              },
+              {
+                id: "sched_2",
+                amount: "25",
+                assetCode: "XLM",
+                destAddress: PUBLIC_KEY,
+                memo: "Office supplies",
+                scheduledAt: "2099-02-01T10:00:00.000Z",
+                status: "EXECUTED",
+                transactionHash: "tx123",
+              },
+            ],
+            meta: {},
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse(200, { success: true, data: [], meta: {} })
+      );
+    });
+
+    renderWithClient(<ScheduledPaymentsList debounceMs={0} />);
+
+    expect(await screen.findByText("100.00 XLM")).toBeInTheDocument();
+    expect(await screen.findByText("25.00 XLM")).toBeInTheDocument();
+    expect(screen.getByText("2 upcoming")).toBeInTheDocument();
+
+    const searchInput = screen.getByLabelText("Search scheduled payments");
+    expect(searchInput).toHaveAttribute(
+      "placeholder",
+      "Search by address or memo..."
+    );
+
+    // Search by memo (case-insensitive)
+    fireEvent.change(searchInput, { target: { value: "contractor" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("100.00 XLM")).toBeInTheDocument();
+      expect(screen.queryByText("25.00 XLM")).not.toBeInTheDocument();
+      expect(screen.getByText("1 of 2 upcoming")).toBeInTheDocument();
+    });
+  });
+
+  it("filters scheduled payments by recipient destination address", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/csrf") {
+        return Promise.resolve(jsonResponse(200, { token: "test-token" }));
+      }
+      if (u === "/api/scheduled" && (!init?.method || init.method === "GET")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            success: true,
+            data: [
+              {
+                id: "sched_1",
+                amount: "100",
+                assetCode: "XLM",
+                destAddress: RECIPIENT,
+                memo: "Payout",
+                scheduledAt: "2099-01-01T10:00:00.000Z",
+                status: "SCHEDULED",
+              },
+              {
+                id: "sched_2",
+                amount: "25",
+                assetCode: "XLM",
+                destAddress: PUBLIC_KEY,
+                memo: "Payout",
+                scheduledAt: "2099-02-01T10:00:00.000Z",
+                status: "EXECUTED",
+                transactionHash: "tx123",
+              },
+            ],
+            meta: {},
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse(200, { success: true, data: [], meta: {} })
+      );
+    });
+
+    renderWithClient(<ScheduledPaymentsList debounceMs={0} />);
+
+    expect(await screen.findByText("100.00 XLM")).toBeInTheDocument();
+    expect(await screen.findByText("25.00 XLM")).toBeInTheDocument();
+
+    const searchInput = screen.getByLabelText("Search scheduled payments");
+
+    // Filter by destination address substring (lowercase)
+    fireEvent.change(searchInput, {
+      target: { value: RECIPIENT.slice(0, 8).toLowerCase() },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("100.00 XLM")).toBeInTheDocument();
+      expect(screen.queryByText("25.00 XLM")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows empty state when search filters out all payments and resets on Clear", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/csrf") {
+        return Promise.resolve(jsonResponse(200, { token: "test-token" }));
+      }
+      if (u === "/api/scheduled" && (!init?.method || init.method === "GET")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            success: true,
+            data: [
+              {
+                id: "sched_1",
+                amount: "100",
+                assetCode: "XLM",
+                destAddress: RECIPIENT,
+                memo: "Payout",
+                scheduledAt: "2099-01-01T10:00:00.000Z",
+                status: "SCHEDULED",
+              },
+            ],
+            meta: {},
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse(200, { success: true, data: [], meta: {} })
+      );
+    });
+
+    renderWithClient(<ScheduledPaymentsList debounceMs={0} />);
+
+    expect(await screen.findByText("100.00 XLM")).toBeInTheDocument();
+
+    const searchInput = screen.getByLabelText("Search scheduled payments");
+    fireEvent.change(searchInput, { target: { value: "UnknownTerm" } });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No scheduled payments match your search.")
+      ).toBeInTheDocument();
+      expect(screen.getByText("0 of 1 upcoming")).toBeInTheDocument();
+    });
+
+    // Clear search using the inline Clear button inside the search bar
+    const clearButton = screen.getByRole("button", { name: "Clear" });
+    fireEvent.click(clearButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("100.00 XLM")).toBeInTheDocument();
+      expect(screen.getByText("1 upcoming")).toBeInTheDocument();
+      expect(searchInput).toHaveValue("");
+    });
+
+    // Also test clearing from the empty-state link button
+    fireEvent.change(searchInput, { target: { value: "UnknownTermAgain" } });
+    await waitFor(() => {
+      expect(
+        screen.getByText("No scheduled payments match your search.")
+      ).toBeInTheDocument();
+    });
+    const emptyStateClearButton = screen.getByRole("button", {
+      name: "Clear search",
+    });
+    fireEvent.click(emptyStateClearButton);
+    await waitFor(() => {
+      expect(screen.getByText("100.00 XLM")).toBeInTheDocument();
+      expect(searchInput).toHaveValue("");
+    });
+  });
+
+  it("works with default debounce delay", async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u === "/api/csrf") {
+        return Promise.resolve(jsonResponse(200, { token: "test-token" }));
+      }
+      if (u === "/api/scheduled" && (!init?.method || init.method === "GET")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            success: true,
+            data: [
+              {
+                id: "sched_1",
+                amount: "100",
+                assetCode: "XLM",
+                destAddress: RECIPIENT,
+                memo: "Alpha",
+                scheduledAt: "2099-01-01T10:00:00.000Z",
+                status: "SCHEDULED",
+              },
+              {
+                id: "sched_2",
+                amount: "25",
+                assetCode: "XLM",
+                destAddress: PUBLIC_KEY,
+                memo: "Beta",
+                scheduledAt: "2099-02-01T10:00:00.000Z",
+                status: "EXECUTED",
+              },
+            ],
+            meta: {},
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse(200, { success: true, data: [], meta: {} })
+      );
+    });
+
+    renderWithClient(<ScheduledPaymentsList />);
+
+    expect(await screen.findByText("100.00 XLM")).toBeInTheDocument();
+    expect(await screen.findByText("25.00 XLM")).toBeInTheDocument();
+
+    const searchInput = screen.getByPlaceholderText("Search by address or memo...");
+    fireEvent.change(searchInput, { target: { value: "Beta" } });
+
+    await waitFor(
+      () => {
+        expect(screen.queryByText("100.00 XLM")).not.toBeInTheDocument();
+        expect(screen.getByText("25.00 XLM")).toBeInTheDocument();
+      },
+      { timeout: 1500 }
+    );
+  });
 });

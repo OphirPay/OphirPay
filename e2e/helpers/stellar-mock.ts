@@ -456,6 +456,9 @@ export function handleRpcRequest(
         latestLedgerCloseTime: 1,
         oldestLedger: 41_000,
         oldestLedgerCloseTime: 1,
+        envelopeXdr:
+          "AAAAAgAAAAAiFoHaZzeY7ka3QUfcMo4VyDBwqScXAOWtRp9ufUfhLQAAAAAAAAAAAAAAAgAAAAEAAAAAAAAAAAAAAAAAAABkAAAAAAAAAAAAAAAAAAAAAA==",
+        resultXdr: "AAAAAAAAAGQAAAAAAAAAAAAAAAA=",
         resultMetaXdr:
           state.transactionMeta === "success"
             ? successfulTransactionMeta()

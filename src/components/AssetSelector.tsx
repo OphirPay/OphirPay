@@ -146,6 +146,9 @@ export function AssetSelector({
   // Issuer-supplied display metadata (issue #824), keyed by `code:issuer`.
   // Absent/`null` entries fall back to the built-in display name.
   const [metadata, setMetadata] = useState<Record<string, ClientAssetMetadata | null>>({});
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const listboxRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const balanceGeneration = useRef(0);
   const fetchBalances = useCallback(async () => {
@@ -192,10 +195,42 @@ export function AssetSelector({
     };
   }, [selectedAsset, assets]);
 
-  // Start every open with a fresh, unfiltered list.
+  // Start every open with a fresh, unfiltered list and focus management.
   useEffect(() => {
-    if (!open) setQuery("");
+    if (open) {
+      setFocusedIndex(-1);
+      setTimeout(() => searchInputRef.current?.focus(), 0);
+    } else {
+      setQuery("");
+    }
   }, [open]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setFocusedIndex((prev) => (prev < visibleAssets.length - 1 ? prev + 1 : prev));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setFocusedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === "Enter") {
+      if (focusedIndex >= 0 && focusedIndex < visibleAssets.length) {
+        e.preventDefault();
+        handleSelect(visibleAssets[focusedIndex]);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (focusedIndex >= 0 && listboxRef.current) {
+      const options = listboxRef.current.querySelectorAll('[role="option"]');
+      const option = options[focusedIndex] as HTMLElement;
+      if (option) {
+        option.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }, [focusedIndex]);
 
   useEffect(() => {
     if (!publicKey || selectedAsset.type === "native" || !selectedAsset.issuer) return;
@@ -338,9 +373,13 @@ export function AssetSelector({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in">
-            <div className="px-3 pt-2 pb-1">
+          <div 
+            className="absolute z-20 top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl py-1 animate-fade-in flex flex-col max-h-[80vh]"
+            onKeyDown={handleKeyDown}
+          >
+            <div className="px-3 pt-2 pb-1 shrink-0">
               <input
+                ref={searchInputRef}
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -361,7 +400,8 @@ export function AssetSelector({
               </p>
             )}
 
-            {visibleAssets.map((asset) => {
+            <div role="listbox" ref={listboxRef} className="overflow-y-auto shrink">
+            {visibleAssets.map((asset, index) => {
               const bal = findAssetBalance(balances, asset);
               const key = `${asset.code}:${asset.issuer}`;
               const tl = trustlineStatus[key];
@@ -370,6 +410,8 @@ export function AssetSelector({
                 <button
                   key={key}
                   type="button"
+                  role="option"
+                  aria-selected={focusedIndex === index}
                   data-testid="asset-option"
                   onClick={() => handleSelect(asset)}
                   className={cn(
@@ -377,6 +419,7 @@ export function AssetSelector({
                     selectedAsset.code === asset.code &&
                       selectedAsset.issuer === asset.issuer &&
                       "bg-ophir-50 dark:bg-ophir-950/20",
+                    focusedIndex === index && "bg-gray-100 dark:bg-gray-700"
                   )}
                 >
                   <div className="flex items-center gap-2">
@@ -441,6 +484,7 @@ export function AssetSelector({
                 </button>
               );
             })}
+            </div>
 
             {selectedAsset.type !== "native" && selectedAsset.issuer && trustlineStatus[`${selectedAsset.code}:${selectedAsset.issuer}`]?.state && (
               <div className="border-t border-gray-100 dark:border-gray-700 mt-1 px-4 py-3">

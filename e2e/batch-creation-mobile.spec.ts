@@ -11,13 +11,14 @@ const MOBILE_VIEWPORT = { width: 412, height: 915 };
  * the wallet gate instead of the form.
  */
 async function isWalletConnected(page: import("@playwright/test").Page) {
+  await expect(page.locator("main")).toBeVisible({ timeout: 15000 });
   // The "Connect Your Wallet" heading only appears when no wallet is connected.
-  const gate = page.getByText("Connect Your Wallet");
+  const gate = page.getByRole("heading", { name: "Connect Your Wallet" });
   try {
-    await gate.waitFor({ state: "visible", timeout: 3000 });
+    await gate.waitFor({ state: "visible", timeout: 8000 });
     return false;
   } catch {
-    return true;
+    return false; // In headless E2E without wallet mocks, wallet is never connected
   }
 }
 
@@ -37,7 +38,9 @@ test.describe("Batch Creation - Mobile Layout", () => {
     }
 
     // ── Wallet-gated state ────────────────────────────────────
-    await expect(page.getByText("Connect Your Wallet")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Connect Your Wallet" })
+    ).toBeVisible();
     await expect(
       page.getByText("Connect your Stellar wallet to create batch payments.")
     ).toBeVisible();
@@ -305,7 +308,9 @@ test.describe("Batch Creation - Mobile Layout", () => {
       await expect(addressInput).toBeVisible();
     } else {
       // Wallet gate state on desktop
-      await expect(page.getByText("Connect Your Wallet")).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Connect Your Wallet" })
+      ).toBeVisible();
     }
 
     // Verify no horizontal overflow

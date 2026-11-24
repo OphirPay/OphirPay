@@ -26,8 +26,8 @@ const FREIGHTER_PK =
   "GAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQDZ7H";
 const ALBEDO_PK =
   "GABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEJXA";
-const FREIGHTER_BALANCE = "25.5";
-const ALBEDO_BALANCE = "102.3";
+const FREIGHTER_BALANCE = "25.50";
+const ALBEDO_BALANCE = "102.30";
 
 // ── Mock helpers ───────────────────────────────────────────────
 
@@ -206,6 +206,11 @@ function shorten(pk: string): string {
   return pk.slice(0, 5) + "..." + pk.slice(-4);
 }
 
+/** Check whether current page viewport is mobile (< 640px). */
+function isMobileViewport(page: Page): boolean {
+  return (page.viewportSize()?.width ?? 1280) < 640;
+}
+
 // ── Tests ──────────────────────────────────────────────────────
 
 test.describe("Wallet switch with state preservation", () => {
@@ -223,13 +228,15 @@ test.describe("Wallet switch with state preservation", () => {
     await page.goto("/");
     await waitForConnected(page);
 
-    // Balance badge shows Freighter's balance
-    await expect(page.getByText(`${FREIGHTER_BALANCE} XLM`).first()).toBeVisible({
-      timeout: 10000,
-    });
+    if (!isMobileViewport(page)) {
+      // Balance badge shows Freighter's balance
+      await expect(page.getByText(`${FREIGHTER_BALANCE} XLM`).first()).toBeVisible({
+        timeout: 10000,
+      });
 
-    // Network badge shows TESTNET
-    await expect(page.getByText("TESTNET").first()).toBeVisible();
+      // Network badge shows TESTNET
+      await expect(page.getByText("TESTNET").first()).toBeVisible();
+    }
 
     // Shortened Freighter address is displayed
     const shortFg = shorten(FREIGHTER_PK);
@@ -260,11 +267,13 @@ test.describe("Wallet switch with state preservation", () => {
     await waitForConnected(page);
 
     // ── Phase 4: Verify Albedo state ────────────────────────
-    await expect(page.getByText(`${ALBEDO_BALANCE} XLM`).first()).toBeVisible({
-      timeout: 10000,
-    });
+    if (!isMobileViewport(page)) {
+      await expect(page.getByText(`${ALBEDO_BALANCE} XLM`).first()).toBeVisible({
+        timeout: 10000,
+      });
 
-    await expect(page.getByText("TESTNET").first()).toBeVisible();
+      await expect(page.getByText("TESTNET").first()).toBeVisible();
+    }
 
     const shortAb = shorten(ALBEDO_PK);
     await expect(page.getByText(shortAb).first()).toBeVisible();
@@ -286,10 +295,14 @@ test.describe("Wallet switch with state preservation", () => {
     await page.reload();
     await waitForConnected(page);
 
-    await expect(page.getByText(`${FREIGHTER_BALANCE} XLM`).first()).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(page.getByText("TESTNET").first()).toBeVisible();
+    if (!isMobileViewport(page)) {
+      await expect(page.getByText(`${FREIGHTER_BALANCE} XLM`).first()).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.getByText("TESTNET").first()).toBeVisible();
+    }
+    const shortFg = shorten(FREIGHTER_PK);
+    await expect(page.getByText(shortFg).first()).toBeVisible();
   });
 
   test("disconnect clears wallet state completely", async ({ page }) => {
@@ -317,22 +330,26 @@ test.describe("Wallet switch with state preservation", () => {
     injectWalletMocks(page, {
       freighter: true,
       albedo: true,
-      freighterBalance: "50.0",
-      albedoBalance: "999.9",
+      freighterBalance: "50.00",
+      albedoBalance: "999.90",
     });
 
     // Connect Freighter
-    await interceptBalance(page, "50.0");
+    await interceptBalance(page, "50.00");
     await page.goto("/");
     await waitForConnected(page);
-    await expect(page.getByText("50.0 XLM").first()).toBeVisible({ timeout: 10000 });
+    if (!isMobileViewport(page)) {
+      await expect(page.getByText("50.00 XLM").first()).toBeVisible({ timeout: 10000 });
+    }
+    const shortFg = shorten(FREIGHTER_PK);
+    await expect(page.getByText(shortFg).first()).toBeVisible();
 
     // Disconnect
     await page.getByLabel("Disconnect wallet").click();
     await waitForDisconnected(page);
 
     // Connect Albedo with different balance
-    await interceptBalance(page, "999.9");
+    await interceptBalance(page, "999.90");
     await page
       .getByRole("button", { name: /Connect Wallet/i })
       .first()
@@ -344,10 +361,14 @@ test.describe("Wallet switch with state preservation", () => {
     await albedoOption.click();
     await waitForConnected(page);
 
-    await expect(page.getByText("999.9 XLM").first()).toBeVisible({ timeout: 10000 });
+    if (!isMobileViewport(page)) {
+      await expect(page.getByText("999.90 XLM").first()).toBeVisible({ timeout: 10000 });
+    }
+    const shortAb = shorten(ALBEDO_PK);
+    await expect(page.getByText(shortAb).first()).toBeVisible();
 
     // Freighter balance must NOT be visible
-    await expect(page.getByText("50.0 XLM")).toHaveCount(0);
+    await expect(page.getByText("50.00 XLM")).toHaveCount(0);
   });
 
   test("wallet selector shows correct availability status", async ({
@@ -377,12 +398,11 @@ test.describe("Wallet switch with state preservation", () => {
         .first(),
     ).toBeVisible({ timeout: 10000 });
 
-    // Albedo shows "Not found"
+    // xBull shows "Not found"
     await expect(
       page
         .locator("button")
-        .filter({ hasText: "Albedo" })
-        .locator("..")
+        .filter({ hasText: "xBull" })
         .getByText("Not found"),
     ).toBeVisible();
   });
@@ -404,9 +424,9 @@ test.describe("Wallet switch with state preservation", () => {
       timeout: 10000,
     });
 
-    // Click the backdrop
-    const backdrop = page.locator(".fixed.inset-0.z-40").first();
-    await backdrop.click({ force: true });
+    // Click the backdrop outside the dialog card
+    const backdrop = page.locator("[role='dialog'] > div.absolute.inset-0").first();
+    await backdrop.click({ position: { x: 10, y: 10 } });
 
     await expect(
       page.getByText("Choose your Stellar wallet"),
@@ -436,20 +456,21 @@ test.describe("Wallet switch with state preservation", () => {
   });
 
   test("balance refresh button works after connect", async ({ page }) => {
+    test.skip(isMobileViewport(page), "Balance badge is hidden on mobile viewports (< 640px)");
     injectWalletMocks(page, { freighter: true });
-    await interceptBalance(page, "42.0");
+    await interceptBalance(page, "42.00");
 
     await page.goto("/");
     await waitForConnected(page);
 
-    await expect(page.getByText("42.0 XLM").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("42.00 XLM").first()).toBeVisible({ timeout: 10000 });
 
     // Change intercept to return new balance
     await page.unroute(ACCOUNT_ROUTE);
-    await interceptBalance(page, "55.0");
+    await interceptBalance(page, "55.00");
 
     await page.getByTitle("Refresh balance").click();
 
-    await expect(page.getByText("55.0 XLM").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("55.00 XLM").first()).toBeVisible({ timeout: 10000 });
   });
 });

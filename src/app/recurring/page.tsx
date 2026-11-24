@@ -180,7 +180,7 @@ export default function RecurringPage() {
           <span className="text-amber-500 text-lg">⚠️</span>
           <div>
             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Wallet not connected</p>
-            <p className="text-xs text-amber-600 dark:text-amber-400">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
               Connect your wallet to create and manage recurring payments.
             </p>
           </div>

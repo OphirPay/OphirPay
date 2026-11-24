@@ -46,7 +46,7 @@ export function Header() {
 
         {/* Right: Explorer preference + Notifications + Theme toggle + Wallet button */}
         <div className="flex items-center gap-2 md:gap-3">
-          <label className="flex items-center">
+          <label className="hidden sm:flex items-center">
             <span className="sr-only">Preferred block explorer</span>
             <select
               aria-label="Preferred block explorer"
@@ -64,7 +64,9 @@ export function Header() {
               ))}
             </select>
           </label>
-          <KeyboardShortcutsHelp />
+          <div className="hidden sm:block">
+            <KeyboardShortcutsHelp />
+          </div>
           <NotificationCenter />
           {/* Dark mode toggle */}
           <button

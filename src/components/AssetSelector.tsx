@@ -3,7 +3,6 @@
 
 
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { TrustlineModal } from "@/components/wallet/TrustlineModal";
 import { useXlmPrice } from "@/hooks/usePrice";
 import {
@@ -146,6 +145,27 @@ export function AssetSelector({
   // Issuer-supplied display metadata (issue #824), keyed by `code:issuer`.
   // Absent/`null` entries fall back to the built-in display name.
   const [metadata, setMetadata] = useState<Record<string, ClientAssetMetadata | null>>({});
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    if (open) {
+      const idx = visibleAssets.findIndex(
+        (a) => a.code === selectedAsset.code && a.issuer === selectedAsset.issuer
+      );
+      setFocusedIndex(idx >= 0 ? idx : (visibleAssets.length > 0 ? 0 : -1));
+    } else {
+      setFocusedIndex(-1);
+    }
+  }, [open, selectedAsset, query]);
+
+  useEffect(() => {
+    if (open && focusedIndex >= 0 && itemRefs.current[focusedIndex]) {
+      itemRefs.current[focusedIndex]?.focus();
+    }
+  }, [focusedIndex, open]);
+
 
   const balanceGeneration = useRef(0);
   const fetchBalances = useCallback(async () => {
@@ -240,6 +260,7 @@ export function AssetSelector({
 
     onSelect(asset);
     setOpen(false);
+    triggerRef.current?.focus();
   };
 
   /**
@@ -247,7 +268,40 @@ export function AssetSelector({
    * confirms it: seed the row state from the verified result, select the asset
    * and re-read balances so the new holding shows up without a page reload.
    */
-  const handleTrustlineCreated = useCallback(
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setFocusedIndex((prev) => (visibleAssets.length > 0 ? (prev + 1) % visibleAssets.length : -1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setFocusedIndex((prev) => (visibleAssets.length > 0 ? (prev - 1 + visibleAssets.length) % visibleAssets.length : -1));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setFocusedIndex(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setFocusedIndex(visibleAssets.length - 1);
+    } else if (e.key === "Enter" || e.key === " ") {
+      if (focusedIndex >= 0 && focusedIndex < visibleAssets.length) {
+        e.preventDefault();
+        handleSelect(visibleAssets[focusedIndex]);
+      }
+    } else if (e.key === "Escape" || e.key === "Tab") {
+      e.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
+  };
+
+const handleTrustlineCreated = useCallback(
     async (createdAsset: AssetInfo, info: TrustlineInfo) => {
       if (!createdAsset.issuer) return;
       const key = `${createdAsset.code}:${createdAsset.issuer}`;
@@ -290,8 +344,14 @@ export function AssetSelector({
   return (
     <div className={cn("relative", className)}>
       <button
+        ref={triggerRef}
         type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls="asset-selector-listbox"
+        aria-label={`Select asset, currently selected ${selectedAsset.code}`}
         onClick={() => !disabled && setOpen(!open)}
+        onKeyDown={handleKeyDown}
         disabled={disabled}
         className={cn(
           "w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm transition-colors",
@@ -361,24 +421,45 @@ export function AssetSelector({
               </p>
             )}
 
-            {visibleAssets.map((asset) => {
-              const bal = findAssetBalance(balances, asset);
-              const key = `${asset.code}:${asset.issuer}`;
-              const tl = trustlineStatus[key];
+            <div
+              id="asset-selector-listbox"
+              role="listbox"
+              aria-label="Available assets"
+              aria-activedescendant={focusedIndex >= 0 && focusedIndex < visibleAssets.length ? `asset-option-${visibleAssets[focusedIndex].code}` : undefined}
+              onKeyDown={handleKeyDown}
+              className="focus:outline-none"
+            >
+              {visibleAssets.map((asset, index) => {
+                const bal = findAssetBalance(balances, asset);
+                const key = `${asset.code}:${asset.issuer}`;
+                const tl = trustlineStatus[key];
+                const isSelected =
+                  selectedAsset.code === asset.code &&
+                  selectedAsset.issuer === asset.issuer;
+                const isFocused = focusedIndex === index;
 
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  data-testid="asset-option"
-                  onClick={() => handleSelect(asset)}
-                  className={cn(
-                    "w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors",
-                    selectedAsset.code === asset.code &&
-                      selectedAsset.issuer === asset.issuer &&
-                      "bg-ophir-50 dark:bg-ophir-950/20",
-                  )}
-                >
+                return (
+                  <button
+                    key={key}
+                    ref={(el) => {
+                      itemRefs.current[index] = el;
+                    }}
+                    id={`asset-option-${asset.code}`}
+                    role="option"
+                    aria-selected={isSelected}
+                    aria-label={`${asset.code} - ${labelFor(asset)}, balance ${bal}`}
+                    tabIndex={isFocused ? 0 : -1}
+                    type="button"
+                    data-testid="asset-option"
+                    onClick={() => handleSelect(asset)}
+                    onMouseEnter={() => setFocusedIndex(index)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus:outline-none",
+                      isSelected && "bg-ophir-50 dark:bg-ophir-950/20",
+                      isFocused &&
+                        "ring-2 ring-inset ring-ophir-500 bg-gray-50 dark:bg-gray-700",
+                    )}
+                  >
                   <div className="flex items-center gap-2">
                     <AssetMark
                       code={asset.code}
@@ -441,6 +522,7 @@ export function AssetSelector({
                 </button>
               );
             })}
+            </div>
 
             {selectedAsset.type !== "native" && selectedAsset.issuer && trustlineStatus[`${selectedAsset.code}:${selectedAsset.issuer}`]?.state && (
               <div className="border-t border-gray-100 dark:border-gray-700 mt-1 px-4 py-3">

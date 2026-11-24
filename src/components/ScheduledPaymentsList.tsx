@@ -78,7 +78,15 @@ export default function ScheduledPaymentsList() {
     { method: "DELETE", invalidateKeys: [["scheduled"]] }
   );
 
+  const [searchQuery, setSearchQuery] = useState("");
   const payments = Array.isArray(data) ? data : [];
+  
+  const filteredPayments = searchQuery.trim() === "" 
+    ? payments 
+    : payments.filter(p => 
+        p.destAddress.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        (p.memo && p.memo.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
 
   const handleCancel = async (id: string) => {
     try {
@@ -102,6 +110,24 @@ export default function ScheduledPaymentsList() {
         )}
       </div>
 
+      <div className="mb-4 relative">
+        <input
+          type="text"
+          placeholder="Search by recipient or memo..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-3 pr-10 py-2 border border-gray-200 dark:border-gray-800 rounded-lg bg-gray-50 dark:bg-gray-950 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-ophir-500"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs font-medium"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
       {isLoading ? (
         <div className="space-y-2">
           {[1, 2].map((i) => (
@@ -116,9 +142,13 @@ export default function ScheduledPaymentsList() {
           No scheduled payments yet. Use the schedule toggle above to send at
           a future date.
         </p>
+      ) : filteredPayments.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          No payments match your search.
+        </p>
       ) : (
         <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-          {payments.map((payment) => (
+          {filteredPayments.map((payment) => (
             <li
               key={payment.id}
               className="flex items-center justify-between gap-3 py-3"

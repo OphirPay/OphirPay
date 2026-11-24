@@ -150,7 +150,8 @@ export function AddressBookMultiSelect({
             return (
               <label
                 key={entry.publicKey}
-                className={`flex items-center gap-3 px-3 py-2.5 min-w-[280px] ${
+                data-testid="address-book-row"
+                className={`flex items-center gap-3 px-3 py-3 sm:py-2.5 min-h-[44px] sm:min-w-[280px] ${
                   alreadyAdded
                     ? "opacity-60 cursor-not-allowed"
                     : "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
@@ -162,7 +163,7 @@ export function AddressBookMultiSelect({
                   disabled={disabled || alreadyAdded}
                   onChange={() => toggle(entry.publicKey)}
                   aria-label={`Add ${entry.label}`}
-                  className="h-4 w-4 rounded border-gray-300 text-ophir-600 focus:ring-ophir-500 disabled:opacity-50"
+                  className="h-4 w-4 shrink-0 rounded border-gray-300 text-ophir-600 focus:ring-ophir-500 disabled:opacity-50"
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-gray-900 dark:text-white truncate">

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, KeyboardEvent } from "react";
 
 import { TrustlineModal } from "@/components/wallet/TrustlineModal";
 import { useXlmPrice } from "@/hooks/usePrice";
@@ -205,7 +205,7 @@ export function AssetSelector({
     }
   }, [open]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setFocusedIndex((prev) => (prev < visibleAssets.length - 1 ? prev + 1 : prev));

@@ -135,7 +135,7 @@
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/coverage-v8": "^4.1.10",
-    "autocannon": "^7.15.0",
+    "autocannon": "^9.0.0",
     "eslint": "^9.26.0",
     "eslint-config-next": "^16.3.0",
     "eslint-plugin-simple-import-sort": "^14.0.0",

@@ -1,6 +1,8 @@
 "use client";
 // SPDX-License-Identifier: MIT
 
+import { useEffect, useRef, useState } from "react";
+
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { formatAmount, shortenAddress } from "@/lib/utils";
@@ -46,9 +48,44 @@ export function BatchConfirmDialog({
   const remainingCount = recipients.length - MAX_VISIBLE;
   const feeXlm = formatAmount(parseFloat(estimatedFee) / 10000000, "XLM");
 
+  // Copy-to-clipboard feedback (issue #1894): index of the recipient row
+  // whose address was just copied, or null when no tooltip is showing.
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear a pending tooltip timer on unmount so it cannot fire into an
+  // unmounted component.
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopyAddress = async (index: number, address: string) => {
+    try {
+      // Copy the full address, not the shortened display form.
+      await navigator.clipboard.writeText(address);
+    } catch {
+      // Clipboard API unavailable or permission denied — fail gracefully:
+      // no tooltip, no announcement, no exception.
+      return;
+    }
+    if (copyTimerRef.current !== null) {
+      clearTimeout(copyTimerRef.current);
+    }
+    setCopiedIndex(index);
+    copyTimerRef.current = setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
   return (
     <Modal open={open} onClose={onCancel} title="Confirm Batch Payment" size="md">
       <div className="space-y-4">
+        {/* Screen-reader announcement for a successful copy */}
+        <span aria-live="polite" className="sr-only">
+          {copiedIndex !== null ? "Address copied" : ""}
+        </span>
         {/* Summary */}
         <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3 sm:p-4 space-y-2">
           <div className="flex justify-between text-sm">
@@ -114,8 +151,24 @@ export function BatchConfirmDialog({
                 key={i}
                 className="flex items-center justify-between px-3 py-2.5 sm:py-2 bg-white dark:bg-gray-900"
               >
-                <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">
-                  {shortenAddress(r.address, 8)}
+                <span className="relative inline-flex min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyAddress(i, r.address)}
+                    aria-label={`Copy recipient address ${shortenAddress(r.address, 8)}`}
+                    title="Copy address"
+                    className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate cursor-pointer hover:text-gray-900 dark:hover:text-white hover:underline underline-offset-2"
+                  >
+                    {shortenAddress(r.address, 8)}
+                  </button>
+                  {copiedIndex === i && (
+                    <span
+                      role="tooltip"
+                      className="absolute bottom-full left-0 z-10 mb-1 whitespace-nowrap rounded bg-gray-900 dark:bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-white dark:text-gray-900 shadow"
+                    >
+                      Copied!
+                    </span>
+                  )}
                 </span>
                 <span className="text-xs font-mono font-semibold text-gray-900 dark:text-white ml-3">
                   {formatAmount(parseFloat(r.amount), "XLM")}
